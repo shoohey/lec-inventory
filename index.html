@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v10.4</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v10.5</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -86,6 +86,20 @@ var LINE_COLORS={
   ]
 };
 var LOCK_TYPES=[{v:'dial',l:'ダイヤル錠'},{v:'padlock',l:'南京錠'},{v:'cylinder',l:'シリンダー錠'},{v:'coinReturn',l:'コインリターン錠'},{v:'none',l:'鍵なし'}];
+var BASE_COLORS=[{v:'gy',l:'グレー'},{v:'bk',l:'ブラック'}];
+var SHELF_COLORS=[{v:'gy',l:'グレー'},{v:'bk',l:'ブラック'}];
+var SHELF_PRICE=2000;
+var PART_DEFS=[
+  {k:'top',l:'トップボード',hasSub:'grp'},{k:'side',l:'サイドボード',hasSub:'size'},
+  {k:'back',l:'バックボード',hasSub:'size'},{k:'door',l:'扉（常設）',hasSub:'size',hasColor:true,isDoor:true,doorKey:'door'},
+  {k:'doorH',l:'扉（ホタ）',hasSub:'size',hasColor:true,isDoor:true,doorKey:'doorH'},
+  {k:'base',l:'ベースボード',hasSub:'grp'},{k:'shelf',l:'棚板',hasSub:'grp'},
+  {k:'vj',l:'上下ジョイント',hasSub:'grp'},{k:'sj',l:'サイドジョイント',hasSub:'grp'},
+  {k:'handle',l:'ハンドル'},{k:'dial',l:'ダイヤル錠'},{k:'padlock',l:'南京錠'},
+  {k:'cylinder',l:'シリンダー錠'},{k:'coinReturn',l:'コインリターン錠'}
+];
+function productName(lineId){return lineId==='tw'||lineId==='sa'?'Myプラロッカー':'MyプラECOロッカー';}
+function baseLabel(baseColor,hasCap){var c=baseColor==='bk'?'ブラック':'グレー';return productName('jp01')+'ベースボード('+c+')'+(hasCap!==false?' アンカー穴キャップ付':'');};
 var WH_IDS=['honsha','dai1','dai2','kashiwa','sapporo','amago','kansai'];
 var WH_MAP={
   honsha:{n:'本社倉庫',s:'本社',pref:'東京都',region:'kanto'},
@@ -177,7 +191,9 @@ function calcShipping(lines,whId,custPref){
   /* Build combined BOM for all lines */
   var allBom=[];
   lines.forEach(function(l){
-    var bom=calcBOM(l.size,l.islands,l.tiers,l.lock,l.type);
+    var bom;
+    if(l.isPartOnly){bom=[];if(l.isDoor){bom.push({key:l.partKey,qty:l.qty,label:l.partLabel,isDoor:true,doorSub:l.partSub});}else if(l.partSub!==undefined){bom.push({key:l.partKey,sub:l.partSub,qty:l.qty,label:l.partLabel});}else{bom.push({key:l.partKey,qty:l.qty,label:l.partLabel});}}
+    else{bom=calcBOM(l.size,l.islands,l.tiers,l.lock,l.type,l);}
     allBom=allBom.concat(bom);
   });
   /* Calculate total weight from boxes */
@@ -194,12 +210,7 @@ function calcShipping(lines,whId,custPref){
     var boxes=Math.ceil(b.qty/iri);
     tw+=boxes*bw;totalBoxes+=boxes;
   });
-  /* Add base board weight */
-  var baseIslands=lines.reduce(function(s,l){return s+l.islands;},0);
-  var baseIri=getIrisu('base',lines[0]?sizeObj(lines[0].size).grp:'sml');
-  var baseBw=getBoxWt('base',lines[0]?sizeObj(lines[0].size).grp:'sml');
-  var baseBoxes=Math.ceil(baseIslands/baseIri);
-  tw+=baseBoxes*baseBw;totalBoxes+=baseBoxes;
+  /* Base board weight is already in BOM via calcBOM when hasBase!==false, so skip separate calculation */
   var base=tw*rate+MISC_FEE;
   var ship=Math.ceil(base*MARKUP);
   if(tw>CHARTER_KG)ship+=CHARTER_FEE;
@@ -457,7 +468,8 @@ function isOrderColor(lineId,colorId){
 
 /* ========== BOM CALCULATION ========== */
 function sizeObj(v){return SIZES.find(function(s){return s.v===v;})||SIZES[0];}
-function calcBOM(size,islands,tiers,lock,type){
+function calcBOM(size,islands,tiers,lock,type,opts){
+  opts=opts||{};
   var n=islands*tiers,so=sizeObj(size),grp=so.grp,bom=[];
   var isOpen=type==='open',isPersonal=type==='personal';
   /* Boards always included */
@@ -474,8 +486,15 @@ function calcBOM(size,islands,tiers,lock,type){
     var dk=isPersonal?'doorH':'door';
     bom.push({key:dk,qty:n,label:(isPersonal?'扉〈ホタ〉':'扉')+'('+size+')',reason:n+'台×1',isDoor:true,doorSub:size});
   }
-  /* Base always */
-  bom.push({key:'base',sub:grp,qty:islands,label:'ベースボード('+grp.toUpperCase()+')',reason:islands+'島×1'});
+  /* Base - optional */
+  if(opts.hasBase!==false){
+    bom.push({key:'base',sub:grp,qty:islands,label:'ベースボード('+grp.toUpperCase()+')',reason:islands+'島×1'});
+  }
+  /* Shelf - optional */
+  var shelfQty=parseInt(opts.shelfQty)||0;
+  if(shelfQty>0){
+    bom.push({key:'shelf',sub:grp,qty:shelfQty,label:'棚板('+grp.toUpperCase()+')',reason:shelfQty+'枚'});
+  }
   /* Vertical joints */
   if(tiers>1){
     var vc=islands*(tiers-1);
@@ -590,7 +609,13 @@ function holdBOMMulti(line,whA,whB,bom,color,size){
 function shipOrderMulti(order){
   var whA=order.wh,whB=order.wh2;
   order.lines.forEach(function(ln){
-    var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+    var bom;
+    if(ln.isPartOnly){
+      bom=[];
+      if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+      else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
+      else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+    }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
     var orderCol=isOrderColor(ln.line,ln.color);
     bom.forEach(function(b){
       if(b.isDoor){
@@ -627,7 +652,13 @@ function shipOrderMulti(order){
 
 function shipOrder(order){
   order.lines.forEach(function(ln){
-    var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+    var bom;
+    if(ln.isPartOnly){
+      bom=[];
+      if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+      else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
+      else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+    }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
     var orderCol=isOrderColor(ln.line,ln.color);
     bom.forEach(function(b){
       if(b.isDoor){
@@ -672,7 +703,13 @@ function checkAllLinesWH(lines,wh){
     var doorAgg={};/* key: "doorKey|color|size" -> {qty, label, doorKey, color, size} */
     var simpleAgg={};/* key: "key" -> {qty, label, key} */
     group.forEach(function(ln){
-      var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+      var bom;
+      if(ln.isPartOnly){
+        bom=[];
+        if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+        else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
+        else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+      }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
       var orderCol=isOrderColor(lineId,ln.color);
       bom.forEach(function(b){
         if(b.isDoor){
@@ -763,24 +800,41 @@ function generateQuoteHTML(order,docType){
   var isShipping=docType==='shipping';
   var rows=[],rowNo=1,subtotal=0;
   order.lines.forEach(function(ln){
+    if(ln.isPartOnly){
+      var amt=ln.qty*(ln.unitPrice||0);subtotal+=amt;
+      rows.push({no:rowNo++,code:'',name:productName(ln.line)+' '+ln.partLabel,qty:ln.qty,unit:'個',price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':''});
+      return;
+    }
     var sz=sizeObj(ln.size);var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-    var colorName=co?co.l:'';var isPersonal=ln.type==='personal';
-    var amt=ln.qty*sz.p;subtotal+=amt;
-    var itemName='MyプラECO '+sz.l+' '+colorName+'色';
+    var colorName=(ln.type==='open'||!co)?'':co.l;var isPersonal=ln.type==='personal';
+    var amt2=ln.qty*sz.p;subtotal+=amt2;
+    var pn=productName(ln.line);
+    var itemName=pn+' '+sz.l+(colorName?' '+colorName+'色':'');
     if(isPersonal)itemName+='・トッテ';
-    rows.push({no:rowNo++,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt,tax:'10%(外)',configNote:'【'+ln.islands+'列'+ln.tiers+'段】'});
+    if(ln.type==='open')itemName+='（オープン）';
+    rows.push({no:rowNo++,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+ln.islands+'列'+ln.tiers+'段】'});
+    /* Shelf per line */
+    var sq=parseInt(ln.shelfQty)||0;
+    if(sq>0){var sc2=SHELF_COLORS.find(function(x){return x.v===ln.shelfColor;})||{l:'グレー'};var shAmt=sq*SHELF_PRICE;subtotal+=shAmt;rows.push({no:rowNo++,code:'',name:pn+'棚板('+sc2.l+')',qty:sq,unit:'枚',price:SHELF_PRICE,amount:shAmt,tax:'10%(外)'});}
   });
-  var ti=order.lines.reduce(function(s,l){return s+l.islands;},0);
-  var bt=ti*4000;subtotal+=bt;
-  rows.push({no:rowNo++,code:'MYPL-B',name:'MyプラECOロッカーベースボード(グレー) アンカー穴キャップ付',qty:ti,unit:'枚',price:4000,amount:bt,tax:'10%(外)'});
+  /* Base - aggregate from lines that have base */
+  var baseLines=order.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
+  var ti=baseLines.reduce(function(s,l){return s+l.islands;},0);
+  if(ti>0){
+    var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
+    var bColorName=bColor==='bk'?'ブラック':'グレー';
+    var bName=productName(fl0.line||'jp01')+'ベースボード('+bColorName+')'+(bCap?' アンカー穴キャップ付':'');
+    var bt=ti*4000;subtotal+=bt;
+    rows.push({no:rowNo++,code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:4000,amount:bt,tax:'10%(外)'});
+  }
   var ship=order.shipping||0;
   if(ship>0){subtotal+=ship;rows.push({no:rowNo++,code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)'});}
   var disc=order.discount||0;
   if(disc>0){subtotal-=disc;rows.push({no:rowNo++,code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:''});}
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
-  var subject='MyプラECOロッカー';
-  if(order.lines.length===1){var fl=order.lines[0];subject+=' '+sizeObj(fl.size).l+' '+fl.islands+'列'+fl.tiers+'段';}
-  else if(order.lines.length>1){subject+=' '+order.lines.length+'仕様混在';}
+  var hasNonPart=order.lines.some(function(l){return!l.isPartOnly;});
+  var subject=hasNonPart?productName((order.lines.find(function(l){return!l.isPartOnly;})||{}).line||'jp01')+'ロッカー':'パーツ単品';
+  if(hasNonPart){var npl=order.lines.filter(function(l){return!l.isPartOnly;});if(npl.length===1){var fl=npl[0];subject=productName(fl.line)+' '+sizeObj(fl.size).l+' '+fl.islands+'列'+fl.tiers+'段';}else if(npl.length>1){subject+=' '+npl.length+'仕様混在';}}
   var slipCode=cfg.slipPrefix+'-'+order.no;
 
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+cfg.title+' '+order.no+'</title>';
@@ -837,10 +891,19 @@ function generateQuoteHTML(order,docType){
     html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">部材内訳</div>';
     html+='<table><thead><tr><th>部材名</th><th style="width:60px">数量</th></tr></thead><tbody>';
     order.lines.forEach(function(ln){
-      var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
-      var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-      var colorName=co?co.l:'';
-      html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">'+sizeObj(ln.size).l+' '+colorName+' '+ln.islands+'列'+ln.tiers+'段</td></tr>';
+      var bom;
+      if(ln.isPartOnly){
+        bom=[];
+        if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+        else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
+        else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+        html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">[パーツ単品]</td></tr>';
+      }else{
+        bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
+        var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
+        var colorName=(ln.type==='open'||!co)?'':co.l;
+        html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">'+sizeObj(ln.size).l+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+ln.islands+'列'+ln.tiers+'段</td></tr>';
+      }
       bom.forEach(function(b){
         html+='<tr><td>'+b.label+'</td><td class="c">'+b.qty+'</td></tr>';
       });
@@ -960,7 +1023,7 @@ function App(){
       h('div',{className:'tabs'},TABS.map(function(t){
         return h('button',{key:t.k,className:'tab'+(tab[0]===t.k?' on':''),onClick:function(){tab[1](t.k);}},t.l);
       })),
-      h('div',{className:'ver'},'v10.4')
+      h('div',{className:'ver'},'v10.5')
     ),
     h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);}}),
     h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);}}),
@@ -1038,9 +1101,14 @@ function InvPage(p){
   var multiWH=us([]),selMulti=us(null);
   var showQuote=us(false),quoteOrder=us(null);
   var discount=us(0);
+  var baseColor=us('gy'),hasBase=us(true),hasCap=us(true);
+  var shelfQty=us(0),shelfColor=us('gy');
+  /* Parts-only mode */
+  var partType=us('side'),partSub=us('M'),partColor=us('pb'),partQty=us(1),partPrice=us(0);
 
   var colors=LINE_COLORS[ln[0]]||[];
   var sizes=LINE_SIZES[ln[0]]||[];
+  var isJP=ln[0]==='jp01'||ln[0]==='jp2';
   function changeLine(v){ln[1](v);cl[1]((LINE_COLORS[v]||[])[0]?LINE_COLORS[v][0].v:'');var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
   var qty=(parseInt(isl[0])||1)*(parseInt(tier[0])||1);
 
@@ -1048,7 +1116,16 @@ function InvPage(p){
     if(!cust)return;
     var lock=tp[0]==='open'?'none':lk[0];
     if(tp[0]==='personal'&&lock==='none')lock='dial';
-    var nl=lines[0].concat([{id:Date.now(),line:ln[0],size:sz[0],type:tp[0],color:cl[0],qty:qty,islands:parseInt(isl[0])||1,tiers:parseInt(tier[0])||1,lock:lock}]);
+    var nl=lines[0].concat([{id:Date.now(),line:ln[0],size:sz[0],type:tp[0],color:tp[0]==='open'?'':cl[0],qty:qty,islands:parseInt(isl[0])||1,tiers:parseInt(tier[0])||1,lock:lock,hasBase:hasBase[0],baseColor:isJP?baseColor[0]:'gy',hasCap:isJP?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:shelfColor[0]}]);
+    lines[1](nl);doCheck(nl);
+  }
+  function addPartLine(){
+    if(!cust)return;
+    var pd=PART_DEFS.find(function(d){return d.k===partType[0];});if(!pd)return;
+    var pSub,pLabel=pd.l;
+    if(pd.hasSub==='grp'){pSub=sizeObj(partSub[0]).grp;pLabel+='('+pSub.toUpperCase()+')';}
+    else if(pd.hasSub==='size'){pSub=partSub[0];pLabel+='('+pSub+')';}
+    var nl=lines[0].concat([{id:Date.now(),line:ln[0],isPartOnly:true,partKey:pd.isDoor?pd.doorKey:pd.k,partSub:pSub,partColor:pd.hasColor?partColor[0]:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:parseInt(partPrice[0])||0,partLabel:pLabel,size:partSub[0],color:pd.hasColor?partColor[0]:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
     lines[1](nl);doCheck(nl);
   }
   function remLine(id){var nl=lines[0].filter(function(l){return l.id!==id;});lines[1](nl);nl.length?doCheck(nl):(whResults[1]([]),multiWH[1]([]));}
@@ -1088,7 +1165,7 @@ function InvPage(p){
       var bomByLine={};
       ls.forEach(function(ln){
         if(!bomByLine[ln.line])bomByLine[ln.line]=[];
-        var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+        var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
         bom.forEach(function(b){
           bomByLine[ln.line].push({b:b,color:ln.color,size:ln.size,orderCol:isOrderColor(ln.line,ln.color)});
         });
@@ -1157,20 +1234,23 @@ function InvPage(p){
     }
   }
 
+  function getBOM(ln){
+    if(ln.isPartOnly){var b=[];if(ln.isDoor){b.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){b.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{b.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}return b;}
+    return calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
+  }
   function doHoldAndQuote(){
     if(!lines[0].length||!selWH[0])return;
     var wh=selWH[0];
-    /* Hold all lines */
     var allOk=true;
     lines[0].forEach(function(ln){
       if(!hasStock(ln.line,wh)){allOk=false;return;}
-      var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+      var bom=getBOM(ln);
       var check=checkWH(ln.line,wh,bom,ln.color,ln.size);
       if(!check.ok)allOk=false;
     });
     if(!allOk){p.toast('在庫不足のため仮押さえできません');return;}
     lines[0].forEach(function(ln){
-      var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+      var bom=getBOM(ln);
       holdBOM(ln.line,wh,bom,ln.color,ln.size);
     });
     var shipInfo=cust?calcShipping(lines[0],wh,cust.pref):null;
@@ -1187,7 +1267,7 @@ function InvPage(p){
     var mo=multiWH[0][selMulti[0]];
     var whA=mo.whA,whB=mo.whB;
     lines[0].forEach(function(ln){
-      var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+      var bom=getBOM(ln);
       holdBOMMulti(ln.line,whA,whB,bom,ln.color,ln.size);
     });
     var shipA=cust?calcShipping(lines[0],whA,cust.pref):null;
@@ -1247,44 +1327,93 @@ function InvPage(p){
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'タイプ'),
                 h('select',{className:'inp',value:tp[0],onChange:function(e){tp[1](e.target.value);}},TYPES.map(function(t){return h('option',{key:t.v,value:t.v},t.l);})))
             ),
-            h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'カラー '+(colorObj?'【'+colorObj.l+'】':'')),
-            h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',margin:'4px 0 8px'}},colors.map(function(c){
-              var doorCount=totalAvailD(ln[0],c.v,sz[0]);
-              var isOrder=!!c.order;
-              return h('div',{key:c.v,style:{textAlign:'center',cursor:'pointer'},onClick:function(){cl[1](c.v);}},
-                h('div',{className:'cd'+(cl[0]===c.v?' sel':''),style:{background:c.x,width:26,height:26,borderColor:cl[0]===c.v?'var(--nv)':'var(--g200)',position:'relative'}},
-                  isOrder?h('span',{className:'order-mark'},'発注'):null
-                ),
-                h('div',{style:{fontSize:7,fontWeight:700,marginTop:1,color:isOrder?'#7C3AED':doorCount<=0?'#DC2626':doorCount<=10?'#D97706':'#065F46'}},isOrder?'受発注':fm(doorCount))
-              );
-            })),
+            /* Door color - hidden for open type */
+            tp[0]!=='open'?h('div',null,
+              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'扉カラー '+(colorObj?'【'+colorObj.l+'】':'')),
+              h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',margin:'4px 0 8px'}},colors.map(function(c){
+                var doorCount=totalAvailD(ln[0],c.v,sz[0]);
+                var isOrder=!!c.order;
+                return h('div',{key:c.v,style:{textAlign:'center',cursor:'pointer'},onClick:function(){cl[1](c.v);}},
+                  h('div',{className:'cd'+(cl[0]===c.v?' sel':''),style:{background:c.x,width:26,height:26,borderColor:cl[0]===c.v?'var(--nv)':'var(--g200)',position:'relative'}},
+                    isOrder?h('span',{className:'order-mark'},'発注'):null
+                  ),
+                  h('div',{style:{fontSize:7,fontWeight:700,marginTop:1,color:isOrder?'#7C3AED':doorCount<=0?'#DC2626':doorCount<=10?'#D97706':'#065F46'}},isOrder?'受発注':fm(doorCount))
+                );
+              }))
+            ):h('div',{style:{padding:'4px 8px',background:'var(--yp)',borderRadius:5,fontSize:9,marginBottom:6,color:'#8B6914'}},'オープンタイプ: 扉なし'),
             h('div',{style:{display:'flex',gap:4,marginBottom:4}},
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'島数（列）'),h('input',{className:'inp',type:'number',min:1,max:50,value:isl[0],onChange:function(e){isl[1](e.target.value);},style:{textAlign:'center',fontWeight:700,fontSize:14}})),
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'段数'),h('input',{className:'inp',type:'number',min:1,max:10,value:tier[0],onChange:function(e){tier[1](e.target.value);},style:{textAlign:'center',fontWeight:700,fontSize:14}}))
             ),
             h('div',{style:{padding:'4px 8px',background:'var(--bp)',borderRadius:5,fontSize:10,marginBottom:6}},
               h('b',{style:{color:'var(--nv)',fontSize:14}},fm(qty)+'台'),
-              h('span',{style:{marginLeft:6,color:'var(--g500)'}},'（ベース: '+isl[0]+'枚）')
+              hasBase[0]?h('span',{style:{marginLeft:6,color:'var(--g500)'}},'（ベース: '+isl[0]+'枚）'):null
             ),
             tp[0]!=='open'?h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'錠前'+(tp[0]==='personal'?' （必須）':'')),
               h('select',{className:'inp',value:lk[0],onChange:function(e){lk[1](e.target.value);}},
                 LOCK_TYPES.filter(function(lt){return tp[0]==='personal'?lt.v!=='none':true;}).map(function(lt){return h('option',{key:lt.v,value:lt.v},lt.l);}))
             ):null,
+            /* Base options */
+            h('div',{style:{display:'flex',gap:4,marginBottom:4,alignItems:'center'}},
+              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)',width:50}},'ベース'),
+              h('label',{style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3}},h('input',{type:'checkbox',checked:hasBase[0],onChange:function(){hasBase[1](!hasBase[0]);}}),hasBase[0]?'あり':'なし'),
+              hasBase[0]&&isJP?h('select',{className:'inp',value:baseColor[0],onChange:function(e){baseColor[1](e.target.value);},style:{width:80}},BASE_COLORS.map(function(bc){return h('option',{key:bc.v,value:bc.v},bc.l);})):null,
+              hasBase[0]&&isJP?h('label',{style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3}},h('input',{type:'checkbox',checked:hasCap[0],onChange:function(){hasCap[1](!hasCap[0]);}}),h('span',null,'キャップ')):null
+            ),
+            /* Shelf options */
+            h('div',{style:{display:'flex',gap:4,marginBottom:6,alignItems:'center'}},
+              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)',width:50}},'棚板'),
+              h('input',{className:'inp',type:'number',min:0,value:shelfQty[0],onChange:function(e){shelfQty[1](e.target.value);},style:{width:50,textAlign:'center'}}),
+              h('span',{style:{fontSize:8}},'枚'),
+              parseInt(shelfQty[0])>0?h('select',{className:'inp',value:shelfColor[0],onChange:function(e){shelfColor[1](e.target.value);},style:{width:80}},SHELF_COLORS.map(function(sc){return h('option',{key:sc.v,value:sc.v},sc.l);})):null
+            ),
             h('button',{className:'btn btn-nv',style:{width:'100%'},onClick:addLine},'＋ 在庫確認・明細追加')
           )
         ),
+        /* Parts-only section */
+        h('div',{className:'card',style:{marginBottom:8}},
+          h('div',{className:'chd'},h('h3',null,'パーツ単品追加')),
+          h('div',{style:{padding:10}},
+            h('div',{style:{display:'flex',gap:4,marginBottom:4}},
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'パーツ'),
+                h('select',{className:'inp',value:partType[0],onChange:function(e){partType[1](e.target.value);}},PART_DEFS.map(function(pd){return h('option',{key:pd.k,value:pd.k},pd.l);}))),
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
+                h('select',{className:'inp',value:partSub[0],onChange:function(e){partSub[1](e.target.value);}},sizes.map(function(s){return h('option',{key:s,value:s},s);})))
+            ),
+            (PART_DEFS.find(function(d){return d.k===partType[0];}))||{}).hasColor?h('div',{style:{marginBottom:4}},
+              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'カラー'),
+              h('select',{className:'inp',value:partColor[0],onChange:function(e){partColor[1](e.target.value);}},colors.map(function(c){return h('option',{key:c.v,value:c.v},c.l);}))
+            ):null,
+            h('div',{style:{display:'flex',gap:4,marginBottom:4}},
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'数量'),h('input',{className:'inp',type:'number',min:1,value:partQty[0],onChange:function(e){partQty[1](e.target.value);},style:{textAlign:'center'}})),
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'単価(税抜)'),h('input',{className:'inp',type:'number',min:0,value:partPrice[0],onChange:function(e){partPrice[1](e.target.value);},style:{textAlign:'center'}}))
+            ),
+            h('button',{className:'btn btn-or',style:{width:'100%'},onClick:addPartLine},'＋ パーツ単品追加')
+          )
+        ),
         lines[0].length>0?h('div',{className:'card',style:{marginBottom:8}},
-          h('div',{className:'chd'},h('h3',null,'明細 ('+lines[0].length+'件 / '+fm(lines[0].reduce(function(s,l){return s+l.qty;},0))+'台)')),
+          h('div',{className:'chd'},h('h3',null,'明細 ('+lines[0].length+'件)')),
           h('div',{style:{padding:5}},lines[0].map(function(l){
             var co=(LINE_COLORS[l.line]||[]).find(function(c){return c.v===l.color;});
             var lo=LINES.find(function(x){return x.id===l.line;});
+            if(l.isPartOnly){
+              return h('div',{className:'olc',key:l.id},
+                h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--op)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:900}},'P'),
+                h('div',{style:{flex:1,fontSize:10}},
+                  h('b',null,l.partLabel),
+                  h('div',{style:{fontSize:8,color:'var(--g400)'}},(lo?lo.mark+' ':'')+l.qty+(l.isDoor?'枚':'個')+' @¥'+fm(l.unitPrice))
+                ),
+                h('b',{style:{fontSize:10}},l.unitPrice>0?'¥'+fm(l.qty*l.unitPrice):''),
+                h('button',{className:'btn btn-xs btn-rd',onClick:function(){remLine(l.id);}},'✕')
+              );
+            }
             var to=TYPES.find(function(x){return x.v===l.type;});
             return h('div',{className:'olc',key:l.id},
-              h('div',{style:{width:14,height:14,borderRadius:3,background:co?co.x:'#ccc',flexShrink:0}}),
+              l.type==='open'?h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--g200)',flexShrink:0}}):h('div',{style:{width:14,height:14,borderRadius:3,background:co?co.x:'#ccc',flexShrink:0}}),
               h('div',{style:{flex:1,fontSize:10}},
-                h('b',null,sizeObj(l.size).l+' '+(co?co.l:'')),
+                h('b',null,sizeObj(l.size).l+(l.type!=='open'&&co?' '+co.l:'')),
                 h('div',{style:{fontSize:8,color:'var(--g400)'}},
-                  (lo?lo.mark+' ':'')+(to?to.l+' ':'')+l.islands+'列×'+l.tiers+'段'
+                  (lo?lo.mark+' ':'')+(to?to.l+' ':'')+l.islands+'列×'+l.tiers+'段'+(l.hasBase===false?' ベース無':'')+(l.shelfQty>0?' 棚板'+l.shelfQty+'枚':'')
                 )
               ),
               h('b',{style:{fontSize:12}},fm(l.qty)+'台'),
@@ -1415,24 +1544,39 @@ function QuotePreview(p){
   var isShipping=dt==='shipping';
   var rows=[],rowNo=1,subtotal=0;
   o.lines.forEach(function(ln){
+    if(ln.isPartOnly){
+      var amt=ln.qty*(ln.unitPrice||0);subtotal+=amt;
+      rows.push({no:rowNo++,code:'',name:productName(ln.line)+' '+ln.partLabel,qty:ln.qty,unit:'個',price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':''});
+      return;
+    }
     var sz=sizeObj(ln.size);var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-    var colorName=co?co.l:'';var isPersonal=ln.type==='personal';
-    var amt=ln.qty*sz.p;subtotal+=amt;
-    var itemName='MyプラECO '+sz.l+' '+colorName+'色';
+    var colorName=(ln.type==='open'||!co)?'':co.l;var isPersonal=ln.type==='personal';
+    var amt2=ln.qty*sz.p;subtotal+=amt2;
+    var pn=productName(ln.line);
+    var itemName=pn+' '+sz.l+(colorName?' '+colorName+'色':'');
     if(isPersonal)itemName+='・トッテ';
-    rows.push({no:rowNo++,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt,tax:'10%(外)',configNote:'【'+ln.islands+'列'+ln.tiers+'段】'});
+    if(ln.type==='open')itemName+='（オープン）';
+    rows.push({no:rowNo++,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+ln.islands+'列'+ln.tiers+'段】'});
+    var sq=parseInt(ln.shelfQty)||0;
+    if(sq>0){var sc2=SHELF_COLORS.find(function(x){return x.v===ln.shelfColor;})||{l:'グレー'};var shAmt=sq*SHELF_PRICE;subtotal+=shAmt;rows.push({no:rowNo++,code:'',name:pn+'棚板('+sc2.l+')',qty:sq,unit:'枚',price:SHELF_PRICE,amount:shAmt,tax:'10%(外)'});}
   });
-  var ti=o.lines.reduce(function(s,l){return s+l.islands;},0);
-  var bt=ti*4000;subtotal+=bt;
-  rows.push({no:rowNo++,code:'MYPL-B',name:'MyプラECOロッカーベースボード(グレー) アンカー穴キャップ付',qty:ti,unit:'枚',price:4000,amount:bt,tax:'10%(外)'});
+  var baseLines=o.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
+  var ti=baseLines.reduce(function(s,l){return s+l.islands;},0);
+  if(ti>0){
+    var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
+    var bColorName=bColor==='bk'?'ブラック':'グレー';
+    var bName=productName(fl0.line||'jp01')+'ベースボード('+bColorName+')'+(bCap?' アンカー穴キャップ付':'');
+    var bt=ti*4000;subtotal+=bt;
+    rows.push({no:rowNo++,code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:4000,amount:bt,tax:'10%(外)'});
+  }
   var ship=o.shipping||0;
   if(ship>0){subtotal+=ship;rows.push({no:rowNo++,code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)'});}
   var disc=o.discount||0;
   if(disc>0){subtotal-=disc;rows.push({no:rowNo++,code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:''});}
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
-  var subject='MyプラECOロッカー';
-  if(o.lines.length===1){var fl=o.lines[0];subject+=' '+sizeObj(fl.size).l+' '+fl.islands+'列'+fl.tiers+'段';}
-  else if(o.lines.length>1){subject+=' '+o.lines.length+'仕様混在';}
+  var hasNonPart=o.lines.some(function(l){return!l.isPartOnly;});
+  var subject=hasNonPart?productName((o.lines.find(function(l){return!l.isPartOnly;})||{}).line||'jp01')+'ロッカー':'パーツ単品';
+  if(hasNonPart){var npl=o.lines.filter(function(l){return!l.isPartOnly;});if(npl.length===1){var fl=npl[0];subject=productName(fl.line)+' '+sizeObj(fl.size).l+' '+fl.islands+'列'+fl.tiers+'段';}else if(npl.length>1){subject+=' '+npl.length+'仕様混在';}}
   var slipCode=(dt==='quote'?'見積':dt==='invoice'?'請求':dt==='shipping'?'出荷':'納品')+'-'+o.no;
   var cs={border:'1px solid #999',padding:'3px 6px',fontSize:9};
   var tabStyle=function(k){return{padding:'4px 12px',fontSize:10,fontWeight:dt===k?700:400,cursor:'pointer',border:'1px solid #ccc',borderBottom:dt===k?'2px solid var(--nv)':'1px solid #ccc',background:dt===k?'#fff':'#f5f5f5',color:dt===k?'var(--nv)':'#666',borderRadius:'4px 4px 0 0',marginRight:2};};
@@ -1522,7 +1666,7 @@ function QuotePreview(p){
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:60})},'数量')
           )),
           h('tbody',null,[].concat.apply([],o.lines.map(function(ln,li){
-            var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+            var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
             var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
             var colorName=co?co.l:'';
             var els=[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},sizeObj(ln.size).l+' '+colorName+' '+ln.islands+'列'+ln.tiers+'段'))];
@@ -1633,17 +1777,31 @@ function OrdersPage(p){
         ),
         h('b',{style:{fontSize:10}},'明細:'),
         h('table',{className:'tbl',style:{marginTop:4}},
-          h('thead',null,h('tr',null,h('th',null,'製品'),h('th',null,'サイズ'),h('th',null,'カラー'),h('th',null,'タイプ'),h('th',null,'構成'),h('th',null,'台数'))),
+          h('thead',null,h('tr',null,h('th',null,'製品'),h('th',null,'サイズ'),h('th',null,'カラー'),h('th',null,'タイプ'),h('th',null,'構成'),h('th',null,'数量'))),
           h('tbody',null,detail[0].lines.map(function(l,i){
             var co=(LINE_COLORS[l.line]||[]).find(function(c){return c.v===l.color;});
             var lo=LINES.find(function(x){return x.id===l.line;});
             var to=TYPES.find(function(x){return x.v===l.type;});
+            if(l.isPartOnly){
+              return h('tr',{key:i},
+                h('td',null,(lo?lo.name:'')+' [パーツ]'),
+                h('td',null,l.partLabel||''),
+                h('td',null,co?co.l:'-'),
+                h('td',null,'-'),
+                h('td',null,'-'),
+                h('td',{style:{fontWeight:700}},fm(l.qty)+'個')
+              );
+            }
+            var extras=[];
+            if(l.hasBase===false)extras.push('ベースなし');
+            if(l.type==='open')extras.push('オープン');
+            var sq=parseInt(l.shelfQty)||0;if(sq>0)extras.push('棚板'+sq+'枚');
             return h('tr',{key:i},
               h('td',null,lo?lo.name:''),
               h('td',null,sizeObj(l.size).l),
-              h('td',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:2,background:co?co.x:'#ccc',verticalAlign:'middle',marginRight:3}}),co?co.l:''),
+              h('td',null,l.type==='open'?h('span',null,'-'):h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:2,background:co?co.x:'#ccc',verticalAlign:'middle',marginRight:3}}),co?co.l:'')),
               h('td',null,to?to.l:''),
-              h('td',null,l.islands+'列×'+l.tiers+'段'),
+              h('td',null,l.islands+'列×'+l.tiers+'段'+(extras.length?' ('+extras.join(', ')+')':'')),
               h('td',{style:{fontWeight:700}},fm(l.qty)+'台')
             );
           }))
@@ -1702,7 +1860,9 @@ function PartsPage(p){
     {label:'トップボード(SML)',key:'top',sub:'sml'},
     {label:'トップボード(SS/3S)',key:'top',sub:'ss'},
     {label:'ベース(SML)',key:'base',sub:'sml'},
-    {label:'ベース(SS/3S)',key:'base',sub:'ss'}
+    {label:'ベース(SS/3S)',key:'base',sub:'ss'},
+    {label:'棚板(SML)',key:'shelf',sub:'sml'},
+    {label:'棚板(SS/3S)',key:'shelf',sub:'ss'}
   ];
   sizes.forEach(function(s){if(s!=='SSA')structRows.push({label:'サイドボード('+s+')',key:'side',sub:s});});
   sizes.forEach(function(s){if(s!=='SSA')structRows.push({label:'バックボード('+s+')',key:'back',sub:s});});
