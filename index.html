@@ -556,6 +556,75 @@ function releaseBOM(line,wh,bom,color,size){
   });
 }
 
+function holdBOMMulti(line,whA,whB,bom,color,size){
+  bom.forEach(function(b){
+    if(b.isDoor){
+      if(isOrderColor(line,color))return;
+      var dk=b.key;
+      var freeA=availD(line,whA,color,size,dk);
+      var takeA=Math.min(freeA,b.qty),takeB=b.qty-takeA;
+      if(takeA>0){
+        if(!HELD[line][whA][dk])HELD[line][whA][dk]={};
+        if(!HELD[line][whA][dk][color])HELD[line][whA][dk][color]={};
+        HELD[line][whA][dk][color][size]=(HELD[line][whA][dk][color][size]||0)+takeA;
+      }
+      if(takeB>0){
+        if(!HELD[line][whB][dk])HELD[line][whB][dk]={};
+        if(!HELD[line][whB][dk][color])HELD[line][whB][dk][color]={};
+        HELD[line][whB][dk][color][size]=(HELD[line][whB][dk][color][size]||0)+takeB;
+      }
+    }else if(b.sub!==undefined){
+      var fA=avail(line,whA,b.key,b.sub);
+      var tA=Math.min(fA,b.qty),tB=b.qty-tA;
+      if(tA>0){if(!HELD[line][whA][b.key])HELD[line][whA][b.key]={};HELD[line][whA][b.key][b.sub]=(HELD[line][whA][b.key][b.sub]||0)+tA;}
+      if(tB>0){if(!HELD[line][whB][b.key])HELD[line][whB][b.key]={};HELD[line][whB][b.key][b.sub]=(HELD[line][whB][b.key][b.sub]||0)+tB;}
+    }else{
+      var fA2=avail(line,whA,b.key);
+      var tA2=Math.min(fA2,b.qty),tB2=b.qty-tA2;
+      if(tA2>0)HELD[line][whA][b.key]=(HELD[line][whA][b.key]||0)+tA2;
+      if(tB2>0)HELD[line][whB][b.key]=(HELD[line][whB][b.key]||0)+tB2;
+    }
+  });
+}
+
+function shipOrderMulti(order){
+  var whA=order.wh,whB=order.wh2;
+  order.lines.forEach(function(ln){
+    var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+    var orderCol=isOrderColor(ln.line,ln.color);
+    bom.forEach(function(b){
+      if(b.isDoor){
+        if(orderCol)return;
+        var dk=b.key;
+        /* Deduct from whA first, remainder from whB */
+        var sA=(STK[ln.line]&&STK[ln.line][whA]&&STK[ln.line][whA][dk]&&STK[ln.line][whA][dk][ln.color]&&STK[ln.line][whA][dk][ln.color][ln.size])||0;
+        var takeA=Math.min(sA,b.qty),takeB=b.qty-takeA;
+        if(takeA>0)STK[ln.line][whA][dk][ln.color][ln.size]=Math.max(0,sA-takeA);
+        if(takeB>0&&STK[ln.line]&&STK[ln.line][whB]&&STK[ln.line][whB][dk]&&STK[ln.line][whB][dk][ln.color]){
+          STK[ln.line][whB][dk][ln.color][ln.size]=Math.max(0,(STK[ln.line][whB][dk][ln.color][ln.size]||0)-takeB);
+        }
+      }else if(b.sub!==undefined){
+        var sA2=(STK[ln.line]&&STK[ln.line][whA]&&STK[ln.line][whA][b.key]&&STK[ln.line][whA][b.key][b.sub])||0;
+        var tA2=Math.min(sA2,b.qty),tB2=b.qty-tA2;
+        if(tA2>0)STK[ln.line][whA][b.key][b.sub]=Math.max(0,sA2-tA2);
+        if(tB2>0&&STK[ln.line]&&STK[ln.line][whB]&&STK[ln.line][whB][b.key]){
+          STK[ln.line][whB][b.key][b.sub]=Math.max(0,(STK[ln.line][whB][b.key][b.sub]||0)-tB2);
+        }
+      }else{
+        var sA3=(STK[ln.line]&&STK[ln.line][whA]&&STK[ln.line][whA][b.key])||0;
+        var tA3=Math.min(sA3,b.qty),tB3=b.qty-tA3;
+        if(tA3>0)STK[ln.line][whA][b.key]=Math.max(0,sA3-tA3);
+        if(tB3>0&&STK[ln.line]&&STK[ln.line][whB]){
+          STK[ln.line][whB][b.key]=Math.max(0,(STK[ln.line][whB][b.key]||0)-tB3);
+        }
+      }
+    });
+    /* Release HELD from both warehouses */
+    releaseBOM(ln.line,whA,bom,ln.color,ln.size);
+    releaseBOM(ln.line,whB,bom,ln.color,ln.size);
+  });
+}
+
 function shipOrder(order){
   order.lines.forEach(function(ln){
     var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
@@ -741,7 +810,7 @@ function generateQuoteHTML(order,docType){
   html+='<div><b>件名:</b> '+subject+'</div><div><b>担当者:</b> 齋藤勝</div>';
   html+='<div><b>'+cfg.dateLabel+':</b> '+tdSlash()+'</div><div><b>伝票コード:</b> '+slipCode+'</div>';
   if(docType==='quote'){html+='<div><b>納期:</b> 別途相談</div><div><b>有効期限:</b> 御見積後1ヶ月</div>';}
-  if(isShipping){html+='<div><b>出荷元倉庫:</b> '+((WH_MAP[order.wh]||{}).n||'')+'</div>';}
+  if(isShipping){html+='<div><b>出荷元倉庫:</b> '+((WH_MAP[order.wh]||{}).n||'')+(order.wh2?' + '+((WH_MAP[order.wh2]||{}).n||''):'')+'</div>';}
   html+='<div><b>受渡地:</b> '+(cust?cust.pref+(cust.city||''):'')+'</div>';
   if(docType==='quote'||docType==='invoice'){html+='<div><b>支払条件:</b> 前払い（銀行振り込み）</div>';}
   if(isShipping){html+='<div><b>配送先:</b> '+(cust?cust.pref+(cust.city||''):'')+'</div>';}
@@ -790,7 +859,7 @@ function generateQuoteHTML(order,docType){
   html+='<div style="margin-top:16px;font-size:9px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
   else if(isReceipt){html+='上記の通り受領致しました。<br><br>受領日:　　　　　　受領者（署名）:　　　　　　　　　　';}
-  else if(isShipping){html+='上記の通り出荷を指示します。<br>出荷元: '+((WH_MAP[order.wh]||{}).n||'')+'<br>配送先: '+(cust?cust.pref+(cust.city||''):'');}
+  else if(isShipping){html+='上記の通り出荷を指示します。<br>出荷元: '+((WH_MAP[order.wh]||{}).n||'')+(order.wh2?' + '+((WH_MAP[order.wh2]||{}).n||''):'')+'<br>配送先: '+(cust?cust.pref+(cust.city||''):'');}
   else if(docType==='quote'){html+='<b>支払条件:</b> 前払い（銀行振り込み）<br><b>有効期限:</b> 御見積後1ヶ月<br><b>振込先:</b> 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
   html+='</div></body></html>';
@@ -966,7 +1035,7 @@ function InvPage(p){
   var ln=us('jp01'),sz=us('M'),tp=us('standard'),cl=us('pb'),lk=us('dial');
   var isl=us(9),tier=us(3);
   var lines=us([]),whResults=us([]),selWH=us(null);
-  var multiWH=us([]);
+  var multiWH=us([]),selMulti=us(null);
   var showQuote=us(false),quoteOrder=us(null);
   var discount=us(0);
 
@@ -1010,6 +1079,7 @@ function InvPage(p){
     whResults[1](results);
     var best=results.find(function(r){return r.check.ok&&!r.noLine;});
     selWH[1](best?best.whId:null);
+    selMulti[1](null);
     /* If no single warehouse can fulfill, try pairs */
     var okResults=results.filter(function(r){return r.check.ok&&!r.noLine;});
     if(okResults.length===0){
@@ -1110,6 +1180,25 @@ function InvPage(p){
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了: '+no);
     lines[1]([]);whResults[1]([]);p.bump();
+  }
+
+  function doHoldAndQuoteMulti(){
+    if(!lines[0].length||selMulti[0]===null||!multiWH[0][selMulti[0]])return;
+    var mo=multiWH[0][selMulti[0]];
+    var whA=mo.whA,whB=mo.whB;
+    lines[0].forEach(function(ln){
+      var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type);
+      holdBOMMulti(ln.line,whA,whB,bom,ln.color,ln.size);
+    });
+    var shipA=cust?calcShipping(lines[0],whA,cust.pref):null;
+    var shipB=cust?calcShipping(lines[0],whB,cust.pref):null;
+    var totalShip=(shipA?shipA.shipping:0)+(shipB?shipB.shipping:0);
+    var no='QT-2026-'+String(nextON++).padStart(3,'0');
+    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:lines[0].slice(),shipping:totalShip,discount:parseInt(discount[0])||0};
+    ORDERS.push(order);
+    quoteOrder[1](order);showQuote[1](true);
+    p.toast('仮押さえ＆見積作成完了（2倉庫）: '+no);
+    lines[1]([]);whResults[1]([]);multiWH[1]([]);selMulti[1](null);p.bump();
   }
 
   function doQuoteOnly(){
@@ -1222,7 +1311,7 @@ function InvPage(p){
             h('div',{style:{padding:10,display:'flex',gap:6,flexWrap:'wrap'}},
               whResults[0].filter(function(wr){return !wr.noLine;}).map(function(wr,idx){
                 var isSel=selWH[0]===wr.whId;
-                return h('div',{key:wr.whId,onClick:function(){selWH[1](wr.whId);},style:{
+                return h('div',{key:wr.whId,onClick:function(){selWH[1](wr.whId);selMulti[1](null);},style:{
                   flex:'1 1 140px',padding:10,borderRadius:8,cursor:'pointer',textAlign:'center',
                   border:'2px solid '+(wr.check.ok?(isSel?'var(--gn)':'#A7F3D0'):(isSel?'#DC2626':'#FCA5A5')),
                   background:wr.check.ok?(isSel?'var(--gnp)':'#ECFDF5'):(isSel?'#FEF2F2':'#fff'),
@@ -1271,21 +1360,24 @@ function InvPage(p){
             h('div',{className:'chd'},h('h3',null,'複数倉庫組合せ（'+multiWH[0].length+'件）'),h('span',{style:{fontSize:8,color:'var(--g400)'}},'単一倉庫で在庫不足のため2倉庫組合せを表示')),
             h('div',{style:{padding:10,display:'flex',gap:6,flexWrap:'wrap'}},
               multiWH[0].slice(0,6).map(function(mo,idx){
-                return h('div',{key:mo.whA+'-'+mo.whB,style:{
-                  flex:'1 1 200px',padding:10,borderRadius:8,textAlign:'center',
-                  border:'2px solid #A7F3D0',background:'#ECFDF5',position:'relative'
+                var isSel=selMulti[0]===idx;
+                return h('div',{key:mo.whA+'-'+mo.whB,onClick:function(){selMulti[1](idx);selWH[1](null);},style:{
+                  flex:'1 1 200px',padding:10,borderRadius:8,textAlign:'center',cursor:'pointer',
+                  border:'2px solid '+(isSel?'var(--gn)':'#A7F3D0'),background:isSel?'var(--gnp)':'#ECFDF5',
+                  position:'relative',transition:'.15s',boxShadow:isSel?'0 2px 8px rgba(0,0,0,.1)':''
                 }},
                   idx===0?h('span',{className:'rec-badge',style:{position:'absolute',top:4,right:4}},'おすすめ'):null,
                   h('div',{style:{fontSize:10,fontWeight:700,marginBottom:2}},mo.nameA+' + '+mo.nameB),
                   h('div',{style:{fontSize:16,fontWeight:900,color:'var(--gn)'}},'OK (2倉庫)'),
                   h('div',{style:{fontSize:9,color:'var(--g600)',marginTop:2}},'合計送料: ¥'+fm(mo.combinedShip)),
                   h('div',{style:{fontSize:7,color:'var(--g400)'}},mo.nameA+': ¥'+fm(mo.shipA?mo.shipA.shipping:0)+' + '+mo.nameB+': ¥'+fm(mo.shipB?mo.shipB.shipping:0)),
-                  h('div',{style:{fontSize:7,color:'var(--g500)',marginTop:3}},
-                    mo.items.filter(function(it){return!it.ok;}).length===0?'全部材OK':'不足あり'
-                  )
+                  isSel?h('div',{style:{fontSize:8,color:'var(--gn)',fontWeight:700,marginTop:3}},'✓ 選択中'):null
                 );
               })
-            )
+            ),
+            selMulti[0]!==null?h('div',{style:{padding:'8px 10px',borderTop:'1px solid var(--g200)'}},
+              h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px',width:'100%'},onClick:doHoldAndQuoteMulti},'この組合せで仮押さえ＆見積書作成')
+            ):null
           ):null
         ):h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'40vh',color:'var(--g400)',fontSize:12}},
           h('div',{style:{textAlign:'center'}},
@@ -1298,10 +1390,6 @@ function InvPage(p){
       footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
         h('button',{className:'btn btn-ol',onClick:function(){showQuote[1](false);}},'閉じる'),
         h('button',{className:'btn btn-gn',onClick:function(){printQuote(quoteOrder[0],'quote');}},'見積書印刷'),
-        h('button',{className:'btn btn-nv',onClick:function(){printQuote(quoteOrder[0],'invoice');}},'請求書印刷'),
-        h('button',{className:'btn btn-or',onClick:function(){printQuote(quoteOrder[0],'delivery');}},'納品書印刷'),
-        h('button',{className:'btn btn-pr',onClick:function(){printQuote(quoteOrder[0],'receipt');}},'受領書印刷'),
-        h('button',{className:'btn btn-rd',onClick:function(){printQuote(quoteOrder[0],'shipping');}},'出荷指示書'),
         h('button',{className:'btn btn-tl',onClick:function(){generateExcel(quoteOrder[0],'quote');}},'Excel DL')
       )},
       h('div',{style:{padding:10}},h(QuotePreview,{order:quoteOrder[0],docType:'quote'}))
@@ -1352,9 +1440,6 @@ function QuotePreview(p){
   return h('div',{style:{fontSize:10,lineHeight:1.6}},
     h('div',{style:{display:'flex',marginBottom:12,borderBottom:'1px solid #ccc'}},
       h('button',{style:tabStyle('quote'),onClick:function(){docType[1]('quote');}},'御見積書'),
-      h('button',{style:tabStyle('invoice'),onClick:function(){docType[1]('invoice');}},'請求書'),
-      h('button',{style:tabStyle('delivery'),onClick:function(){docType[1]('delivery');}},'納品書'),
-      h('button',{style:tabStyle('receipt'),onClick:function(){docType[1]('receipt');}},'物品受領書'),
       h('button',{style:tabStyle('shipping'),onClick:function(){docType[1]('shipping');}},'出荷指示書')
     ),
     h('div',{style:{border:'1px solid #ccc',borderRadius:8,padding:20,background:'#fff'}},
@@ -1389,7 +1474,7 @@ function QuotePreview(p){
         h('div',null,h('b',null,'伝票コード: '),slipCode),
         dt==='quote'?h('div',null,h('b',null,'納期: '),'別途相談'):null,
         dt==='quote'?h('div',null,h('b',null,'有効期限: '),'御見積後1ヶ月'):null,
-        isShipping?h('div',null,h('b',null,'出荷元倉庫: '),(WH_MAP[o.wh]||{}).n||''):null,
+        isShipping?h('div',null,h('b',null,'出荷元倉庫: '),((WH_MAP[o.wh]||{}).n||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).n||''):'')):null,
         h('div',null,h('b',null,'受渡地: '),cust?cust.pref+(cust.city||''):''),
         dt==='quote'||dt==='invoice'?h('div',null,h('b',null,'支払条件: '),'前払い（銀行振り込み）'):null,
         isShipping?h('div',null,h('b',null,'配送先: '),cust?cust.pref+(cust.city||''):''):null
@@ -1461,7 +1546,7 @@ function QuotePreview(p){
       h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',h('br'),h('br'),'受領日:　　　　　　受領者（署名）:　　　　　　　　　　'):null,
-        isShipping?h('div',null,'上記の通り出荷を指示します。',h('br'),'出荷元: '+(WH_MAP[o.wh]||{}).n||'',h('br'),'配送先: '+(cust?cust.pref+(cust.city||''):'')):null,
+        isShipping?h('div',null,'上記の通り出荷を指示します。',h('br'),'出荷元: '+((WH_MAP[o.wh]||{}).n||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).n||''):''),h('br'),'配送先: '+(cust?cust.pref+(cust.city||''):'')):null,
         dt==='quote'?h('div',null,h('b',null,'支払条件:'),' 前払い（銀行振り込み）',h('br'),h('b',null,'有効期限:'),' 御見積後1ヶ月',h('br'),h('b',null,'振込先:'),' 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
         dt==='delivery'?h('div',null,'上記の通り納品致しましたのでご査収ください。'):null
       )
@@ -1476,7 +1561,7 @@ function OrdersPage(p){
 
   function changeStatus(order,ns){
     if(ns==='出荷指示'){
-      shipOrder(order);
+      if(order.wh2){shipOrderMulti(order);}else{shipOrder(order);}
       var q=generateQuoteHTML(order,'shipping');
       var w=window.open('','_blank','width=800,height=1000');
       w.document.write(q.html);w.document.close();
@@ -1511,15 +1596,12 @@ function OrdersPage(p){
             h('td',null,h('b',null,o.no)),h('td',null,o.date),h('td',null,c?c.name:''),
             h('td',null,o.lines.length+'件'),
             h('td',{style:{fontWeight:700}},fm(totalQty)+'台'),
-            h('td',null,(WH_MAP[o.wh]||{}).s||''),
+            h('td',null,((WH_MAP[o.wh]||{}).s||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).s||''):'')),
             h('td',{style:{fontSize:9}},o.shipping?'¥'+fm(o.shipping):'-'),
             h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},o.status)),
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){detail[1](o);}},'詳細'),
               h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(){openQuote(o,'quote');}},'見積'),
-              h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2},onClick:function(){openQuote(o,'invoice');}},'請求'),
-              h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2},onClick:function(){openQuote(o,'delivery');}},'納品'),
-              h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:2},onClick:function(){openQuote(o,'receipt');}},'受領'),
               h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2},onClick:function(){openQuote(o,'shipping');}},'出荷'),
               h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){generateExcel(o,'quote');}},'Excel')
             )
@@ -1533,7 +1615,7 @@ function OrdersPage(p){
         h('div',{style:{marginBottom:10,display:'flex',gap:10,flexWrap:'wrap',fontSize:11}},
           h('div',null,h('b',null,'日付: '),detail[0].date),
           h('div',null,h('b',null,'顧客: '),(CUSTS.find(function(c){return c.id===detail[0].cid;})||{}).name||''),
-          h('div',null,h('b',null,'倉庫: '),(WH_MAP[detail[0].wh]||{}).n||''),
+          h('div',null,h('b',null,'倉庫: '),((WH_MAP[detail[0].wh]||{}).n||'')+(detail[0].wh2?' + '+((WH_MAP[detail[0].wh2]||{}).n||''):'')),
           h('div',null,h('b',null,'送料: '),detail[0].shipping?'¥'+fm(detail[0].shipping):'-')
         ),
         h('div',{style:{marginBottom:10}},
