@@ -1165,7 +1165,13 @@ function InvPage(p){
       var bomByLine={};
       ls.forEach(function(ln){
         if(!bomByLine[ln.line])bomByLine[ln.line]=[];
-        var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
+        var bom;
+        if(ln.isPartOnly){
+          bom=[];
+          if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+          else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
+          else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+        }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
         bom.forEach(function(b){
           bomByLine[ln.line].push({b:b,color:ln.color,size:ln.size,orderCol:isOrderColor(ln.line,ln.color)});
         });
@@ -1380,7 +1386,7 @@ function InvPage(p){
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
                 h('select',{className:'inp',value:partSub[0],onChange:function(e){partSub[1](e.target.value);}},sizes.map(function(s){return h('option',{key:s,value:s},s);})))
             ),
-            (PART_DEFS.find(function(d){return d.k===partType[0];}))||{}).hasColor?h('div',{style:{marginBottom:4}},
+            (PART_DEFS.find(function(d){return d.k===partType[0];})||{}).hasColor?h('div',{style:{marginBottom:4}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'カラー'),
               h('select',{className:'inp',value:partColor[0],onChange:function(e){partColor[1](e.target.value);}},colors.map(function(c){return h('option',{key:c.v,value:c.v},c.l);}))
             ):null,
@@ -1666,10 +1672,20 @@ function QuotePreview(p){
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:60})},'数量')
           )),
           h('tbody',null,[].concat.apply([],o.lines.map(function(ln,li){
-            var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
-            var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-            var colorName=co?co.l:'';
-            var els=[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},sizeObj(ln.size).l+' '+colorName+' '+ln.islands+'列'+ln.tiers+'段'))];
+            var bom,hdrText;
+            if(ln.isPartOnly){
+              bom=[];
+              if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+              else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
+              else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+              hdrText='[パーツ単品]';
+            }else{
+              bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
+              var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
+              var colorName=(ln.type==='open'||!co)?'':co.l;
+              hdrText=sizeObj(ln.size).l+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+ln.islands+'列'+ln.tiers+'段';
+            }
+            var els=[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},hdrText))];
             bom.forEach(function(b,bi){
               els.push(h('tr',{key:'bom-'+li+'-'+bi},h('td',{style:cs},b.label),h('td',{style:Object.assign({},cs,{textAlign:'center'})},b.qty)));
             });
