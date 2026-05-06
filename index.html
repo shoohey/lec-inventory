@@ -562,25 +562,29 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     var dk=opts.doorType==='doorH'?'doorH':(opts.doorType==='door'?'door':(isPersonal?'doorH':'door'));
     bom.push({key:dk,qty:n,label:(dk==='doorH'?'扉〈ホタ〉':'扉')+'('+size+')',reason:n+'台×1',isDoor:true,doorSub:size});
   }
-  /* Base - optional. baseColor='bk'時は base_bk キー、'gy'時は base キーで在庫照会 */
+  /* Base - optional. baseColor='bk'時は base_bk キー、'gy'時は base キーで在庫照会
+     パーソナルは「上下共通ボード」で1台あたり下面1枚必要(=n枚)。常設は島ごとに1枚(=islands枚) */
   if(opts.hasBase!==false){
     var baseColor=opts.baseColor||'gy';
     var baseColorLabel=baseColor==='bk'?'ブラック':'グレー';
     var baseKey=baseColor==='bk'?'base_bk':'base';
-    bom.push({key:baseKey,sub:grp,qty:islands,label:'ベースボード('+grp.toUpperCase()+'・'+baseColorLabel+')',reason:islands+'島×1',baseColor:baseColor});
+    var baseQty=isPersonal?n:islands;
+    var baseReason=isPersonal?(n+'台×1（上下共通ボード）'):(islands+'島×1');
+    bom.push({key:baseKey,sub:grp,qty:baseQty,label:'ベースボード('+grp.toUpperCase()+'・'+baseColorLabel+')',reason:baseReason,baseColor:baseColor});
   }
-  /* Shelf - optional. shelfColor='bk'時は shelf_bk キー、'gy'時は shelf キーで在庫照会 */
+  /* Shelf - optional. shelfColor='bk'時は shelf_bk キー、'gy'時は shelf キーで在庫照会
+     台湾製(tw)は棚板グレーのみ取扱 */
   var shelfQty=parseInt(opts.shelfQty)||0;
   if(shelfQty>0){
     var shelfColor=opts.shelfColor||'gy';
+    if(opts.line==='tw')shelfColor='gy';/* tw強制グレー */
     var shelfColorLabel=shelfColor==='bk'?'ブラック':'グレー';
     var shelfKey=shelfColor==='bk'?'shelf_bk':'shelf';
     bom.push({key:shelfKey,sub:grp,qty:shelfQty,label:'棚板('+grp.toUpperCase()+'・'+shelfColorLabel+')',reason:shelfQty+'枚',shelfColor:shelfColor});
   }
-  /* Vertical joints: 常設タイプは不要。パーソナル時のみ段間接続で必要 (#15バグ修正) */
-  if(isPersonal&&tiers>1){
-    var vc=islands*(tiers-1);
-    bom.push({key:'vj',sub:grp,qty:vc*3,label:'上下ジョイント('+grp.toUpperCase()+')',reason:vc+'接続×3'});
+  /* Vertical joints: 常設タイプは不要。パーソナルは1台につき3個必要 (1台=島×段) */
+  if(isPersonal){
+    bom.push({key:'vj',sub:grp,qty:n*3,label:'上下ジョイント('+grp.toUpperCase()+')',reason:n+'台×3'});
   }
   /* Side joints: 常設タイプは不要。パーソナル時のみ島間で必要 */
   if(isPersonal&&islands>1){
@@ -594,33 +598,44 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     bom.push({key:'connector',sub:'XL',qty:n,label:'XLコネクター',reason:n+'台×1'});
     bom.push({key:'hanger',qty:n,label:'ハンガーパイプ',reason:n+'台×1'});
   }
-  /* Anchor cap (アンカー穴キャップ): opts.hasCap=true かつベース有の場合のみ。色別sub対応 */
-  if(opts.hasCap===true&&opts.hasBase!==false){
+  /* Anchor cap (アンカー穴キャップ): opts.hasCap=true かつベース有の場合のみ。
+     台湾製(tw)はアンカー穴キャップ無し。
+     個数はベース(base)と同数 = パーソナルなら n、常設なら islands */
+  if(opts.hasCap===true&&opts.hasBase!==false&&opts.line!=='tw'){
     var capColor=opts.baseColor||'gy';
     var capColorLabel=capColor==='bk'?'ブラック':'グレー';
-    bom.push({key:'anchorCap',sub:capColor,qty:islands*4,label:'アンカー穴キャップ('+capColorLabel+')',reason:islands+'島×4穴',capColor:capColor});
+    var capQty=isPersonal?n:islands;
+    bom.push({key:'anchorCap',sub:capColor,qty:capQty,label:'アンカー穴キャップ('+capColorLabel+')',reason:'ベースと同数('+capQty+')',capColor:capColor});
   }
   /* Joint screws (ジョイントネジ) & cap screws (目隠しネジ): 自動計算
      横連結ネジ = (islands-1) × tiers × 4本 (両サイド×上下)
      目隠しネジ = 同数（仕上げ用キャップ）
-     パーソナルタイプ（ジョイントを使用する構成）のみ必要 */
+     パーソナルタイプ（ジョイントを使用する構成）のみ必要
+     色別キー: jointScrew_{grp}_bk (デフォルトはブラック)、capScrew_bk */
   var islandsN=parseInt(islands)||1,tiersN=parseInt(tiers)||1;
   if(isPersonal&&(islandsN>1||tiersN>1)){
     var jointScrewQty=Math.max(0,(islandsN-1)*tiersN*4)+Math.max(0,islandsN*(tiersN-1)*2);
     if(jointScrewQty>0){
-      bom.push({key:'jointScrew',sub:grp,qty:jointScrewQty,label:'ジョイントネジ('+grp.toUpperCase()+')',reason:(islandsN-1)+'連結×'+tiersN+'段 + '+islandsN+'島×'+(tiersN-1)+'段間'});
-      bom.push({key:'capScrew',sub:grp,qty:jointScrewQty,label:'目隠しネジ('+grp.toUpperCase()+')',reason:'ジョイントネジと同数'});
+      bom.push({key:'jointScrew_'+grp+'_bk',qty:jointScrewQty,label:'ジョイントネジ('+grp.toUpperCase()+'・ブラック)',reason:(islandsN-1)+'連結×'+tiersN+'段 + '+islandsN+'島×'+(tiersN-1)+'段間'});
+      bom.push({key:'capScrew_bk',qty:jointScrewQty,label:'目隠しネジ(ブラック)',reason:'ジョイントネジと同数'});
     }
   }
   /* Manual override for screws */
-  if(opts.jointScrewQty){var jq=parseInt(opts.jointScrewQty)||0;if(jq>0)bom.push({key:'jointScrew',sub:grp,qty:jq,label:'ジョイントネジ（追加）',reason:'手動入力'});}
-  if(opts.capScrewQty){var cq=parseInt(opts.capScrewQty)||0;if(cq>0)bom.push({key:'capScrew',sub:grp,qty:cq,label:'目隠しネジ（追加）',reason:'手動入力'});}
+  if(opts.jointScrewQty){var jq=parseInt(opts.jointScrewQty)||0;if(jq>0)bom.push({key:'jointScrew_'+grp+'_bk',qty:jq,label:'ジョイントネジ（追加）',reason:'手動入力'});}
+  if(opts.capScrewQty){var cq=parseInt(opts.capScrewQty)||0;if(cq>0)bom.push({key:'capScrew_bk',qty:cq,label:'目隠しネジ（追加）',reason:'手動入力'});}
   /* Nameplate & name paper: optional */
   if(opts.hasNameplate===true){bom.push({key:'nameplate',qty:n,label:'ネームプレート',reason:n+'台×1'});}
   if(opts.hasNamePaper===true){bom.push({key:'namePaper',qty:n,label:'ネーム厚紙',reason:n+'台×1'});}
-  /* Lock: noDoor時は不要 */
+  /* Lock: noDoor時は不要。複数色配分でオープン(扉なし)が含まれる場合はその台数分を除外 */
   if(!noDoor&&lock&&lock!=='none'){
-    bom.push({key:lock,qty:n,label:LOCK_TYPES.find(function(lt){return lt.v===lock;})?LOCK_TYPES.find(function(lt){return lt.v===lock;}).l:'錠前',reason:n+'台×1'});
+    var lockN=n;
+    if(opts.colorBreakdown&&opts.colorBreakdown.length>0){
+      var openLine=opts.colorBreakdown.find(function(c){return c.color==='open';});
+      if(openLine)lockN=Math.max(0,n-(openLine.qty||0));
+    }
+    if(lockN>0){
+      bom.push({key:lock,qty:lockN,label:LOCK_TYPES.find(function(lt){return lt.v===lock;})?LOCK_TYPES.find(function(lt){return lt.v===lock;}).l:'錠前',reason:lockN+'台×1'+(lockN!==n?'（オープン'+(n-lockN)+'台除外）':'')});
+    }
   }
   return bom;
 }
@@ -654,7 +669,7 @@ function holdBOM(line,wh,bom,color,size,colorBreakdown){
     if(b.isDoor){
       var doorColors=colorBreakdown&&colorBreakdown.length>0?colorBreakdown:[{color:color,qty:b.qty}];
       doorColors.forEach(function(dc){
-        if(isOrderColor(line,dc.color))return;
+        if(isOrderColor(line,dc.color)||dc.color==='open')return;
         var dk=b.key;
         if(!HELD[line][wh][dk])HELD[line][wh][dk]={};
         if(!HELD[line][wh][dk][dc.color])HELD[line][wh][dk][dc.color]={};
@@ -674,7 +689,7 @@ function releaseBOM(line,wh,bom,color,size,colorBreakdown){
     if(b.isDoor){
       var doorColors=colorBreakdown&&colorBreakdown.length>0?colorBreakdown:[{color:color,qty:b.qty}];
       doorColors.forEach(function(dc){
-        if(isOrderColor(line,dc.color))return;
+        if(isOrderColor(line,dc.color)||dc.color==='open')return;
         var dk=b.key;
         if(HELD[line][wh][dk]&&HELD[line][wh][dk][dc.color]){
           HELD[line][wh][dk][dc.color][size]=Math.max(0,(HELD[line][wh][dk][dc.color][size]||0)-dc.qty);
@@ -695,7 +710,7 @@ function holdBOMMulti(line,whA,whB,bom,color,size,colorBreakdown){
     if(b.isDoor){
       var doorColors=colorBreakdown&&colorBreakdown.length>0?colorBreakdown:[{color:color,qty:b.qty}];
       doorColors.forEach(function(dc){
-        if(isOrderColor(line,dc.color))return;
+        if(isOrderColor(line,dc.color)||dc.color==='open')return;
         var dk=b.key;
         var freeA=availD(line,whA,dc.color,size,dk);
         var takeA=Math.min(freeA,dc.qty),takeB=dc.qty-takeA;
@@ -740,7 +755,7 @@ function shipOrderMulti(order){
       if(b.isDoor){
         var doorColors2=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
         doorColors2.forEach(function(dc){
-          if(isOrderColor(ln.line,dc.color))return;
+          if(isOrderColor(ln.line,dc.color)||dc.color==='open')return;
           var dk=b.key;
           var sA=(STK[ln.line]&&STK[ln.line][whA]&&STK[ln.line][whA][dk]&&STK[ln.line][whA][dk][dc.color]&&STK[ln.line][whA][dk][dc.color][ln.size])||0;
           var takeA=Math.min(sA,dc.qty),takeB=dc.qty-takeA;
@@ -786,7 +801,7 @@ function shipOrder(order){
       if(b.isDoor){
         var doorColors3=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
         doorColors3.forEach(function(dc){
-          if(isOrderColor(ln.line,dc.color))return;
+          if(isOrderColor(ln.line,dc.color)||dc.color==='open')return;
           var dk=b.key;
           if(STK[ln.line]&&STK[ln.line][order.wh]&&STK[ln.line][order.wh][dk]&&STK[ln.line][order.wh][dk][dc.color]){
             STK[ln.line][order.wh][dk][dc.color][ln.size]=Math.max(0,(STK[ln.line][order.wh][dk][dc.color][ln.size]||0)-dc.qty);
@@ -844,6 +859,7 @@ function checkAllLinesWH(lines,wh){
           /* E7: multi-color support */
           var doorColors=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
           doorColors.forEach(function(dc){
+            if(dc.color==='open')return;/* オープン(扉なし)は扉在庫を消費しない */
             var oc2=isOrderColor(lineId,dc.color);
             var cn2=(LINE_COLORS[lineId]||[]).find(function(cc){return cc.v===dc.color;});
             var cl2=cn2?(' '+cn2.l):'';
@@ -961,10 +977,71 @@ function saveAll(){saveOrders();saveStock();saveHeld();saveIncoming();saveEditLo
   }catch(e){console.warn('Data load failed',e);}
 })();
 
+/* ========== STOCK MIGRATION (v13.2) ========== */
+/* Ensures every LINE has every WH_ID populated with a base structure.
+   Also splits jointScrew / capScrew into color-aware flat keys so the
+   "ジョイントネジ SMLXL黒 / SS黒 / SSグレー" rows track separately. */
+(function migrateStock(){
+  try{
+    var REQUIRED_WH=WH_IDS;
+    LINES.forEach(function(ln){
+      if(!STK[ln.id])STK[ln.id]={};
+      if(!HELD[ln.id])HELD[ln.id]={};
+      REQUIRED_WH.forEach(function(w){
+        if(!STK[ln.id][w]){
+          /* Create a zeroed shell so 在庫確認 / 部材一覧 が表示できる */
+          STK[ln.id][w]={
+            top:{sml:0,ss:0},base:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
+            side:{S:0,M:0,L:0,XL:0,SS:0,'3S':0},back:{S:0,M:0,L:0,XL:0,SS:0,'3S':0},
+            vj:{sml:0,ss:0},sj:{sml:0,ss:0},
+            handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
+            nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},
+            anchorCap:{bk:0,gy:0},
+            door:{},doorH:{}
+          };
+        }
+        var s=STK[ln.id][w];
+        /* anchorCap: ensure object form with bk/gy */
+        if(typeof s.anchorCap==='number'){var ov=s.anchorCap;s.anchorCap={bk:0,gy:ov};}
+        if(!s.anchorCap||typeof s.anchorCap!=='object')s.anchorCap={bk:0,gy:0};
+        if(typeof s.anchorCap.bk!=='number')s.anchorCap.bk=parseInt(s.anchorCap.bk)||0;
+        if(typeof s.anchorCap.gy!=='number')s.anchorCap.gy=parseInt(s.anchorCap.gy)||0;
+        /* jointScrew: split {sml,ss} or number → 3 flat keys */
+        var oldJs=s.jointScrew;
+        if(typeof s.jointScrew_sml_bk==='undefined')s.jointScrew_sml_bk=oldJs&&typeof oldJs==='object'?(parseInt(oldJs.sml)||0):(parseInt(oldJs)||0);
+        if(typeof s.jointScrew_ss_bk==='undefined')s.jointScrew_ss_bk=oldJs&&typeof oldJs==='object'?(parseInt(oldJs.ss)||0):0;
+        if(typeof s.jointScrew_ss_gy==='undefined')s.jointScrew_ss_gy=0;
+        delete s.jointScrew;
+        /* capScrew: split {sml,ss} or number → 2 flat keys (bk/gy) */
+        var oldCs=s.capScrew;
+        if(typeof s.capScrew_bk==='undefined')s.capScrew_bk=oldCs&&typeof oldCs==='object'?((parseInt(oldCs.sml)||0)+(parseInt(oldCs.ss)||0)):(parseInt(oldCs)||0);
+        if(typeof s.capScrew_gy==='undefined')s.capScrew_gy=0;
+        delete s.capScrew;
+        /* Door colors: ensure all expected colors exist as objects */
+        if(!s.door||typeof s.door!=='object')s.door={};
+        if(!s.doorH||typeof s.doorH!=='object')s.doorH={};
+        /* HELD shell */
+        if(!HELD[ln.id][w])HELD[ln.id][w]={door:{},doorH:{}};
+        /* Migrate HELD jointScrew/capScrew the same way */
+        var hh=HELD[ln.id][w];var oldHJ=hh.jointScrew;
+        if(typeof hh.jointScrew_sml_bk==='undefined')hh.jointScrew_sml_bk=oldHJ&&typeof oldHJ==='object'?(parseInt(oldHJ.sml)||0):(parseInt(oldHJ)||0);
+        if(typeof hh.jointScrew_ss_bk==='undefined')hh.jointScrew_ss_bk=oldHJ&&typeof oldHJ==='object'?(parseInt(oldHJ.ss)||0):0;
+        if(typeof hh.jointScrew_ss_gy==='undefined')hh.jointScrew_ss_gy=0;
+        delete hh.jointScrew;
+        var oldHC=hh.capScrew;
+        if(typeof hh.capScrew_bk==='undefined')hh.capScrew_bk=oldHC&&typeof oldHC==='object'?((parseInt(oldHC.sml)||0)+(parseInt(oldHC.ss)||0)):(parseInt(oldHC)||0);
+        if(typeof hh.capScrew_gy==='undefined')hh.capScrew_gy=0;
+        delete hh.capScrew;
+      });
+    });
+    saveStock();saveHeld();
+  }catch(e){console.warn('Stock migration failed',e);}
+})();
+
 /* Auto-save every 3 seconds to catch all changes */
 setInterval(saveAll,3000);
 
-function fm(n){return typeof n==='number'?n.toLocaleString():String(n||'');}
+function fm(n){if(n===null||n===undefined||n==='')return '';if(typeof n==='number'){if(isNaN(n))return '0';return n.toLocaleString();}var num=parseInt(n);if(isNaN(num))return String(n);return num.toLocaleString();}
 function td(){var d=new Date();return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日';}
 function td2(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function tdSlash(){var d=new Date();return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');}
@@ -1014,7 +1091,7 @@ function generateQuoteHTML(order,docType){
     var pn=productName(ln.line);
     var colorDesc=colorName?' '+colorName+'色':'';
     if(ln.colorBreakdown&&ln.colorBreakdown.length>0){
-      colorDesc=' '+ln.colorBreakdown.map(function(cb){var cn=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join('/');
+      colorDesc=' '+ln.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join('/');
     }
     var itemName=pn+' '+sz.l+colorDesc;
     /* Lock name - use short format for documents */
@@ -1034,7 +1111,8 @@ function generateQuoteHTML(order,docType){
   });
   /* Base - aggregate from lines that have base */
   var baseLines=order.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
-  var ti=baseLines.reduce(function(s,l){return s+l.islands;},0);
+  /* パーソナルは1台あたり1枚(n=islands*tiers)、常設は島ごと1枚(islands)。calcBOMの予約数と一致させる */
+  var ti=baseLines.reduce(function(s,l){return s+(l.type==='personal'?l.islands*l.tiers:l.islands);},0);
   if(ti>0){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
@@ -1411,6 +1489,7 @@ function App(){
 /* ========== CUSTOMER PAGE ========== */
 function CustPage(p){
   var sr=us(''),pf=us('all'),showAdd=us(false),bump=us(0);
+  var editCust=us(null);/* 編集中顧客 */
   var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:''});
   var fl=CUSTS.filter(function(c){
     if(pf[0]!=='all'&&c.pref!==pf[0])return false;
@@ -1426,6 +1505,21 @@ function CustPage(p){
     p.selectCust(nc);
   }
   function uf(k,v){var o=Object.assign({},nf[0]);o[k]=v;nf[1](o);}
+  function ufEdit(k,v){var o=Object.assign({},editCust[0]);o[k]=v;editCust[1](o);}
+  function saveEditCust(){
+    var ec=editCust[0];if(!ec||!ec.name){return;}
+    var idx=CUSTS.findIndex(function(c){return c.id===ec.id;});
+    if(idx>=0){CUSTS[idx]=Object.assign({},ec);saveCusts();bump[1](bump[0]+1);editCust[1](null);}
+  }
+  function deleteCust(c){
+    if(!confirm('顧客「'+c.name+'」(ID: '+c.id+')を削除します。\n関連案件は削除されません。\nよろしいですか？'))return;
+    var usedIn=ORDERS.filter(function(o){return o.cid===c.id;});
+    if(usedIn.length>0){
+      if(!confirm('この顧客は'+usedIn.length+'件の案件で使用されています。削除すると案件側で「顧客不明」になります。本当に削除しますか？'))return;
+    }
+    var idx=CUSTS.findIndex(function(x){return x.id===c.id;});
+    if(idx>=0){CUSTS.splice(idx,1);saveCusts();bump[1](bump[0]+1);}
+  }
   var FS={display:'flex',gap:6,marginBottom:8};
   var FL={fontSize:9,fontWeight:600,color:'var(--g500)',marginBottom:2,display:'block'};
 
@@ -1438,16 +1532,43 @@ function CustPage(p){
       )
     ),
     h('div',{className:'scy',style:{maxHeight:'74vh'}},h('table',{className:'tbl'},
-      h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'法人名'),h('th',null,'都道府県'),h('th',null,'市区町村'),h('th',null,'〒'),h('th',null,'TEL'),h('th',null,'担当者'),h('th',null,'先方担当'),h('th',null,'弊社担当'),h('th',null,''))),
+      h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'法人名'),h('th',null,'都道府県'),h('th',null,'市区町村'),h('th',null,'〒'),h('th',null,'TEL'),h('th',null,'担当者'),h('th',null,'先方担当'),h('th',null,'弊社担当'),h('th',{style:{minWidth:160}},'操作'))),
       h('tbody',null,fl.map(function(c){return h('tr',{key:c.id},
         h('td',null,h('b',null,c.id)),h('td',null,c.name),h('td',null,c.pref),h('td',null,c.city||''),
         h('td',{style:{fontSize:9}},c.postal||''),h('td',{style:{fontSize:9}},c.phone||''),
         h('td',null,c.contact||''),
         h('td',null,c.contactPerson||''),
         h('td',null,c.salesPerson||''),
-        h('td',null,h('button',{className:'btn btn-xs btn-nv',onClick:function(){p.selectCust(c);}},'選択 →'))
+        h('td',{style:{whiteSpace:'nowrap'}},
+          h('button',{className:'btn btn-xs btn-nv',onClick:function(){p.selectCust(c);}},'選択 →'),
+          h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){editCust[1](Object.assign({},c));}},'編集'),
+          h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2},onClick:function(){deleteCust(c);}},'🗑')
+        )
       );}))
     )),
+    /* 顧客編集モーダル */
+    editCust[0]?h(Modal,{show:true,title:'顧客編集 — '+editCust[0].id,w:480,onClose:function(){editCust[1](null);},
+      footer:h('div',{style:{display:'flex',gap:6}},
+        h('button',{className:'btn btn-ol',onClick:function(){editCust[1](null);}},'キャンセル'),
+        h('button',{className:'btn btn-gn',onClick:saveEditCust},'保存'))},
+      h('div',null,
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'法人名（必須）'),h('input',{className:'inp',value:editCust[0].name||'',onChange:function(e){ufEdit('name',e.target.value);}}))),
+        h('div',{style:FS},
+          h('div',{style:{flex:1}},h('label',{style:FL},'郵便番号'),h('input',{className:'inp',value:editCust[0].postal||'',onChange:function(e){ufEdit('postal',e.target.value);}})),
+          h('div',{style:{flex:1}},h('label',{style:FL},'都道府県'),h('select',{className:'inp',value:editCust[0].pref||'東京都',onChange:function(e){ufEdit('pref',e.target.value);}},PREFS_ALL.map(function(pr){return h('option',{key:pr,value:pr},pr);})))
+        ),
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'市区町村・番地'),h('input',{className:'inp',value:editCust[0].city||'',onChange:function(e){ufEdit('city',e.target.value);}}))),
+        h('div',{style:FS},
+          h('div',{style:{flex:1}},h('label',{style:FL},'電話番号'),h('input',{className:'inp',value:editCust[0].phone||'',onChange:function(e){ufEdit('phone',e.target.value);}})),
+          h('div',{style:{flex:1}},h('label',{style:FL},'FAX番号'),h('input',{className:'inp',value:editCust[0].fax||'',onChange:function(e){ufEdit('fax',e.target.value);}}))
+        ),
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'担当者名'),h('input',{className:'inp',value:editCust[0].contact||'',onChange:function(e){ufEdit('contact',e.target.value);}}))),
+        h('div',{style:FS},
+          h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:editCust[0].contactPerson||'',onChange:function(e){ufEdit('contactPerson',e.target.value);}})),
+          h('div',{style:{flex:1}},h('label',{style:FL},'弊社営業担当'),h('input',{className:'inp',value:editCust[0].salesPerson||'',onChange:function(e){ufEdit('salesPerson',e.target.value);}}))
+        )
+      )
+    ):null,
     showAdd[0]?h(Modal,{show:true,title:'新規顧客追加',w:480,onClose:function(){showAdd[1](false);},
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){showAdd[1](false);}},'キャンセル'),
@@ -1836,30 +1957,34 @@ function InvPage(p){
                 );
               }))
             ):h('div',{style:{padding:'4px 8px',background:'var(--yp)',borderRadius:5,fontSize:9,marginBottom:6,color:'#8B6914'}},'扉なし設定: 扉・錠前は不要'),
-            /* Multi-color toggle (E7) */
+            /* Multi-color toggle (E7) — 「オープン（扉なし）」も選択可 */
             hasDoor[0]?h('div',{style:{marginBottom:6}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)',display:'flex',alignItems:'center',gap:4,cursor:'pointer'}},
                 h('input',{type:'checkbox',checked:multiColor[0],onChange:function(){
                   if(!multiColor[0]){
                     var init=colors.filter(function(c){return !c.order;}).map(function(c){return{color:c.v,qty:0};});
+                    init.push({color:'open',qty:0});/* オープン(扉なし)選択肢 */
                     var sel=init.find(function(x){return x.color===cl[0];});
                     if(sel)sel.qty=qty;
                     colorBreak[1](init);
                   }
                   multiColor[1](!multiColor[0]);
                 }}),
-                '複数色で配分'
+                '複数色で配分（オープン含む）'
               ),
               multiColor[0]?h('div',{style:{marginTop:4,padding:6,background:'var(--g50)',borderRadius:6,border:'1px solid var(--g200)'}},
-                colors.filter(function(c){return !c.order;}).map(function(c){
+                colors.filter(function(c){return !c.order;}).concat([{v:'open',l:'オープン(扉なし)',x:'repeating-linear-gradient(45deg,#fff,#fff 4px,#e5e7eb 4px,#e5e7eb 8px)',isOpen:true}]).map(function(c){
                   var cb=colorBreak[0].find(function(x){return x.color===c.v;});
                   var v=cb?cb.qty:0;
                   return h('div',{key:c.v,style:{display:'flex',alignItems:'center',gap:4,marginBottom:2}},
-                    h('span',{style:{display:'inline-block',width:12,height:12,borderRadius:2,background:c.x}}),
-                    h('span',{style:{fontSize:9,fontWeight:600,width:50}},c.l),
+                    h('span',{style:{display:'inline-block',width:12,height:12,borderRadius:2,background:c.x,border:c.isOpen?'1px dashed #94a3b8':'none'}}),
+                    h('span',{style:{fontSize:9,fontWeight:c.isOpen?700:600,width:80,color:c.isOpen?'#475569':'inherit'}},c.l),
                     h('input',{className:'inp',type:'number',min:0,max:999,value:v,onChange:function(e){
                       var nv=parseInt(e.target.value)||0;
-                      var nc=colorBreak[0].map(function(x){return x.color===c.v?{color:c.v,qty:nv}:x;});
+                      var found=colorBreak[0].find(function(x){return x.color===c.v;});
+                      var nc;
+                      if(found){nc=colorBreak[0].map(function(x){return x.color===c.v?{color:c.v,qty:nv}:x;});}
+                      else{nc=colorBreak[0].concat([{color:c.v,qty:nv}]);}
                       colorBreak[1](nc);
                     },style:{width:60,textAlign:'center',fontWeight:700}}),
                     h('span',{style:{fontSize:8,color:'var(--g400)'}},'台')
@@ -1973,7 +2098,7 @@ function InvPage(p){
               isNoDoor?h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--g200)',flexShrink:0}}):h('div',{style:{width:14,height:14,borderRadius:3,background:co?co.x:'#ccc',flexShrink:0}}),
               h('div',{style:{flex:1,fontSize:10}},
                 h('b',null,sizeObj(l.size).l+(!isNoDoor&&co&&!l.colorBreakdown?' '+co.l:'')),
-                l.colorBreakdown?h('div',{style:{fontSize:8,color:'var(--pr)',fontWeight:600}},l.colorBreakdown.map(function(cb){var cn=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join(', ')):null,
+                l.colorBreakdown?h('div',{style:{fontSize:8,color:'var(--pr)',fontWeight:600}},l.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join(', ')):null,
                 h('div',{style:{fontSize:8,color:'var(--g400)'}},
                   (lo?lo.mark+' ':'')+(to?to.l+' ':'')+(isNoDoor?'[扉なし] ':'')+l.islands+'列×'+l.tiers+'段'+(l.hasBase===false?' ベース無':'')+(l.shelfQty>0?' 棚板'+l.shelfQty+'枚':'')
                 )
@@ -2153,7 +2278,7 @@ function QuotePreview(p){
     var pn=productName(ln.line);
     var colorDesc2=colorName?' '+colorName+'色':'';
     if(ln.colorBreakdown&&ln.colorBreakdown.length>0){
-      colorDesc2=' '+ln.colorBreakdown.map(function(cb){var cn=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join('/');
+      colorDesc2=' '+ln.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join('/');
     }
     var itemName=pn+' '+sz.l+colorDesc2;
     var lockObj2=LOCK_TYPES.find(function(lt){return lt.v===ln.lock;});
@@ -2169,7 +2294,8 @@ function QuotePreview(p){
     rows.push({no:rowNo++,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+ln.islands+'列'+ln.tiers+'段】'+(sq>0?' 棚板'+sq+'枚含':''),remark:dimNote2});
   });
   var baseLines=o.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
-  var ti=baseLines.reduce(function(s,l){return s+l.islands;},0);
+  /* パーソナルは1台あたり1枚、常設は島ごと1枚。calcBOMの予約数と一致させる */
+  var ti=baseLines.reduce(function(s,l){return s+(l.type==='personal'?l.islands*l.tiers:l.islands);},0);
   if(ti>0){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
@@ -2388,6 +2514,9 @@ function OrdersPage(p){
   }
 
   return h('div',{className:'page'+(p.tab==='orders'?' show':'')},
+    h('div',{style:{padding:'6px 10px',background:'#FEF3C7',borderRadius:6,marginBottom:6,fontSize:10,color:'#7C2D12'}},
+      '💡 ヒント: 各案件行の「📄 出荷指示書」ボタンから出荷指示書を新規ウィンドウで出力できます。'
+    ),
     h('div',{className:'card'},
       h('div',{className:'chd'},h('h3',null,'案件管理（'+ORDERS.length+'件）'),
         h('div',{style:{display:'flex',gap:3}},
@@ -2412,7 +2541,7 @@ function OrdersPage(p){
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){detail[1](o);}},'詳細'),
               h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(){openQuote(o,'quote');}},'見積'),
-              h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2},onClick:function(){openQuote(o,'shipping');}},'出荷'),
+              h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,fontWeight:700},title:'出荷指示書を新規ウィンドウで出力',onClick:function(){openQuote(o,'shipping');}},'📄 出荷指示書'),
               h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){generateExcel(o,'quote');}},'Excel'),
               /* 一覧から直接削除 */
               h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,background:'#991B1B'},onClick:function(){
@@ -2769,7 +2898,8 @@ function PartsPage(p){
     {label:'ハンガーパイプ',key:'hanger',cat:'option'},
     {label:'コネクター(XL)',key:'connector',sub:'XL',cat:'option'},
     {label:'コネクター(SS)',key:'connector',sub:'SS',cat:'option'},
-    {label:'アンカー穴キャップ',key:'anchorCap',cat:'option'},
+    {label:'アンカー穴キャップ(ブラック)',key:'anchorCap',sub:'bk',cat:'option',color2:'bk'},
+    {label:'アンカー穴キャップ(グレー)',key:'anchorCap',sub:'gy',cat:'option',color2:'gy'},
     {label:'トップジョイント',key:'topJoint',cat:'option'},
     {label:'検索キー',key:'searchKey',cat:'lock'},
     {label:'マスターキー',key:'masterKey',cat:'lock'},
@@ -2787,8 +2917,11 @@ function PartsPage(p){
     {label:'ダイヤル錠 H112',key:'dialH112',cat:'lock'},
     {label:'ダイヤル錠 井門',key:'dialImon',cat:'lock'},
     {label:'レールセット',key:'railSet',cat:'option'},
-    {label:'ジョイントネジ',key:'jointScrew',cat:'option'},
-    {label:'目隠しネジ',key:'capScrew',cat:'option'},
+    {label:'ジョイントネジ(SMLXL・ブラック)',key:'jointScrew_sml_bk',cat:'option'},
+    {label:'ジョイントネジ(SS・3S・ブラック)',key:'jointScrew_ss_bk',cat:'option'},
+    {label:'ジョイントネジ(SS・3S・グレー)',key:'jointScrew_ss_gy',cat:'option'},
+    {label:'目隠しネジ(ブラック)',key:'capScrew_bk',cat:'option'},
+    {label:'目隠しネジ(グレー)',key:'capScrew_gy',cat:'option'},
     {label:'ドアポケット',key:'doorPocket',cat:'option'},
     {label:'ネームプレート',key:'nameplate',cat:'option'},
     {label:'ネーム厚紙',key:'namePaper',cat:'option'}
@@ -2860,10 +2993,11 @@ function PartsPage(p){
               snapRows.push({item:'XLコネクター',key:'connector',sub:'XL'});
               snapRows.push({item:'アンカー穴キャップ(グレー)',key:'anchorCap',sub:'gy'});
               snapRows.push({item:'アンカー穴キャップ(ブラック)',key:'anchorCap',sub:'bk'});
-              snapRows.push({item:'ジョイントネジ(SML)',key:'jointScrew',sub:'sml'});
-              snapRows.push({item:'ジョイントネジ(SS/3S)',key:'jointScrew',sub:'ss'});
-              snapRows.push({item:'目隠しネジ(SML)',key:'capScrew',sub:'sml'});
-              snapRows.push({item:'目隠しネジ(SS/3S)',key:'capScrew',sub:'ss'});
+              snapRows.push({item:'ジョイントネジ(SMLXL・ブラック)',key:'jointScrew_sml_bk'});
+              snapRows.push({item:'ジョイントネジ(SS/3S・ブラック)',key:'jointScrew_ss_bk'});
+              snapRows.push({item:'ジョイントネジ(SS/3S・グレー)',key:'jointScrew_ss_gy'});
+              snapRows.push({item:'目隠しネジ(ブラック)',key:'capScrew_bk'});
+              snapRows.push({item:'目隠しネジ(グレー)',key:'capScrew_gy'});
               snapRows.push({item:'トッテ（旧ハンドル）',key:'handle'});
               snapRows.push({item:'トッテ',key:'totte'});
               snapRows.push({item:'ダイヤル錠 H110',key:'dialH110'});
@@ -3042,9 +3176,9 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'XLグレー',key:'connector',sub:'XL',irisu:iGet('connector','XL'),grp:'sml',dupKey:true});
           uniRows.push({item:'',variant:'SSブラック',key:'connector',sub:'SS',irisu:iGet('connector','SS'),grp:'ss'});
           uniRows.push({item:'',variant:'SSグレー',key:'connector',sub:'SS',irisu:iGet('connector','SS'),grp:'ss',dupKey:true});
-          /* 10. アンカー穴キャップ */
-          uniRows.push({item:'アンカー穴キャップ',variant:'ブラック',key:'anchorCap',irisu:iGet('anchorCap','bk')});
-          uniRows.push({item:'',variant:'グレー',key:'anchorCap',irisu:iGet('anchorCap','gy'),dupKey:true});
+          /* 10. アンカー穴キャップ (色別 sub で独立トラッキング) */
+          uniRows.push({item:'アンカー穴キャップ',variant:'ブラック',key:'anchorCap',sub:'bk',irisu:iGet('anchorCap','bk')});
+          uniRows.push({item:'',variant:'グレー',key:'anchorCap',sub:'gy',irisu:iGet('anchorCap','gy')});
           /* 11. トップジョイント */
           uniRows.push({item:'トップジョイント',variant:'クローバー🍀',key:'topJoint',irisu:iGet('topJoint')});
           uniRows.push({item:'',variant:'葉っぱ🍂',key:'topJoint',irisu:iGet('topJoint'),dupKey:true});
@@ -3088,13 +3222,13 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'SMLXL共通バック',key:'railSet',irisu:'',dupKey:true});
           uniRows.push({item:'',variant:'SS・3S共通サイド',key:'railSet',irisu:'',dupKey:true});
           uniRows.push({item:'',variant:'SS・3S共通バック',key:'railSet',irisu:'',dupKey:true});
-          /* 20. ジョイントネジ */
-          uniRows.push({item:'ジョイントネジ',variant:'SMLXL共通ブラック',key:'jointScrew',irisu:''});
-          uniRows.push({item:'',variant:'SS・3S共通ブラック',key:'jointScrew',irisu:'',dupKey:true});
-          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'jointScrew',irisu:'',dupKey:true});
-          /* 21. 目隠しネジ */
-          uniRows.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew',irisu:''});
-          uniRows.push({item:'',variant:'グレー',key:'capScrew',irisu:'',dupKey:true});
+          /* 20. ジョイントネジ (3種を独立キーで分離トラッキング) */
+          uniRows.push({item:'ジョイントネジ',variant:'SMLXL共通ブラック',key:'jointScrew_sml_bk',irisu:''});
+          uniRows.push({item:'',variant:'SS・3S共通ブラック',key:'jointScrew_ss_bk',irisu:''});
+          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'jointScrew_ss_gy',irisu:''});
+          /* 21. 目隠しネジ (色別キー分離) */
+          uniRows.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
+          uniRows.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
           /* 22. ドアポケット */
           uniRows.push({item:'ドアポケット',variant:'ブラック',key:'doorPocket',irisu:''});
           /* 23. ネームプレート */
