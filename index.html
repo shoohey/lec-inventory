@@ -1460,12 +1460,11 @@ function App(){
       h('div',{className:'tabs'},TABS.map(function(t){
         return h('button',{key:t.k,className:'tab'+(tab[0]===t.k?' on':''),onClick:function(){tab[1](t.k);}},t.l);
       })),
-      h('div',{className:'online-bar',title:'同時ログイン中のユーザー'},
-        presenceStatus[0]==='offline'?h('span',{style:{fontSize:9,color:'#FCA5A5',fontWeight:700}},'⚠️ オフライン（再接続中）'):
+      presenceStatus[0]==='offline'?null:h('div',{className:'online-bar',title:'同時ログイン中のユーザー'},
         onlineUsers[0].length>0?onlineUsers[0].map(function(u,i){
           return h('span',{key:i,className:'online-user'},h('span',{className:'online-dot'}),u.locLabel+': '+u.name);
         }):h('span',{style:{fontSize:9,opacity:.6}},'👤 接続中...'),
-        presenceStatus[0]!=='offline'?h('span',{className:'online-count'},onlineUsers[0].length+'人オンライン'):null
+        h('span',{className:'online-count'},onlineUsers[0].length+'人オンライン')
       ),
       h('div',{style:{display:'flex',alignItems:'center',gap:6,marginLeft:8}},
         h('span',{style:{fontSize:8,opacity:.7}},myLocLabel+': '+userName[0]),
