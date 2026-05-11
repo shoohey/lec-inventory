@@ -271,225 +271,42 @@ function calcShipping(lines,whId,custPref){
   return{weight:Math.round(tw*10)/10,rate:rate,shipping:ship,charter:tw>CHARTER_KG,boxes:totalBoxes};
 }
 
-/* ========== INVENTORY DATA (from Excel 2026.2.26) ========== */
+/* ========== INVENTORY DATA (from Excel 2026.5.8) ========== */
+/* 在庫スナップショット日付。CSVから新しい在庫を反映した時はこの値を更新すること。
+   localStorage の lec_stk_snapshot と異なる場合、保存STKを破棄して下記デフォルトを採用する。 */
+var STK_SNAPSHOT_DATE='2026-05-08';
 var STK={
-  /* ===== 日本製 Ver.1 (本社,第二,新柏,関西) ===== */
+  /* ===== 日本製 Ver.1 (本社,本社第一,本社第二,新柏,関西) ===== */
   jp01:{
-    honsha:{
-      top:{sml:0,ss:1},base:{sml:0,ss:20},
-      side:{S:0,M:22,L:0,SS:0,'3S':114},back:{S:17,M:6,L:0,SS:0,'3S':69},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{S:11,L:10,SS:4,'3S':9},pg:{M:1,'3S':55},
-        pp:{S:2,M:23,L:16,'3S':22},py:{S:16,M:9,'3S':223},
-        pbr:{S:2,L:15,SS:101,'3S':147},
-        bk:{},gy:{S:2,M:39,L:10},iv:{M:5}
-      },
-      doorH:{
-        pb:{M:7},pg:{},pp:{M:2,L:11,SS:221},
-        py:{M:4,L:3,SS:39},pbr:{S:1,M:93,SS:2},
-        bk:{},gy:{},iv:{}
-      }
-    },
-    dai2:{
-      top:{sml:0,ss:0},base:{sml:0,ss:298},
-      side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},
-        gy:{S:77,M:193,L:11},iv:{}
-      },
-      doorH:{pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{},iv:{}}
-    },
-    kashiwa:{
-      top:{sml:0,ss:0},base:{sml:0,ss:0},
-      side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{},pg:{},pp:{S:353},py:{S:37,M:383},pbr:{M:58},
-        bk:{},gy:{},iv:{}
-      },
-      doorH:{
-        pb:{S:218,L:115},pg:{S:286},pp:{S:215},
-        py:{S:260,M:220},pbr:{S:133,M:127,L:97},
-        bk:{},gy:{},iv:{}
-      }
-    },
-    kansai:{
-      top:{sml:0,ss:0},base:{sml:0,ss:10},
-      side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{},pg:{},pp:{},py:{SS:1},pbr:{},bk:{},gy:{M:3},iv:{}
-      },
-      doorH:{pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{},iv:{}}
-    }
+    honsha:{top:{sml:0,ss:0},base:{sml:0,ss:10},side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:13,M:0,L:0,SS:0,'3S':0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:0,jointScrew_ss_bk:0,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},door:{pb:{S:10,L:10,'3S':9},pg:{M:1,'3S':34},pp:{S:2,M:23,L:7,'3S':22},py:{S:16,M:11,'3S':27},pbr:{S:7,L:14,SS:6,'3S':30},bk:{},gy:{L:1},iv:{}},doorH:{pb:{},pg:{},pp:{},py:{},pbr:{S:1,M:2},bk:{},gy:{},iv:{}}},
+    dai1:{top:{sml:0,ss:0},base:{sml:0,ss:0},side:{S:0,M:22,L:0,SS:0,'3S':114},back:{S:0,M:6,L:0,SS:0,'3S':69},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:0,jointScrew_ss_bk:0,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:0},shelf_bk:{sml:11,ss:16},door:{pb:{SS:4},pg:{'3S':20},pp:{M:16},py:{M:23,'3S':196},pbr:{SS:96,'3S':122},bk:{},gy:{S:2,M:33},iv:{M:5}},doorH:{pb:{M:7},pg:{},pp:{M:2,L:11,SS:221},py:{M:4,L:2,SS:39},pbr:{M:91,SS:2},bk:{},gy:{},iv:{}}},
+    dai2:{top:{sml:0,ss:0},base:{sml:0,ss:3},side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:0,jointScrew_ss_bk:0,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:0,base_bk:{sml:0,ss:295},shelf:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},door:{pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{S:77,M:193},iv:{}},doorH:{pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{},iv:{}}},
+    kashiwa:{top:{sml:0,ss:0},base:{sml:0,ss:0},side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:0,jointScrew_ss_bk:0,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},door:{pb:{},pg:{},pp:{S:353},py:{S:45,M:383},pbr:{M:58},bk:{},gy:{},iv:{}},doorH:{pb:{S:143,L:115},pg:{S:211},pp:{S:152},py:{S:195,M:220},pbr:{S:130,M:127,L:94},bk:{},gy:{},iv:{}}},
+    kansai:{top:{sml:0,ss:0},base:{sml:0,ss:0},side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:0,jointScrew_ss_bk:0,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:0,base_bk:{sml:0,ss:10},shelf:{sml:0,ss:0},shelf_bk:{sml:8,ss:3},door:{pb:{},pg:{},pp:{},py:{SS:2},pbr:{},bk:{},gy:{M:3},iv:{}},doorH:{pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{},iv:{}}}
   },
-  /* ===== 日本製 Ver.2 (本社,第二,新柏,札幌,尼高,関西) ===== */
+  /* ===== 日本製 Ver.2 (本社,本社第一,本社第二,新柏,札幌,尼高,関西) ===== */
   jp2:{
-    honsha:{
-      top:{sml:95,ss:38},base:{sml:44,ss:63},
-      side:{S:13,M:57,L:84,SS:12,'3S':15},back:{S:14,M:33,L:68,SS:6,'3S':18},
-      vj:{sml:4667,ss:424},sj:{sml:355,ss:9},handle:281,dial:0,padlock:984,cylinder:199,coinReturn:0,dialH110:375,dialH111:333,dialDST:23,totte:754,cylinderMaster:314,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{S:4,M:4,L:9,SS:8},pg:{M:19,L:1,SS:18,'3S':10},
-        pp:{S:21,L:3,SS:3},py:{S:38,M:1,L:22},
-        pbr:{S:24,L:6,SS:18},bk:{M:7,L:13,SS:6},
-        gy:{L:13,SS:30,'3S':20},iv:{S:5,M:11,L:5,SS:18,'3S':19}
-      },
-      doorH:{
-        pb:{M:51,L:39,SS:20},pg:{S:9,L:1},
-        pp:{L:2},py:{S:17},pbr:{},bk:{SS:2},
-        gy:{'3S':2},iv:{M:1}
-      }
-    },
-    dai2:{
-      top:{sml:0,ss:0},base:{sml:0,ss:104},
-      side:{S:0,M:0,L:0,SS:0,'3S':316},back:{S:0,M:0,L:15,SS:0,'3S':160},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:55,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{},pg:{SS:200},pp:{},py:{},pbr:{},bk:{},
-        gy:{SS:240,'3S':280},iv:{SS:220,'3S':180}
-      },
-      doorH:{pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{},iv:{}}
-    },
-    kashiwa:{
-      top:{sml:326,ss:26},base:{sml:204,ss:268},
-      side:{S:728,M:295,L:258,SS:0,'3S':226},back:{S:374,M:167,L:172,SS:0,'3S':113},
-      vj:{sml:280,ss:54},sj:{sml:0,ss:0},handle:128,dial:0,padlock:587,cylinder:9,coinReturn:0,dialH110:160,dialH111:548,dialDST:0,totte:43,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{S:223,M:275,L:145,SS:92,'3S':224},
-        pg:{S:255,M:89,L:176,SS:256,'3S':196},
-        pp:{S:112,M:175,L:201,SS:100},
-        py:{S:291,M:286,L:249,SS:222},
-        pbr:{S:72,M:126,L:208,SS:185},
-        bk:{},gy:{L:32},iv:{S:195,M:96,L:86}
-      },
-      doorH:{
-        pb:{S:15,M:284,L:163,SS:14},pg:{L:3,SS:184},
-        pp:{M:48,L:38},py:{L:7},
-        pbr:{S:200,M:208,L:148},bk:{},gy:{M:78},iv:{M:28}
-      }
-    },
-    sapporo:{
-      top:{sml:112,ss:0},base:{sml:16,ss:38},
-      side:{S:20,M:0,L:0,SS:0,'3S':0},back:{S:10,M:0,L:0,SS:0,'3S':0},
-      vj:{sml:149,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:103,cylinder:0,coinReturn:0,dialH110:15,dialH111:2,dialDST:0,totte:0,cylinderMaster:10,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{S:19,M:9},pg:{S:35},
-        pp:{S:19,M:16},py:{},pbr:{},bk:{},gy:{},iv:{}
-      },
-      doorH:{
-        pb:{S:16},pg:{M:11},pp:{},py:{},
-        pbr:{},bk:{},gy:{},iv:{}
-      }
-    },
-    amago:{
-      top:{sml:517,ss:643},base:{sml:286,ss:123},
-      side:{S:230,M:230,L:229,SS:910,'3S':356},back:{S:115,M:115,L:119,SS:465,'3S':178},
-      vj:{sml:1681,ss:111},sj:{sml:0,ss:0},handle:0,dial:0,padlock:323,cylinder:0,coinReturn:0,dialH110:0,dialH111:29,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{S:177,M:188,L:189},pg:{S:54,M:1,L:7,'3S':14},
-        pp:{S:6,M:61,L:46,SS:48},py:{S:101,L:43,SS:40},
-        pbr:{S:1,M:18,L:73,SS:51,'3S':45},bk:{},gy:{S:97},iv:{}
-      },
-      doorH:{
-        pb:{},pg:{M:45},pp:{S:21},py:{},
-        pbr:{M:13,SS:10},bk:{},gy:{M:78,L:5},iv:{M:9}
-      }
-    },
-    kansai:{
-      top:{sml:106,ss:9},base:{sml:19,ss:16},
-      side:{S:52,M:16,L:6,SS:8,'3S':4},back:{S:27,M:10,L:4,SS:9,'3S':2},
-      vj:{sml:3158,ss:2797},sj:{sml:190,ss:26},handle:5,dial:0,padlock:1142,cylinder:22,coinReturn:0,dialH110:141,dialH111:94,dialDST:0,totte:373,cylinderMaster:94,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        pb:{S:4,M:6,SS:3,'3S':2},pg:{S:3,M:3,SS:3},
-        pp:{S:2,L:4,'3S':1},py:{M:1,L:3,SS:1},
-        pbr:{S:21,L:5,SS:23,'3S':2},bk:{},gy:{S:2},iv:{}
-      },
-      doorH:{
-        pb:{S:1,L:1},pg:{M:1},pp:{L:1},py:{},
-        pbr:{S:3},bk:{},gy:{M:1},iv:{},
-        SSA:{pbr:100}
-      }
-    }
+    honsha:{top:{sml:77,ss:33},base:{sml:5,ss:26},side:{S:19,M:72,L:9,SS:8,'3S':13},back:{S:20,M:33,L:7,SS:4,'3S':17},vj:{sml:2839,ss:795},sj:{sml:207,ss:86},handle:0,dial:0,padlock:864,cylinder:167,coinReturn:0,dialH110:373,dialH111:351,dialDST:23,totte:687,cylinderMaster:177,nameplate:0,namePaper:0,hanger:281,connector:{XL:242,SS:9},anchorCap:{bk:361,gy:127},jointScrew_sml_bk:4782,jointScrew_ss_bk:2109,jointScrew_ss_gy:2307,capScrew_bk:1101,capScrew_gy:7019,base_bk:{sml:18,ss:33},shelf:{sml:30,ss:0},shelf_bk:{sml:31,ss:64},door:{pb:{S:5,M:2,L:9,SS:8},pg:{S:4,M:8,L:2,SS:18,'3S':9},pp:{S:22,L:4,SS:1},py:{S:38,M:1,L:3},pbr:{S:23,L:8,SS:18},bk:{M:7,SS:6},gy:{M:1},iv:{S:5,M:9}},doorH:{pb:{},pg:{M:6,L:2},pp:{},py:{},pbr:{},bk:{SS:2},gy:{'3S':2},iv:{}}},
+    dai1:{top:{sml:377,ss:0},base:{sml:4,ss:0},side:{S:0,M:34,L:44,SS:0,'3S':0},back:{S:0,M:24,L:46,SS:0,'3S':0},vj:{sml:0,ss:150},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:8,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:23},anchorCap:{bk:0,gy:2},jointScrew_sml_bk:0,jointScrew_ss_bk:0,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:0,base_bk:{sml:24,ss:2},shelf:{sml:27,ss:48},shelf_bk:{sml:0,ss:0},door:{pb:{},pg:{M:18,L:1},pp:{},py:{L:16},pbr:{},bk:{L:13},gy:{L:33,SS:30,'3S':20},iv:{M:9,L:3,SS:73,'3S':19}},doorH:{pb:{M:50,L:39,SS:20},pg:{S:9,M:2},pp:{L:2},py:{S:17},pbr:{},bk:{},gy:{},iv:{M:1}}},
+    dai2:{top:{sml:0,ss:0},base:{sml:0,ss:104},side:{S:0,M:0,L:0,SS:0,'3S':316},back:{S:0,M:0,L:15,SS:0,'3S':160},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:55,connector:{XL:55,SS:176},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:0,jointScrew_ss_bk:0,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:1400},shelf_bk:{sml:0,ss:0},door:{pb:{},pg:{SS:200},pp:{},py:{},pbr:{},bk:{},gy:{SS:240,'3S':280},iv:{SS:220,'3S':180}},doorH:{pb:{},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{},iv:{}}},
+    kashiwa:{top:{sml:2485,ss:657},base:{sml:501,ss:234},side:{S:1478,M:2003,L:1206,SS:1078,'3S':594},back:{S:749,M:829,L:606,SS:536,'3S':297},vj:{sml:496,ss:6},sj:{sml:8,ss:33},handle:0,dial:0,padlock:346,cylinder:0,coinReturn:0,dialH110:254,dialH111:340,dialDST:0,totte:42,cylinderMaster:6,nameplate:0,namePaper:0,hanger:128,connector:{XL:128,SS:130},anchorCap:{bk:0,gy:501},jointScrew_sml_bk:4464,jointScrew_ss_bk:500,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:5421,base_bk:{sml:385,ss:21},shelf:{sml:0,ss:0},shelf_bk:{sml:1227,ss:284},door:{pb:{S:305,M:387,L:287,SS:276,'3S':233},pg:{S:359,M:135,L:267,SS:146,'3S':196},pp:{S:112,M:297,L:338,SS:295},py:{S:214,M:293,L:310,SS:214},pbr:{S:44,M:337,L:315,SS:359,'3S':280},bk:{},gy:{L:320},iv:{S:195,M:333,L:203}},doorH:{pb:{S:15,M:284,L:162,SS:14},pg:{M:10,L:2,SS:186},pp:{M:62,L:45},py:{L:1},pbr:{S:200,M:208,L:148},bk:{},gy:{M:85},iv:{M:53}}},
+    sapporo:{top:{sml:250,ss:8},base:{sml:1,ss:9},side:{S:294,M:0,L:0,SS:0,'3S':0},back:{S:157,M:0,L:0,SS:0,'3S':0},vj:{sml:122,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:103,cylinder:0,coinReturn:0,dialH110:58,dialH111:98,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:2566,jointScrew_ss_bk:1552,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:1908,base_bk:{sml:20,ss:29},shelf:{sml:0,ss:9},shelf_bk:{sml:4,ss:0},door:{pb:{S:55,M:7},pg:{S:52},pp:{S:96,M:16},py:{},pbr:{},bk:{},gy:{},iv:{}},doorH:{pb:{S:23},pg:{},pp:{},py:{},pbr:{},bk:{},gy:{},iv:{}}},
+    amago:{top:{sml:1387,ss:1197},base:{sml:90,ss:170},side:{S:480,M:554,L:577,SS:1264,'3S':724},back:{S:240,M:280,L:285,SS:635,'3S':362},vj:{sml:1663,ss:390},sj:{sml:32,ss:0},handle:0,dial:0,padlock:373,cylinder:18,coinReturn:0,dialH110:274,dialH111:404,dialDST:0,totte:347,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:80},anchorCap:{bk:0,gy:278},jointScrew_sml_bk:4208,jointScrew_ss_bk:5459,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:11366,base_bk:{sml:289,ss:18},shelf:{sml:0,ss:0},shelf_bk:{sml:136,ss:704},door:{pb:{S:231,M:185,L:172,'3S':45},pg:{S:138,M:158,L:145,SS:76,'3S':113},pp:{S:19,M:105,L:60,SS:174},py:{S:174,M:23,L:69,SS:40},pbr:{S:94,L:89,SS:145,'3S':40},bk:{},gy:{S:141,M:80,SS:100,'3S':100},iv:{S:79,M:90,L:160,'3S':100}},doorH:{pb:{S:89,M:76,L:106},pg:{S:91,M:86},pp:{S:50,L:14},py:{M:149,L:64},pbr:{M:17,SS:10},bk:{},gy:{M:141,L:6},iv:{M:18}}},
+    kansai:{top:{sml:115,ss:9},base:{sml:10,ss:21},side:{S:64,M:16,L:20,SS:12,'3S':2},back:{S:23,M:11,L:11,SS:11,'3S':1},vj:{sml:2905,ss:2797},sj:{sml:65,ss:26},handle:0,dial:0,padlock:545,cylinder:22,coinReturn:0,dialH110:143,dialH111:96,dialDST:0,totte:379,cylinderMaster:97,nameplate:0,namePaper:0,hanger:5,connector:{XL:5,SS:0},anchorCap:{bk:0,gy:167},jointScrew_sml_bk:3902,jointScrew_ss_bk:847,jointScrew_ss_gy:0,capScrew_bk:0,capScrew_gy:572,base_bk:{sml:15,ss:2},shelf:{sml:0,ss:0},shelf_bk:{sml:117,ss:5},door:{pb:{S:3,M:6,L:2,SS:3,'3S':2},pg:{M:1,SS:3},pp:{S:1,L:6,'3S':1},py:{S:2,M:1,L:3},pbr:{S:20,M:1,L:6,SS:29,'3S':2},bk:{},gy:{S:2},iv:{}},doorH:{pb:{L:1},pg:{M:2},pp:{L:1},py:{},pbr:{S:3},bk:{},gy:{M:3},iv:{},SSA:{pbr:100}}}
   },
-  /* ===== 台湾製 (第一,第二,尼高,関西) ===== */
+  /* ===== 台湾製 (本社第一,本社第二,新柏,尼高,関西) ===== */
   tw:{
-    dai1:{
-      top:{sml:83,ss:24},base:{sml:5,ss:15},
-      side:{S:96,M:58,L:38,SS:46,'3S':66},back:{S:38,M:22,L:21,SS:43,'3S':34},
-      vj:{sml:4412,ss:595},sj:{sml:0,ss:0},handle:68,dial:5,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        sb:{S:59,M:1,L:21,XL:4,SS:6,'3S':29},ag:{S:5,M:10,L:4,XL:6,SS:20,'3S':4},
-        pk:{S:5,M:19,L:5,XL:4,SS:20,'3S':24},ly:{S:54,M:23,L:17,XL:10,SS:24,'3S':23},
-        lbr:{S:13,M:10,L:5,XL:4,SS:51,'3S':33},iv:{S:2,M:59,L:2,SS:2},
-        cl:{S:5,SS:6,'3S':10},bk:{},gy:{}
-      },
-      doorH:{
-        sb:{M:11,L:29},ag:{M:10,L:2},pk:{M:55,L:1},
-        ly:{M:11,L:2},lbr:{M:40,L:4},
-        cl:{},bk:{},gy:{M:14}
-      }
-    },
-    dai2:{
-      top:{sml:694,ss:0},base:{sml:309,ss:67},
-      side:{S:1249,M:1486,L:0,SS:0,'3S':116},back:{S:798,M:818,L:0,SS:8,'3S':50},
-      vj:{sml:2948,ss:572},sj:{sml:0,ss:0},handle:174,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        sb:{S:163,M:0,L:34,XL:585,SS:200,'3S':286},ag:{S:576,M:192,L:36,XL:326,SS:366,'3S':270},
-        pk:{S:176,M:384,L:63,XL:514,SS:513,'3S':404},ly:{S:489,M:361,L:275,XL:325,SS:440,'3S':244},
-        lbr:{S:388,M:45,L:187,XL:95,SS:0,'3S':486},iv:{M:64,L:29,SS:150},
-        cl:{SS:100},bk:{},gy:{}
-      },
-      doorH:{
-        sb:{M:22,L:238},ag:{M:170,L:58},pk:{M:165,L:298},
-        ly:{M:82,L:146},lbr:{M:84,L:128},
-        cl:{},bk:{},gy:{M:541}
-      }
-    },
-    amago:{
-      top:{sml:0,ss:0},base:{sml:0,ss:0},
-      side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{sb:{},ag:{},pk:{},ly:{},lbr:{},iv:{},cl:{},bk:{},gy:{}},
-      doorH:{sb:{},ag:{},pk:{},ly:{},lbr:{},cl:{},bk:{},gy:{}}
-    },
-    kansai:{
-      top:{sml:2,ss:0},base:{sml:34,ss:0},
-      side:{S:2,M:2,L:0,SS:0,'3S':0},back:{S:1,M:1,L:0,SS:0,'3S':0},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:4,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{
-        sb:{S:1},ag:{},pk:{},ly:{},lbr:{SS:0,L:17},
-        iv:{},cl:{},bk:{},gy:{}
-      },
-      doorH:{sb:{},ag:{},pk:{},ly:{},lbr:{},cl:{},bk:{},gy:{}}
-    }
+    dai1:{top:{sml:106,ss:24},base:{sml:15,ss:15},side:{S:96,M:57,L:38,SS:46,'3S':66},back:{S:38,M:22,L:21,SS:43,'3S':34},vj:{sml:4412,ss:595},sj:{sml:0,ss:0},handle:0,dial:4,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:118,cylinderMaster:40,nameplate:245,namePaper:0,hanger:57,connector:{XL:34,SS:0},anchorCap:{bk:0,gy:0},jointScrew_ss_bk:1660,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:17},shelf_bk:{sml:0,ss:0},door:{sb:{S:73,M:1,L:13,XL:4,SS:7,'3S':18},ag:{S:5,M:10,L:4,XL:7,SS:20,'3S':4},pk:{S:5,M:40,L:5,XL:4,SS:20,'3S':24},ly:{S:54,M:23,L:17,XL:10,SS:24,'3S':23},lbr:{S:13,M:10,L:2,XL:12,SS:51,'3S':33},iv:{M:59,L:2,SS:2},cl:{S:5,SS:6,'3S':10},bk:{},gy:{}},doorH:{sb:{M:59,L:31},ag:{M:10,L:2},pk:{M:39,L:1},ly:{M:11,L:2},lbr:{M:40,L:4},cl:{},bk:{},gy:{M:14}}},
+    dai2:{top:{sml:612,ss:10},base:{sml:268,ss:72},side:{S:1210,M:1301,L:0,SS:0,'3S':176},back:{S:784,M:731,L:0,SS:8,'3S':80},vj:{sml:2813,ss:572},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:144,connector:{XL:144,SS:280},anchorCap:{bk:0,gy:0},jointScrew_ss_bk:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:29},shelf_bk:{sml:0,ss:0},door:{sb:{S:136,L:34,XL:585,SS:200,'3S':286},ag:{S:576,M:122,L:36,XL:376,SS:366,'3S':273},pk:{S:176,M:368,L:63,XL:514,SS:513,'3S':404},ly:{S:489,M:361,L:275,XL:315,SS:440,'3S':244},lbr:{S:388,M:45,L:187,XL:87,'3S':486},iv:{S:2,M:64,L:29,SS:150},cl:{SS:100},bk:{},gy:{}},doorH:{sb:{M:22,L:236},ag:{M:170,L:56},pk:{M:165,L:296},ly:{M:82,L:144},lbr:{M:84,L:126},cl:{},bk:{},gy:{M:541}}},
+    kashiwa:{top:{sml:0,ss:0},base:{sml:0,ss:0},side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_ss_bk:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},door:{sb:{},ag:{},pk:{},ly:{},lbr:{},iv:{},cl:{},bk:{},gy:{}},doorH:{sb:{},ag:{},pk:{},ly:{},lbr:{},cl:{},bk:{},gy:{}}},
+    amago:{top:{sml:0,ss:0},base:{sml:0,ss:0},side:{S:0,M:0,L:0,SS:0,'3S':0},back:{S:0,M:0,L:0,SS:0,'3S':0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_ss_bk:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},door:{sb:{},ag:{},pk:{},ly:{},lbr:{},iv:{},cl:{},bk:{},gy:{}},doorH:{sb:{},ag:{},pk:{},ly:{},lbr:{},cl:{},bk:{},gy:{}}},
+    kansai:{top:{sml:2,ss:0},base:{sml:21,ss:0},side:{S:2,M:2,L:0,SS:0,'3S':0},back:{S:1,M:1,L:0,SS:0,'3S':0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:17,namePaper:0,hanger:4,connector:{XL:7,SS:0},anchorCap:{bk:0,gy:0},jointScrew_ss_bk:0,base_bk:{sml:0,ss:0},shelf:{sml:2,ss:0},shelf_bk:{sml:0,ss:0},door:{sb:{S:1},ag:{},pk:{},ly:{},lbr:{XL:17},iv:{},cl:{},bk:{},gy:{}},doorH:{sb:{},ag:{},pk:{},ly:{},lbr:{},cl:{},bk:{},gy:{}}}
   },
-  /* ===== Sα 新台湾製 ===== */
+  /* ===== Sα 新台湾製 (本社,新柏,関西) ===== */
   sa:{
-    kansai:{
-      top:{sml:0,ss:0},base:{sml:0,ss:0},
-      side:{S:0,M:0,L:0,SS:0},back:{S:0,M:0,L:0,SS:0},
-      vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,
-      nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew:{sml:0,ss:0},capScrew:{sml:0,ss:0},base_bk:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},
-      door:{sr:{},sbl:{},sgr:{}},doorH:{sr:{},sbl:{},sgr:{}},
-      SSAbr:100
-    }
+    honsha:{top:{sml:0,ss:0},base:{sml:0,ss:0},side:{S:0,M:0,L:0,SS:0},back:{S:0,M:0,L:0,SS:0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:0,capScrew_gy:0,base_bk:{sml:0,ss:0},shelf:{sml:0,ss:0},shelf_bk:{sml:0,ss:0},door:{sr:{},sbl:{},sgr:{}},doorH:{sr:{},sbl:{},sgr:{}}},
+    kashiwa:{top:{sml:426,ss:0},base:{sml:130,ss:0},side:{S:426,M:0,L:0,SS:0},back:{S:221,M:0,L:0,SS:0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:480,capScrew_gy:610,base_bk:{sml:0,ss:0},shelf:{sml:237,ss:0},shelf_bk:{sml:0,ss:0},door:{sr:{S:13},sbl:{},sgr:{S:222}},doorH:{sr:{},sbl:{},sgr:{}}},
+    kansai:{top:{sml:34,ss:0},base:{sml:9,ss:0},side:{S:68,M:0,L:0,SS:0},back:{S:34,M:0,L:0,SS:0},vj:{sml:0,ss:0},sj:{sml:0,ss:0},handle:0,dial:0,padlock:0,cylinder:0,coinReturn:0,dialH110:0,dialH111:0,dialDST:0,totte:0,cylinderMaster:0,nameplate:0,namePaper:0,hanger:0,connector:{XL:0,SS:0},anchorCap:{bk:0,gy:0},jointScrew_sml_bk:100,capScrew_gy:190,base_bk:{sml:0,ss:0},shelf:{sml:14,ss:0},shelf_bk:{sml:0,ss:0},door:{sr:{S:5},sbl:{S:5},sgr:{S:9}},doorH:{sr:{},sbl:{},sgr:{}}}
   }
 };
 
@@ -968,7 +785,16 @@ function saveAll(){saveOrders();saveStock();saveHeld();saveIncoming();saveEditLo
     var s;
     s=localStorage.getItem(LS_KEYS.orders);if(s){ORDERS=JSON.parse(s);}
     s=localStorage.getItem(LS_KEYS.nextON);if(s){nextON=parseInt(s)||1;}
-    s=localStorage.getItem(LS_KEYS.stk);if(s){STK=JSON.parse(s);}
+    /* 在庫スナップショット日付チェック: CSV由来の新在庫に切替えた時は保存STKを破棄してデフォルトを採用。
+       HELD(仮押さえ)は業務データのため保持する。 */
+    var savedSnap=localStorage.getItem('lec_stk_snapshot');
+    if(savedSnap===STK_SNAPSHOT_DATE){
+      s=localStorage.getItem(LS_KEYS.stk);if(s){STK=JSON.parse(s);}
+    }else{
+      console.log('[Stock] Snapshot updated:',savedSnap||'(none)','→',STK_SNAPSHOT_DATE,'— resetting STK to new default');
+      localStorage.removeItem(LS_KEYS.stk);
+      localStorage.setItem('lec_stk_snapshot',STK_SNAPSHOT_DATE);
+    }
     s=localStorage.getItem(LS_KEYS.held);if(s){HELD=JSON.parse(s);}
     s=localStorage.getItem(LS_KEYS.incoming);if(s){INCOMING=JSON.parse(s);}
     s=localStorage.getItem(LS_KEYS.nextIncId);if(s){nextIncId=parseInt(s)||1;}
