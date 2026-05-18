@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.0（2026-05-15更新）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.1（2026-05-18更新）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1566,7 +1566,7 @@ function App(){
           loggedIn[1](false);userName[1]('');
         }},'切替')
       ),
-      h('div',{className:'ver'},'v14.0')
+      h('div',{className:'ver'},'v14.1')
     ),
     h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:isReadOnly[0]}),
     h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:isReadOnly[0]}),
@@ -2996,8 +2996,11 @@ function PartsPage(p){
   var sizeFilter=us('all'); /* all, 3S, SS, S, M, L, XL */
   var selWH=us('all'); /* 'all' or specific warehouse id */
   var showIncoming=us(false),showAddIncoming=us(false);
-  var incForm=us({expectedDate:'',wh:'honsha',note:'',items:[{lineId:'jp01',key:'side',sub:'M',color:'',qty:0,label:''}]});
+  var incForm=us({expectedDate:'',wh:'honsha',note:'',items:[{lineId:'jp01',key:'side',sub:'M',color:'',qty:0,label:'サイドボード(M)',cat:'size'}]});
   var showCostMaster=us(false),showAssetCalc=us(false);
+  /* v14.1 C26: 期間指定の在庫表Excel出力 */
+  var showPeriodExcel=us(false);
+  var periodForm=us({from:'',to:''});
   var lineObj=LINES.find(function(l){return l.id===selLine[0];});
   var whs=WH_IDS.filter(function(w){return hasStock(selLine[0],w);});
   var colors=LINE_COLORS[selLine[0]]||[];
@@ -3290,7 +3293,15 @@ function PartsPage(p){
               XLSX.writeFile(wb,'在庫表_'+(lineObj?lineObj.name:'')+'_'+td2().replace(/\//g,'-')+'.xlsx');
               p.toast('在庫表をExcel出力しました');
             }catch(ex){p.toast('Excel出力に失敗: '+ex.message);}
-          }},'📥 在庫表Excel')
+          }},'📥 在庫表Excel'),
+          /* v14.1 C26: 期間指定の在庫表Excel出力（EDIT_LOG差分集計） */
+          h('button',{className:'btn btn-xs btn-nv',onClick:function(){
+            /* デフォルトは過去1ヶ月 */
+            var tdy=new Date();var prev=new Date(tdy.getTime()-30*86400000);
+            var fmt=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+            periodForm[1]({from:fmt(prev),to:fmt(tdy)});
+            showPeriodExcel[1](true);
+          }},'📅 期間Excel')
         )
       ),
       /* Sub-tabs: 在庫表 / 仮押さえ一覧 / 出荷済み一覧 */
@@ -4244,7 +4255,7 @@ function PartsPage(p){
           var validItems=f.items.filter(function(it){return it.qty>0;});
           if(!validItems.length){p.toast('入庫数量を入力してください');return;}
           INCOMING.push({id:nextIncId++,date:td2(),expectedDate:f.expectedDate,wh:f.wh,items:validItems,note:f.note,status:'予定'});
-          incForm[1]({expectedDate:'',wh:'honsha',note:'',items:[{lineId:'jp01',key:'side',sub:'M',color:'',qty:0,label:'サイドボード(M)'}]});
+          incForm[1]({expectedDate:'',wh:'honsha',note:'',items:[{lineId:'jp01',key:'side',sub:'M',color:'',qty:0,label:'サイドボード(M)',cat:'size'}]});
           showAddIncoming[1](false);bump[1](bump[0]+1);p.toast('入庫予定を追加しました');
         }},'追加'))},
       h('div',null,
@@ -4253,16 +4264,32 @@ function PartsPage(p){
           h('div',{style:{flex:1}},h('label',{style:{fontSize:9,fontWeight:600,color:'var(--g500)'}},'入庫先倉庫'),h('select',{className:'inp',value:incForm[0].wh,onChange:function(e){var f=Object.assign({},incForm[0]);f.wh=e.target.value;incForm[1](f);}},WH_IDS.map(function(w){return h('option',{key:w,value:w},WH_MAP[w].n);})))
         ),
         h('div',{style:{marginBottom:8}},
-          h('label',{style:{fontSize:9,fontWeight:600,color:'var(--g500)'}},'入庫部材'),
+          h('label',{style:{fontSize:9,fontWeight:600,color:'var(--g500)'}},'入庫部材（カテゴリ→部材の2段選択）'),
+          /* v14.1 C28: カテゴリ→アイテムの多段選択 */
           incForm[0].items.map(function(item,idx){
+            var curCat=item.cat||(structRowsAll.find(function(r){return r.key===item.key&&r.sub===item.sub;})||{}).cat||'size';
+            var catRows=structRowsAll.filter(function(r){return r.cat===curCat;});
             return h('div',{key:idx,style:{display:'flex',gap:4,marginBottom:4,alignItems:'center'}},
+              /* カテゴリ選択（1段目） */
+              h('select',{className:'inp',value:curCat,onChange:function(e){
+                var f=Object.assign({},incForm[0]);f.items=f.items.slice();
+                var nc=e.target.value;
+                var firstRow=structRowsAll.find(function(r){return r.cat===nc;});
+                f.items[idx]=Object.assign({},f.items[idx],{cat:nc,key:firstRow.key,sub:firstRow.sub,label:firstRow.label});
+                incForm[1](f);
+              },style:{flex:1,fontSize:10}},
+                h('option',{value:'size'},'サイズ別部材'),
+                h('option',{value:'option'},'オプション・ジョイント・ネジ'),
+                h('option',{value:'lock'},'鍵・錠類')
+              ),
+              /* アイテム選択（2段目） */
               h('select',{className:'inp',value:item.key+(item.sub?'|'+item.sub:''),onChange:function(e){
                 var f=Object.assign({},incForm[0]);f.items=f.items.slice();
                 var parts=e.target.value.split('|');
                 f.items[idx]=Object.assign({},f.items[idx],{key:parts[0],sub:parts[1]||undefined,label:e.target.options[e.target.selectedIndex].text});
                 incForm[1](f);
-              },style:{flex:2}},
-                structRowsAll.map(function(sr){return h('option',{key:sr.label,value:sr.key+(sr.sub!==undefined?'|'+sr.sub:'')},sr.label);})
+              },style:{flex:2,fontSize:10}},
+                catRows.map(function(sr){return h('option',{key:sr.label,value:sr.key+(sr.sub!==undefined?'|'+sr.sub:'')},sr.label);})
               ),
               h('input',{className:'inp',type:'number',min:0,value:item.qty,onChange:function(e){
                 var f=Object.assign({},incForm[0]);f.items=f.items.slice();
@@ -4276,7 +4303,7 @@ function PartsPage(p){
             );
           }),
           h('button',{className:'btn btn-xs btn-ol',onClick:function(){
-            var f=Object.assign({},incForm[0]);f.items=f.items.concat([{lineId:selLine[0],key:'side',sub:'M',color:'',qty:0,label:'サイドボード(M)'}]);
+            var f=Object.assign({},incForm[0]);f.items=f.items.concat([{lineId:selLine[0],key:'side',sub:'M',color:'',qty:0,label:'サイドボード(M)',cat:'size'}]);
             incForm[1](f);
           },style:{marginTop:4}},'＋ 部材追加')
         ),
@@ -4471,6 +4498,134 @@ function PartsPage(p){
             }))
           );
         })()
+      )
+    ):null,
+    /* v14.1 C26: 期間指定の在庫表Excel出力モーダル */
+    showPeriodExcel[0]?h(Modal,{show:true,title:'期間指定 在庫増減レポート（Excel出力）',w:560,onClose:function(){showPeriodExcel[1](false);},
+      footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
+        h('button',{className:'btn btn-ol',onClick:function(){showPeriodExcel[1](false);}},'キャンセル'),
+        h('button',{className:'btn btn-gn',onClick:function(){
+          var pf=periodForm[0];
+          if(!pf.from||!pf.to){p.toast('期間を入力してください');return;}
+          var fromD=new Date(pf.from+'T00:00:00');
+          var toD=new Date(pf.to+'T23:59:59');
+          if(fromD>toD){p.toast('開始日は終了日より前にしてください');return;}
+          try{
+            /* JP形式タイムスタンプを安全にパース */
+            var parseTs=function(ts){
+              if(!ts)return null;
+              var m=ts.match(/^(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+):(\d+)$/);
+              if(m)return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);
+              var d=new Date(ts);return isNaN(d)?null:d;
+            };
+            /* 期間内のEDIT_LOGを抽出 */
+            var logs=EDIT_LOG.filter(function(e){
+              var d=parseTs(e.timestamp);
+              return d&&d>=fromD&&d<=toD;
+            });
+            if(!logs.length){p.toast('指定期間内に履歴がありません');return;}
+            /* 集計: lineId|wh|key|sub|color 単位で増減量を計算 */
+            var agg={};
+            logs.forEach(function(e){
+              var k=[e.lineId||'',e.wh||'',e.key||'',e.sub||'',e.color||''].join('|');
+              if(!agg[k])agg[k]={lineId:e.lineId,wh:e.wh,key:e.key,sub:e.sub,color:e.color,label:e.label,inQty:0,outQty:0,net:0,count:0};
+              var oldN=parseInt(e.oldVal),newN=parseInt(e.newVal);
+              var diff;
+              if(!isNaN(oldN)&&!isNaN(newN)){diff=newN-oldN;}
+              else if(typeof e.newVal==='string'&&e.newVal.charAt(0)==='+'){diff=parseInt(e.newVal.slice(1))||0;}
+              else if(typeof e.newVal==='string'&&e.newVal.charAt(0)==='-'){diff=-(parseInt(e.newVal.slice(1))||0);}
+              else{diff=(newN||0)-(oldN||0);}
+              if(diff>0)agg[k].inQty+=diff;
+              else if(diff<0)agg[k].outQty+=Math.abs(diff);
+              agg[k].net+=diff;
+              agg[k].count++;
+            });
+            var wb=XLSX.utils.book_new();
+            /* シート1: 期間内増減サマリ */
+            var sumData=[
+              ['【期間指定 在庫増減サマリ】 期間: '+pf.from+' 〜 '+pf.to+' / 出力日: '+td2()],
+              [],
+              ['製品ライン','倉庫','部材','サイズ','色','入庫合計','出庫合計','差引(純増減)','編集回数']
+            ];
+            Object.keys(agg).map(function(k){return agg[k];}).sort(function(a,b){
+              if(a.lineId!==b.lineId)return(a.lineId||'').localeCompare(b.lineId||'');
+              if(a.wh!==b.wh)return(a.wh||'').localeCompare(b.wh||'');
+              return(a.label||'').localeCompare(b.label||'');
+            }).forEach(function(a){
+              sumData.push([
+                (LINES.find(function(l){return l.id===a.lineId;})||{name:a.lineId||''}).name,
+                WH_MAP[a.wh]?WH_MAP[a.wh].n:(a.wh||''),
+                a.label||a.key||'',
+                a.sub||'',
+                a.color||'',
+                a.inQty,a.outQty,a.net,a.count
+              ]);
+            });
+            var ws1=XLSX.utils.aoa_to_sheet(sumData);
+            ws1['!cols']=[{wch:14},{wch:14},{wch:24},{wch:6},{wch:8},{wch:10},{wch:10},{wch:12},{wch:8}];
+            XLSX.utils.book_append_sheet(wb,ws1,'増減サマリ');
+            /* シート2: 期間内全ログ詳細 */
+            var detailData=[
+              ['【期間内 在庫編集ログ詳細】 期間: '+pf.from+' 〜 '+pf.to],
+              [],
+              ['日時','編集者','製品ライン','倉庫','部材','サイズ','色','旧値','新値','増減','備考(label)']
+            ];
+            logs.slice().sort(function(a,b){
+              var da=parseTs(a.timestamp),db=parseTs(b.timestamp);
+              return(da?da.getTime():0)-(db?db.getTime():0);
+            }).forEach(function(e){
+              var oldN=parseInt(e.oldVal),newN=parseInt(e.newVal);
+              var diff;
+              if(!isNaN(oldN)&&!isNaN(newN))diff=newN-oldN;
+              else if(typeof e.newVal==='string'&&e.newVal.charAt(0)==='+')diff=parseInt(e.newVal.slice(1))||0;
+              else if(typeof e.newVal==='string'&&e.newVal.charAt(0)==='-')diff=-(parseInt(e.newVal.slice(1))||0);
+              else diff=(newN||0)-(oldN||0);
+              detailData.push([
+                e.timestamp||'',e.editor||'',
+                (LINES.find(function(l){return l.id===e.lineId;})||{name:e.lineId||''}).name,
+                WH_MAP[e.wh]?WH_MAP[e.wh].n:(e.wh||''),
+                e.label||e.key||'',e.sub||'',e.color||'',
+                e.oldVal,e.newVal,(diff>0?'+':'')+diff,e.label||''
+              ]);
+            });
+            var ws2=XLSX.utils.aoa_to_sheet(detailData);
+            ws2['!cols']=[{wch:20},{wch:12},{wch:14},{wch:14},{wch:24},{wch:6},{wch:8},{wch:8},{wch:8},{wch:8},{wch:20}];
+            XLSX.utils.book_append_sheet(wb,ws2,'ログ詳細');
+            XLSX.writeFile(wb,'在庫増減_'+pf.from+'_to_'+pf.to+'.xlsx');
+            p.toast('期間Excel出力完了: '+logs.length+'件');
+            showPeriodExcel[1](false);
+          }catch(ex){p.toast('Excel出力に失敗: '+ex.message);}
+        }},'📥 Excel出力')
+      )},
+      h('div',null,
+        h('p',{style:{fontSize:11,color:'var(--g500)',marginBottom:10,lineHeight:1.6}},
+          '指定した期間内の在庫編集履歴(EDIT_LOG)を集計し、部材ごとの入出庫量・差引をExcel出力します。',
+          h('br'),
+          '※セッション内の編集履歴を対象としています。'
+        ),
+        h('div',{style:{display:'flex',gap:8,marginBottom:10}},
+          h('div',{style:{flex:1}},
+            h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g500)'}},'開始日'),
+            h('input',{className:'inp',type:'date',value:periodForm[0].from,onChange:function(e){var f=Object.assign({},periodForm[0]);f.from=e.target.value;periodForm[1](f);}})
+          ),
+          h('div',{style:{flex:1}},
+            h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g500)'}},'終了日'),
+            h('input',{className:'inp',type:'date',value:periodForm[0].to,onChange:function(e){var f=Object.assign({},periodForm[0]);f.to=e.target.value;periodForm[1](f);}})
+          )
+        ),
+        /* クイックプリセット */
+        h('div',{style:{display:'flex',gap:4,marginBottom:10}},
+          [{l:'今日',d:0},{l:'過去7日',d:7},{l:'過去30日',d:30},{l:'過去90日',d:90}].map(function(pr){
+            return h('button',{key:pr.l,className:'btn btn-xs btn-ol',onClick:function(){
+              var tdy=new Date();var prev=new Date(tdy.getTime()-pr.d*86400000);
+              var fmt=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+              periodForm[1]({from:fmt(prev),to:fmt(tdy)});
+            }},pr.l);
+          })
+        ),
+        h('div',{style:{padding:8,background:'var(--g50)',borderRadius:6,fontSize:10,color:'var(--g500)'}},
+          '出力シート: ①増減サマリ(部材×倉庫で集計) / ②ログ詳細(全エントリ)'
+        )
       )
     ):null
   );
