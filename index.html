@@ -4239,28 +4239,30 @@ function PartsPage(p){
         return h('table',{className:'tbl',style:{fontSize:12}},
           h('thead',null,
             h('tr',null,
-              h('th',{style:{minWidth:120,position:'sticky',left:0,background:'var(--g50)',zIndex:2},rowSpan:2},'アイテム'),
-              h('th',{style:{minWidth:80},rowSpan:2},'色/サイズ'),
-              h('th',{style:{textAlign:'center',minWidth:40},rowSpan:2},'入り数'),
-              orderParts.map(function(op){return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:100,fontSize:10,cursor:'pointer',color:'var(--nv)',textDecoration:'underline'},onClick:function(){heldDetail[1](op.order);},title:'クリックで案件詳細を表示'},
+              /* v14.4: アイテム列・色/サイズ列を両方左sticky固定＋ヘッダー行も top:0 で固定 */
+              h('th',{style:{minWidth:120,width:120,position:'sticky',left:0,top:0,background:'var(--g50)',zIndex:6},rowSpan:2},'アイテム'),
+              h('th',{style:{minWidth:80,width:80,position:'sticky',left:120,top:0,background:'var(--g50)',zIndex:6,borderRight:'2px solid var(--g300)'},rowSpan:2},'色/サイズ'),
+              h('th',{style:{textAlign:'center',minWidth:40,position:'sticky',top:0,background:'var(--g50)',zIndex:4},rowSpan:2},'入り数'),
+              orderParts.map(function(op){return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:100,fontSize:10,cursor:'pointer',color:'var(--nv)',textDecoration:'underline',position:'sticky',top:0,background:'var(--g50)',zIndex:4},onClick:function(){heldDetail[1](op.order);},title:'クリックで案件詳細を表示'},
                 h('div',{style:{fontWeight:700}},op.order.no),
                 h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,marginTop:2}},op.cust?op.cust.name:''),
                 h('div',{style:{fontSize:8,color:'#D97706',fontWeight:600,marginTop:2}},'📦 '+(WH_MAP[op.order.wh]?WH_MAP[op.order.wh].s:'')+(op.order.wh2?' + '+(WH_MAP[op.order.wh2]?WH_MAP[op.order.wh2].s:''):''))
               );})
             ),
             h('tr',null,
-              orderParts.map(function(op){return h('th',{key:op.order.no+'-h',style:{textAlign:'center',borderLeft:'2px solid var(--g200)',fontSize:9,color:'#D97706'}},'仮押さえ数量');})
+              orderParts.map(function(op){return h('th',{key:op.order.no+'-h',style:{textAlign:'center',borderLeft:'2px solid var(--g200)',fontSize:9,color:'#D97706',position:'sticky',top:38,background:'var(--g50)',zIndex:4}},'仮押さえ数量');})
             )
           ),
           h('tbody',null,uniR.map(function(r,i){
             var pk=uniRowPartKey(r);
             var isGH=!!r.item;
+            var stickyBgH=isGH&&r.isDoor?'#FAFFF5':'#fff';
             return h('tr',{key:'h-'+i,style:{background:isGH&&r.isDoor?'#FAFFF5':''}},
-              h('td',{style:{fontWeight:isGH?700:400,position:'sticky',left:0,background:isGH&&r.isDoor?'#FAFFF5':'#fff',zIndex:1,fontSize:11}},
+              h('td',{style:{fontWeight:isGH?700:400,position:'sticky',left:0,background:stickyBgH,zIndex:2,fontSize:11,minWidth:120,width:120}},
                 r.item||'',
                 r.colorObj&&r.item?h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:2,background:r.colorObj.x,verticalAlign:'middle',marginLeft:4}}):null
               ),
-              h('td',{style:{fontSize:10}},r.variant||''),
+              h('td',{style:{fontSize:10,position:'sticky',left:120,background:stickyBgH,zIndex:2,minWidth:80,width:80,borderRight:'2px solid var(--g300)'}},r.variant||''),
               h('td',{style:{textAlign:'center',fontSize:10,color:'var(--g500)'}},r.irisu||''),
               orderParts.map(function(op){
                 var qty=op.parts[pk]||0;
@@ -4379,12 +4381,13 @@ function PartsPage(p){
         return h('table',{className:'tbl',style:{fontSize:12}},
           h('thead',null,
             h('tr',null,
-              h('th',{style:{minWidth:120,position:'sticky',left:0,background:'var(--g50)',zIndex:2},rowSpan:2},'アイテム'),
-              h('th',{style:{minWidth:80},rowSpan:2},'色/サイズ'),
-              h('th',{style:{textAlign:'center',minWidth:40},rowSpan:2},'入り数'),
+              /* v14.4: アイテム列・色/サイズ列を両方左sticky固定＋ヘッダー行も top:0 で固定 */
+              h('th',{style:{minWidth:120,width:120,position:'sticky',left:0,top:0,background:'var(--g50)',zIndex:6},rowSpan:2},'アイテム'),
+              h('th',{style:{minWidth:80,width:80,position:'sticky',left:120,top:0,background:'var(--g50)',zIndex:6,borderRight:'2px solid var(--g300)'},rowSpan:2},'色/サイズ'),
+              h('th',{style:{textAlign:'center',minWidth:40,position:'sticky',top:0,background:'var(--g50)',zIndex:4},rowSpan:2},'入り数'),
               orderParts.map(function(op){
                 var c=op.cust;
-                return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:90,fontSize:10}},
+                return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:90,fontSize:10,position:'sticky',top:0,background:'var(--g50)',zIndex:4}},
                   h('div',null,op.order.no),
                   h('div',{style:{fontSize:9,color:'var(--g500)'}},c?c.name:''),
                   h('div',{style:{fontSize:9,color:'var(--g500)'}},op.order.date)
@@ -4394,7 +4397,7 @@ function PartsPage(p){
             /* v14 B15: 出荷済み一覧の「在庫へ戻す」ボタンは廃止（出荷後は戻さない仕様） */
             /* v14 B16: 出荷指示書作成日・送付日の入力欄を追加 */
             h('tr',null,
-              orderParts.map(function(op){return h('th',{key:op.order.no+'-s',style:{textAlign:'center',borderLeft:'2px solid var(--g200)',fontSize:9}},
+              orderParts.map(function(op){return h('th',{key:op.order.no+'-s',style:{textAlign:'center',borderLeft:'2px solid var(--g200)',fontSize:9,position:'sticky',top:38,background:'var(--g50)',zIndex:4}},
                 h('div',{style:{display:'flex',flexDirection:'column',gap:2}},
                   h('label',{style:{fontSize:8,color:'#475569'}},'指示書作成日'),
                   h('input',{className:'inp',type:'date',value:op.order.shipPrintedDate||'',onChange:function(e){op.order.shipPrintedDate=e.target.value;saveAll();bump[1](bump[0]+1);},style:{fontSize:9,padding:'2px 4px'}}),
@@ -4407,12 +4410,13 @@ function PartsPage(p){
           h('tbody',null,uniR.map(function(r,i){
             var pk=uniRowPartKey(r);
             var isGH=!!r.item;
+            var stickyBgS=isGH&&r.isDoor?'#FAFFF5':'#fff';
             return h('tr',{key:'sh-'+i,style:{background:isGH&&r.isDoor?'#FAFFF5':''}},
-              h('td',{style:{fontWeight:isGH?700:400,position:'sticky',left:0,background:isGH&&r.isDoor?'#FAFFF5':'#fff',zIndex:1,fontSize:11}},
+              h('td',{style:{fontWeight:isGH?700:400,position:'sticky',left:0,background:stickyBgS,zIndex:2,fontSize:11,minWidth:120,width:120}},
                 r.item||'',
                 r.colorObj&&r.item?h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:2,background:r.colorObj.x,verticalAlign:'middle',marginLeft:4}}):null
               ),
-              h('td',{style:{fontSize:10}},r.variant||''),
+              h('td',{style:{fontSize:10,position:'sticky',left:120,background:stickyBgS,zIndex:2,minWidth:80,width:80,borderRight:'2px solid var(--g300)'}},r.variant||''),
               h('td',{style:{textAlign:'center',fontSize:10,color:'var(--g500)'}},r.irisu||''),
               orderParts.map(function(op){
                 var qty=op.parts[pk]||0;
