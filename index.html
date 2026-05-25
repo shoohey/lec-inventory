@@ -53,6 +53,24 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .online-count-bg{display:inline-flex;align-items:center;gap:4px;background:var(--gn);color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:900;letter-spacing:.5px;margin-left:8px;box-shadow:0 2px 6px rgba(34,197,94,.4)}
 .online-count-bg.solo{background:#64748B;box-shadow:0 2px 6px rgba(100,116,139,.3)}
 .online-count-bg.local{background:#475569;box-shadow:0 2px 6px rgba(71,85,105,.3)}
+/* v14.4 hotfix: 仮押さえ一覧サブタブのクリック編集セル視認性 */
+.held-edit-cell{transition:background .15s,box-shadow .15s;position:relative;cursor:pointer !important}
+.held-edit-cell:hover{background:rgba(217,119,6,.22) !important;box-shadow:inset 0 0 0 2px rgba(217,119,6,.6)}
+.held-edit-cell:hover::after{content:'✎ 編集';position:absolute;top:2px;right:4px;font-size:8px;color:#92400E;font-weight:700;pointer-events:none}
+.held-edit-cell-empty:hover{background:rgba(34,197,94,.18) !important;box-shadow:inset 0 0 0 2px rgba(34,197,94,.5)}
+.held-edit-cell-empty:hover::after{content:'＋ 追加';position:absolute;top:2px;right:4px;font-size:8px;color:#065F46;font-weight:700;pointer-events:none}
+.held-edit-cell-flash{animation:hedFlash 4s ease-out}
+@keyframes hedFlash{
+  0%   {background:#FEF08A !important;box-shadow:inset 0 0 0 4px #F59E0B,0 0 12px rgba(245,158,11,.6)}
+  50%  {background:#FEF08A !important;box-shadow:inset 0 0 0 4px #F59E0B,0 0 12px rgba(245,158,11,.6)}
+  100% {background:rgba(245,158,11,.06);box-shadow:none}
+}
+.held-edit-row-flash td{animation:rowFlash 4s ease-out}
+@keyframes rowFlash{
+  0%   {background:#FFFBEB}
+  50%  {background:#FFFBEB}
+  100% {background:transparent}
+}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .notif-bar{position:fixed;top:52px;right:20px;background:#7C3AED;color:#fff;padding:8px 14px;border-radius:8px;font-size:10px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:250;animation:sIn .3s,fO .3s 4.7s forwards;max-width:400px}
 @media print{.no-print{display:none!important}body{background:#fff}}
@@ -3485,6 +3503,8 @@ function PartsPage(p){
   var selWH=us('all'); /* 'all' or specific warehouse id */
   var showIncoming=us(false),showAddIncoming=us(false);
   var incForm=us({expectedDate:'',wh:'honsha',note:'',items:[{lineId:'jp01',key:'side',sub:'M',color:'',qty:0,label:'サイドボード(M)',cat:'size'}]});
+  /* v14.4 hotfix: 直近に編集したセル（仮押さえ一覧サブタブ）。{orderNo, partKey, ts} */
+  var lastEdited=us(null);
   var showCostMaster=us(false),showAssetCalc=us(false);
   /* v14.1 C26: 期間指定の在庫表Excel出力 */
   var showPeriodExcel=us(false);
@@ -4188,7 +4208,18 @@ function PartsPage(p){
         })()
       ):null,
     /* ===== Sub-tab: 仮押さえ一覧 ===== */
-    subTab[0]==='held'?h('div',{className:'scy',style:{maxHeight:'72vh',overflow:'auto'}},
+    subTab[0]==='held'?h('div',null,
+      /* v14.4 hotfix: 操作ヒントメッセージを上部に固定表示 */
+      h('div',{style:{padding:'8px 12px',background:'linear-gradient(90deg,#FEF3C7,#FEF08A)',borderRadius:8,marginBottom:8,fontSize:11,color:'#78350F',border:'1.5px solid #F59E0B',display:'flex',alignItems:'center',gap:8}},
+        h('span',{style:{fontSize:14}},'💡'),
+        h('div',null,
+          h('b',null,'操作ヒント: '),
+          'オレンジ色の数値セルを ',h('span',{style:{padding:'1px 6px',background:'rgba(217,119,6,.2)',border:'1px solid rgba(217,119,6,.5)',borderRadius:3,fontWeight:700}},'✎ クリック'),' すると数量変更（増減・解放）。',
+          '「＋」セルを ',h('span',{style:{padding:'1px 6px',background:'rgba(34,197,94,.2)',border:'1px solid rgba(34,197,94,.5)',borderRadius:3,fontWeight:700}},'＋ クリック'),' で新規追加できます。',
+          '編集後は ',h('span',{style:{padding:'1px 6px',background:'#FEF08A',border:'1px solid #F59E0B',borderRadius:3,fontWeight:700}},'黄色'),' で 4秒間ハイライト。'
+        )
+      ),
+      h('div',{className:'scy',style:{maxHeight:'68vh',overflow:'auto'}},
       (function(){
         /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示 */
         var held=ORDERS.filter(function(o){
@@ -4420,6 +4451,10 @@ function PartsPage(p){
           }
           bump[1](bump[0]+1);saveAll();
           broadcastOrderUpdate(p.userName,'仮押さえ数量変更(一覧から): '+order.no+' / '+label+' →'+newQty);
+          /* v14.4 hotfix: 編集セルをハイライト（4秒間） */
+          var editedPk=uniRow.isDoor?(uniRow.dk+':'+uniRow.color+':'+uniRow.doorSub):(uniRow.sub!==undefined?(uniRow.key+':'+uniRow.sub):uniRow.key);
+          lastEdited[1]({orderNo:order.no,partKey:editedPk,ts:Date.now()});
+          setTimeout(function(){lastEdited[1](null);},4500);
         };
         return h('table',{className:'tbl',style:{fontSize:12}},
           h('thead',null,
@@ -4451,15 +4486,18 @@ function PartsPage(p){
               h('td',{style:{textAlign:'center',fontSize:10,color:'var(--g500)'}},r.irisu||''),
               orderParts.map(function(op){
                 var qty=op.parts[pk]||0;
-                /* v14.4 hotfix: セルクリックで数量編集（qty>0は変更、qty=0は新規追加） */
-                return h('td',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g100)',fontWeight:qty>0?700:400,color:qty>0?'#D97706':'var(--g400)',cursor:'pointer',background:qty>0?'rgba(245,158,11,0.06)':''},title:qty>0?'クリックで数量編集（増減・解放）':'クリックで新規に押さえ追加',onClick:function(){changeQtyInList(op.order,r,qty);}},
-                  qty>0?fm(qty):h('span',{style:{fontSize:14,color:'var(--g300)'}},'＋')
+                /* v14.4 hotfix: セルクリックで数量編集（qty>0は変更、qty=0は新規追加）。視認性向上＋直近編集ハイライト */
+                var isFlash=lastEdited[0]&&lastEdited[0].orderNo===op.order.no&&lastEdited[0].partKey===pk;
+                var cellCls='held-edit-cell'+(qty===0?' held-edit-cell-empty':'')+(isFlash?' held-edit-cell-flash':'');
+                return h('td',{key:op.order.no,className:cellCls,style:{textAlign:'center',borderLeft:'2px solid var(--g100)',fontWeight:qty>0?700:400,color:qty>0?'#D97706':'var(--g400)',background:qty>0?'rgba(245,158,11,0.06)':''},title:qty>0?'✎ クリックで数量編集（増減・解放）':'＋ クリックで新規に押さえ追加',onClick:function(){changeQtyInList(op.order,r,qty);}},
+                  qty>0?fm(qty):h('span',{style:{fontSize:16,color:'var(--g300)',fontWeight:700}},'＋')
                 );
               })
             );
           }))
         );
       })()
+      )/* /scy div */
     ):null,
     /* ===== Sub-tab: 出荷済み一覧 ===== */
     subTab[0]==='shipped'?h('div',{className:'scy',style:{maxHeight:'72vh',overflow:'auto'}},
