@@ -4817,8 +4817,10 @@ function PartsPage(p){
               var actualAdd=Math.min(Math.max(0,availQ),addQty);
               var shortAdd=addQty-actualAdd;
               if(actualAdd>0){
-                /* HELD 増加 */
+                /* HELD 増加（v14.4 Codex P1対応: HELD 構造の完全な初期化を保証） */
                 if(group.isDoor){
+                  if(!HELD[lineId3])HELD[lineId3]={};
+                  if(!HELD[lineId3][wh3])HELD[lineId3][wh3]={door:{},doorH:{}};
                   if(!HELD[lineId3][wh3][group.key])HELD[lineId3][wh3][group.key]={};
                   if(!HELD[lineId3][wh3][group.key][group.color])HELD[lineId3][wh3][group.key][group.color]={};
                   HELD[lineId3][wh3][group.key][group.color][group.doorSub]=(HELD[lineId3][wh3][group.key][group.color][group.doorSub]||0)+actualAdd;
