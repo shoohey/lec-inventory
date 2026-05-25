@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.3（2026-05-19更新）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.4（2026-05-26更新）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -39,10 +39,16 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .online-dot{width:8px;height:8px;border-radius:50%;background:#22C55E;display:inline-block;margin-right:4px;box-shadow:0 0 6px #22C55E;animation:pulse 2s infinite}.online-bar{display:flex;align-items:center;gap:6px;margin-left:12px;font-size:11px;opacity:1;flex-wrap:wrap;max-width:560px}
 .online-user{display:flex;align-items:center;gap:4px;background:rgba(34,197,94,.35);border:1.5px solid rgba(34,197,94,.6);padding:2px 10px;border-radius:14px;font-size:11px;font-weight:700;color:#fff;box-shadow:0 1px 3px rgba(34,197,94,.3)}
 .online-count{background:rgba(255,255,255,.2);padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:.5px}
-/* v14.2: 複数人ログイン中のサイドバナー（画面右下に常時表示） */
-.presence-floating{position:fixed;bottom:20px;left:20px;background:#fff;border:2px solid var(--gn);border-radius:12px;padding:8px 14px;box-shadow:0 6px 18px rgba(34,197,94,.25);z-index:150;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--g700);max-width:340px}
-.presence-floating .pf-dot{width:10px;height:10px;border-radius:50%;background:#22C55E;box-shadow:0 0 8px #22C55E;animation:pulse 2s infinite}
-.presence-floating .pf-users{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;font-size:10px;font-weight:600;color:var(--gn)}
+/* v14.4: 同時ログイン可視化を強化（1人時も表示・配色を強調） */
+.presence-floating{position:fixed;bottom:20px;left:20px;background:#fff;border:3px solid var(--gn);border-radius:14px;padding:10px 16px;box-shadow:0 8px 28px rgba(34,197,94,.4);z-index:150;display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;color:var(--g700);max-width:380px;cursor:default}
+.presence-floating.solo{border-color:#94A3B8;box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.presence-floating.solo .pf-dot{background:#94A3B8;box-shadow:0 0 6px rgba(148,163,184,.6)}
+.presence-floating .pf-dot{width:12px;height:12px;border-radius:50%;background:#22C55E;box-shadow:0 0 10px #22C55E;animation:pulse 2s infinite}
+.presence-floating .pf-users{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;font-size:11px;font-weight:700;color:var(--gn)}
+.presence-floating .pf-title{font-size:13px;font-weight:900;color:var(--nv)}
+/* v14.4: ヘッダーのオンラインバッジを強化 */
+.online-count-bg{display:inline-flex;align-items:center;gap:4px;background:var(--gn);color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:900;letter-spacing:.5px;margin-left:8px;box-shadow:0 2px 6px rgba(34,197,94,.4)}
+.online-count-bg.solo{background:#64748B;box-shadow:0 2px 6px rgba(100,116,139,.3)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .notif-bar{position:fixed;top:52px;right:20px;background:#7C3AED;color:#fff;padding:8px 14px;border-radius:8px;font-size:10px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:250;animation:sIn .3s,fO .3s 4.7s forwards;max-width:400px}
 @media print{.no-print{display:none!important}body{background:#fff}}
@@ -1592,6 +1598,18 @@ function generateExcel(order,docType){
     wsData.push(['納期','別途相談','','有効期限','御見積後1ヶ月']);
   }
   wsData.push(['受渡地',cust?cust.pref+(cust.city||''):'','','支払条件',exPayTerms]);
+  /* v14.4: 出荷指示書専用のヘッダー追記 */
+  if(docType==='shipping'){
+    if(order.shipNo)wsData.push(['出荷№',order.shipNo]);
+    wsData.push(['出荷元倉庫',(WH_MAP[order.wh]?WH_MAP[order.wh].n:order.wh)+(order.wh2?' + '+(WH_MAP[order.wh2]?WH_MAP[order.wh2].n:order.wh2):'')]);
+    if(order.shipTo){
+      wsData.push(['配送先',order.shipTo.name+'（〒'+(order.shipTo.postal||'')+' '+(order.shipTo.address||'')+'）']);
+      if(order.shipTo.phone)wsData.push(['配送先TEL',order.shipTo.phone]);
+    }
+    if(order.shipper)wsData.push(['荷送人',order.shipper]);
+    if(order.deliveryDate)wsData.push(['納品希望日',order.deliveryDate]);
+    if(order.shippingNotes)wsData.push(['出荷備考',order.shippingNotes]);
+  }
   wsData.push([]);
   if(!isReceipt){wsData.push([cfg.amountLabel,q.total]);wsData.push([]);}
   if(isReceipt){
@@ -1736,20 +1754,46 @@ function Modal(p){
 /* ========== REALTIME BROADCAST HELPER ========== */
 function broadcastEdit(userName,detail){
   if(!broadcastChannel)return;
-  try{broadcastChannel.send({type:'broadcast',event:'inventory_edit',payload:{user:userName,detail:detail,time:new Date().toLocaleTimeString('ja-JP')}});}catch(e){}
-}
-/* v14 D30: 案件管理のリアルタイム同期通知（Codex P2対応: ORDERS/HELD/STK の最新スナップショットを同梱） */
-function broadcastOrderUpdate(userName,detail){
-  if(!broadcastChannel)return;
   try{
-    broadcastChannel.send({
-      type:'broadcast',event:'order_update',
-      payload:{
-        user:userName,detail:detail,time:new Date().toLocaleTimeString('ja-JP'),
-        orders:ORDERS,nextON:nextON,held:HELD,stk:STK
+    var payload={user:userName,detail:detail,time:new Date().toLocaleTimeString('ja-JP'),stk:STK,editLog:EDIT_LOG.slice(-50)};
+    var sz=JSON.stringify(payload).length;
+    if(sz>240000){/* ペイロード大: STKを送らず通知のみ */
+      broadcastChannel.send({type:'broadcast',event:'inventory_edit',payload:{user:userName,detail:detail+'（要リロード）',time:payload.time,heavy:true}});
+    }else{
+      broadcastChannel.send({type:'broadcast',event:'inventory_edit',payload:payload});
+    }
+  }catch(e){console.warn('broadcastEdit failed',e);}
+}
+/* v14.4: 案件管理のリアルタイム同期通知（ペイロードサイズチェック + STK は明示的に必要時のみ送信）
+   ORDERS と HELD は仮押さえ即時反映のため必ず送信、STK は出荷処理時のみ更新するため別フラグ */
+function broadcastOrderUpdate(userName,detail,opts){
+  if(!broadcastChannel)return;
+  opts=opts||{};
+  try{
+    var payload={
+      user:userName,detail:detail,time:new Date().toLocaleTimeString('ja-JP'),
+      orders:ORDERS,nextON:nextON,held:HELD
+    };
+    /* 出荷処理など STK が変わる操作のみ STK を同梱 */
+    if(opts.includeStk!==false)payload.stk=STK;
+    var sz=JSON.stringify(payload).length;
+    if(sz>240000){
+      /* ペイロードが大きすぎる場合は STK を切って再送、それでも超える場合は ORDERS の最新10件のみ送る */
+      delete payload.stk;
+      var sz2=JSON.stringify(payload).length;
+      if(sz2>240000){
+        var recent=ORDERS.slice(-10);
+        broadcastChannel.send({type:'broadcast',event:'order_update',payload:{
+          user:userName,detail:detail+'（一部のみ同期/要リロード）',time:payload.time,
+          orders:recent,nextON:nextON,heavy:true
+        }});
+      }else{
+        broadcastChannel.send({type:'broadcast',event:'order_update',payload:payload});
       }
-    });
-  }catch(e){}
+    }else{
+      broadcastChannel.send({type:'broadcast',event:'order_update',payload:payload});
+    }
+  }catch(e){console.warn('broadcastOrderUpdate failed',e);}
 }
 
 /* ========== APP ========== */
@@ -1817,26 +1861,53 @@ function App(){
     bch.on('broadcast',{event:'inventory_edit'},function(payload){
       var d=payload.payload;
       if(d&&d.user!==userName[0]){
-        notif[1](d.user+'（'+d.time+'）: '+d.detail);
+        notif[1]('📝 '+d.user+'（'+d.time+'）: '+d.detail);
         setTimeout(function(){notif[1](null);},5000);
+        /* v14.4: STK を同梱されていれば即時反映 */
+        try{
+          if(d.stk){STK=d.stk;saveAll();bump[1](bump[0]+1);}
+          if(d.editLog&&Array.isArray(d.editLog)){
+            /* EDIT_LOG をマージ（重複は timestamp+label で判定） */
+            var existing={};EDIT_LOG.forEach(function(e){existing[e.timestamp+'|'+e.label]=true;});
+            d.editLog.forEach(function(e){if(!existing[e.timestamp+'|'+e.label])EDIT_LOG.push(e);});
+            saveEditLog();
+          }
+        }catch(e){console.warn('在庫編集同期適用失敗',e);}
       }
     });
-    /* v14 D30: 案件管理のリアルタイム同期（Codex P2対応: ペイロードのデータで直接更新） */
+    /* v14.4: 案件管理のリアルタイム同期（強化版：受信時のbumpを確実に呼ぶ、エラー時もnotif出す） */
     bch.on('broadcast',{event:'order_update'},function(payload){
       var d=payload.payload;
       if(d&&d.user!==userName[0]){
-        notif[1]('案件更新('+d.user+'): '+d.detail);
-        setTimeout(function(){notif[1](null);},5000);
-        /* ペイロードから直接更新（受信側のlocalStorageからではない） */
+        notif[1]('🔔 案件更新('+d.user+' '+d.time+'): '+d.detail+(d.heavy?' ⚠軽量同期':''));
+        setTimeout(function(){notif[1](null);},6000);
         try{
-          if(d.orders)ORDERS=d.orders;
+          if(d.orders){
+            if(d.heavy){
+              /* 軽量同期: 最新案件のみ受信した場合はマージ */
+              var existingNos={};ORDERS.forEach(function(o){existingNos[o.no]=true;});
+              d.orders.forEach(function(o){
+                if(existingNos[o.no]){
+                  /* 既存案件の上書き */
+                  var idx=ORDERS.findIndex(function(x){return x.no===o.no;});
+                  if(idx>=0)ORDERS[idx]=o;
+                }else{
+                  ORDERS.push(o);
+                }
+              });
+            }else{
+              ORDERS=d.orders;
+            }
+          }
           if(d.nextON)nextON=d.nextON;
           if(d.held)HELD=d.held;
           if(d.stk)STK=d.stk;
-          /* 受信したデータを自分のlocalStorageにも保存 */
           saveAll();
           bump[1](bump[0]+1);
-        }catch(e){console.warn('同期データの適用に失敗',e);}
+        }catch(e){
+          console.warn('同期データの適用に失敗',e);
+          notif[1]('⚠️ 同期失敗: ハードリロード(⌘+Shift+R)してください');
+        }
       }
     });
     bch.subscribe();
@@ -1897,11 +1968,12 @@ function App(){
       })),
       /* v14 D32: 読み取り専用バナー */
       isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（先にログイン中のユーザーが編集権限を保持）'):null,
-      presenceStatus[0]==='offline'?null:h('div',{className:'online-bar',title:'同時ログイン中のユーザー'},
-        onlineUsers[0].length>0?onlineUsers[0].map(function(u,i){
+      presenceStatus[0]==='offline'?h('span',{className:'online-count-bg solo',title:'オフライン（接続エラー）'},'⚠ オフライン'):h('div',{className:'online-bar',title:'同時ログイン中のユーザー一覧'},
+        onlineUsers[0].length>0?onlineUsers[0].slice(0,3).map(function(u,i){
           return h('span',{key:i,className:'online-user'},h('span',{className:'online-dot'}),u.locLabel+': '+u.name);
         }):h('span',{style:{fontSize:9,opacity:.6}},'👤 接続中...'),
-        h('span',{className:'online-count'},'👥 '+onlineUsers[0].length+'人オンライン')
+        onlineUsers[0].length>3?h('span',{style:{fontSize:9,opacity:.7,marginLeft:4}},'…他'+(onlineUsers[0].length-3)+'人'):null,
+        h('span',{className:'online-count-bg'+(onlineUsers[0].length<=1?' solo':'')},'👥 '+onlineUsers[0].length+'人')
       ),
       h('div',{style:{display:'flex',alignItems:'center',gap:6,marginLeft:8}},
         h('span',{style:{fontSize:8,opacity:.7}},myLocLabel+': '+userName[0]),
@@ -1913,23 +1985,26 @@ function App(){
           loggedIn[1](false);userName[1]('');
         }},'切替')
       ),
-      h('div',{className:'ver'},'v14.3')
+      h('div',{className:'ver'},'v14.4')
     ),
     h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:isReadOnly[0]}),
     h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:isReadOnly[0]}),
     h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:isReadOnly[0]}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:isReadOnly[0]}),
-    /* v14.2: 複数人同時ログインを常時表示する左下フローティングバナー
-       他のユーザーが自分以外に居る時のみ表示。仮押さえ反映タイミングが分かるよう、最終同期時刻もここに出す */
-    onlineUsers[0].length>=2?h('div',{className:'presence-floating',title:'他のユーザーがログイン中。仮押さえはリアルタイム同期されます'},
+    /* v14.4: 同時ログイン可視化バナー（1人時も常時表示。自分のみ=グレー、複数=緑で強調） */
+    presenceStatus[0]!=='offline'&&onlineUsers[0].length>0?h('div',{className:'presence-floating'+(onlineUsers[0].length<=1?' solo':''),title:onlineUsers[0].length>=2?'他のユーザーがログイン中。仮押さえはリアルタイム同期されます':'現在あなたのみログイン中です'},
       h('span',{className:'pf-dot'}),
       h('div',null,
-        h('div',null,'👥 '+onlineUsers[0].length+'人が同時利用中',isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:9}},'🔒 読み取り専用'):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:9}},'✓ 編集権限')),
+        h('div',{className:'pf-title'},onlineUsers[0].length>=2?('👥 '+onlineUsers[0].length+'人が同時利用中'):'👤 あなたのみログイン中',
+          isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},'✓ 編集権限')
+        ),
         h('div',{className:'pf-users'},onlineUsers[0].map(function(u){
-          return h('span',{key:u.presenceKey,style:{padding:'1px 6px',background:u.name===userName[0]?'rgba(34,197,94,.2)':'rgba(255,255,255,1)',border:'1px solid rgba(34,197,94,.4)',borderRadius:8}},
-            (u.name===userName[0]?'⭐ ':'')+u.name+'('+u.locLabel+')'
+          var me=u.name===userName[0];
+          return h('span',{key:u.presenceKey,style:{padding:'2px 8px',background:me?'rgba(34,197,94,.25)':'rgba(255,255,255,1)',border:'1.5px solid '+(me?'var(--gn)':'rgba(34,197,94,.4)'),borderRadius:10,fontWeight:me?900:700}},
+            (me?'⭐ ':'')+u.name+'('+u.locLabel+')'
           );
-        }))
+        })),
+        onlineUsers[0].length>=2?h('div',{style:{fontSize:9,color:'var(--gn)',marginTop:4,fontWeight:600}},'💬 他のユーザーの仮押さえ・編集は自動で反映されます'):null
       )
     ):null,
     /* v14 D31: ユーザー管理モーダル - Codex P2対応: 管理者ロール強制 */
@@ -4136,6 +4211,29 @@ function PartsPage(p){
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
         uniR.push({item:'ネームプレート',variant:'',key:'nameplate',irisu:iG('nameplate')});
         uniR.push({item:'ネーム厚紙',variant:'',key:'namePaper',irisu:iG('namePaper')});
+        /* v14.4: 顧客フィードバック反映 - 22項目を仮押さえ一覧画面にも追加 */
+        uniR.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iG('dialOpnus')});
+        uniR.push({item:'シリンダー Fマスター',variant:'',key:'cylinderFMaster',irisu:iG('cylinderFMaster')});
+        uniR.push({item:'シリンダー Bマスター',variant:'',key:'cylinderBMaster',irisu:iG('cylinderBMaster')});
+        uniR.push({item:'シリンダー Cマスター',variant:'',key:'cylinderCMaster',irisu:iG('cylinderCMaster')});
+        uniR.push({item:'シリンダー Dマスター',variant:'',key:'cylinderDMaster',irisu:iG('cylinderDMaster')});
+        uniR.push({item:'シリンダー Lマスター',variant:'',key:'cylinderLMaster',irisu:iG('cylinderLMaster')});
+        uniR.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iG('dialKeyH110')});
+        uniR.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iG('dialKeyH111')});
+        uniR.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:iG('dialKeyD003')});
+        uniR.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:iG('dialKeyD018')});
+        uniR.push({item:'ドアポケット',variant:'',key:'doorPocket',irisu:iG('doorPocket')});
+        uniR.push({item:'トップジョイント',variant:'',key:'topJoint',irisu:iG('topJoint')});
+        uniR.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:iG('hingeCoverSML')});
+        uniR.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iG('hingeCoverSS')});
+        uniR.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iG('namePlateCoverSML')});
+        uniR.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iG('namePlateCoverSS')});
+        uniR.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});
+        uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
+        uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
+        uniR.push({item:'',variant:'レッド',key:'padlockRed',irisu:iG('padlockRed')});
+        /* カスタム部材も含める */
+        try{var cpH=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpH.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
         var orderParts=held.map(function(o){return{order:o,parts:computeOrderParts(o),cust:CUSTS.find(function(x){return x.id===o.cid;})};});
         return h('table',{className:'tbl',style:{fontSize:12}},
@@ -4224,6 +4322,29 @@ function PartsPage(p){
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
         uniR.push({item:'ネームプレート',variant:'',key:'nameplate',irisu:iG('nameplate')});
         uniR.push({item:'ネーム厚紙',variant:'',key:'namePaper',irisu:iG('namePaper')});
+        /* v14.4: 顧客フィードバック反映 - 22項目を出荷済み一覧画面にも追加 */
+        uniR.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iG('dialOpnus')});
+        uniR.push({item:'シリンダー Fマスター',variant:'',key:'cylinderFMaster',irisu:iG('cylinderFMaster')});
+        uniR.push({item:'シリンダー Bマスター',variant:'',key:'cylinderBMaster',irisu:iG('cylinderBMaster')});
+        uniR.push({item:'シリンダー Cマスター',variant:'',key:'cylinderCMaster',irisu:iG('cylinderCMaster')});
+        uniR.push({item:'シリンダー Dマスター',variant:'',key:'cylinderDMaster',irisu:iG('cylinderDMaster')});
+        uniR.push({item:'シリンダー Lマスター',variant:'',key:'cylinderLMaster',irisu:iG('cylinderLMaster')});
+        uniR.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iG('dialKeyH110')});
+        uniR.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iG('dialKeyH111')});
+        uniR.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:iG('dialKeyD003')});
+        uniR.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:iG('dialKeyD018')});
+        uniR.push({item:'ドアポケット',variant:'',key:'doorPocket',irisu:iG('doorPocket')});
+        uniR.push({item:'トップジョイント',variant:'',key:'topJoint',irisu:iG('topJoint')});
+        uniR.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:iG('hingeCoverSML')});
+        uniR.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iG('hingeCoverSS')});
+        uniR.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iG('namePlateCoverSML')});
+        uniR.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iG('namePlateCoverSS')});
+        uniR.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});
+        uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
+        uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
+        uniR.push({item:'',variant:'レッド',key:'padlockRed',irisu:iG('padlockRed')});
+        /* カスタム部材も含める */
+        try{var cpS=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpS.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
         var orderParts=shipped.map(function(o){return{order:o,parts:computeOrderParts(o),cust:CUSTS.find(function(x){return x.id===o.cid;}),allReturned:o.lines.every(function(l){return l._returned||l.isFreeInput;})};});
         /* Return stock function for entire order */
@@ -4624,89 +4745,133 @@ function PartsPage(p){
               partsByWh[od.wh][key].qty+=b.qty;
             });
           });
-          /* v14.2: パーツ別数量変更ハンドラ
-             ※Codex P1指摘対応: 出荷時に BOM ベースで STK が消費される設計のため、
-               増量すると後の出荷で空き在庫過剰消費・残HELD が発生し得る。
-               よって本UIは「部分解放（減量のみ）」に限定する。
-               増量・全体再配分は「全数量倍率編集」(✎ 数量編集) または「倉庫変更」を使うこと。 */
+          /* v14.4: パーツ別数量変更ハンドラ（増減両対応）
+             v14.2では部分解放（減量のみ）に制限していたが、顧客フィードバックを受けて増量にも対応。
+             増量時は対象倉庫の空き在庫から追加で押さえ、不足分は未確保パーツに追加する。
+             出荷時の二重消費防止のため _actualHeld への新規エントリ追加 + _partialReleases へマイナス（増量）も記録する。 */
           var changePartQty=function(group){
             if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
-            if(!group.refs||group.refs.length===0){p.toast('このパーツは旧データのため個別編集できません');return;}
+            if(!group.refs||group.refs.length===0){p.toast('このパーツは旧データのため個別編集できません。一度仮押さえ解除→再仮押さえしてください');return;}
             var newQtyStr=prompt(
-              group.label+'\n\n現在の押さえ数: '+group.qty+'\n\n減らしたい数量を入力してください（部分解放）。\n増量や再配分は「✎ 数量編集」または「🏭 倉庫変更」をご利用ください。\n（0 にすると全解放）',
+              group.label+'\n\n現在の押さえ数: '+group.qty+'\n\n新しい数量を入力してください（増量・減量どちらも可）。\n（0 で全解放、最大は倉庫の空き在庫まで）',
               group.qty
             );
             if(newQtyStr===null)return;
             var newQty=parseInt(newQtyStr);
             if(isNaN(newQty)||newQty<0){p.toast('不正な数量です');return;}
-            if(newQty>group.qty){
-              p.toast('このUIでは増量できません。「✎ 数量編集」をご利用ください');
-              return;
-            }
-            var diff=newQty-group.qty;/* 必ず ≤ 0 */
+            var diff=newQty-group.qty;
             if(diff===0)return;
-            /* 減量: 末尾の actualHeld から削っていく
-               v14.2 Codex P1対応: ah._wh があれば優先して該当倉庫の HELD から減算 */
-            var remaining=Math.abs(diff);
-            for(var i=group.refs.length-1;i>=0&&remaining>0;i--){
-              var rr=group.refs[i];var ah2=rr.ah;
-              var wh2=ah2._wh||rr.wh;/* マルチ倉庫案件は ah._wh を優先 */
-              var lineId2=rr.line.line;
-              var take=Math.min(remaining,ah2.qty);
-              /* HELD 減算 */
-              if(ah2.isDoor){
-                if(HELD[lineId2]&&HELD[lineId2][wh2]&&HELD[lineId2][wh2][ah2.key]&&HELD[lineId2][wh2][ah2.key][ah2.color]){
-                  HELD[lineId2][wh2][ah2.key][ah2.color][ah2.size]=Math.max(0,(HELD[lineId2][wh2][ah2.key][ah2.color][ah2.size]||0)-take);
+            if(diff<0){
+              /* === 減量パターン（既存ロジック） === */
+              var remaining=Math.abs(diff);
+              for(var i=group.refs.length-1;i>=0&&remaining>0;i--){
+                var rr=group.refs[i];var ah2=rr.ah;
+                var wh2=ah2._wh||rr.wh;
+                var lineId2=rr.line.line;
+                var take=Math.min(remaining,ah2.qty);
+                if(ah2.isDoor){
+                  if(HELD[lineId2]&&HELD[lineId2][wh2]&&HELD[lineId2][wh2][ah2.key]&&HELD[lineId2][wh2][ah2.key][ah2.color]){
+                    HELD[lineId2][wh2][ah2.key][ah2.color][ah2.size]=Math.max(0,(HELD[lineId2][wh2][ah2.key][ah2.color][ah2.size]||0)-take);
+                  }
+                }else if(ah2.sub!==undefined){
+                  var hl3=(ah2.heldLine||lineId2);
+                  if(HELD[hl3]&&HELD[hl3][wh2]&&HELD[hl3][wh2][ah2.key]){
+                    HELD[hl3][wh2][ah2.key][ah2.sub]=Math.max(0,(HELD[hl3][wh2][ah2.key][ah2.sub]||0)-take);
+                  }
+                }else{
+                  var hl4=(ah2.heldLine||lineId2);
+                  if(HELD[hl4]&&HELD[hl4][wh2]){
+                    HELD[hl4][wh2][ah2.key]=Math.max(0,(HELD[hl4][wh2][ah2.key]||0)-take);
+                  }
                 }
-              }else if(ah2.sub!==undefined){
-                var hl3=(ah2.heldLine||lineId2);
-                if(HELD[hl3]&&HELD[hl3][wh2]&&HELD[hl3][wh2][ah2.key]){
-                  HELD[hl3][wh2][ah2.key][ah2.sub]=Math.max(0,(HELD[hl3][wh2][ah2.key][ah2.sub]||0)-take);
-                }
-              }else{
-                var hl4=(ah2.heldLine||lineId2);
-                if(HELD[hl4]&&HELD[hl4][wh2]){
-                  HELD[hl4][wh2][ah2.key]=Math.max(0,(HELD[hl4][wh2][ah2.key]||0)-take);
+                ah2.qty-=take;
+                remaining-=take;
+                if(ah2.qty===0){
+                  var idx=rr.line._actualHeld.indexOf(ah2);
+                  if(idx>=0)rr.line._actualHeld.splice(idx,1);
+                  rr.line._hadActualHeld=true;
                 }
               }
-              ah2.qty-=take;
-              remaining-=take;
-              /* qty=0 になった ah は _actualHeld から削除（v14.3: フラグで追跡情報保持） */
-              if(ah2.qty===0){
-                var idx=rr.line._actualHeld.indexOf(ah2);
-                if(idx>=0)rr.line._actualHeld.splice(idx,1);
-                rr.line._hadActualHeld=true;
+              if(!od._partialReleases)od._partialReleases=[];
+              od._partialReleases.push({
+                date:new Date().toLocaleString('ja-JP'),
+                line:group.line,
+                key:group.key,sub:group.sub,color:group.color,doorSub:group.doorSub,isDoor:group.isDoor,
+                from:group.qty,to:newQty,released:Math.abs(diff),user:p.userName||''
+              });
+              p.toast(group.label+' を '+group.qty+' → '+newQty+' に部分解放しました');
+              heldDetail[1](Object.assign({},od));bump[1](bump[0]+1);saveAll();
+              broadcastOrderUpdate(p.userName,'仮押さえ部分解放: '+od.no+' / '+group.label+' -'+Math.abs(diff));
+            }else{
+              /* === 増量パターン（v14.4 新規） === */
+              var addQty=diff;
+              var rrFirst=group.refs[0];
+              var wh3=rrFirst.ah._wh||rrFirst.wh;
+              var lineId3=rrFirst.line.line;
+              var holdLine3=isCommonStockKey(group.key)?'jp2':lineId3;
+              /* 空き在庫チェック */
+              var availQ;
+              if(group.isDoor){availQ=availD(lineId3,wh3,group.color,group.doorSub,group.key);}
+              else if(group.sub!==undefined){availQ=avail(holdLine3,wh3,group.key,group.sub);}
+              else{availQ=avail(holdLine3,wh3,group.key);}
+              var actualAdd=Math.min(Math.max(0,availQ),addQty);
+              var shortAdd=addQty-actualAdd;
+              if(actualAdd>0){
+                /* HELD 増加 */
+                if(group.isDoor){
+                  if(!HELD[lineId3][wh3][group.key])HELD[lineId3][wh3][group.key]={};
+                  if(!HELD[lineId3][wh3][group.key][group.color])HELD[lineId3][wh3][group.key][group.color]={};
+                  HELD[lineId3][wh3][group.key][group.color][group.doorSub]=(HELD[lineId3][wh3][group.key][group.color][group.doorSub]||0)+actualAdd;
+                }else if(group.sub!==undefined){
+                  if(!HELD[holdLine3])HELD[holdLine3]={};
+                  if(!HELD[holdLine3][wh3])HELD[holdLine3][wh3]={door:{},doorH:{}};
+                  if(!HELD[holdLine3][wh3][group.key])HELD[holdLine3][wh3][group.key]={};
+                  HELD[holdLine3][wh3][group.key][group.sub]=(HELD[holdLine3][wh3][group.key][group.sub]||0)+actualAdd;
+                }else{
+                  if(!HELD[holdLine3])HELD[holdLine3]={};
+                  if(!HELD[holdLine3][wh3])HELD[holdLine3][wh3]={door:{},doorH:{}};
+                  HELD[holdLine3][wh3][group.key]=(HELD[holdLine3][wh3][group.key]||0)+actualAdd;
+                }
+                /* _actualHeld 追加（マイナス released で記録することで出荷時BOM補正と整合させる） */
+                var ahNew={isDoor:group.isDoor,key:group.key,sub:group.sub,color:group.color,size:group.doorSub,qty:actualAdd,heldLine:holdLine3,_wh:wh3,_addedAfter:true};
+                rrFirst.line._actualHeld.push(ahNew);
+                rrFirst.line._hadActualHeld=true;
+                /* マイナス部分解放として履歴記録（出荷時BOMにこの分を「追加」する役割） */
+                if(!od._partialReleases)od._partialReleases=[];
+                od._partialReleases.push({
+                  date:new Date().toLocaleString('ja-JP'),
+                  line:group.line,
+                  key:group.key,sub:group.sub,color:group.color,doorSub:group.doorSub,isDoor:group.isDoor,
+                  from:group.qty,to:newQty,released:-actualAdd,/* マイナス = 増量 */
+                  user:p.userName||'',addedAfter:true
+                });
               }
+              if(shortAdd>0){
+                if(!od.unsecuredParts)od.unsecuredParts=[];
+                od.unsecuredParts.push({line:lineId3,wh:wh3,key:group.key,sub:group.sub,color:group.color,size:group.doorSub,qty:shortAdd,label:group.label,isDoor:group.isDoor});
+              }
+              p.toast(group.label+' を '+group.qty+' → '+(group.qty+actualAdd)+' に増量'+(shortAdd>0?'（不足 '+shortAdd+' は発注待ち）':''));
+              heldDetail[1](Object.assign({},od));bump[1](bump[0]+1);saveAll();
+              broadcastOrderUpdate(p.userName,'仮押さえ増量: '+od.no+' / '+group.label+' +'+actualAdd);
             }
-            /* 部分解放を案件メタ情報に記録（後の出荷時に "減らした分はBOMからも除外" するため）
-               v14.2: doorSubと製品ライン(line)も必ず記録して shipOrder/shipOrderMulti のキー突合が成立するようにする */
-            if(!od._partialReleases)od._partialReleases=[];
-            od._partialReleases.push({
-              date:new Date().toLocaleString('ja-JP'),
-              line:group.line,/* v14.2 Codex P2対応: 製品ラインIDで突合 */
-              key:group.key,sub:group.sub,color:group.color,doorSub:group.doorSub,isDoor:group.isDoor,
-              from:group.qty,to:newQty,released:Math.abs(diff),user:p.userName||''
-            });
-            p.toast(group.label+' を '+group.qty+' → '+newQty+' に部分解放しました');
-            heldDetail[1](Object.assign({},od));bump[1](bump[0]+1);saveAll();
-            broadcastOrderUpdate(p.userName,'仮押さえ部分解放: '+od.no+' / '+group.label+' -'+Math.abs(diff));
           };
           return h('div',{style:{marginBottom:10,padding:8,background:'#F0FDF4',borderRadius:6,border:'1px solid #A7F3D0'}},
             h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6,color:'#065F46'}},'📦 仮押さえ内訳（倉庫別パーツ数・日本語表示）'),
+            h('div',{style:{fontSize:9,color:'#065F46',marginBottom:6}},'※ 各パーツの「✎ 数量編集」で個別に増量・減量できます。0 にすると全解放。空き在庫を超える場合は未確保(発注待ち)に登録されます。'),
             Object.keys(partsByWh).map(function(wh){
               var keys=Object.keys(partsByWh[wh]);
               if(!keys.length)return null;
               return h('div',{key:wh,style:{marginBottom:6}},
                 h('div',{style:{fontSize:10,fontWeight:700,color:'#0369A1',marginBottom:3}},'🏭 '+(WH_MAP[wh]||{n:wh}).n+'：'+keys.length+'種類'),
                 h('table',{className:'tbl',style:{fontSize:10}},
-                  h('thead',null,h('tr',null,h('th',null,'パーツ'),h('th',{style:{width:80,textAlign:'right'}},'押さえ数'),h('th',{style:{width:110,textAlign:'center'}},'部分解放'))),
+                  h('thead',null,h('tr',null,h('th',null,'パーツ'),h('th',{style:{width:80,textAlign:'right'}},'押さえ数'),h('th',{style:{width:110,textAlign:'center'}},'数量編集'))),
                   h('tbody',null,keys.map(function(k){
                     var g=partsByWh[wh][k];
                     var editable=g.refs&&g.refs.length>0;
                     return h('tr',{key:k},
                       h('td',null,g.label),
                       h('td',{style:{textAlign:'right',fontWeight:700,color:'#D97706'}},fm(g.qty)),
-                      h('td',{style:{textAlign:'center'}},editable?h('button',{className:'btn btn-xs btn-or',title:'このパーツの押さえを部分解放（減量のみ）',onClick:function(){changePartQty(g);}},'➖ 部分解放'):h('span',{style:{fontSize:9,color:'var(--g400)'}},'-'))
+                      h('td',{style:{textAlign:'center'}},editable?h('button',{className:'btn btn-xs btn-tl',title:'このパーツを個別に増量・減量する',onClick:function(){changePartQty(g);}},'✎ 数量編集'):h('span',{style:{fontSize:9,color:'var(--g400)'}},'-'))
                     );
                   }))
                 )
@@ -4822,6 +4987,66 @@ function PartsPage(p){
             p.toast('確定案件をExcel出力しました');
           }catch(e){p.toast('Excel出力に失敗: '+e.message);}
         }},'📊 Excel出力'),
+        /* v14.4: 納品完了のみフィルタしたパーツ別Excel */
+        h('button',{className:'btn btn-pr',onClick:function(){
+          try{
+            var deliv=ORDERS.filter(function(o){return o.status==='納品完了';});
+            if(!deliv.length){p.toast('納品完了案件がありません');return;}
+            var wb=XLSX.utils.book_new();
+            /* 一覧 */
+            var listData=[['【納品完了案件一覧】 出力日: '+td2()],[],['案件No','顧客名','日付','倉庫','合計台数','送料','明細件数']];
+            deliv.forEach(function(o){
+              var c=CUSTS.find(function(x){return x.id===o.cid;});
+              var totalQty=o.lines.reduce(function(s,l){return l.isFreeInput?s:s+l.qty;},0);
+              listData.push([o.no,c?c.name:'',o.date,WH_MAP[o.wh]?WH_MAP[o.wh].n:'',totalQty,o.shipping||0,o.lines.length]);
+            });
+            XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(listData),'納品完了一覧');
+            /* パーツ別集計 */
+            var partsAggD={};
+            deliv.forEach(function(o){
+              var pp=computeOrderParts(o);
+              Object.keys(pp).forEach(function(k){if(!partsAggD[k])partsAggD[k]=0;partsAggD[k]+=pp[k];});
+            });
+            var keyToJPd=function(k){
+              var ks=k.split(':');
+              if(ks.length===3)return partLabelJP(ks[0],null,ks[1],true)+' '+ks[2];
+              if(ks.length===2)return partLabelJP(ks[0],ks[1]);
+              return partLabelJP(ks[0]);
+            };
+            var pdData=[['【納品完了 パーツ別集計】 出力日: '+td2()],[],['部材名','合計納品数','パーツキー（参考）']];
+            Object.keys(partsAggD).sort().forEach(function(k){pdData.push([keyToJPd(k),partsAggD[k],k]);});
+            var wsPD=XLSX.utils.aoa_to_sheet(pdData);
+            wsPD['!cols']=[{wch:36},{wch:14},{wch:30}];
+            XLSX.utils.book_append_sheet(wb,wsPD,'パーツ別集計');
+            /* 案件×パーツマトリクス */
+            var allKeysD=Object.keys(partsAggD).sort();
+            var mDataD=[['【納品完了 案件×パーツ マトリクス】'],[],['部材名'].concat(deliv.map(function(o){return o.no;})).concat(['合計'])];
+            allKeysD.forEach(function(k){
+              var row=[keyToJPd(k)];var sum=0;
+              deliv.forEach(function(o){var p2=computeOrderParts(o);var v=p2[k]||0;row.push(v);sum+=v;});
+              row.push(sum);mDataD.push(row);
+            });
+            XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(mDataD),'案件×パーツ');
+            /* 顧客×パーツマトリクス（顧客別納品集計） */
+            var custParts={};
+            deliv.forEach(function(o){
+              var c=CUSTS.find(function(x){return x.id===o.cid;});
+              var cn=c?c.name:'(不明)';
+              var pp=computeOrderParts(o);
+              if(!custParts[cn])custParts[cn]={};
+              Object.keys(pp).forEach(function(k){custParts[cn][k]=(custParts[cn][k]||0)+pp[k];});
+            });
+            var cpData=[['【納品完了 顧客×パーツ マトリクス】'],[],['部材名'].concat(Object.keys(custParts)).concat(['合計'])];
+            allKeysD.forEach(function(k){
+              var row=[keyToJPd(k)];var sum=0;
+              Object.keys(custParts).forEach(function(cn){var v=custParts[cn][k]||0;row.push(v);sum+=v;});
+              row.push(sum);cpData.push(row);
+            });
+            XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cpData),'顧客×パーツ');
+            XLSX.writeFile(wb,'納品完了_'+td2().replace(/\//g,'-')+'.xlsx');
+            p.toast('納品完了をExcel出力しました（4シート: 一覧/パーツ別集計/案件×パーツ/顧客×パーツ）');
+          }catch(e){p.toast('Excel出力に失敗: '+e.message);}
+        }},'📦 納品完了Excel'),
         h('button',{className:'btn btn-ol',onClick:function(){showConfirmedOrders[1](false);}},'閉じる')
       )},
       h('div',{style:{maxHeight:'60vh',overflow:'auto'}},
@@ -4899,8 +5124,32 @@ function PartsPage(p){
               var a=aggI[k];aggData.push([a.label,WH_MAP[a.wh]?WH_MAP[a.wh].n:(a.wh||''),a.status,a.qty]);
             });
             XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aggData),'パーツ別集計');
+            /* v14.4: 在庫表形式（パーツ×倉庫マトリクス、状態別合計） */
+            var partWhMtx={};/* {label: {wh: {予定: qty, 入庫済: qty}}} */
+            INCOMING.forEach(function(inc){
+              inc.items.forEach(function(it){
+                var lbl=it.label||it.key||'';
+                if(!partWhMtx[lbl])partWhMtx[lbl]={};
+                if(!partWhMtx[lbl][inc.wh])partWhMtx[lbl][inc.wh]={'予定':0,'入庫済':0};
+                partWhMtx[lbl][inc.wh][inc.status||'予定']+=parseInt(it.qty)||0;
+              });
+            });
+            var mtxData=[['【在庫表形式: パーツ×倉庫マトリクス】 出力日: '+td2()],[],
+              ['部材'].concat(WH_IDS.map(function(w){return WH_MAP[w].s+'(予定)';})).concat(WH_IDS.map(function(w){return WH_MAP[w].s+'(入庫済)';})).concat(['全倉庫合計(予定)','全倉庫合計(入庫済)'])
+            ];
+            Object.keys(partWhMtx).sort().forEach(function(lbl){
+              var row=[lbl];
+              var sumPlan=0,sumDone=0;
+              WH_IDS.forEach(function(w){var v=(partWhMtx[lbl][w]&&partWhMtx[lbl][w]['予定'])||0;row.push(v);sumPlan+=v;});
+              WH_IDS.forEach(function(w){var v=(partWhMtx[lbl][w]&&partWhMtx[lbl][w]['入庫済'])||0;row.push(v);sumDone+=v;});
+              row.push(sumPlan,sumDone);
+              mtxData.push(row);
+            });
+            var wsMtx=XLSX.utils.aoa_to_sheet(mtxData);
+            wsMtx['!cols']=[{wch:30}].concat(WH_IDS.map(function(){return{wch:12};})).concat(WH_IDS.map(function(){return{wch:12};})).concat([{wch:16},{wch:16}]);
+            XLSX.utils.book_append_sheet(wb,wsMtx,'在庫表形式(パーツ×倉庫)');
             XLSX.writeFile(wb,'入庫予定_'+td2().replace(/\//g,'-')+'.xlsx');
-            p.toast('入庫予定をExcel出力しました');
+            p.toast('入庫予定をExcel出力しました（3シート: 一覧/パーツ別集計/在庫表形式）');
           }catch(e){p.toast('Excel出力に失敗: '+e.message);}
         }},'📊 Excel出力'),
         h('button',{className:'btn btn-ol',onClick:function(){showIncoming[1](false);}},'閉じる'))},
@@ -5072,8 +5321,44 @@ function PartsPage(p){
             LINES.forEach(function(lnObj){sumData.push([lnObj.name,lineTotals[lnObj.id]||0]);});
             sumData.push(['総合計',grand]);
             XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sumData),'サマリー');
+            /* v14.4: 在庫表形式（パーツ×ライン×倉庫マトリクス、金額・数量併記） */
+            var mtxHeader=['部材','単価'];
+            LINES.forEach(function(lnObj){
+              var lnWhs=WH_IDS.filter(function(w){return hasStock(lnObj.id,w);});
+              lnWhs.forEach(function(w){mtxHeader.push(lnObj.name+'/'+WH_MAP[w].s+'(数)');});
+              mtxHeader.push(lnObj.name+' 計(数)');
+            });
+            mtxHeader.push('全ライン合計(数)','金額');
+            var mtxRows=[['【在庫表形式: パーツ×ライン×倉庫 (在庫資産)】 出力日: '+td2()],[],mtxHeader];
+            structRowsAll.forEach(function(row){
+              var cost=row.sub!==undefined?(UNIT_COST[row.key]&&UNIT_COST[row.key][row.sub]||0):(typeof UNIT_COST[row.key]==='number'?UNIT_COST[row.key]:0);
+              var dataRow=[row.label,cost];
+              var grandRowQty=0;
+              LINES.forEach(function(lnObj){
+                if(isCommonStockKey(row.key)&&lnObj.id!=='jp2'){
+                  var lnWhs0=WH_IDS.filter(function(w){return hasStock(lnObj.id,w);});
+                  lnWhs0.forEach(function(){dataRow.push('-');});
+                  dataRow.push('-');
+                  return;
+                }
+                var lnWhs=WH_IDS.filter(function(w){return hasStock(lnObj.id,w);});
+                var lnTotal=0;
+                lnWhs.forEach(function(w){
+                  var stkVal;
+                  if(row.sub!==undefined){var o=STK[lnObj.id]&&STK[lnObj.id][w]&&STK[lnObj.id][w][row.key];stkVal=(o&&o[row.sub])||0;}
+                  else{stkVal=(STK[lnObj.id]&&STK[lnObj.id][w]&&STK[lnObj.id][w][row.key])||0;}
+                  dataRow.push(stkVal);lnTotal+=stkVal;
+                });
+                dataRow.push(lnTotal);
+                grandRowQty+=lnTotal;
+              });
+              dataRow.push(grandRowQty,grandRowQty*cost);
+              if(grandRowQty>0)mtxRows.push(dataRow);
+            });
+            var wsMtxA=XLSX.utils.aoa_to_sheet(mtxRows);
+            XLSX.utils.book_append_sheet(wb,wsMtxA,'在庫表形式(パーツ別)');
             XLSX.writeFile(wb,'在庫資産_'+td2().replace(/\//g,'-')+'.xlsx');
-            p.toast('在庫資産をExcel出力しました');
+            p.toast('在庫資産をExcel出力しました（ライン別＋サマリー＋在庫表形式）');
           }catch(e){p.toast('Excel出力に失敗: '+e.message);}
         }},'📊 Excel出力'),
         h('button',{className:'btn btn-ol',onClick:function(){showAssetCalc[1](false);}},'閉じる'))},
