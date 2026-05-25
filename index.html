@@ -4264,6 +4264,163 @@ function PartsPage(p){
         try{var cpH=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpH.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
         var orderParts=held.map(function(o){return{order:o,parts:computeOrderParts(o),cust:CUSTS.find(function(x){return x.id===o.cid;})};});
+        /* v14.4 hotfix: 仮押さえ一覧テーブルから直接、案件×パーツのセルをクリックして数量変更
+           対象セルの (案件, uniRow) から該当する _actualHeld エントリ群を引き、changePartQty 相当の処理を実施 */
+        var changeQtyInList=function(order,uniRow,currentQty){
+          if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+          var label=(uniRow.item||uniRow.variant||uniRow.key)+(uniRow.isDoor&&uniRow.doorSub?' '+uniRow.doorSub:(uniRow.variant&&uniRow.item?' '+uniRow.variant:''));
+          var refs=[];
+          order.lines.forEach(function(ln){
+            if(!ln._actualHeld)return;
+            ln._actualHeld.forEach(function(ah){
+              var match=false;
+              if(uniRow.isDoor){
+                match=ah.isDoor&&ah.key===uniRow.dk&&ah.color===uniRow.color&&ah.size===uniRow.doorSub;
+              }else if(uniRow.sub!==undefined){
+                match=!ah.isDoor&&ah.key===uniRow.key&&ah.sub===uniRow.sub;
+              }else{
+                match=!ah.isDoor&&ah.key===uniRow.key&&!ah.sub;
+              }
+              if(match)refs.push({line:ln,ah:ah,wh:ah._wh||ln._heldWh||order.wh});
+            });
+          });
+          if(refs.length===0&&currentQty===0){
+            /* 新規パーツ追加: order.lines に isPartOnly line を追加 */
+            var newQtyStrZ=prompt(order.no+' / '+label+'\n\n現在: 0（仮押さえなし）\n\n新規に押さえる数量を入力してください（空き在庫を超える分は発注待ちに登録）','');
+            if(newQtyStrZ===null||newQtyStrZ==='')return;
+            var newQtyZ=parseInt(newQtyStrZ);
+            if(isNaN(newQtyZ)||newQtyZ<=0){p.toast('1以上の数量を入力してください');return;}
+            var holdLineZ=isCommonStockKey(uniRow.isDoor?uniRow.dk:uniRow.key)?'jp2':selLine[0];
+            var whZ=order.wh;
+            var availZ;
+            if(uniRow.isDoor){availZ=availD(selLine[0],whZ,uniRow.color,uniRow.doorSub,uniRow.dk);}
+            else if(uniRow.sub!==undefined){availZ=avail(holdLineZ,whZ,uniRow.key,uniRow.sub);}
+            else{availZ=avail(holdLineZ,whZ,uniRow.key);}
+            var actualAddZ=Math.min(Math.max(0,availZ),newQtyZ);
+            var shortAddZ=newQtyZ-actualAddZ;
+            /* 新規 isPartOnly line として追加 */
+            var newLine={
+              id:Date.now()+Math.random(),
+              line:selLine[0],
+              isPartOnly:true,
+              partKey:uniRow.isDoor?uniRow.dk:uniRow.key,
+              partSub:uniRow.isDoor?uniRow.doorSub:uniRow.sub,
+              partColor:uniRow.color||null,
+              isDoor:!!uniRow.isDoor,
+              qty:newQtyZ,
+              unitPrice:0,
+              partLabel:label,
+              size:uniRow.doorSub||'',
+              color:uniRow.color||'',
+              islands:0,tiers:0,lock:'none',type:'standard',
+              _actualHeld:[],_heldWh:whZ,_hadActualHeld:true,_addedFromList:true
+            };
+            if(actualAddZ>0){
+              if(uniRow.isDoor){
+                if(!HELD[selLine[0]])HELD[selLine[0]]={};
+                if(!HELD[selLine[0]][whZ])HELD[selLine[0]][whZ]={door:{},doorH:{}};
+                if(!HELD[selLine[0]][whZ][uniRow.dk])HELD[selLine[0]][whZ][uniRow.dk]={};
+                if(!HELD[selLine[0]][whZ][uniRow.dk][uniRow.color])HELD[selLine[0]][whZ][uniRow.dk][uniRow.color]={};
+                HELD[selLine[0]][whZ][uniRow.dk][uniRow.color][uniRow.doorSub]=(HELD[selLine[0]][whZ][uniRow.dk][uniRow.color][uniRow.doorSub]||0)+actualAddZ;
+              }else if(uniRow.sub!==undefined){
+                if(!HELD[holdLineZ])HELD[holdLineZ]={};
+                if(!HELD[holdLineZ][whZ])HELD[holdLineZ][whZ]={door:{},doorH:{}};
+                if(!HELD[holdLineZ][whZ][uniRow.key])HELD[holdLineZ][whZ][uniRow.key]={};
+                HELD[holdLineZ][whZ][uniRow.key][uniRow.sub]=(HELD[holdLineZ][whZ][uniRow.key][uniRow.sub]||0)+actualAddZ;
+              }else{
+                if(!HELD[holdLineZ])HELD[holdLineZ]={};
+                if(!HELD[holdLineZ][whZ])HELD[holdLineZ][whZ]={door:{},doorH:{}};
+                HELD[holdLineZ][whZ][uniRow.key]=(HELD[holdLineZ][whZ][uniRow.key]||0)+actualAddZ;
+              }
+              newLine._actualHeld.push({
+                isDoor:!!uniRow.isDoor,key:uniRow.isDoor?uniRow.dk:uniRow.key,
+                sub:uniRow.isDoor?undefined:uniRow.sub,color:uniRow.color,size:uniRow.doorSub,
+                qty:actualAddZ,heldLine:holdLineZ,_wh:whZ,_addedAfter:true
+              });
+            }
+            if(shortAddZ>0){
+              if(!order.unsecuredParts)order.unsecuredParts=[];
+              order.unsecuredParts.push({line:selLine[0],wh:whZ,key:uniRow.isDoor?uniRow.dk:uniRow.key,sub:uniRow.sub,color:uniRow.color,size:uniRow.doorSub,qty:shortAddZ,label:label,isDoor:!!uniRow.isDoor});
+            }
+            order.lines.push(newLine);
+            p.toast(order.no+' / '+label+' を新規に '+actualAddZ+' 押さえました'+(shortAddZ>0?'（不足 '+shortAddZ+' は発注待ち）':''));
+            bump[1](bump[0]+1);saveAll();
+            broadcastOrderUpdate(p.userName,'仮押さえ新規追加(一覧から): '+order.no+' / '+label+' +'+actualAddZ);
+            return;
+          }
+          if(refs.length===0){
+            p.toast('このパーツは旧データ形式のため一覧から編集できません。「仮押さえ案件」→案件詳細から編集してください');
+            return;
+          }
+          var newQtyStr=prompt(order.no+' / '+label+'\n\n現在の押さえ数: '+currentQty+'\n\n新しい数量を入力してください（増減両方OK、0で全解放）',currentQty);
+          if(newQtyStr===null)return;
+          var newQty=parseInt(newQtyStr);
+          if(isNaN(newQty)||newQty<0){p.toast('不正な数量です');return;}
+          var diff=newQty-currentQty;
+          if(diff===0)return;
+          if(diff<0){
+            var remaining=Math.abs(diff);
+            for(var i=refs.length-1;i>=0&&remaining>0;i--){
+              var rr=refs[i];var ah=rr.ah;var wh2=rr.wh;var lineId2=rr.line.line;
+              var take=Math.min(remaining,ah.qty);
+              if(ah.isDoor){
+                if(HELD[lineId2]&&HELD[lineId2][wh2]&&HELD[lineId2][wh2][ah.key]&&HELD[lineId2][wh2][ah.key][ah.color]){
+                  HELD[lineId2][wh2][ah.key][ah.color][ah.size]=Math.max(0,(HELD[lineId2][wh2][ah.key][ah.color][ah.size]||0)-take);
+                }
+              }else if(ah.sub!==undefined){
+                var hl=ah.heldLine||lineId2;
+                if(HELD[hl]&&HELD[hl][wh2]&&HELD[hl][wh2][ah.key]){HELD[hl][wh2][ah.key][ah.sub]=Math.max(0,(HELD[hl][wh2][ah.key][ah.sub]||0)-take);}
+              }else{
+                var hl2=ah.heldLine||lineId2;
+                if(HELD[hl2]&&HELD[hl2][wh2]){HELD[hl2][wh2][ah.key]=Math.max(0,(HELD[hl2][wh2][ah.key]||0)-take);}
+              }
+              ah.qty-=take;remaining-=take;
+              if(ah.qty===0){var idx=rr.line._actualHeld.indexOf(ah);if(idx>=0)rr.line._actualHeld.splice(idx,1);rr.line._hadActualHeld=true;}
+            }
+            if(!order._partialReleases)order._partialReleases=[];
+            order._partialReleases.push({date:new Date().toLocaleString('ja-JP'),line:refs[0].line.line,key:uniRow.isDoor?uniRow.dk:uniRow.key,sub:uniRow.sub,color:uniRow.color,doorSub:uniRow.doorSub,isDoor:!!uniRow.isDoor,from:currentQty,to:newQty,released:Math.abs(diff),user:p.userName||''});
+            p.toast(order.no+' / '+label+' を '+currentQty+' → '+newQty+' に部分解放');
+          }else{
+            var addQty=diff;var rrFirst=refs[0];var wh3=rrFirst.ah._wh||rrFirst.wh;var lineId3=rrFirst.line.line;
+            var gKey=uniRow.isDoor?uniRow.dk:uniRow.key;
+            var holdLine3=isCommonStockKey(gKey)?'jp2':lineId3;
+            var availQ;
+            if(uniRow.isDoor){availQ=availD(lineId3,wh3,uniRow.color,uniRow.doorSub,uniRow.dk);}
+            else if(uniRow.sub!==undefined){availQ=avail(holdLine3,wh3,uniRow.key,uniRow.sub);}
+            else{availQ=avail(holdLine3,wh3,uniRow.key);}
+            var actualAdd=Math.min(Math.max(0,availQ),addQty);
+            var shortAdd=addQty-actualAdd;
+            if(actualAdd>0){
+              if(uniRow.isDoor){
+                if(!HELD[lineId3])HELD[lineId3]={};
+                if(!HELD[lineId3][wh3])HELD[lineId3][wh3]={door:{},doorH:{}};
+                if(!HELD[lineId3][wh3][uniRow.dk])HELD[lineId3][wh3][uniRow.dk]={};
+                if(!HELD[lineId3][wh3][uniRow.dk][uniRow.color])HELD[lineId3][wh3][uniRow.dk][uniRow.color]={};
+                HELD[lineId3][wh3][uniRow.dk][uniRow.color][uniRow.doorSub]=(HELD[lineId3][wh3][uniRow.dk][uniRow.color][uniRow.doorSub]||0)+actualAdd;
+              }else if(uniRow.sub!==undefined){
+                if(!HELD[holdLine3])HELD[holdLine3]={};
+                if(!HELD[holdLine3][wh3])HELD[holdLine3][wh3]={door:{},doorH:{}};
+                if(!HELD[holdLine3][wh3][uniRow.key])HELD[holdLine3][wh3][uniRow.key]={};
+                HELD[holdLine3][wh3][uniRow.key][uniRow.sub]=(HELD[holdLine3][wh3][uniRow.key][uniRow.sub]||0)+actualAdd;
+              }else{
+                if(!HELD[holdLine3])HELD[holdLine3]={};
+                if(!HELD[holdLine3][wh3])HELD[holdLine3][wh3]={door:{},doorH:{}};
+                HELD[holdLine3][wh3][uniRow.key]=(HELD[holdLine3][wh3][uniRow.key]||0)+actualAdd;
+              }
+              rrFirst.line._actualHeld.push({isDoor:!!uniRow.isDoor,key:gKey,sub:uniRow.sub,color:uniRow.color,size:uniRow.doorSub,qty:actualAdd,heldLine:holdLine3,_wh:wh3,_addedAfter:true});
+              rrFirst.line._hadActualHeld=true;
+              if(!order._partialReleases)order._partialReleases=[];
+              order._partialReleases.push({date:new Date().toLocaleString('ja-JP'),line:lineId3,key:gKey,sub:uniRow.sub,color:uniRow.color,doorSub:uniRow.doorSub,isDoor:!!uniRow.isDoor,from:currentQty,to:newQty,released:-actualAdd,user:p.userName||'',addedAfter:true});
+            }
+            if(shortAdd>0){
+              if(!order.unsecuredParts)order.unsecuredParts=[];
+              order.unsecuredParts.push({line:lineId3,wh:wh3,key:gKey,sub:uniRow.sub,color:uniRow.color,size:uniRow.doorSub,qty:shortAdd,label:label,isDoor:!!uniRow.isDoor});
+            }
+            p.toast(order.no+' / '+label+' を '+currentQty+' → '+(currentQty+actualAdd)+' に増量'+(shortAdd>0?'（不足 '+shortAdd+' は発注待ち）':''));
+          }
+          bump[1](bump[0]+1);saveAll();
+          broadcastOrderUpdate(p.userName,'仮押さえ数量変更(一覧から): '+order.no+' / '+label+' →'+newQty);
+        };
         return h('table',{className:'tbl',style:{fontSize:12}},
           h('thead',null,
             h('tr',null,
@@ -4294,7 +4451,10 @@ function PartsPage(p){
               h('td',{style:{textAlign:'center',fontSize:10,color:'var(--g500)'}},r.irisu||''),
               orderParts.map(function(op){
                 var qty=op.parts[pk]||0;
-                return h('td',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g100)',fontWeight:qty>0?700:400,color:qty>0?'#D97706':'var(--g300)'}},qty>0?fm(qty):'-');
+                /* v14.4 hotfix: セルクリックで数量編集（qty>0は変更、qty=0は新規追加） */
+                return h('td',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g100)',fontWeight:qty>0?700:400,color:qty>0?'#D97706':'var(--g400)',cursor:'pointer',background:qty>0?'rgba(245,158,11,0.06)':''},title:qty>0?'クリックで数量編集（増減・解放）':'クリックで新規に押さえ追加',onClick:function(){changeQtyInList(op.order,r,qty);}},
+                  qty>0?fm(qty):h('span',{style:{fontSize:14,color:'var(--g300)'}},'＋')
+                );
               })
             );
           }))
