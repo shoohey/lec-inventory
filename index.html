@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.4（2026-05-26更新）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.5（2026-05-30更新）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -287,7 +287,7 @@ var IRISU={
   handle:100,
   hanger:16,connector:{XL:16,SS:20},anchorCap:{bk:500,gy:200},topJoint:300,
   nameplate:200,namePaper:500,
-  dialH110:50,dialH110new:50,dialH111:50,dialH111new:50,dialH112:50,dialImon:50,dialDST:50,totte:100,
+  dial:50,dialH110:50,dialH110new:50,dialH111:50,dialH111new:50,dialH112:50,dialImon:50,dialDST:50,totte:100,
   searchKey:100,masterKey:100,
   padlock:150,
   cylinder:100,cylinderLongStd:100,cylinderLongF:100,cylinderLongB:100,cylinderShortStd:100,cylinderShortF:100,cylinderShortB:100,cylinderShortC:100,cylinderExchange:100,cylinderExchangeSpare:100,cylinderMaster:50,
@@ -866,9 +866,11 @@ function shipOrderMulti(order){
       if(b.sub!==undefined){
         var pk2=ln.line+'|'+b.key+'|'+(b.sub||'');
         if(prSub[pk2]>0){var d2=Math.min(b.qty,prSub[pk2]);b.qty-=d2;prSub[pk2]-=d2;}
+        else if(prSub[pk2]<0){b.qty+=(-prSub[pk2]);prSub[pk2]=0;}/* v14.5 C1: 数量編集の増量分を出荷BOMに加算 */
       }else{
         var pk3=ln.line+'|'+b.key+'|';
         if(prSub[pk3]>0){var d3=Math.min(b.qty,prSub[pk3]);b.qty-=d3;prSub[pk3]-=d3;}
+        else if(prSub[pk3]<0){b.qty+=(-prSub[pk3]);prSub[pk3]=0;}/* v14.5 C1: 増量分を加算 */
       }
     });
     bom=bom.filter(function(b){return b.isDoor||b.qty>0;});
@@ -881,6 +883,7 @@ function shipOrderMulti(order){
         doorColors2.forEach(function(dc){
           var pk=ln.line+'|'+b.key+'|'+(dc.color||'')+'|'+(b.doorSub||ln.size||'');
           if(prDoor[pk]>0){var dd=Math.min(dc.qty,prDoor[pk]);dc.qty-=dd;prDoor[pk]-=dd;}
+          else if(prDoor[pk]<0){dc.qty+=(-prDoor[pk]);prDoor[pk]=0;}/* v14.5 C1: 扉の増量分を加算 */
         });
         doorColors2.forEach(function(dc){
           if(dc.qty<=0)return;
@@ -976,9 +979,11 @@ function shipOrder(order){
       if(b.sub!==undefined){
         var pk2=ln.line+'|'+b.key+'|'+(b.sub||'');
         if(prSub[pk2]>0){var d2=Math.min(b.qty,prSub[pk2]);b.qty-=d2;prSub[pk2]-=d2;}
+        else if(prSub[pk2]<0){b.qty+=(-prSub[pk2]);prSub[pk2]=0;}/* v14.5 C1: 数量編集の増量分を出荷BOMに加算 */
       }else{
         var pk3=ln.line+'|'+b.key+'|';
         if(prSub[pk3]>0){var d3=Math.min(b.qty,prSub[pk3]);b.qty-=d3;prSub[pk3]-=d3;}
+        else if(prSub[pk3]<0){b.qty+=(-prSub[pk3]);prSub[pk3]=0;}/* v14.5 C1: 増量分を加算 */
       }
     });
     bom=bom.filter(function(b){return b.isDoor||b.qty>0;});
@@ -994,6 +999,7 @@ function shipOrder(order){
             var dd=Math.min(dc.qty,prDoor[pk]);
             dc.qty-=dd;prDoor[pk]-=dd;
           }
+          else if(prDoor[pk]<0){dc.qty+=(-prDoor[pk]);prDoor[pk]=0;}/* v14.5 C1: 扉の増量分を加算 */
         });
         doorColors3.forEach(function(dc){
           if(dc.qty<=0)return;
@@ -1173,7 +1179,7 @@ var UNIT_COST={
   handle:300,dial:500,dialH110:800,dialH111:800,dialDST:900,
   totte:200,padlock:400,cylinder:1200,cylinderMaster:1500,coinReturn:1800,
   door:{S:1800,M:2000,L:2500,XL:2800,SS:1500,'3S':1500},
-  doorH:{S:1800,M:2000,L:2500,SS:1500,'3S':1500}
+  doorH:{S:1800,M:2000,L:2500,XL:2800,SS:1500,'3S':1500,SSA:3600}
 };
 
 /* ========== INCOMING STOCK (入庫予定) ========== */
@@ -1533,12 +1539,15 @@ function generateQuoteHTML(order,docType){
         if(b.isDoor){
           var pk=ln.line+'|'+b.key+'|'+(b.color||'')+'|'+(b.doorSub||'');
           if(prDoorH[pk]>0){var d=Math.min(b.qty,prDoorH[pk]);b.qty-=d;prDoorH[pk]-=d;releasedNote=' (部分解放 -'+d+')';}
+          else if(prDoorH[pk]<0){b.qty+=(-prDoorH[pk]);releasedNote=' (数量編集 +'+(-prDoorH[pk])+')';prDoorH[pk]=0;}
         }else if(b.sub!==undefined){
           var pk2=ln.line+'|'+b.key+'|'+(b.sub||'');
           if(prSubH[pk2]>0){var dd=Math.min(b.qty,prSubH[pk2]);b.qty-=dd;prSubH[pk2]-=dd;releasedNote=' (部分解放 -'+dd+')';}
+          else if(prSubH[pk2]<0){b.qty+=(-prSubH[pk2]);releasedNote=' (数量編集 +'+(-prSubH[pk2])+')';prSubH[pk2]=0;}
         }else{
           var pk3=ln.line+'|'+b.key+'|';
           if(prSubH[pk3]>0){var ddd=Math.min(b.qty,prSubH[pk3]);b.qty-=ddd;prSubH[pk3]-=ddd;releasedNote=' (部分解放 -'+ddd+')';}
+          else if(prSubH[pk3]<0){b.qty+=(-prSubH[pk3]);releasedNote=' (数量編集 +'+(-prSubH[pk3])+')';prSubH[pk3]=0;}
         }
         if(b.qty<=0)return;
         var lbl=b.label;
@@ -1714,12 +1723,15 @@ function generateExcel(order,docType){
         if(b.isDoor){
           var pk=ln.line+'|'+b.key+'|'+(b.color||'')+'|'+(b.doorSub||'');
           if(prDoorE[pk]>0){var d=Math.min(b.qty,prDoorE[pk]);b.qty-=d;prDoorE[pk]-=d;releasedNote=' (部分解放 -'+d+')';}
+          else if(prDoorE[pk]<0){b.qty+=(-prDoorE[pk]);releasedNote=' (数量編集 +'+(-prDoorE[pk])+')';prDoorE[pk]=0;}
         }else if(b.sub!==undefined){
           var pk2=ln.line+'|'+b.key+'|'+(b.sub||'');
           if(prSubE[pk2]>0){var dd=Math.min(b.qty,prSubE[pk2]);b.qty-=dd;prSubE[pk2]-=dd;releasedNote=' (部分解放 -'+dd+')';}
+          else if(prSubE[pk2]<0){b.qty+=(-prSubE[pk2]);releasedNote=' (数量編集 +'+(-prSubE[pk2])+')';prSubE[pk2]=0;}
         }else{
           var pk3=ln.line+'|'+b.key+'|';
           if(prSubE[pk3]>0){var ddd=Math.min(b.qty,prSubE[pk3]);b.qty-=ddd;prSubE[pk3]-=ddd;releasedNote=' (部分解放 -'+ddd+')';}
+          else if(prSubE[pk3]<0){b.qty+=(-prSubE[pk3]);releasedNote=' (数量編集 +'+(-prSubE[pk3])+')';prSubE[pk3]=0;}
         }
         if(b.qty<=0)return;
         var lbl=b.label||partLabelJP(b.key,b.sub,b.isDoor?b.color:null,b.isDoor);
@@ -1805,10 +1817,10 @@ function broadcastOrderUpdate(userName,detail,opts){
       var sz2=JSON.stringify(payload).length;
       if(sz2>240000){
         var recent=ORDERS.slice(-10);
-        broadcastChannel.send({type:'broadcast',event:'order_update',payload:{
-          user:userName,detail:detail+'（一部のみ同期/要リロード）',time:payload.time,
-          orders:recent,nextON:nextON,heavy:true
-        }});
+        /* v14.5: 仮押さえ(HELD)は通常STKより小さいため heavy 時も同梱して使える数のズレを防ぐ。ただし合算で超過する場合は held を落とす */
+        var hPayload={user:userName,detail:detail+'（一部のみ同期/要リロード）',time:payload.time,orders:recent,nextON:nextON,held:HELD,heavy:true};
+        if(JSON.stringify(hPayload).length>240000)delete hPayload.held;
+        broadcastChannel.send({type:'broadcast',event:'order_update',payload:hPayload});
       }else{
         broadcastChannel.send({type:'broadcast',event:'order_update',payload:payload});
       }
@@ -1816,6 +1828,25 @@ function broadcastOrderUpdate(userName,detail,opts){
       broadcastChannel.send({type:'broadcast',event:'order_update',payload:payload});
     }
   }catch(e){console.warn('broadcastOrderUpdate failed',e);}
+}
+/* v14.5: HELD のディープマージ（初期同期用）。葉(数値)は src で上書き、src に無いローカルキーは保持。
+   絶対値カウントなので「セルごとに src 値を採用＋ローカル限定セルを残す」で二重計上を防ぐ */
+function mergeHeldDeep(tgt,src){
+  if(src===null||typeof src!=='object')return src;
+  if(typeof tgt!=='object'||tgt===null)tgt={};
+  Object.keys(src).forEach(function(k){
+    if(typeof src[k]==='object'&&src[k]!==null){tgt[k]=mergeHeldDeep(tgt[k],src[k]);}
+    else{tgt[k]=src[k];}
+  });
+  return tgt;
+}
+/* v14.5 E1: ポップアップを安全に開く。ブロック時は false を返し、呼び出し側の在庫保存等を妨げない */
+function openPrintWindow(html){
+  var w;
+  try{w=window.open('','_blank','width=800,height=1000');}catch(e){w=null;}
+  if(!w)return false;
+  try{w.document.write(html);w.document.close();setTimeout(function(){try{w.print();}catch(e){}},500);}catch(e){return false;}
+  return true;
 }
 
 /* ========== APP ========== */
@@ -1902,7 +1933,7 @@ function App(){
         setTimeout(function(){notif[1](null);},5000);
         /* v14.4: STK を同梱されていれば即時反映 */
         try{
-          if(d.stk){STK=d.stk;saveAll();bump[1](bump[0]+1);}
+          if(d.stk){STK=d.stk;saveAll();bump[1](function(v){return v+1;});}
           if(d.editLog&&Array.isArray(d.editLog)){
             /* EDIT_LOG をマージ（重複は timestamp+label で判定） */
             var existing={};EDIT_LOG.forEach(function(e){existing[e.timestamp+'|'+e.label]=true;});
@@ -1940,14 +1971,53 @@ function App(){
           if(d.held)HELD=d.held;
           if(d.stk)STK=d.stk;
           saveAll();
-          bump[1](bump[0]+1);
+          bump[1](function(v){return v+1;});
         }catch(e){
           console.warn('同期データの適用に失敗',e);
           notif[1]('⚠️ 同期失敗: ハードリロード(⌘+Shift+R)してください');
         }
       }
     });
-    bch.subscribe();
+    /* v14.5: 初期状態同期 — 後からログイン/リロードしたユーザーが既存の案件・仮押さえを取得できるようにする */
+    bch.on('broadcast',{event:'sync_request'},function(payload){
+      var d=payload.payload;
+      if(!d||d.fromKey===myPresenceKey.current)return;
+      /* 応答の重複を避けるため primary(最古参加者) のみ応答 */
+      if(SYSTEM_LOCK.primary&&SYSTEM_LOCK.primary!==myPresenceKey.current)return;
+      try{
+        bch.send({type:'broadcast',event:'sync_state',payload:{
+          toKey:d.fromKey,user:userName[0],orders:ORDERS,held:HELD,nextON:nextON
+        }});
+      }catch(e){console.warn('sync_state送信失敗',e);}
+    });
+    bch.on('broadcast',{event:'sync_state'},function(payload){
+      var d=payload.payload;
+      if(!d||d.toKey!==myPresenceKey.current)return;
+      try{
+        if(d.orders){
+          /* 案件No単位でupsert（ローカル未送信案件を保持しつつ既存案件を取得） */
+          var exNos={};ORDERS.forEach(function(o){exNos[o.no]=true;});
+          d.orders.forEach(function(o){
+            if(exNos[o.no]){var ix=ORDERS.findIndex(function(x){return x.no===o.no;});if(ix>=0)ORDERS[ix]=o;}
+            else ORDERS.push(o);
+          });
+        }
+        if(d.held)HELD=mergeHeldDeep(HELD,d.held);
+        if(d.nextON&&d.nextON>nextON)nextON=d.nextON;
+        saveAll();
+        bump[1](function(v){return v+1;});
+        notif[1]('✅ 既存の案件・仮押さえを同期しました');
+        setTimeout(function(){notif[1](null);},4000);
+      }catch(e){console.warn('初期同期の適用に失敗',e);}
+    });
+    bch.subscribe(function(status){
+      if(status==='SUBSCRIBED'){
+        /* 接続確立後、既存ユーザーに現在の案件・仮押さえを要求（presence確定を待つため少し遅延） */
+        setTimeout(function(){
+          try{bch.send({type:'broadcast',event:'sync_request',payload:{fromKey:myPresenceKey.current,user:userName[0]}});}catch(e){}
+        },1500);
+      }
+    });
     broadcastChannel=bch;
 
     return function(){
@@ -2574,9 +2644,7 @@ function InvPage(p){
 
   function printQuote(order,docType){
     var q=generateQuoteHTML(order,docType||'quote');
-    var w=window.open('','_blank','width=800,height=1000');
-    w.document.write(q.html);w.document.close();
-    setTimeout(function(){w.print();},500);
+    if(!openPrintWindow(q.html))p.toast('ポップアップがブロックされました。ブラウザのポップアップを許可してください');
   }
 
   if(!cust)return h('div',{className:'page'+(p.tab==='inv'?' show':'')},
@@ -3206,20 +3274,17 @@ function OrdersPage(p){
     order.shipNo=sf.shipNo||'';
     if(order.wh2){shipOrderMulti(order);}else{shipOrder(order);}
     order.status='出荷指示';
-    var q=generateQuoteHTML(order,'shipping');
-    var w=window.open('','_blank','width=800,height=1000');
-    w.document.write(q.html);w.document.close();
-    setTimeout(function(){w.print();},500);
-    p.toast('出荷指示書発行: '+order.no);
-    /* v14 D30: 他セッションへ同期 */
+    /* v14.5 E1: 在庫消費の永続化・同期を「印刷ウィンドウより先に」確実に実行（ポップアップブロックでデータが失われないように） */
+    saveAll();
     broadcastOrderUpdate(p.userName||'',order.no+' 出荷指示');
-    shipModal[1](null);detail[1](null);p.bump&&p.bump();saveAll();
+    shipModal[1](null);detail[1](null);p.bump&&p.bump();
+    var q=generateQuoteHTML(order,'shipping');
+    if(openPrintWindow(q.html)){p.toast('出荷指示書発行: '+order.no);}
+    else{p.toast('出荷指示書を発行しました（'+order.no+'）。印刷ウィンドウはポップアップブロックのため開けませんでした。ブラウザのポップアップを許可してください');}
   }
   function openQuote(order,docType){
     var q=generateQuoteHTML(order,docType||'quote');
-    var w=window.open('','_blank','width=800,height=1000');
-    w.document.write(q.html);w.document.close();
-    setTimeout(function(){w.print();},500);
+    if(!openPrintWindow(q.html))p.toast('ポップアップがブロックされました。ブラウザのポップアップを許可してください');
   }
 
   return h('div',{className:'page'+(p.tab==='orders'?' show':'')},
@@ -3449,6 +3514,7 @@ function computeOrderParts(order){
   var parts={};
   order.lines.forEach(function(ln){
     if(ln.isFreeInput)return;
+    if(ln._returned)return;/* v14.5 C12: 返品済みラインは部材集計に含めない（納品/確定Excelの過大計上を防ぐ） */
     if(ln.isPartOnly){
       var pk;
       if(ln.isDoor){pk=ln.partKey+':'+ln.color+':'+ln.partSub;}
@@ -3789,6 +3855,7 @@ function PartsPage(p){
               snapRows.push({item:'サイドジョイント(SS/3S)',key:'sj',sub:'ss'});
               snapRows.push({item:'ハンガーパイプ',key:'hanger'});
               snapRows.push({item:'XLコネクター',key:'connector',sub:'XL'});
+              snapRows.push({item:'SSコネクター',key:'connector',sub:'SS'});
               snapRows.push({item:'アンカー穴キャップ(グレー)',key:'anchorCap',sub:'gy'});
               snapRows.push({item:'アンカー穴キャップ(ブラック)',key:'anchorCap',sub:'bk'});
               snapRows.push({item:'ジョイントネジ(SMLXL・ブラック)',key:'jointScrew_sml_bk'});
@@ -3798,13 +3865,31 @@ function PartsPage(p){
               snapRows.push({item:'目隠しネジ(グレー)',key:'capScrew_gy'});
               snapRows.push({item:'トッテ（旧ハンドル）',key:'handle'});
               snapRows.push({item:'トッテ',key:'totte'});
+              /* v14.5 C7: 画面の在庫表(uniRows)と項目を完全一致させる（鍵・シリンダー全種を網羅） */
               snapRows.push({item:'ダイヤル錠 H110',key:'dialH110'});
+              snapRows.push({item:'ダイヤル錠 H110(新ラッチ)',key:'dialH110new'});
               snapRows.push({item:'ダイヤル錠 H111',key:'dialH111'});
+              snapRows.push({item:'ダイヤル錠 H111(新ラッチ)',key:'dialH111new'});
+              snapRows.push({item:'ダイヤル錠 H112(自由式)',key:'dialH112'});
+              snapRows.push({item:'ダイヤル錠 井門',key:'dialImon'});
               snapRows.push({item:'ダイヤル錠 DST',key:'dialDST'});
+              snapRows.push({item:'ダイヤル錠 旧型',key:'dial'});
+              snapRows.push({item:'検索キー',key:'searchKey'});
+              snapRows.push({item:'マスターキー',key:'masterKey'});
               snapRows.push({item:'南京錠',key:'padlock'});
-              snapRows.push({item:'シリンダー錠',key:'cylinder'});
-              snapRows.push({item:'シリンダー錠(マスター組)',key:'cylinderMaster'});
+              snapRows.push({item:'シリンダー錠 カム長スタンダード',key:'cylinderLongStd'});
+              snapRows.push({item:'シリンダー錠 カム長Fマスター',key:'cylinderLongF'});
+              snapRows.push({item:'シリンダー錠 カム長Bマスター',key:'cylinderLongB'});
+              snapRows.push({item:'シリンダー錠 カム短スタンダード',key:'cylinderShortStd'});
+              snapRows.push({item:'シリンダー錠 カム短Fマスター',key:'cylinderShortF'});
+              snapRows.push({item:'シリンダー錠 カム短Bマスター',key:'cylinderShortB'});
+              snapRows.push({item:'シリンダー錠 カム短Cマスター',key:'cylinderShortC'});
+              snapRows.push({item:'シリンダー錠 内筒交換錠',key:'cylinderExchange'});
+              snapRows.push({item:'シリンダー錠 内筒交換用予備',key:'cylinderExchangeSpare'});
+              snapRows.push({item:'シリンダー錠 無印(2本キー)',key:'cylinder'});
+              snapRows.push({item:'シリンダー錠 マスター組',key:'cylinderMaster'});
               snapRows.push({item:'コインリターン錠',key:'coinReturn'});
+              snapRows.push({item:'レールセット',key:'railSet'});
               snapRows.push({item:'ネームプレート',key:'nameplate'});
               snapRows.push({item:'ネーム厚紙',key:'namePaper'});
               /* v14.2: 21項目追加 + 「扉すべて」合算行 */
@@ -4046,6 +4131,9 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'H111(新ラッチ)',key:'dialH111new',irisu:iGet('dialH111new')});
           uniRows.push({item:'',variant:'H112(自由式)',key:'dialH112',irisu:iGet('dialH112')});
           uniRows.push({item:'',variant:'井門',key:'dialImon',irisu:iGet('dialImon')});
+          /* v14.5 C7: 実在庫を持つ旧キーを画面にも表示（Excelと項目一致） */
+          uniRows.push({item:'',variant:'DST',key:'dialDST',irisu:iGet('dialDST')});
+          uniRows.push({item:'',variant:'旧型',key:'dial',irisu:iGet('dial'),dupKey:true});
           /* 15. 検索キー */
           uniRows.push({item:'検索キー',variant:'H110',key:'searchKey',irisu:iGet('searchKey')});
           uniRows.push({item:'',variant:'H111',key:'searchKey',irisu:iGet('searchKey'),dupKey:true});
@@ -4066,6 +4154,10 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'(2本キー)カム短Cマスター',key:'cylinderShortC',irisu:iGet('cylinderShortC')});
           uniRows.push({item:'',variant:'内筒交換錠',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
           uniRows.push({item:'',variant:'内筒交換用予備',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
+          /* v14.5 C7: 実在庫を持つ旧キー（無印・マスター組）を画面にも表示（Excelと項目一致） */
+          uniRows.push({item:'',variant:'無印(2本キー)',key:'cylinder',irisu:iGet('cylinder'),dupKey:true});
+          uniRows.push({item:'',variant:'マスター組',key:'cylinderMaster',irisu:iGet('cylinderMaster'),dupKey:true});
+          uniRows.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iGet('coinReturn')});
           /* 19. レールセット（グレー） */
           uniRows.push({item:'レールセット(グレー)',variant:'SMLXL共通サイド',key:'railSet',irisu:''});
           uniRows.push({item:'',variant:'SMLXL共通バック',key:'railSet',irisu:'',dupKey:true});
@@ -4086,28 +4178,28 @@ function PartsPage(p){
           uniRows.push({item:'ネーム厚紙',variant:'',key:'namePaper',irisu:iGet('namePaper')});
           /* v14.2: 25. 扉すべて（色×サイズの合算行 - 集計用ヘッダー） */
           uniRows.push({item:'扉すべて',variant:'全色×全サイズ合算',key:'__door_total__',irisu:'',isDoorTotal:true});
-          /* v14.2: 26-30. シリンダーマスター（5種） */
-          uniRows.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:''});
-          uniRows.push({item:'シリンダー Fマスター',variant:'',key:'cylinderFMaster',irisu:''});
-          uniRows.push({item:'シリンダー Bマスター',variant:'',key:'cylinderBMaster',irisu:''});
-          uniRows.push({item:'シリンダー Cマスター',variant:'',key:'cylinderCMaster',irisu:''});
-          uniRows.push({item:'シリンダー Dマスター',variant:'',key:'cylinderDMaster',irisu:''});
-          uniRows.push({item:'シリンダー Lマスター',variant:'',key:'cylinderLMaster',irisu:''});
+          /* v14.2: 26-30. シリンダーマスター（5種） v14.5 C7: 入数をIRISUから取得しExcelと統一 */
+          uniRows.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iGet('dialOpnus')});
+          uniRows.push({item:'シリンダー Fマスター',variant:'',key:'cylinderFMaster',irisu:iGet('cylinderFMaster')});
+          uniRows.push({item:'シリンダー Bマスター',variant:'',key:'cylinderBMaster',irisu:iGet('cylinderBMaster')});
+          uniRows.push({item:'シリンダー Cマスター',variant:'',key:'cylinderCMaster',irisu:iGet('cylinderCMaster')});
+          uniRows.push({item:'シリンダー Dマスター',variant:'',key:'cylinderDMaster',irisu:iGet('cylinderDMaster')});
+          uniRows.push({item:'シリンダー Lマスター',variant:'',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
           /* v14.2: 31-34. ダイヤル錠検索キー（4種） */
-          uniRows.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:''});
-          uniRows.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:''});
-          uniRows.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:''});
-          uniRows.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:''});
+          uniRows.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iGet('dialKeyH110')});
+          uniRows.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iGet('dialKeyH111')});
+          uniRows.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:iGet('dialKeyD003')});
+          uniRows.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:iGet('dialKeyD018')});
           /* v14.2: 35-39. ヒンジカバー・ネームプレート系 */
-          uniRows.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:''});
-          uniRows.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:''});
-          uniRows.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:''});
-          uniRows.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:''});
-          uniRows.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:''});
+          uniRows.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:iGet('hingeCoverSML')});
+          uniRows.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iGet('hingeCoverSS')});
+          uniRows.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iGet('namePlateCoverSML')});
+          uniRows.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iGet('namePlateCoverSS')});
+          uniRows.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iGet('namePlatePaper')});
           /* v14.2: 40-42. 3桁ダイヤル南京錠（3種） */
-          uniRows.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:''});
-          uniRows.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:''});
-          uniRows.push({item:'',variant:'レッド',key:'padlockRed',irisu:''});
+          uniRows.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iGet('padlockGreen')});
+          uniRows.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iGet('padlockBlack')});
+          uniRows.push({item:'',variant:'レッド',key:'padlockRed',irisu:iGet('padlockRed')});
           /* v14.2: 43. カスタム追加項目（localStorage `lec_custom_parts`から読み込み） */
           try{
             var cp=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');
@@ -4792,7 +4884,7 @@ function PartsPage(p){
                 ),
                 h('td',null,
                   h('button',{className:'btn btn-xs btn-ol',onClick:function(e){e.stopPropagation();heldDetail[1](o);}},'詳細'),
-                  h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(e){e.stopPropagation();var q=generateQuoteHTML(o,'quote');var w=window.open('','_blank','width=800,height=1000');w.document.write(q.html);w.document.close();}},'見積書')
+                  h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(e){e.stopPropagation();var q=generateQuoteHTML(o,'quote');if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');}},'見積書')
                 ));
             }))
           );
@@ -4891,18 +4983,22 @@ function PartsPage(p){
                   adjustedCB.forEach(function(dc){
                     var pk=ln.line+'|'+b.key+'|'+(dc.color||'')+'|'+(b.doorSub||ln.size||'');
                     if(prDoorW[pk]>0){var d=Math.min(dc.qty,prDoorW[pk]);dc.qty-=d;prDoorW[pk]-=d;b.qty-=d;}
+                    else if(prDoorW[pk]<0){var inc=(-prDoorW[pk]);dc.qty+=inc;b.qty+=inc;prDoorW[pk]=0;}/* v14.5 C1: 増量分を新倉庫で再確保 */
                   });
                 }else{
                   /* colorBreakdown なし: ln.color のみで照合 */
                   var pk=ln.line+'|'+b.key+'|'+(ln.color||'')+'|'+(b.doorSub||ln.size||'');
                   if(prDoorW[pk]>0){var dz=Math.min(b.qty,prDoorW[pk]);b.qty-=dz;prDoorW[pk]-=dz;}
+                  else if(prDoorW[pk]<0){b.qty+=(-prDoorW[pk]);prDoorW[pk]=0;}/* v14.5 C1: 増量分を再確保 */
                 }
               }else if(b.sub!==undefined){
                 var pk2=ln.line+'|'+b.key+'|'+(b.sub||'');
                 if(prSubW[pk2]>0){var dd=Math.min(b.qty,prSubW[pk2]);b.qty-=dd;prSubW[pk2]-=dd;}
+                else if(prSubW[pk2]<0){b.qty+=(-prSubW[pk2]);prSubW[pk2]=0;}/* v14.5 C1: 増量分を再確保 */
               }else{
                 var pk3=ln.line+'|'+b.key+'|';
                 if(prSubW[pk3]>0){var ddd=Math.min(b.qty,prSubW[pk3]);b.qty-=ddd;prSubW[pk3]-=ddd;}
+                else if(prSubW[pk3]<0){b.qty+=(-prSubW[pk3]);prSubW[pk3]=0;}/* v14.5 C1: 増量分を再確保 */
               }
             });
             bom=bom.filter(function(b){return b.qty>0;});
@@ -4926,7 +5022,7 @@ function PartsPage(p){
           });
           od.status='見積作成';p.toast('仮押さえ解除: '+od.no);heldDetail[1](null);bump[1](bump[0]+1);saveAll();
         }},'仮押さえ解除'):null,
-        h('button',{className:'btn btn-gn',onClick:function(){var q=generateQuoteHTML(heldDetail[0],'quote');var w2=window.open('','_blank','width=800,height=1000');w2.document.write(q.html);w2.document.close();}},'見積書'),
+        h('button',{className:'btn btn-gn',onClick:function(){var q=generateQuoteHTML(heldDetail[0],'quote');if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');}},'見積書'),
         h('button',{className:'btn btn-ol',onClick:function(){heldDetail[1](null);}},'閉じる')
       )},
       h('div',null,
@@ -5317,7 +5413,7 @@ function PartsPage(p){
                   h('td',null,h('span',{className:'bg '+STATUS_CLS[o.status]},o.status)),
                   h('td',null,WH_MAP[o.wh]?WH_MAP[o.wh].s:''),
                   h('td',{style:{fontSize:9}},summary),
-                  h('td',null,h('button',{className:'btn btn-xs btn-gn',onClick:function(){var q=generateQuoteHTML(o,'quote');var w=window.open('','_blank','width=800,height=1000');w.document.write(q.html);w.document.close();}},'見積書'))
+                  h('td',null,h('button',{className:'btn btn-xs btn-gn',onClick:function(){var q=generateQuoteHTML(o,'quote');if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');}},'見積書'))
                 );
               }))
             )
@@ -5544,6 +5640,20 @@ function PartsPage(p){
                 var val=totalQty*cost;lineTotal+=val;
                 if(totalQty>0)data.push([row.label,totalQty,cost,val]);
               });
+              /* v14.5 C9: 扉(door/doorH)の資産も集計（在庫表表示・日付指定版と総額を一致させる） */
+              ['door','doorH'].forEach(function(dk){
+                var dCols=LINE_COLORS[lineObj2.id]||[];
+                (LINE_SIZES[lineObj2.id]||[]).forEach(function(s){
+                  if(s==='SSA')return;
+                  var dq=0;
+                  dCols.forEach(function(c){
+                    lineWhs.forEach(function(w){dq+=(STK[lineObj2.id]&&STK[lineObj2.id][w]&&STK[lineObj2.id][w][dk]&&STK[lineObj2.id][w][dk][c.v]&&STK[lineObj2.id][w][dk][c.v][s])||0;});
+                  });
+                  var dcost=(UNIT_COST[dk]&&UNIT_COST[dk][s])||0;
+                  var dval=dq*dcost;lineTotal+=dval;
+                  if(dq>0)data.push([(dk==='door'?'扉':'扉(ホタ)')+'('+s+')',dq,dcost,dval]);
+                });
+              });
               data.push([],['合計','','',lineTotal]);
               lineTotals[lineObj2.id]=lineTotal;
               grand+=lineTotal;
@@ -5586,6 +5696,29 @@ function PartsPage(p){
               });
               dataRow.push(grandRowQty,grandRowQty*cost);
               if(grandRowQty>0)mtxRows.push(dataRow);
+            });
+            /* v14.5 C9: 扉(door/doorH)行をマトリクスにも追加（サイズ別・色は合算） */
+            ['door','doorH'].forEach(function(dk){
+              var allSizes={};
+              LINES.forEach(function(lnObj){(LINE_SIZES[lnObj.id]||[]).forEach(function(s){if(s!=='SSA')allSizes[s]=true;});});
+              Object.keys(allSizes).forEach(function(s){
+                var dcost=(UNIT_COST[dk]&&UNIT_COST[dk][s])||0;
+                var dRow=[(dk==='door'?'扉':'扉(ホタ)')+'('+s+')',dcost];
+                var dGrand=0;
+                LINES.forEach(function(lnObj){
+                  var lnWhs=WH_IDS.filter(function(w){return hasStock(lnObj.id,w);});
+                  var dCols=LINE_COLORS[lnObj.id]||[];
+                  var lnTot=0;
+                  lnWhs.forEach(function(w){
+                    var q=0;
+                    dCols.forEach(function(c){q+=(STK[lnObj.id]&&STK[lnObj.id][w]&&STK[lnObj.id][w][dk]&&STK[lnObj.id][w][dk][c.v]&&STK[lnObj.id][w][dk][c.v][s])||0;});
+                    dRow.push(q);lnTot+=q;
+                  });
+                  dRow.push(lnTot);dGrand+=lnTot;
+                });
+                dRow.push(dGrand,dGrand*dcost);
+                if(dGrand>0)mtxRows.push(dRow);
+              });
             });
             var wsMtxA=XLSX.utils.aoa_to_sheet(mtxRows);
             XLSX.utils.book_append_sheet(wb,wsMtxA,'在庫表形式(パーツ別)');
