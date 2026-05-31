@@ -3502,7 +3502,10 @@ function OrdersPage(p){
                 }
                 var idx=ORDERS.findIndex(function(x){return x.no===o.no;});
                 if(idx>=0)ORDERS.splice(idx,1);
-                p.toast('削除: '+o.no);saveAll();p.bump&&p.bump();
+                markOrderDeleted(o.no);/* v14.6: 削除墓標を記録し全端末/リロード後も復活させない */
+                p.toast('削除: '+o.no);saveAll();
+                broadcastOrderUpdate(p.userName||'',o.no+' 案件削除');/* v14.6: 一覧削除も他端末/クラウドへ伝播 */
+                p.bump&&p.bump();
               }},'🗑')
             )
           );
@@ -3554,6 +3557,7 @@ function OrdersPage(p){
           }
           var idx=ORDERS.findIndex(function(o){return o.no===od.no;});
           if(idx>=0)ORDERS.splice(idx,1);
+          markOrderDeleted(od.no);/* v14.6: 削除墓標を記録し全端末/リロード後も復活させない */
           p.toast('案件を削除しました: '+od.no);
           detail[1](null);saveAll();
           /* v14.2: 案件削除を他ユーザーに通知 */
