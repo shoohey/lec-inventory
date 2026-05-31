@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.5（2026-05-30更新）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.6（2026-06-01更新）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -90,6 +90,148 @@ var SUPA_URL='https://uslqaiymvxnrdgxynhuo.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzbHFhaXltdnhucmRneHluaHVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTUzMjAsImV4cCI6MjA4NzkzMTMyMH0.bAUKukIgkn1-mBzFei6DC-mOvl7YFKBcvpvWtOq2Sy0';
 var supaClient=null,presenceChannel=null,broadcastChannel=null;
 try{supaClient=supabase.createClient(SUPA_URL,SUPA_KEY);}catch(e){console.warn('Supabase init failed',e);}
+
+/* ========== CLOUD PERSISTENCE (v14.6) ==========
+   案件・仮押さえ・在庫・カスタム部材を Supabase の lec_state テーブルに永続保存する。
+   これにより「ログイン/リロードしても他の人の仮押さえが確実に見える・消えない」を実現。
+   テーブルが未作成(SQL未実行)でも安全にローカルモードへフォールバックする設計。 */
+var CLOUD_STATE_ID='shared';   /* 全社で1行を共有 */
+var CLOUD_TABLE='lec_state';
+var CLOUD_READY=false;         /* テーブルが存在し読み書きできた=true */
+var CLOUD_LAST_SAVE=0;         /* 連続保存のデバウンス用 */
+var _cloudSaveTimer=null;
+var _cloudSelfWrite=false;     /* 自分の書き込みでrealtimeが返ってきた時に無視するフラグ */
+/* v14.6: 削除した案件Noの墓標(tombstone)。マージ同期では削除が伝播しないため、
+   削除Noを明示的に配り、受信側でローカルからも除去する。案件Noは再利用されない(nextON単調増加)ので安全。
+   localStorageに永続化してリロードを跨いでも墓標を保持する。 */
+var DELETED_ORDER_NOS=[];
+try{var _dn=localStorage.getItem('lec_deleted_nos');if(_dn)DELETED_ORDER_NOS=JSON.parse(_dn)||[];}catch(e){}
+function saveDeletedNos(){try{localStorage.setItem('lec_deleted_nos',JSON.stringify(DELETED_ORDER_NOS.slice(-500)));}catch(e){}}
+function markOrderDeleted(no){
+  if(!no)return;
+  if(DELETED_ORDER_NOS.indexOf(no)<0)DELETED_ORDER_NOS.push(no);
+  if(DELETED_ORDER_NOS.length>500)DELETED_ORDER_NOS=DELETED_ORDER_NOS.slice(-500);
+  saveDeletedNos();
+}
+
+/* 現在のメモリ状態を1つのドキュメントにまとめる。
+   custom_parts / custom_irisu も含めてクラウド共有する(B9の端末間非同期を解消) */
+function buildCloudDoc(){
+  var cp=[],ci={};
+  try{cp=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');}catch(e){}
+  try{ci=JSON.parse(localStorage.getItem('lec_custom_irisu')||'{}');}catch(e){}
+  return {
+    orders:ORDERS,nextON:nextON,held:HELD,stk:STK,
+    incoming:INCOMING,nextIncId:nextIncId,
+    custs:CUSTS,users:USERS,
+    editLog:(EDIT_LOG||[]).slice(-500),
+    customParts:cp,customIrisu:ci,
+    deletedNos:DELETED_ORDER_NOS.slice(-500),
+    stkSnapshot:STK_SNAPSHOT_DATE,
+    _ts:Date.now()
+  };
+}
+
+/* クラウドから取得したドキュメントをメモリ状態へ反映する。
+   案件はNo単位でマージ(ローカル限定の仮押さえを消さない=主訴対策)、HELDはディープマージ。
+   opts.replace=true のときは初回ロードとして全置換する。 */
+function applyCloudDoc(doc,opts){
+  if(!doc)return;
+  opts=opts||{};
+  try{
+    if(Array.isArray(doc.orders)){
+      if(opts.replace){
+        ORDERS=doc.orders;
+      }else{
+        var exNos={};ORDERS.forEach(function(o){exNos[o.no]=true;});
+        doc.orders.forEach(function(o){
+          if(exNos[o.no]){var ix=ORDERS.findIndex(function(x){return x.no===o.no;});if(ix>=0)ORDERS[ix]=o;}
+          else ORDERS.push(o);
+        });
+      }
+    }
+    /* v14.6: 削除墓標を取り込み、ローカルに残っている削除済案件を除去する(削除の伝播)。
+       マージ受信では削除が来ないため、deletedNos で明示的に消す。 */
+    if(Array.isArray(doc.deletedNos)&&doc.deletedNos.length){
+      var changedDN=false;
+      doc.deletedNos.forEach(function(no){if(DELETED_ORDER_NOS.indexOf(no)<0){DELETED_ORDER_NOS.push(no);changedDN=true;}});
+      if(changedDN)saveDeletedNos();
+    }
+    if(DELETED_ORDER_NOS.length){
+      var delSet={};DELETED_ORDER_NOS.forEach(function(no){delSet[no]=true;});
+      ORDERS=ORDERS.filter(function(o){return !delSet[o.no];});
+    }
+    if(typeof doc.nextON==='number'&&doc.nextON>nextON)nextON=doc.nextON;
+    if(doc.held){HELD=opts.replace?doc.held:mergeHeldDeep(HELD,doc.held);}
+    /* STK はスナップショット日が一致する時のみ採用(在庫リセット仕様と整合) */
+    if(doc.stk&&doc.stkSnapshot===STK_SNAPSHOT_DATE)STK=doc.stk;
+    if(Array.isArray(doc.incoming)){
+      if(opts.replace){INCOMING=doc.incoming;}
+      else{
+        var exInc={};INCOMING.forEach(function(i){exInc[i.id]=true;});
+        doc.incoming.forEach(function(i){if(!exInc[i.id])INCOMING.push(i);else{var ix=INCOMING.findIndex(function(x){return x.id===i.id;});if(ix>=0)INCOMING[ix]=i;}});
+      }
+    }
+    if(typeof doc.nextIncId==='number'&&doc.nextIncId>nextIncId)nextIncId=doc.nextIncId;
+    if(Array.isArray(doc.custs)&&doc.custs.length)CUSTS=doc.custs;
+    if(Array.isArray(doc.users)&&doc.users.length)USERS=doc.users;
+    if(Array.isArray(doc.editLog)){
+      var existing={};EDIT_LOG.forEach(function(e){existing[e.timestamp+'|'+e.label]=true;});
+      doc.editLog.forEach(function(e){if(!existing[e.timestamp+'|'+e.label])EDIT_LOG.push(e);});
+    }
+    /* カスタム部材・カスタム入数をクラウドから取り込み、メモリ(PART_LABELS/IRISU)に反映 */
+    if(Array.isArray(doc.customParts)){
+      try{
+        localStorage.setItem('lec_custom_parts',JSON.stringify(doc.customParts));
+        doc.customParts.forEach(function(it){if(it&&it.key){PART_LABELS[it.key]=it.label;if(it.irisu>0)IRISU[it.key]=it.irisu;}});
+      }catch(e){}
+    }
+    if(doc.customIrisu&&typeof doc.customIrisu==='object'){
+      try{
+        localStorage.setItem('lec_custom_irisu',JSON.stringify(doc.customIrisu));
+        Object.keys(doc.customIrisu).forEach(function(k){
+          var v=doc.customIrisu[k];
+          if(typeof v==='object'&&v!==null)IRISU[k]=Object.assign(IRISU[k]||{},v);
+          else IRISU[k]=v;
+        });
+      }catch(e){}
+    }
+    saveAll();
+  }catch(e){console.warn('applyCloudDoc failed',e);}
+}
+
+/* クラウドから最新状態を読み込む。テーブルが無ければ CLOUD_READY=false のまま静かに失敗。 */
+function cloudLoad(cb){
+  if(!supaClient){if(cb)cb(false);return;}
+  try{
+    supaClient.from(CLOUD_TABLE).select('doc,updated_at').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
+      if(res.error){
+        /* テーブル未作成 / 権限なし → ローカルモードのまま */
+        console.info('[Cloud] lec_state 未利用(SQL未実行の可能性):',res.error.message);
+        CLOUD_READY=false;if(cb)cb(false);return;
+      }
+      CLOUD_READY=true;
+      if(res.data&&res.data.doc){applyCloudDoc(res.data.doc,{replace:true});}
+      if(cb)cb(true,!!(res.data&&res.data.doc));
+    },function(err){console.warn('[Cloud] load失敗',err);CLOUD_READY=false;if(cb)cb(false);});
+  }catch(e){console.warn('[Cloud] load例外',e);CLOUD_READY=false;if(cb)cb(false);}
+}
+
+/* 現在状態をクラウドへ保存(upsert)。デバウンスで連続保存を間引く。 */
+function cloudSave(userName,immediate){
+  if(!supaClient||!CLOUD_READY)return;
+  if(_cloudSaveTimer){clearTimeout(_cloudSaveTimer);_cloudSaveTimer=null;}
+  var doFn=function(){
+    _cloudSaveTimer=null;CLOUD_LAST_SAVE=Date.now();_cloudSelfWrite=true;
+    try{
+      supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:buildCloudDoc(),updated_at:new Date().toISOString(),updated_by:userName||''}).then(function(res){
+        if(res&&res.error)console.warn('[Cloud] save失敗',res.error.message);
+        setTimeout(function(){_cloudSelfWrite=false;},800);
+      },function(err){console.warn('[Cloud] save例外',err);_cloudSelfWrite=false;});
+    }catch(e){console.warn('[Cloud] save例外2',e);_cloudSelfWrite=false;}
+  };
+  if(immediate)doFn();else _cloudSaveTimer=setTimeout(doFn,600);
+}
 
 var LOCATIONS=[
   {v:'honsha_office',l:'本社'},
@@ -1787,6 +1929,7 @@ function Modal(p){
 
 /* ========== REALTIME BROADCAST HELPER ========== */
 function broadcastEdit(userName,detail){
+  cloudSave(userName);/* v14.6: クラウド永続保存(オフラインでもREST可なら保存) */
   if(!broadcastChannel)return;
   try{
     var payload={user:userName,detail:detail,time:new Date().toLocaleTimeString('ja-JP'),stk:STK,editLog:EDIT_LOG.slice(-50)};
@@ -1801,6 +1944,7 @@ function broadcastEdit(userName,detail){
 /* v14.4: 案件管理のリアルタイム同期通知（ペイロードサイズチェック + STK は明示的に必要時のみ送信）
    ORDERS と HELD は仮押さえ即時反映のため必ず送信、STK は出荷処理時のみ更新するため別フラグ */
 function broadcastOrderUpdate(userName,detail,opts){
+  cloudSave(userName);/* v14.6: クラウド永続保存(テーブル未作成/オフライン時は no-op) */
   if(!broadcastChannel)return;
   opts=opts||{};
   try{
@@ -2020,8 +2164,32 @@ function App(){
     });
     broadcastChannel=bch;
 
+    /* v14.6: クラウド永続化 — 起動時に最新状態を取得し、他端末の保存をリアルタイム購読 */
+    var cloudCh=null;
+    cloudLoad(function(ok,hadData){
+      if(ok){
+        bump[1](function(v){return v+1;});
+        if(hadData){notif[1]('✅ 最新データをクラウドから取得しました');setTimeout(function(){notif[1](null);},3500);}
+        /* 初回ロード時、クラウドが空ならローカル状態を初期保存して真実源を作る */
+        if(!hadData)cloudSave(userName[0],true);
+        /* 他端末の保存をリアルタイム購読(postgres_changes) */
+        try{
+          cloudCh=supaClient.channel('lec-cloud-state')
+            .on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.'+CLOUD_STATE_ID},function(payload){
+              if(_cloudSelfWrite)return;/* 自分の保存は無視 */
+              var row=payload.new||payload.record;
+              if(row&&row.doc){
+                applyCloudDoc(row.doc,{replace:false});/* マージで取り込み(同時追加を消さない) */
+                bump[1](function(v){return v+1;});
+              }
+            }).subscribe();
+        }catch(e){console.warn('cloud realtime購読失敗',e);}
+      }
+    });
+
     return function(){
       ch.unsubscribe();bch.unsubscribe();
+      if(cloudCh){try{cloudCh.unsubscribe();}catch(e){}}
       presenceChannel=null;broadcastChannel=null;
     };
   },[loggedIn[0],userName[0]]);
@@ -6019,6 +6187,7 @@ function PartsPage(p){
                 newItemForm[1]({key:'',label:'',irisu:0});
                 p.toast('部材を追加しました: '+f.label);
                 bump[1](bump[0]+1);
+                cloudSave(p.userName);/* v14.6: カスタム部材を全端末へ共有 */
               }catch(e){p.toast('追加に失敗: '+e.message);}
             }},'＋ 追加')
           )
@@ -6061,6 +6230,7 @@ function PartsPage(p){
                         }
                         localStorage.setItem('lec_custom_irisu',JSON.stringify(ci));
                         bump[1](bump[0]+1);
+                        cloudSave(p.userName);/* v14.6: 入数変更を全端末へ共有 */
                       }catch(ex){p.toast('入数保存失敗: '+ex.message);}
                     },style:{width:80,textAlign:'right'}})
                   ),
@@ -6076,6 +6246,7 @@ function PartsPage(p){
                         localStorage.setItem('lec_custom_parts',JSON.stringify(cp));
                         p.toast('部材を削除しました: '+r.label);
                         bump[1](bump[0]+1);
+                        cloudSave(p.userName);/* v14.6: 削除を全端末へ共有 */
                       }catch(e){p.toast('削除失敗: '+e.message);}
                     }},'🗑'):h('span',{style:{fontSize:9,color:'var(--g300)'}},'-')
                   )
