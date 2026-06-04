@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.8（2026-06-01現在庫反映）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.9（錠前名統一・倉庫別Excel扉・Sαレール反映）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -295,7 +295,7 @@ var LOCK_TYPES=[
   {v:'totte',l:'トッテ',s:'トッテ'},
   {v:'padlock',l:'南京錠',s:'南京錠'},
   {v:'cylinder',l:'シリンダー錠',s:'シリンダー錠'},
-  {v:'cylinderMaster',l:'シリンダー錠(マスター組)',s:'シリンダー錠（マスター組）'},
+  {v:'cylinderMaster',l:'シリンダー錠（マスター組）',s:'シリンダー錠（マスター組）'},
   {v:'coinReturn',l:'コインリターン錠',s:'コインリターン錠'},
   {v:'none',l:'鍵なし',s:''}
 ];
@@ -359,7 +359,7 @@ var PART_ADD_DEFS=[
   {k:'padlockBlack',l:'3桁ダイヤル南京錠 ブラック'},
   {k:'padlockRed',l:'3桁ダイヤル南京錠 レッド'},
   {k:'cylinder',l:'シリンダー錠'},
-  {k:'cylinderMaster',l:'シリンダー錠(マスター組)'},
+  {k:'cylinderMaster',l:'シリンダー錠（マスター組）'},
   {k:'cylinderLongStd',l:'シリンダー錠(カム長Std)'},
   {k:'cylinderLongF',l:'シリンダー錠(カム長F)'},
   {k:'cylinderLongB',l:'シリンダー錠(カム長B)'},
@@ -382,6 +382,8 @@ var PART_ADD_DEFS=[
   {k:'dialKeyD003',l:'ダイヤル錠検索キー D003'},
   {k:'dialKeyD018',l:'ダイヤル錠検索キー D018'},
   {k:'railSet',l:'レールセット'},
+  {k:'railShort',l:'レール短（グレー）'},
+  {k:'railLong',l:'レール長（グレー）'},
   {k:'nameplate',l:'ネームプレート'},
   {k:'namePaper',l:'ネーム厚紙'},
   {k:'numLabel',l:'番号シール'},
@@ -418,11 +420,11 @@ var PART_LABELS={
   dialH111:'ダイヤル錠 H111',dialH111new:'ダイヤル錠 H111(新ラッチ)',
   dialH112:'ダイヤル錠 H112(自由式)',dialImon:'ダイヤル錠 井門',dialDST:'ダイヤル錠 DST',
   totte:'トッテ',handle:'トッテ(旧ハンドル)',
-  padlock:'南京錠',cylinder:'シリンダー錠',cylinderMaster:'シリンダー錠(マスター組)',
+  padlock:'南京錠',cylinder:'シリンダー錠',cylinderMaster:'シリンダー錠（マスター組）',
   cylinderLongStd:'シリンダー錠(カム長Std)',cylinderLongF:'シリンダー錠(カム長F)',cylinderLongB:'シリンダー錠(カム長B)',
   cylinderShortStd:'シリンダー錠(カム短Std)',cylinderShortF:'シリンダー錠(カム短F)',cylinderShortB:'シリンダー錠(カム短B)',cylinderShortC:'シリンダー錠(カム短C)',
   cylinderExchange:'内筒交換錠',cylinderExchangeSpare:'内筒交換用予備',
-  coinReturn:'コインリターン錠',railSet:'レールセット',
+  coinReturn:'コインリターン錠',railSet:'レールセット',railShort:'レール短(グレー)',railLong:'レール長(グレー)',
   jointScrew:'ジョイントネジ',jointScrew_sml_bk:'ジョイントネジ(SMLXL・ブラック)',jointScrew_ss_bk:'ジョイントネジ(SS・3S・ブラック)',jointScrew_ss_gy:'ジョイントネジ(SS・3S・グレー)',
   capScrew:'目隠しネジ',capScrew_bk:'目隠しネジ(ブラック)',capScrew_gy:'目隠しネジ(グレー)',
   anchorCap:'アンカー穴キャップ',
@@ -524,7 +526,7 @@ var IRISU={
   searchKey:100,masterKey:100,
   padlock:150,
   cylinder:100,cylinderLongStd:100,cylinderLongF:100,cylinderLongB:100,cylinderShortStd:100,cylinderShortF:100,cylinderShortB:100,cylinderShortC:100,cylinderExchange:100,cylinderExchangeSpare:100,cylinderMaster:50,
-  coinReturn:50,railSet:1,jointScrew:1,capScrew:1,doorPocket:1,
+  coinReturn:50,railSet:1,railShort:50,railLong:100,jointScrew:1,capScrew:1,doorPocket:1,
   /* v14.2: 新規21項目の入数デフォルト */
   dialOpnus:50,cylinderFMaster:50,cylinderBMaster:50,cylinderCMaster:50,cylinderDMaster:50,cylinderLMaster:50,
   dialKeyH110:100,dialKeyH111:100,dialKeyD003:100,dialKeyD018:100,
@@ -561,7 +563,7 @@ var BOX_WEIGHT={
   searchKey:1.0,masterKey:1.0,
   padlock:5.0,
   cylinder:3.0,cylinderLongStd:3.0,cylinderLongF:3.0,cylinderLongB:3.0,cylinderShortStd:3.0,cylinderShortF:3.0,cylinderShortB:3.0,cylinderShortC:3.0,cylinderExchange:3.0,cylinderExchangeSpare:3.0,cylinderMaster:3.0,
-  coinReturn:3.0,railSet:2.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0
+  coinReturn:3.0,railSet:2.0,railShort:1.0,railLong:1.5,jointScrew:1.0,capScrew:0.5,doorPocket:1.0
 };
 var MISC_FEE=325;
 var MARKUP=1.1;
@@ -649,7 +651,7 @@ var STK={
   /* ===== Sα 新台湾製 (本社,新柏,関西) ===== */
   sa:{
     honsha:{door:{sr:{},sbl:{},sgr:{}},doorH:{sr:{},sbl:{},sgr:{}}},
-    kashiwa:{top:{sml:1448},base:{sml:626},side:{S:1448},back:{S:732},shelf:{sml:1226},jointScrew_sml_bk:1560,capScrew_gy:2500,door:{sr:{S:74},sbl:{S:525},sgr:{S:141}},doorH:{sr:{},sbl:{},sgr:{}}},
+    kashiwa:{top:{sml:1448},base:{sml:626},side:{S:1448},back:{S:732},shelf:{sml:1226},jointScrew_sml_bk:1560,capScrew_gy:2500,railShort:260,railLong:520,door:{sr:{S:74},sbl:{S:525},sgr:{S:141}},doorH:{sr:{},sbl:{},sgr:{}}},
     kansai:{top:{sml:36},base:{sml:11},side:{S:70},back:{S:35},shelf:{sml:12},jointScrew_sml_bk:200,capScrew_gy:290,door:{sr:{S:6},sbl:{S:4},sgr:{S:12}},doorH:{sr:{},sbl:{},sgr:{}}}
   }
 };
@@ -3991,6 +3993,8 @@ function PartsPage(p){
     {label:'ダイヤル錠 H112',key:'dialH112',cat:'lock'},
     {label:'ダイヤル錠 井門',key:'dialImon',cat:'lock'},
     {label:'レールセット',key:'railSet',cat:'option'},
+    {label:'レール短（グレー）',key:'railShort',cat:'option'},
+    {label:'レール長（グレー）',key:'railLong',cat:'option'},
     {label:'ジョイントネジ(SMLXL・ブラック)',key:'jointScrew_sml_bk',cat:'option'},
     {label:'ジョイントネジ(SS・3S・ブラック)',key:'jointScrew_ss_bk',cat:'option'},
     {label:'ジョイントネジ(SS・3S・グレー)',key:'jointScrew_ss_gy',cat:'option'},
@@ -4088,6 +4092,11 @@ function PartsPage(p){
                   var iri=row.sub!==undefined?(IRISU[row.key]&&IRISU[row.key][row.sub]||'')||(typeof IRISU[row.key]==='number'?IRISU[row.key]:''):'';
                   data.push([row.label,row.sub||'',iri,stk,hld,stk-hld]);
                 });
+                /* v14.9 #10: 倉庫別Excelにも扉(色別×サイズ)を反映（メイン在庫表Excelと統一。通常扉6サイズ/ホタ扉5サイズ） */
+                (LINE_COLORS[selLine[0]]||[]).forEach(function(c){
+                  ['S','M','L','XL','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0){var dstk=gd(selLine[0],w,c.v,s,'door'),dhld=ghd(selLine[0],w,c.v,s,'door');data.push(['扉　'+c.l,s,'',dstk,dhld,dstk-dhld]);}});
+                  ['S','M','L','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0){var dstk=gd(selLine[0],w,c.v,s,'doorH'),dhld=ghd(selLine[0],w,c.v,s,'doorH');data.push(['扉〈ホタ〉'+c.l,s,'',dstk,dhld,dstk-dhld]);}});
+                });
                 XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(data),WH_MAP[w].s);
               });
               XLSX.writeFile(wb,'在庫表_倉庫別_'+(lineObj?lineObj.name:'')+'_'+td2().replace(/\//g,'-')+'.xlsx');
@@ -4157,9 +4166,11 @@ function PartsPage(p){
               snapRows.push({item:'シリンダー錠 内筒交換錠',key:'cylinderExchange'});
               snapRows.push({item:'シリンダー錠 内筒交換用予備',key:'cylinderExchangeSpare'});
               snapRows.push({item:'シリンダー錠 無印(2本キー)',key:'cylinder'});
-              snapRows.push({item:'シリンダー錠 マスター組',key:'cylinderMaster'});
+              snapRows.push({item:'シリンダー錠（マスター組）',key:'cylinderMaster'});
               snapRows.push({item:'コインリターン錠',key:'coinReturn'});
               snapRows.push({item:'レールセット',key:'railSet'});
+              snapRows.push({item:'レール短（グレー）',key:'railShort'});
+              snapRows.push({item:'レール長（グレー）',key:'railLong'});
               snapRows.push({item:'ネームプレート',key:'nameplate'});
               snapRows.push({item:'ネーム厚紙',key:'namePaper'});
               /* v14.2: 21項目追加（v14.8で「扉すべて」合算行を廃止し個別扉行に置換） */
@@ -4423,6 +4434,9 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'SMLXL共通バック',key:'railSet',irisu:'',dupKey:true});
           uniRows.push({item:'',variant:'SS・3S共通サイド',key:'railSet',irisu:'',dupKey:true});
           uniRows.push({item:'',variant:'SS・3S共通バック',key:'railSet',irisu:'',dupKey:true});
+          /* v14.9 #11: レール短/レール長（バラ在庫・グレー）。CSV「20260601現在庫表」に記載の独立在庫項目 */
+          uniRows.push({item:'レール短(グレー)',variant:'',key:'railShort',irisu:iGet('railShort')});
+          uniRows.push({item:'レール長(グレー)',variant:'',key:'railLong',irisu:iGet('railLong')});
           /* 20. ジョイントネジ (3種を独立キーで分離トラッキング) */
           uniRows.push({item:'ジョイントネジ',variant:'SMLXL共通ブラック',key:'jointScrew_sml_bk',irisu:''});
           uniRows.push({item:'',variant:'SS・3S共通ブラック',key:'jointScrew_ss_bk',irisu:''});
@@ -4617,7 +4631,7 @@ function PartsPage(p){
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
         uniR.push({item:'南京錠',variant:'',key:'padlock',irisu:iG('padlock')});
         uniR.push({item:'シリンダー錠',variant:'',key:'cylinder',irisu:iG('cylinder')});
-        uniR.push({item:'シリンダー錠(マスター組)',variant:'',key:'cylinderMaster',irisu:iG('cylinderMaster')});
+        uniR.push({item:'シリンダー錠（マスター組）',variant:'',key:'cylinderMaster',irisu:iG('cylinderMaster')});
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
         uniR.push({item:'ネームプレート',variant:'',key:'nameplate',irisu:iG('nameplate')});
         uniR.push({item:'ネーム厚紙',variant:'',key:'namePaper',irisu:iG('namePaper')});
@@ -4897,7 +4911,7 @@ function PartsPage(p){
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
         uniR.push({item:'南京錠',variant:'',key:'padlock',irisu:iG('padlock')});
         uniR.push({item:'シリンダー錠',variant:'',key:'cylinder',irisu:iG('cylinder')});
-        uniR.push({item:'シリンダー錠(マスター組)',variant:'',key:'cylinderMaster',irisu:iG('cylinderMaster')});
+        uniR.push({item:'シリンダー錠（マスター組）',variant:'',key:'cylinderMaster',irisu:iG('cylinderMaster')});
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
         uniR.push({item:'ネームプレート',variant:'',key:'nameplate',irisu:iG('nameplate')});
         uniR.push({item:'ネーム厚紙',variant:'',key:'namePaper',irisu:iG('namePaper')});
