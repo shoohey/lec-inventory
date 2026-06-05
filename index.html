@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v14.9（錠前名統一・倉庫別Excel扉・Sαレール反映）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v15.0（修正点反映＋Sαレール在庫を共有DB同期）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -101,6 +101,26 @@ var CLOUD_READY=false;         /* テーブルが存在し読み書きできた=
 var CLOUD_LAST_SAVE=0;         /* 連続保存のデバウンス用 */
 var _cloudSaveTimer=null;
 var _cloudSelfWrite=false;     /* 自分の書き込みでrealtimeが返ってきた時に無視するフラグ */
+/* v15.0: 後から追加した在庫キー(レール短/長など)を、クラウド/ローカルの既存STKへ非破壊で補充する。
+   在庫スナップショット(STK_SNAPSHOT_DATE)をbumpすると全在庫編集が消えるため、欠落キーのみを注入する方式。
+   ・既存値があれば保持(在庫消費・編集を消さない) ・欠落キーのみ既定値を投入 ・直近ロードで補充したら _stkLateAdded=true */
+var _stkLateAdded=false;
+var STK_LATE_ADDITIONS={sa:{kashiwa:{railShort:260,railLong:520}}};
+function ensureStkLateAdditions(){
+  try{
+    var A=STK_LATE_ADDITIONS,changed=false;
+    Object.keys(A).forEach(function(line){
+      if(!STK[line])return;
+      Object.keys(A[line]).forEach(function(wh){
+        if(!STK[line][wh])return;
+        Object.keys(A[line][wh]).forEach(function(key){
+          if(STK[line][wh][key]===undefined){STK[line][wh][key]=A[line][wh][key];changed=true;}
+        });
+      });
+    });
+    if(changed)_stkLateAdded=true;
+  }catch(e){console.warn('ensureStkLateAdditions failed',e);}
+}
 /* v14.6: 削除した案件Noの墓標(tombstone)。マージ同期では削除が伝播しないため、
    削除Noを明示的に配り、受信側でローカルからも除去する。案件Noは再利用されない(nextON単調増加)ので安全。
    localStorageに永続化してリロードを跨いでも墓標を保持する。 */
@@ -175,6 +195,7 @@ function applyCloudDoc(doc,opts){
     if(doc.held){HELD=opts.replace?doc.held:mergeHeldDeep(HELD,doc.held);}
     /* STK はスナップショット日が一致する時のみ採用(在庫リセット仕様と整合) */
     if(doc.stk&&doc.stkSnapshot===STK_SNAPSHOT_DATE)STK=doc.stk;
+    ensureStkLateAdditions();/* v15.0: クラウド在庫にレール短/長が無ければ補充(初回/リアルタイム両方。在庫編集は非破壊) */
     if(Array.isArray(doc.incoming)){
       if(opts.replace){INCOMING=doc.incoming;}
       else{
@@ -221,6 +242,7 @@ function cloudLoad(cb){
         CLOUD_READY=false;if(cb)cb(false);return;
       }
       CLOUD_READY=true;
+      _stkLateAdded=false;/* v15.0: この回のクラウドロードでレール補充が発生したか判定するためリセット */
       if(res.data&&res.data.doc){applyCloudDoc(res.data.doc,{replace:true});}
       if(cb)cb(true,!!(res.data&&res.data.doc));
     },function(err){console.warn('[Cloud] load失敗',err);CLOUD_READY=false;if(cb)cb(false);});
@@ -1561,6 +1583,7 @@ function saveAll(){saveOrders();saveStock();saveHeld();saveIncoming();saveEditLo
     saveStock();saveHeld();
   }catch(e){console.warn('Stock migration failed',e);}
 })();
+ensureStkLateAdditions();/* v15.0: 起動時(ローカル/オフライン)にもレール短/長を非破壊補充 */
 
 /* Auto-save every 3 seconds to catch all changes */
 setInterval(saveAll,3000);
@@ -2170,7 +2193,7 @@ function App(){
         setTimeout(function(){notif[1](null);},5000);
         /* v14.4: STK を同梱されていれば即時反映 */
         try{
-          if(d.stk){STK=d.stk;saveAll();bump[1](function(v){return v+1;});}
+          if(d.stk){STK=d.stk;ensureStkLateAdditions();saveAll();bump[1](function(v){return v+1;});}/* v15.0: broadcast受信STKにもレール補充(過渡期に旧端末からレール無STKが来ても表示が0にならない) */
           if(d.editLog&&Array.isArray(d.editLog)){
             /* EDIT_LOG をマージ（重複は timestamp+label で判定） */
             var existing={};EDIT_LOG.forEach(function(e){existing[e.timestamp+'|'+e.label]=true;});
@@ -2207,7 +2230,7 @@ function App(){
           }
           if(d.nextON)nextON=d.nextON;
           if(d.held)HELD=d.held;
-          if(d.stk)STK=d.stk;
+          if(d.stk){STK=d.stk;ensureStkLateAdditions();}/* v15.0: broadcast受信STKにもレール補充 */
           saveAll();
           bump[1](function(v){return v+1;});
         }catch(e){
@@ -2267,6 +2290,7 @@ function App(){
         if(hadData){notif[1]('✅ 最新データをクラウドから取得しました');setTimeout(function(){notif[1](null);},3500);}
         /* 初回ロード時、クラウドが空ならローカル状態を初期保存して真実源を作る */
         if(!hadData)cloudSave(userName[0],true);
+        else if(_stkLateAdded)cloudSave(userName[0],true);/* v15.0: クラウドにレール在庫が無かった→補充分を共有DBへ一度だけ保存(全端末へ伝播) */
         /* 他端末の保存をリアルタイム購読(postgres_changes) */
         try{
           cloudCh=supaClient.channel('lec-cloud-state')
