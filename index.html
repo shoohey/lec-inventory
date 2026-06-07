@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v17.0（要望24 ステータス差し戻し＝在庫巻き戻し対応）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v17.1（要望24 差し戻し＋要望25 代理店エンド納品先）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1814,6 +1814,7 @@ function generateQuoteHTML(order,docType){
     html+='<div><b>出荷元倉庫:</b> '+((WH_MAP[order.wh]||{}).n||'')+(order.wh2?' + '+((WH_MAP[order.wh2]||{}).n||''):'')+'</div>';
   }
   html+='<div><b>受渡地:</b> '+(cust?cust.pref+(cust.city||''):'')+'</div>';
+  if(order.endUser&&(order.endUser.name||order.endUser.address)){html+='<div style="grid-column:1/3"><b>エンド納品先:</b> '+(order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')+'</div>';}
   if(docType==='quote'||docType==='invoice'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
   if(isShipping){
     var st=order.shipTo||{};
@@ -1985,6 +1986,10 @@ function generateExcel(order,docType){
     wsData.push(['納期','別途相談','','有効期限','御見積後1ヶ月']);
   }
   wsData.push(['受渡地',cust?cust.pref+(cust.city||''):'','','支払条件',exPayTerms]);
+  /* v17.1 要望25: エンド納品先（代理店経由） */
+  if(order.endUser&&(order.endUser.name||order.endUser.address)){
+    wsData.push(['エンド納品先',(order.endUser.name||'')+(order.endUser.postal?'（〒'+order.endUser.postal+'）':'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')]);
+  }
   /* v14.4: 出荷指示書専用のヘッダー追記 */
   if(docType==='shipping'){
     if(order.shipNo)wsData.push(['出荷№',order.shipNo]);
@@ -2696,6 +2701,7 @@ function InvPage(p){
   var discount=us(0);
   var quoteSubject=us(''),paymentTerms=us('前払い（銀行振り込み）'),paymentCustom=us(''),quoteNotes=us(''),productNotes=us(['']);
   var quoteSalesPerson=us('');/* Override sales person per quote */
+  var endUser=us({name:'',postal:'',address:'',phone:''});/* v17.1 要望25: 代理店経由のエンド納品先（任意） */
   var baseColor=us('gy'),hasBase=us(true),hasCap=us(true);
   var shelfQty=us(0),shelfColor=us('gy');
   var multiColor=us(false),colorBreak=us([]);
@@ -2928,7 +2934,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var pt=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -2957,7 +2963,7 @@ function InvPage(p){
     var totalShip=(shipA?shipA.shipping:0)+(shipB?shipB.shipping:0);
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var pt2=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||''};
+    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了（2倉庫）: '+no);
@@ -2977,7 +2983,7 @@ function InvPage(p){
     var existing=quoteOrder[0];
     var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id;
     var no=isUpdate?existing.no:'QT-2026-'+String(nextON++).padStart(3,'0');
-    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||''};
+    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     if(isUpdate){
       var idx=ORDERS.findIndex(function(o){return o.no===no;});
       if(idx>=0)ORDERS[idx]=order;else ORDERS.push(order);
@@ -3023,7 +3029,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='RS-2026-'+String(nextON++).padStart(3,'0');
     var ptR=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',reserveOnly:true,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);
     p.toast('仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -3299,6 +3305,30 @@ function InvPage(p){
             h('div',{style:{marginBottom:4}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'全体備考（見積書末尾に表示）'),
               h('textarea',{className:'inp',value:quoteNotes[0],onChange:function(e){quoteNotes[1](e.target.value);},placeholder:'例: 納品場所は1F搬入口、設置工事は別途見積',rows:2,style:{resize:'vertical'}})
+            ),
+            /* v17.1 要望25: エンド納品先（代理店経由の場合のみ・任意） */
+            h('div',{style:{marginBottom:4,padding:'6px 8px',background:'#f5f7fa',borderRadius:4,border:'1px solid var(--g200)'}},
+              h('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap'}},
+                h('label',{style:{fontSize:9,fontWeight:700,color:'#1e3a5f'}},'エンド納品先（代理店経由の場合・任意）'),
+                h('select',{className:'inp',style:{fontSize:8,width:150,padding:'2px 4px'},value:'',onChange:function(e){
+                  if(!e.target.value)return;
+                  var dl=DEALERS.find(function(d){return d.id===e.target.value;});
+                  if(dl)endUser[1]({name:dl.name,postal:dl.postal||'',address:dl.address||'',phone:dl.phone||''});
+                }},
+                  h('option',{value:''},'代理店マスタから選択…'),
+                  DEALERS.map(function(dl){return h('option',{key:dl.id,value:dl.id},dl.name);})
+                ),
+                (endUser[0].name||endUser[0].address)?h('button',{className:'btn btn-xs btn-ol',style:{padding:'2px 6px',color:'#DC2626'},onClick:function(){endUser[1]({name:'',postal:'',address:'',phone:''});}},'クリア'):null
+              ),
+              h('div',{style:{display:'flex',gap:4,marginBottom:4}},
+                h('input',{className:'inp',style:{flex:2},value:endUser[0].name,onChange:function(e){endUser[1](Object.assign({},endUser[0],{name:e.target.value}));},placeholder:'納品先名'}),
+                h('input',{className:'inp',style:{flex:1},value:endUser[0].postal,onChange:function(e){endUser[1](Object.assign({},endUser[0],{postal:e.target.value}));},placeholder:'〒'})
+              ),
+              h('div',{style:{display:'flex',gap:4}},
+                h('input',{className:'inp',style:{flex:2},value:endUser[0].address,onChange:function(e){endUser[1](Object.assign({},endUser[0],{address:e.target.value}));},placeholder:'住所'}),
+                h('input',{className:'inp',style:{flex:1},value:endUser[0].phone,onChange:function(e){endUser[1](Object.assign({},endUser[0],{phone:e.target.value}));},placeholder:'TEL'})
+              ),
+              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※ 入力すると見積書・出荷指示書に「エンド納品先」として表示され、出荷時の配送先に自動セットされます')
             )
           )
         ):null
@@ -3516,6 +3546,7 @@ function QuotePreview(p){
         isShipping&&o.shipNo?h('div',null,h('b',null,'出荷№: '),o.shipNo):null,
         isShipping?h('div',null,h('b',null,'出荷元倉庫: '),((WH_MAP[o.wh]||{}).n||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).n||''):'')):null,
         h('div',null,h('b',null,'受渡地: '),cust?cust.pref+(cust.city||''):''),
+        o.endUser&&(o.endUser.name||o.endUser.address)?h('div',{style:{gridColumn:'1/3'}},h('b',null,'エンド納品先: '),(o.endUser.name||'')+(o.endUser.postal?' 〒'+o.endUser.postal:'')+' '+(o.endUser.address||'')+(o.endUser.phone?' TEL.'+o.endUser.phone:'')):null,
         dt==='quote'||dt==='invoice'?h('div',null,h('b',null,'支払条件: '),payTerms2):null,
         isShipping?h('div',null,h('b',null,'配送先: '),(o.shipTo&&o.shipTo.name)||(cust?cust.pref+(cust.city||''):'')):null,
         isShipping&&o.shipper?h('div',null,h('b',null,'荷送人: '),o.shipper):null,
@@ -3644,7 +3675,9 @@ function OrdersPage(p){
     if(ns==='出荷指示'){
       /* Show shipping modal instead of immediately processing */
       var c=CUSTS.find(function(x){return x.id===order.cid;});
-      shipForm[1]({shipToName:c?c.name:'',shipToPostal:c&&c.postal?c.postal:'',shipToAddress:c?c.pref+(c.city||''):'',shipToPhone:c&&c.phone?c.phone:'',shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:order.shippingNotes||'',shipNo:order.shipNo||''});
+      /* v17.1 要望25: エンド納品先があれば配送先に優先セット（無ければ顧客情報） */
+      var eu=order.endUser&&(order.endUser.name||order.endUser.address)?order.endUser:null;
+      shipForm[1]({shipToName:eu?eu.name:(c?c.name:''),shipToPostal:eu&&eu.postal?eu.postal:(c&&c.postal?c.postal:''),shipToAddress:eu&&eu.address?eu.address:(c?c.pref+(c.city||''):''),shipToPhone:eu&&eu.phone?eu.phone:(c&&c.phone?c.phone:''),shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:order.shippingNotes||'',shipNo:order.shipNo||''});
       shipModal[1](order);
       return;
     }
@@ -3897,10 +3930,16 @@ function OrdersPage(p){
               if(c2){f.shipToName=c2.name;f.shipToPostal=c2.postal||'';f.shipToAddress=c2.pref+(c2.city||'');f.shipToPhone=c2.phone||'';shipForm[1](f);}
               return;
             }
+            if(e.target.value==='enduser'){
+              var eu2=shipModal[0].endUser||{};
+              f.shipToName=eu2.name||'';f.shipToPostal=eu2.postal||'';f.shipToAddress=eu2.address||'';f.shipToPhone=eu2.phone||'';shipForm[1](f);
+              return;
+            }
             var dl=DEALERS.find(function(d){return d.id===e.target.value;});
             if(dl){f.shipToName=dl.name;f.shipToPostal=dl.postal;f.shipToAddress=dl.address;f.shipToPhone=dl.phone;shipForm[1](f);}
           }},
             h('option',{value:'manual'},'手入力'),
+            (shipModal[0]&&shipModal[0].endUser&&(shipModal[0].endUser.name||shipModal[0].endUser.address))?h('option',{value:'enduser'},'エンド納品先（この案件）'):null,
             h('option',{value:'customer'},'顧客情報を使用'),
             DEALERS.map(function(dl){return h('option',{key:dl.id,value:dl.id},'代理店: '+dl.name);})
           )
