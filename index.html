@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v16.0（削除項目反映・レール新方式・営業デフォルト）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v17.0（要望24 ステータス差し戻し＝在庫巻き戻し対応）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -961,6 +961,113 @@ function holdBOM(line,wh,bom,color,size,colorBreakdown){
   });
 }
 
+/* ========== v17: 要望24 ステータス差し戻し（在庫整合性を保つ巻き戻し） ==========
+   在庫の意味づけ:
+     見積作成(0)            : HELD無し・STK未消費
+     仮押さえ(1)/受注確定(2) : HELD有り・STK未消費（両者間は在庫不変）
+     出荷指示(3)以降         : STK消費済み・HELD解放済み（_shippedActualHeld と EDIT_LOG「出荷消費」に記録）
+   差し戻しは shipOrder の完全な逆操作を行う。 */
+function _rbAddStock(lineId,wh,key,sub,color,delta){
+  if(!STK[lineId])STK[lineId]={};
+  if(!STK[lineId][wh])STK[lineId][wh]={};
+  var oldV,newV;
+  if(color){/* 扉: STK[line][wh][key][color][size(=sub)] */
+    if(!STK[lineId][wh][key])STK[lineId][wh][key]={};
+    if(!STK[lineId][wh][key][color])STK[lineId][wh][key][color]={};
+    oldV=STK[lineId][wh][key][color][sub]||0;newV=Math.max(0,oldV+delta);
+    STK[lineId][wh][key][color][sub]=newV;
+  }else if(sub!==undefined&&sub!==null&&sub!==''){
+    if(!STK[lineId][wh][key])STK[lineId][wh][key]={};
+    oldV=STK[lineId][wh][key][sub]||0;newV=Math.max(0,oldV+delta);
+    STK[lineId][wh][key][sub]=newV;
+  }else{
+    oldV=STK[lineId][wh][key]||0;newV=Math.max(0,oldV+delta);
+    STK[lineId][wh][key]=newV;
+  }
+  return {oldV:oldV,newV:newV};
+}
+/* 出荷時に EDIT_LOG へ積んだ「出荷消費」を逆仕訳して STK を倉庫へ戻す。
+   未戻し(_rb未設定)のエントリのみ対象とし二重戻しを防止。EDIT_LOG が無ければ _shippedActualHeld をフォールバック。 */
+function restoreShippedStock(order){
+  var restored=0;
+  var hits=EDIT_LOG.filter(function(e){return e&&!e._rb&&e.label&&e.label.indexOf('出荷消費 '+order.no)>=0;});
+  if(hits.length>0){
+    hits.forEach(function(e){
+      var delta=(e.oldVal||0)-(e.newVal||0);/* 消費量(正) */
+      e._rb=true;
+      if(delta===0)return;
+      var r=_rbAddStock(e.lineId,e.wh,e.key,e.sub,e.color,delta);
+      restored++;
+      EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:e.lineId,key:e.key,sub:e.sub,color:e.color,wh:e.wh,oldVal:r.oldV,newVal:r.newV,label:(e.color?'扉':'')+'差戻し入庫 '+order.no,editor:'差戻し処理'});
+    });
+    return restored;
+  }
+  /* フォールバック: EDIT_LOG が見つからない場合は出荷スナップショットから戻す */
+  order.lines.forEach(function(ln){
+    if(ln.isFreeInput)return;
+    var snap=ln._shippedActualHeld;if(!snap||!snap.length)return;
+    snap.forEach(function(b){
+      var wh=b._wh||order.wh||ln._heldWh;
+      var subArg=b.isDoor?b.size:b.sub,colorArg=b.isDoor?b.color:undefined;
+      var r=_rbAddStock(b.heldLine||ln.line,wh,b.key,subArg,colorArg,b.qty);
+      restored++;
+      EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:b.heldLine||ln.line,key:b.key,sub:subArg,color:colorArg,wh:wh,oldVal:r.oldV,newVal:r.newV,label:(b.isDoor?'扉':'')+'差戻し入庫(snap) '+order.no,editor:'差戻し処理'});
+    });
+  });
+  return restored;
+}
+/* 出荷時に解放した HELD を _shippedActualHeld スナップショットから完全復元（仮押さえ/受注確定へ戻す場合） */
+function reHoldFromSnapshot(order){
+  order.lines.forEach(function(ln){
+    if(ln.isFreeInput)return;
+    var snap=ln._shippedActualHeld;
+    if(!snap||!snap.length){ln._actualHeld=ln._actualHeld||[];return;}
+    var reheld=[];
+    snap.forEach(function(b){
+      var hl=b.heldLine||ln.line,wh=b._wh||order.wh||ln._heldWh;
+      if(!HELD[hl])HELD[hl]={};if(!HELD[hl][wh])HELD[hl][wh]={door:{},doorH:{}};
+      if(b.isDoor){
+        if(!HELD[hl][wh][b.key])HELD[hl][wh][b.key]={};
+        if(!HELD[hl][wh][b.key][b.color])HELD[hl][wh][b.key][b.color]={};
+        HELD[hl][wh][b.key][b.color][b.size]=(HELD[hl][wh][b.key][b.color][b.size]||0)+b.qty;
+      }else if(b.sub!==undefined){
+        if(!HELD[hl][wh][b.key])HELD[hl][wh][b.key]={};
+        HELD[hl][wh][b.key][b.sub]=(HELD[hl][wh][b.key][b.sub]||0)+b.qty;
+      }else{
+        HELD[hl][wh][b.key]=(HELD[hl][wh][b.key]||0)+b.qty;
+      }
+      reheld.push(Object.assign({},b));
+    });
+    ln._actualHeld=reheld;ln._heldWh=order.wh||ln._heldWh;ln._hadActualHeld=true;
+    delete ln._shippedActualHeld;
+  });
+}
+/* HELD有り(仮押さえ/受注確定)→HELD無し(見積作成)へ戻す: 実押さえ記録のあるラインのみ解放（共有HELDの誤減算を防止） */
+function releaseOrderHeld(order){
+  order.lines.forEach(function(ln){
+    if(ln.isFreeInput)return;
+    if(!(ln._actualHeld&&ln._actualHeld.length)&&!ln._hadActualHeld)return;
+    if(order.wh2){releaseLine(ln,order.wh);releaseLine(ln,order.wh2);}
+    else{releaseLine(ln,order.wh);}
+    ln._actualHeld=[];ln._hadActualHeld=false;
+  });
+}
+/* ステータス差し戻しに伴う在庫巻き戻しのディスパッチャ。戻り値 mode で UI 文言を切替。 */
+function rollbackInventory(order,fromStatus,toStatus){
+  var SF=STATUS_FLOW,fi=SF.indexOf(fromStatus),ti=SF.indexOf(toStatus);
+  if(fi<0||ti<0||ti>=fi)return {ok:false,mode:'invalid'};
+  var SHIP=SF.indexOf('出荷指示');
+  var fromShipped=fi>=SHIP,toShipped=ti>=SHIP;
+  var fromHeld=(fi===1||fi===2),toHeld=(ti===1||ti===2);
+  if(fromShipped&&!toShipped){
+    restoreShippedStock(order);
+    if(toHeld){reHoldFromSnapshot(order);return {ok:true,mode:'unship_rehold'};}
+    order.lines.forEach(function(ln){if(ln.isFreeInput)return;delete ln._shippedActualHeld;ln._actualHeld=[];ln._hadActualHeld=false;});
+    return {ok:true,mode:'unship_to_quote'};
+  }
+  if(fromHeld&&ti<1){releaseOrderHeld(order);return {ok:true,mode:'release_held'};}
+  return {ok:true,mode:'neutral'};
+}
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
 function normalizeStockLine(line,key){
   if(isCommonStockKey(key))return 'jp2';
@@ -3547,6 +3654,28 @@ function OrdersPage(p){
     broadcastOrderUpdate(p.userName||'',order.no+' ステータス→'+ns);
     detail[1](null);saveAll();
   }
+  /* v17 要望24: ステータス差し戻し（過去ステータスへ戻す。在庫は rollbackInventory が整合的に巻き戻す） */
+  function rollbackStatus(order,target){
+    if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
+    var SF=STATUS_FLOW,fi=SF.indexOf(order.status),ti=SF.indexOf(target);
+    if(ti<0||ti>=fi)return;
+    var SHIP=SF.indexOf('出荷指示');
+    var msg;
+    if(fi>=SHIP&&ti<SHIP){
+      msg='【差し戻し】'+order.no+' を「'+order.status+'」→「'+target+'」に戻します。\n\n⚠️ 出荷済みの在庫を倉庫に戻します（在庫数が復元されます）。'+(ti>=1?'\n復元した在庫はこの案件で再度引当（仮押さえ）されます。':'\n引当も解除され、在庫は空きに戻ります。')+'\n\n本当に差し戻しますか？';
+    }else if((fi===1||fi===2)&&ti<1){
+      msg='【差し戻し】'+order.no+' を「'+order.status+'」→「'+target+'」に戻します。\n\n確保していた在庫の引当を解除します。\n\nよろしいですか？';
+    }else{
+      msg='【差し戻し】'+order.no+' を「'+order.status+'」→「'+target+'」に戻します。\n（在庫の増減はありません）\n\nよろしいですか？';
+    }
+    if(!confirm(msg))return;
+    var r=rollbackInventory(order,order.status,target);
+    order.status=target;
+    var tail=r&&r.mode==='unship_rehold'?'（在庫を復元し再引当）':r&&r.mode==='unship_to_quote'?'（在庫を復元・引当解除）':r&&r.mode==='release_held'?'（引当解除）':'';
+    p.toast('差し戻し: '+order.no+' → '+target+tail);
+    broadcastOrderUpdate(p.userName||'',order.no+' 差し戻し→'+target);
+    detail[1](null);saveAll();p.bump&&p.bump();
+  }
   function confirmShipOrder(){
     var order=shipModal[0];if(!order)return;
     var sf=shipForm[0];
@@ -3694,11 +3823,15 @@ function OrdersPage(p){
             var idx=STATUS_FLOW.indexOf(s);
             var curIdx=STATUS_FLOW.indexOf(detail[0].status);
             var isNext=idx===curIdx+1;
+            var isBack=idx<curIdx;/* v17 要望24: 過去ステータスは差し戻し可能 */
             return h('button',{key:s,className:'btn btn-xs '+(isCurrent?'btn-gn':isNext?'btn-or':'btn-ol'),
-              disabled:!isNext,style:{opacity:isNext||isCurrent?1:.5},
-              onClick:function(){if(isNext)changeStatus(detail[0],s);}
-            },(isCurrent?'● ':'')+s);
-          }))
+              disabled:!(isNext||isBack||isCurrent),
+              style:Object.assign({opacity:(isNext||isCurrent||isBack)?1:.4},isBack?{background:'#FEF2F2',color:'#991B1B',borderColor:'#FCA5A5'}:{}),
+              title:isBack?'「'+s+'」へ差し戻し':isNext?'「'+s+'」へ進める':'',
+              onClick:function(){if(isNext)changeStatus(detail[0],s);else if(isBack)rollbackStatus(detail[0],s);}
+            },(isCurrent?'● ':isBack?'◀ ':'')+s);
+          })),
+          h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:3}},'※ オレンジ=次へ進める / ◀赤枠=差し戻し（在庫も自動で巻き戻します）')
         ),
         h('b',{style:{fontSize:10}},'明細:'),
         h('table',{className:'tbl',style:{marginTop:4}},
