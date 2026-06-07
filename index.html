@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v17.1（要望24 差し戻し＋要望25 代理店エンド納品先）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v17.2（要望24差し戻し＋25エンド納品先＋26リピート発注）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1067,6 +1067,14 @@ function rollbackInventory(order,fromStatus,toStatus){
   }
   if(fromHeld&&ti<1){releaseOrderHeld(order);return {ok:true,mode:'release_held'};}
   return {ok:true,mode:'neutral'};
+}
+/* v17.2 要望26: リピート発注用に明細を複製し、在庫追跡フィールドを除去（前回の引当は引き継がない／元配列は非破壊） */
+function cloneLinesForRepeat(srcLines){
+  return (srcLines||[]).map(function(l){
+    var n=Object.assign({},l);
+    delete n._actualHeld;delete n._heldWh;delete n._hadActualHeld;delete n._shippedActualHeld;delete n._partialReleases;
+    return n;
+  });
 }
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
 function normalizeStockLine(line,key){
@@ -2215,6 +2223,7 @@ function openPrintWindow(html){
 /* ========== APP ========== */
 function App(){
   var tab=us('cust'),cust=us(null),toast=us(null),bump=us(0);
+  var repeatOrder=us(null);/* v17.2 要望26: 前回コピーでリピート発注（OrdersPage→ビルダーへ読込） */
   /* Presence state */
   var userName=us(localStorage.getItem('lec_user_name')||'');
   var userLoc=us(localStorage.getItem('lec_user_loc')||'honsha_office');
@@ -2489,8 +2498,8 @@ function App(){
       h('div',{className:'ver'},'v14.7')
     ),
     h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:isReadOnly[0]}),
-    h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:isReadOnly[0]}),
-    h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:isReadOnly[0]}),
+    h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:isReadOnly[0],repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);}}),
+    h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:isReadOnly[0],setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);}}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:isReadOnly[0]}),
     /* v14.4 hotfix2: 同時ログイン可視化バナー
        offline時はバナーを非表示にして画面の邪魔をしない（ヘッダーの「💾 ローカルモード」のみで状態を示す）
@@ -2734,6 +2743,28 @@ function InvPage(p){
     whResults[1]([]);
     multiWH[1]([]);
   },[p.selCust&&p.selCust.id]);
+  /* v17.2 要望26: リピート発注 — OrdersPageでコピーされた案件の製品構成をビルダーへ読み込む。
+     在庫追跡フィールドは除外し、見積/仮押さえは新規に行う（前回の引当は引き継がない）。
+     顧客変更クリアの後に定義しているため、同一レンダーでクリア→読込の順となり読込が確定する。 */
+  ue(function(){
+    var ro=p.repeatOrder;
+    if(!ro)return;
+    var cloned=cloneLinesForRepeat(ro.lines);
+    lines[1](cloned);
+    if(ro.wh)selWH[1](ro.wh);
+    multiWH[1]([]);selMulti[1](null);
+    quoteOrder[1](null);showQuote[1](false);
+    quoteSubject[1](ro.subject||'');
+    if(ro.paymentTerms)paymentTerms[1](ro.paymentTerms);
+    quoteNotes[1](ro.notes||'');
+    productNotes[1](ro.productNotes?String(ro.productNotes).split('\n'):['']);
+    discount[1](ro.discount||0);
+    quoteSalesPerson[1](ro.salesPersonOverride||'');
+    endUser[1](ro.endUser?Object.assign({name:'',postal:'',address:'',phone:''},ro.endUser):{name:'',postal:'',address:'',phone:''});
+    if(typeof doCheck==='function')doCheck(cloned);
+    p.toast('リピート発注: '+(ro.no||'')+' の内容を読み込みました。倉庫・在庫を確認して見積/仮押さえしてください');
+    p.clearRepeat&&p.clearRepeat();
+  },[p.repeatOrder]);
   var qty=(parseInt(isl[0])||1)*(parseInt(tier[0])||1);
 
   function addLine(){
@@ -3760,6 +3791,16 @@ function OrdersPage(p){
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){detail[1](o);}},'詳細'),
               h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(){openQuote(o,'quote');}},'見積'),
+              /* v17.2 要望26: 前回コピーでリピート発注 */
+              h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2,fontWeight:700},title:'この案件の内容をコピーして新規見積（リピート発注）',onClick:function(){
+                if(p.isReadOnly){p.toast('読み取り専用モード中はコピーできません');return;}
+                var rc=CUSTS.find(function(x){return x.id===o.cid;});
+                if(!rc){p.toast('顧客情報が見つかりません');return;}
+                if(!p.requestRepeat){p.toast('この環境ではリピート発注を利用できません');return;}
+                p.setCust&&p.setCust(rc);
+                p.requestRepeat(o);
+                p.setTab&&p.setTab('inv');
+              }},'🔁 コピー再発注'),
               h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,fontWeight:700},title:'出荷指示書を新規ウィンドウで出力',onClick:function(){openQuote(o,'shipping');}},'📄 出荷指示書'),
               /* v14.2: 出荷指示書のExcel出力（PDF生成と別に部材一覧入りExcel） */
               h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'出荷指示書をExcel形式で出力',onClick:function(){generateExcel(o,'shipping');}},'📊 出荷Excel'),
