@@ -1385,6 +1385,14 @@ function calcFreight(order,destCity,destPref){
   if(fc.over)return {ok:false,reason:'over_weight_charter',table:table,weight:bw.actualWeight,distance:dd.km};
   return {ok:true,table:table,distance:dd.km,approxDistance:dd.approx,weight:bw.actualWeight,boxes:bw.boxes,rate:fc.rate,shokei:fc.shokei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
 }
+/* v18.18 P3連動: FREIGHT_OVR.officialMode が ON のとき、距離解決できる単一倉庫見積は運賃表エンジンの見積運賃(quoted)を正式送料に採用。
+   OFF(既定)または距離解決不可なら従来の簡易送料(fallback)を返す＝既定では完全に従来挙動（無回帰）。 */
+function officialShipping(lines,wh,cust,fallback){
+  if(FREIGHT_OVR&&FREIGHT_OVR.officialMode&&cust&&lines&&lines.length){
+    try{var fr=calcFreight({wh:wh,lines:lines},cust.city||'',cust.pref||'');if(fr&&fr.ok&&fr.quoted!=null)return fr.quoted;}catch(e){}
+  }
+  return fallback;
+}
 /* v18.10 P3-B: チャーター料金表（PDFページ5・尼高運輸/関西・札幌発）。距離km×車格(2t/4t/10t)→円。参考比較用。
    車格=2t(積載2000kg)/4t(~2500kg)/10t(13000kg)・容積/重量変動あり。本社発のチャーター表は未提供。 */
 var CHARTER_TABLES={
@@ -3477,7 +3485,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var pt=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -3535,7 +3543,7 @@ function InvPage(p){
     var existing=quoteOrder[0];
     var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id;
     var no=isUpdate?existing.no:'QT-2026-'+String(nextON++).padStart(3,'0');
-    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:officialShipping(lines[0],wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     if(isUpdate){
       var idx=ORDERS.findIndex(function(o){return o.no===no;});
       if(idx>=0)ORDERS[idx]=order;else ORDERS.push(order);
@@ -3581,7 +3589,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='RS-2026-'+String(nextON++).padStart(3,'0');
     var ptR=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shipInfo?shipInfo.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);
     p.toast('仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -4896,6 +4904,13 @@ function PartsPage(p){
                 !isAdm?h('div',{style:{padding:10,background:'#FEE2E2',color:'#991B1B',borderRadius:6,fontSize:11}},'※管理者のみ編集できます'):
                 h('div',null,
                   h('div',{style:{padding:8,background:'#FEF3C7',borderRadius:6,fontSize:10,color:'#7C2D12',marginBottom:10}},'⚠️ 変更は即時に送料試算へ反映され、全端末で共有されます（localStorage）。変更履歴を記録します。'),
+                  /* v18.18 P3連動: 運賃表エンジンを正式送料に採用するオプトイン（既定OFF） */
+                  h('div',{style:{marginBottom:12,padding:8,background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6}},
+                    h('label',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',display:'flex',alignItems:'center',gap:6,cursor:'pointer'}},
+                      h('input',{type:'checkbox',defaultChecked:!!FREIGHT_OVR.officialMode,onChange:function(e){FREIGHT_OVR.officialMode=e.target.checked;saveFreightOverride();freightEditBump[1](freightEditBump[0]+1);p.toast(e.target.checked?'運賃表エンジンを正式送料に採用（距離解決できる単一倉庫見積のみ）':'簡易送料に戻しました（既定）');}}),
+                      '運賃表エンジンを正式な見積送料に採用する（オプトイン）'),
+                    h('div',{style:{fontSize:9,color:'var(--g600)',marginTop:4}},'ONにすると、距離が解決できる単一倉庫の新規見積は運賃表ベースの精密送料を正式採用します（解決できない宛先・複数倉庫は従来の簡易送料）。OFF(既定)は従来どおり全件簡易送料。既存見積は再作成時のみ更新。')
+                  ),
                   /* 諸経費 */
                   h('div',{style:{marginBottom:12}},
                     h('div',{style:{fontWeight:700,fontSize:11,marginBottom:4}},'諸経費（運賃原価=地別運賃+諸経費）'),
