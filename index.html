@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.4（P3-2 地域別運賃マトリクス＋lookup）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.5（P3-3 行先→距離・運賃原価＝例¥2523照合）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1245,6 +1245,38 @@ function freightLookup(tableKey,distanceKm,weightKg){
   var row=t.rates[wi]||[];var rate=row[di];
   if(rate==null||rate===0){for(var k=wi;k<t.weights.length;k++){if(t.rates[k]&&t.rates[k][di]>0){rate=t.rates[k][di];break;}}}
   return {rate:rate||0,weightBracket:t.weights[wi],distBracket:t.dist[di],over:false};
+}
+/* v18.5 P3-3: 行先→運賃表・距離列の割当 ＋ 運賃原価/見積運賃の算出（実データ確定分）。
+   発倉庫→運賃表: 尼高(amago)→r5_amago / 札幌(sapporo)→r6_sapporo / その他→misshu。
+   行先市→距離列: r5/r6 は cities{}(距離km→都市配列) を逆引き。
+   諸経費: 西濃(r5/r6)=363 / 混載(misshu)=325 ※送料計算表の例「150km/100kg=2160→運賃原価2523」より西濃=363を確定。
+   運賃原価=地別運賃+諸経費 / 見積運賃=ceil(運賃原価×1.1)。
+   ※請求重量の丸めルール(箱数=端数 or 切上げ)が例文と記入セルで食い違うため要ユーザー確認。calcShipping統合はルール確定後。 */
+function shipTableForWarehouse(whId){
+  if(whId==='amago')return 'r5_amago';
+  if(whId==='sapporo')return 'r6_sapporo';
+  return 'misshu';
+}
+function destFindDistance(tableKey,destCity){
+  var t=RATE_TABLES[tableKey];if(!t||!t.cities)return null;
+  var dc=String(destCity||'').replace(/[市区町村郡]/g,'').trim();if(!dc)return null;
+  var dists=Object.keys(t.cities).map(Number).sort(function(a,b){return a-b;});
+  for(var i=0;i<dists.length;i++){
+    var km=dists[i],arr=t.cities[km]||[];
+    for(var k=0;k<arr.length;k++){
+      var c=String(arr[k]).replace(/[市区町村郡]/g,'').trim();
+      if(c&&(c.indexOf(dc)>=0||dc.indexOf(c)>=0))return km;
+    }
+  }
+  return null;
+}
+function freightShokei(tableKey){return (tableKey==='r5_amago'||tableKey==='r6_sapporo')?363:325;}
+function freightCost(tableKey,distanceKm,weightKg){
+  var lk=freightLookup(tableKey,distanceKm,weightKg);if(!lk)return null;
+  if(lk.over)return {over:true,maxWeight:lk.maxWeight,distBracket:lk.distBracket};
+  var shokei=freightShokei(tableKey);
+  var genka=lk.rate+shokei;
+  return {rate:lk.rate,shokei:shokei,genka:genka,quoted:Math.ceil(genka*1.1),weightBracket:lk.weightBracket,distBracket:lk.distBracket,over:false};
 }
 function calcShipWeight(order){
   var agg=aggregateOrderBOM(order);/* key|sub|color → qty */
