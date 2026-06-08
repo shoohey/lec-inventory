@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.0（P2 アプリ内ログイン＋権限：営業=閲覧専用）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.1（P5b 在庫表取込→差分確認＝読取専用）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1075,6 +1075,84 @@ function cloneLinesForRepeat(srcLines){
     delete n._actualHeld;delete n._heldWh;delete n._hadActualHeld;delete n._shippedActualHeld;delete n._partialReleases;
     return n;
   });
+}
+/* ========== v18.1 P5b: 在庫管理表.xlsx 取込→差分（読取専用レポート） ==========
+   安全第一: この機能は差分の「表示」のみで STK には一切書き込まない（本番在庫を壊さない）。
+   反映は将来、マッピング検証後に別途実装する。各シート=(製品ライン×倉庫)、
+   レイアウト=アイテム(縦結合)|色|入り数|既存庫数|既箱数|現在庫数(G列)|... */
+function stockSheetToLineWh(sheetName){
+  var s=String(sheetName||'');
+  var line=(/Sα|Ｓα|新台湾|◆/.test(s))?'sa':(/台湾|●/.test(s))?'tw':(/Ver\.?\s*2|★/.test(s))?'jp2':(/Ver\.?\s*1|☆/.test(s))?'jp01':'';
+  var wh=(/新柏/.test(s))?'kashiwa':(/第一倉庫|第１倉庫/.test(s))?'dai1':(/第二倉庫|第２倉庫/.test(s))?'dai2':(/札幌/.test(s))?'sapporo':(/尼高/.test(s))?'amago':(/関西/.test(s))?'kansai':(/本社/.test(s))?'honsha':'';
+  return {line:line,wh:wh};
+}
+/* アイテム名+色ラベル → STKキー。v1はボード類のみ高信頼でマップし、未対応は null（黒側板/錠/ネジ/レール/扉等は次段で対応）。
+   STKに黒変種があるのは base/shelf のみ（side/back/top の黒はモデル未対応＝不一致として未対応扱い）。 */
+function mapStockItem(item,colLabel){
+  var it=String(item||'').trim(),c=String(colLabel||'').trim();
+  if(!it&&!c)return null;
+  var isBk=/ブラック|黒/.test(c);
+  var grp=(/SS|3S|SSS/.test(c))?'ss':'sml';
+  function sizeOf(){
+    if(/XL/.test(c))return 'XL';if(/SSS|3S/.test(c))return '3S';if(/SS/.test(c))return 'SS';
+    if(/(^|[^A-Za-z])L([(（]|$|\s)/.test(c))return 'L';
+    if(/(^|[^A-Za-z])M([(（]|$|\s)/.test(c))return 'M';
+    if(/(^|[^A-Za-z])S([(（]|$|\s)/.test(c))return 'S';
+    return '';
+  }
+  if(/トップボード|上下共通ボード|TOP\s*BOARD/i.test(it)){return isBk?null:{key:'top',sub:grp};}
+  if(/ベース|BASE/i.test(it)){return {key:isBk?'base_bk':'base',sub:grp};}
+  if(/棚板|SHELF/i.test(it)){return {key:isBk?'shelf_bk':'shelf',sub:grp};}
+  if(/サイドボード|SIDE\s*BOARD/i.test(it)){var ss=sizeOf();return (isBk||!ss)?null:{key:'side',sub:ss};}
+  if(/バックボード|BACK\s*BOARD|Ｂａｃｋ/i.test(it)){var bs=sizeOf();return (isBk||!bs)?null:{key:'back',sub:bs};}
+  return null;/* それ以外(扉/錠/ネジ/レール/黒側板等)は v1 未対応 */
+}
+/* sheets=[{name, aoa}]（aoa=二次元配列）→ パース結果。各行に line/wh/item/colorLabel/qty/map/mapped を付与。 */
+function parseStockImport(sheets){
+  var out=[];
+  (sheets||[]).forEach(function(sh){
+    var lw=stockSheetToLineWh(sh.name);
+    var aoa=sh.aoa||[];
+    /* ヘッダ行(アイテム/色/現在庫数 を含む)を探し、各列indexを特定 */
+    var hdr=-1,ci={item:-1,color:-1,cur:-1};
+    for(var r=0;r<Math.min(aoa.length,12);r++){
+      var row=aoa[r]||[];
+      var hasItem=row.some(function(x){return /アイテム/.test(String(x));});
+      var hasCur=row.some(function(x){return /現在庫数/.test(String(x));});
+      if(hasItem&&hasCur){
+        hdr=r;
+        row.forEach(function(x,ci2){var s=String(x);if(/アイテム/.test(s)&&ci.item<0)ci.item=ci2;if(/^色$/.test(s)&&ci.color<0)ci.color=ci2;if(/現在庫数$/.test(s)&&!/箱/.test(s))ci.cur=ci2;});
+        break;
+      }
+    }
+    if(hdr<0||ci.item<0||ci.cur<0)return;/* 認識不可シートはスキップ */
+    var lastItem='';
+    for(var rr=hdr+1;rr<aoa.length;rr++){
+      var rw=aoa[rr]||[];
+      var itm=String(rw[ci.item]||'').trim();if(itm)lastItem=itm;
+      var col=ci.color>=0?String(rw[ci.color]||'').trim():'';
+      if(!lastItem&&!col)continue;
+      var qv=rw[ci.cur];
+      if(qv===''||qv===null||qv===undefined)continue;
+      var qty=parseInt(qv);if(isNaN(qty))continue;
+      var m=mapStockItem(lastItem,col);
+      out.push({sheet:sh.name,line:lw.line,wh:lw.wh,item:lastItem,colorLabel:col,qty:qty,map:m,mapped:!!(m&&lw.line&&lw.wh)});
+    }
+  });
+  return out;
+}
+/* パース結果と現STKを比較。mapped行のみ {line,wh,key,sub,label,system,imported,delta}、未対応は別配列。 */
+function buildStockDiff(parsed){
+  var diffs=[],unmapped=[],same=0;
+  (parsed||[]).forEach(function(p){
+    if(!p.mapped){unmapped.push(p);return;}
+    var k=p.map.key,sub=p.map.sub;
+    var cur=gs(p.line,p.wh,k,sub);/* 現STK(=スナップショット在庫)。gsは在庫数を返す */
+    var imp=p.qty;
+    if(cur===imp){same++;return;}
+    diffs.push({sheet:p.sheet,line:p.line,wh:p.wh,key:k,sub:sub,item:p.item,colorLabel:p.colorLabel,system:cur,imported:imp,delta:imp-cur});
+  });
+  return {diffs:diffs,unmapped:unmapped,sameCount:same,mappedCount:diffs.length+same,totalCount:(parsed||[]).length};
 }
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
 function normalizeStockLine(line,key){
@@ -4119,6 +4197,7 @@ function PartsPage(p){
   /* v14.2: 在庫表/在庫資産の日付指定スナップショットExcel */
   var showSnapshotExcel=us(false);
   var snapshotForm=us({date:'',type:'stock'});/* type: stock or asset */
+  var stockImport=us(null);/* v18.1 P5b: 在庫表取込の差分結果（読取専用）。{diffs,unmapped,...}|null */
   var lineObj=LINES.find(function(l){return l.id===selLine[0];});
   var whs=WH_IDS.filter(function(w){return hasStock(selLine[0],w);});
   var colors=LINE_COLORS[selLine[0]]||[];
@@ -4340,6 +4419,43 @@ function PartsPage(p){
             var tdy=new Date();var fmt=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
             snapshotForm[1]({date:fmt(tdy),type:'stock'});showSnapshotExcel[1](true);
           }},'📆 日付指定Excel'),
+          /* v18.1 P5b: 在庫表取込（差分確認・読取専用＝STKに書き込まない） */
+          h('label',{className:'btn btn-xs btn-tl',style:{cursor:'pointer'},title:'在庫管理表.xlsx/CSVを取り込み、現在の在庫との差分を確認（在庫は変更しません）'},'📥 在庫表取込（差分）',
+            h('input',{type:'file',accept:'.xlsx,.xls,.csv',style:{display:'none'},onChange:function(e){
+              var file=e.target.files&&e.target.files[0];if(!file)return;e.target.value='';
+              var reader=new FileReader();
+              reader.onload=function(ev){
+                try{
+                  var wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+                  var sheets=wb.SheetNames.map(function(n){return {name:n,aoa:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''})};});
+                  var diff=buildStockDiff(parseStockImport(sheets));
+                  stockImport[1](diff);
+                  p.toast('取込: 差分'+diff.diffs.length+'件 / 未対応'+diff.unmapped.length+'件（在庫は未変更）');
+                }catch(err){p.toast('取込エラー: '+err.message);}
+              };
+              reader.readAsArrayBuffer(file);
+            }})
+          ),
+          stockImport[0]?(function(){var di=stockImport[0];return h(Modal,{show:true,title:'在庫表 取込差分（読取専用・在庫は変更しません）',w:780,onClose:function(){stockImport[1](null);},
+            footer:h('button',{className:'btn btn-ol',onClick:function(){stockImport[1](null);}},'閉じる')},
+            h('div',null,
+              h('div',{style:{padding:8,background:'#FEF3C7',borderRadius:6,fontSize:10,color:'#7C2D12',marginBottom:8}},'⚠️ これは差分の「確認」のみで、在庫(STK)には一切書き込みません。マッピング検証後に「反映」機能を追加予定です。'),
+              h('div',{style:{fontSize:11,marginBottom:6,fontWeight:600}},'解析 '+di.totalCount+'行 ／ マップ '+di.mappedCount+' ／ 差分 '+di.diffs.length+'件 ／ 未対応 '+di.unmapped.length+'件'),
+              di.diffs.length?h('div',{className:'scy',style:{maxHeight:'52vh'}},h('table',{className:'tbl'},
+                h('thead',null,h('tr',null,h('th',null,'ライン'),h('th',null,'倉庫'),h('th',null,'アイテム'),h('th',null,'色'),h('th',null,'システム'),h('th',null,'取込'),h('th',null,'差'))),
+                h('tbody',null,di.diffs.slice(0,400).map(function(d,i){return h('tr',{key:i},
+                  h('td',null,(LINES.find(function(l){return l.id===d.line;})||{}).name||d.line),
+                  h('td',null,(WH_MAP[d.wh]||{}).s||d.wh),
+                  h('td',null,d.item),h('td',null,d.colorLabel),
+                  h('td',{style:{textAlign:'right'}},d.system),
+                  h('td',{style:{textAlign:'right',fontWeight:700}},d.imported),
+                  h('td',{style:{textAlign:'right',color:d.delta>0?'#276749':'#c53030',fontWeight:700}},(d.delta>0?'+':'')+d.delta)
+                );}))
+              )):h('div',{style:{padding:12,color:'var(--g500)'}},'マップ対象は全て一致（差分なし）'),
+              di.diffs.length>400?h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※先頭400件のみ表示'):null,
+              di.unmapped.length?h('div',{style:{marginTop:8,fontSize:9,color:'var(--g500)'}},'未対応 '+di.unmapped.length+'件（扉/錠/ネジ/レール/黒側板など・v1ではボード類のみ対応）'):null
+            )
+          );})():null,
           /* v14 C25: 倉庫個別Excel出力（外注委託倉庫ごとのフォーマット） */
           h('button',{className:'btn btn-xs btn-pr',onClick:function(){
             try{
