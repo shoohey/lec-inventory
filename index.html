@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.6（P3-4a 請求重量・実重量切上げ＋calcFreight）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.7（P3-4b 本社発 都道府県暫定距離・全倉庫発で送料算出）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1293,15 +1293,35 @@ function calcShipWeightBilling(order){
 }
 /* 受注＋行先市 → 送料一式。発倉庫で運賃表選択→行先で距離列→請求重量(実重量切上)→freightCost。
    距離不明(misshu本社発で都市リスト未対応 等)は ok:false で返す。 */
-function calcFreight(order,destCity){
+/* v18.7 P3-4b: 本社発(misshu)の行先→距離(km) 暫定表（東京足立区発・都道府県代表距離km）。
+   ※提供PDFに本社発の都市→距離リストが無いため暫定。運賃編集UIで補正可能にする。沖縄は海上のため別扱い(null)。 */
+var PREF_KM={'北海道':1100,'青森県':710,'岩手県':540,'宮城県':360,'秋田県':640,'山形県':360,'福島県':240,
+'茨城県':120,'栃木県':110,'群馬県':120,'埼玉県':30,'千葉県':40,'東京都':20,'神奈川県':30,
+'新潟県':340,'富山県':420,'石川県':450,'福井県':470,'山梨県':120,'長野県':230,'岐阜県':400,
+'静岡県':180,'愛知県':350,'三重県':430,'滋賀県':470,'京都府':490,'大阪府':510,'兵庫県':540,'奈良県':500,'和歌山県':570,
+'鳥取県':660,'島根県':760,'岡山県':640,'広島県':800,'山口県':940,
+'徳島県':620,'香川県':650,'愛媛県':800,'高知県':760,
+'福岡県':1080,'佐賀県':1130,'長崎県':1230,'熊本県':1180,'大分県':1130,'宮崎県':1300,'鹿児島県':1380,'沖縄県':null};
+/* 行先→距離km。r5/r6は都市リスト(精密)、misshuは都道府県暫定表。戻り {km, approx:bool} | null */
+function destDistanceFor(tableKey,destCity,destPref){
+  if(tableKey==='misshu'){
+    var km=destPref?PREF_KM[destPref]:undefined;
+    if(km===null)return null;/* 沖縄等 */
+    if(km!=null)return {km:km,approx:true};
+    return null;
+  }
+  var d=destCity?destFindDistance(tableKey,destCity):null;
+  return d!=null?{km:d,approx:false}:null;
+}
+function calcFreight(order,destCity,destPref){
   var table=shipTableForWarehouse(order.wh);
   var bw=calcShipWeightBilling(order);
-  var distance=destCity?destFindDistance(table,destCity):null;
-  if(distance==null)return {ok:false,reason:'distance_unknown',table:table,weight:bw.actualWeight,boxes:bw.boxes};
-  var fc=freightCost(table,distance,bw.actualWeight);
+  var dd=destDistanceFor(table,destCity,destPref);
+  if(dd==null)return {ok:false,reason:'distance_unknown',table:table,weight:bw.actualWeight,boxes:bw.boxes};
+  var fc=freightCost(table,dd.km,bw.actualWeight);
   if(!fc)return {ok:false,reason:'no_rate',table:table,weight:bw.actualWeight};
-  if(fc.over)return {ok:false,reason:'over_weight_charter',table:table,weight:bw.actualWeight,distance:distance};
-  return {ok:true,table:table,distance:distance,weight:bw.actualWeight,boxes:bw.boxes,rate:fc.rate,shokei:fc.shokei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
+  if(fc.over)return {ok:false,reason:'over_weight_charter',table:table,weight:bw.actualWeight,distance:dd.km};
+  return {ok:true,table:table,distance:dd.km,approxDistance:dd.approx,weight:bw.actualWeight,boxes:bw.boxes,rate:fc.rate,shokei:fc.shokei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
 }
 function calcShipWeight(order){
   var agg=aggregateOrderBOM(order);/* key|sub|color → qty */
