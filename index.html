@@ -1504,6 +1504,22 @@ function applyStockImport(diffs,editorNm){
   });
   return applied;
 }
+/* v18.19 P4(要望10): 倉庫間移動。移動元の空き在庫(gs-gh)から差し引き移動先へ加算。_rbAddStock再利用・EDIT_LOG記録・非破壊。
+   共通在庫(鍵類)はnormalizeStockLineでjp2に集約。扉は対象外(非扉のみ)。チャーター/混載の取り寄せ等の実在庫移動に使用。 */
+function transferStock(lineId,key,sub,fromWh,toWh,qty,label,editorNm){
+  qty=parseInt(qty)||0;
+  if(qty<=0)return {ok:false,reason:'invalid'};
+  if(!fromWh||!toWh||fromWh===toWh)return {ok:false,reason:'invalid'};
+  var wl=normalizeStockLine(lineId,key);
+  var free=gs(wl,fromWh,key,sub)-gh(wl,fromWh,key,sub);
+  if(free<qty)return {ok:false,reason:'insufficient',avail:free};
+  var ts=new Date().toLocaleString('ja-JP');
+  var rOut=_rbAddStock(wl,fromWh,key,sub,null,-qty);
+  var rIn=_rbAddStock(wl,toWh,key,sub,null,qty);
+  EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:(label||key)+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
+  EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:(label||key)+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
+  return {ok:true,moved:qty};
+}
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
 function normalizeStockLine(line,key){
   if(isCommonStockKey(key))return 'jp2';
@@ -4675,6 +4691,7 @@ function PartsPage(p){
   var showSnapshotExcel=us(false);
   var snapshotForm=us({date:'',type:'stock'});/* type: stock or asset */
   var stockImport=us(null);/* v18.1 P5b: 在庫表取込の差分結果（読取専用）。{diffs,unmapped,...}|null */
+  var xferForm=us({from:'',to:'',qty:''});/* v18.19 要望10: 倉庫間移動フォーム */
   var showFreightEdit=us(false);/* v18.9 P3-C: 運賃編集モーダル */
   var freightEditBump=us(0);
   var lineObj=LINES.find(function(l){return l.id===selLine[0];});
@@ -5952,13 +5969,40 @@ function PartsPage(p){
               }))
             )
           ):
-          /* Non-door edit: simple warehouse list */
-          WH_IDS.filter(function(w){return hasStock(editModal[0].lineId,w);}).map(function(w){
-            return h('div',{key:w,style:{display:'flex',gap:8,alignItems:'center',marginBottom:6}},
-              h('label',{style:{width:80,fontSize:10,fontWeight:600}},WH_MAP[w].n),
-              h('input',{className:'inp',type:'number',min:0,value:editModal[0].vals[w]||0,onChange:function(e){updateEditVal(w,e.target.value);},style:{width:100,textAlign:'right',fontWeight:700}})
-            );
-          })
+          /* Non-door edit: simple warehouse list + 倉庫間移動(要望10) */
+          h('div',null,
+            WH_IDS.filter(function(w){return hasStock(editModal[0].lineId,w);}).map(function(w){
+              return h('div',{key:w,style:{display:'flex',gap:8,alignItems:'center',marginBottom:6}},
+                h('label',{style:{width:80,fontSize:10,fontWeight:600}},WH_MAP[w].n),
+                h('input',{className:'inp',type:'number',min:0,value:editModal[0].vals[w]||0,onChange:function(e){updateEditVal(w,e.target.value);},style:{width:100,textAlign:'right',fontWeight:700}})
+              );
+            }),
+            h('div',{style:{marginTop:10,paddingTop:10,borderTop:'1px solid var(--g200)'}},
+              h('div',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',marginBottom:6}},'🔄 倉庫間移動（取り寄せ）'),
+              h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
+                h('select',{className:'inp',style:{width:150},value:xferForm[0].from,onChange:function(e){xferForm[1](Object.assign({},xferForm[0],{from:e.target.value}));}},
+                  [h('option',{key:'_f',value:''},'移動元')].concat(WH_IDS.filter(function(w){return hasStock(editModal[0].lineId,w);}).map(function(w){return h('option',{key:w,value:w},WH_MAP[w].n+'（空き'+Math.max(0,gs(editModal[0].lineId,w,editModal[0].key,editModal[0].sub)-gh(editModal[0].lineId,w,editModal[0].key,editModal[0].sub))+'）');}))),
+                h('span',null,'→'),
+                h('select',{className:'inp',style:{width:130},value:xferForm[0].to,onChange:function(e){xferForm[1](Object.assign({},xferForm[0],{to:e.target.value}));}},
+                  [h('option',{key:'_t',value:''},'移動先')].concat(WH_IDS.map(function(w){return h('option',{key:w,value:w},WH_MAP[w].n);}))),
+                h('input',{className:'inp',type:'number',min:1,style:{width:64},placeholder:'数量',value:xferForm[0].qty,onChange:function(e){xferForm[1](Object.assign({},xferForm[0],{qty:e.target.value}));}}),
+                h('button',{className:'btn btn-xs btn-pr',onClick:function(){
+                  if(p.isReadOnly){p.toast('読み取り専用モード中は移動できません');return;}
+                  var em=editModal[0],f=xferForm[0];
+                  if(!f.from||!f.to||f.from===f.to){p.toast('移動元と移動先を別々に選んでください');return;}
+                  var q=parseInt(f.qty)||0;if(q<=0){p.toast('数量を入力してください');return;}
+                  var r=transferStock(em.lineId,em.key,em.sub,f.from,f.to,q,em.label,editorName[0]);
+                  if(!r.ok){p.toast(r.reason==='insufficient'?('移動元の空き在庫が不足です（空き'+r.avail+'）'):'移動できません（移動元・先・数量を確認）');return;}
+                  var e2=Object.assign({},em);e2.vals=Object.assign({},em.vals);
+                  e2.vals[f.from]=gs(em.lineId,f.from,em.key,em.sub);e2.vals[f.to]=gs(em.lineId,f.to,em.key,em.sub);
+                  editModal[1](e2);xferForm[1]({from:'',to:'',qty:''});
+                  broadcastEdit(p.userName||editorName[0]||'不明',em.label+' を倉庫間移動('+q+')');
+                  bump[1](bump[0]+1);saveAll();p.toast('倉庫間移動: '+q+'個を移動しました');
+                }},'移動')
+              ),
+              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」から差し引き移動先へ加算（チャーター/混載の取り寄せ等）。EDIT_LOGに記録。扉は対象外。')
+            )
+          )
       )
     ):null,
     /* Held orders modal (E3) */
