@@ -723,6 +723,29 @@ function ghd(line,wh,color,size,doorKey){
 }
 function avail(line,wh,key,sub){return gs(line,wh,key,sub)-gh(line,wh,key,sub);}
 function availD(line,wh,color,size,doorKey){return gd(line,wh,color,size,doorKey)-ghd(line,wh,color,size,doorKey);}
+/* v18 P4(要望11): 案件の未確保(発注待ち)パーツが現在の空き在庫で揃ったか判定。
+   入庫処理でSTKが増えると ready=true(緑=出荷可)に変わる。在庫は変更しない読み取り専用。
+   同一部材の需要は集約してから空き在庫(avail/availD)と比較する。 */
+function orderReadiness(o){
+  var u=o&&o.unsecuredParts;
+  if(!u||!u.length)return {has:false,ready:true,shortCount:0,total:0};
+  var need={};
+  u.forEach(function(it){
+    var sig=(it.isDoor?'D':'P')+'|'+it.line+'|'+it.wh+'|'+it.key+'|'+(it.sub!==undefined?it.sub:'')+'|'+(it.color||'')+'|'+(it.size||'');
+    if(!need[sig])need[sig]={it:it,qty:0};
+    need[sig].qty+=(parseInt(it.qty)||0);
+  });
+  var shortCount=0,total=0;
+  Object.keys(need).forEach(function(sig){
+    total++;
+    var n=need[sig],it=n.it,free;
+    if(it.isDoor){free=availD(it.line,it.wh,it.color,it.size,it.key);}
+    else if(it.sub!==undefined){free=avail(it.line,it.wh,it.key,it.sub);}
+    else{free=avail(it.line,it.wh,it.key);}
+    if((free||0)<n.qty)shortCount++;
+  });
+  return {has:true,ready:shortCount===0,shortCount:shortCount,total:total};
+}
 function hasStock(line,wh){return !!(STK[line]&&STK[line][wh]);}
 function totalAvailD(line,color,size){
   /* Total across all warehouses for both door and doorH */
@@ -4117,8 +4140,9 @@ function OrdersPage(p){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
     /* v14 Codex P1対応: 未確保パーツがある状態での出荷指示・出荷完了を防止 */
-    if((ns==='出荷指示'||ns==='出荷完了')&&order.unsecuredParts&&order.unsecuredParts.length>0){
-      if(!confirm('未確保パーツが '+order.unsecuredParts.length+' 件あります（発注待ち）。\n出荷を続行すると、その分は実在庫から差し引かれません。\n本当に続けますか？')){
+    /* v18 P4(要望11): 入庫で空き在庫が揃えば(ready)警告なしで出荷へ進める。まだ不足ぶんがある時のみ警告 */
+    if((ns==='出荷指示'||ns==='出荷完了')&&order.unsecuredParts&&order.unsecuredParts.length>0&&!orderReadiness(order).ready){
+      if(!confirm('未確保パーツが '+orderReadiness(order).shortCount+' 件まだ不足しています（発注待ち・未入庫）。\n出荷を続行すると、その分は実在庫から差し引かれません。\n本当に続けますか？')){
         return;
       }
     }
@@ -4206,7 +4230,11 @@ function OrdersPage(p){
             h('td',{style:{fontWeight:700}},totalQty>0?fm(totalQty)+'台':'',hasFree?' +他':''),
             h('td',null,((WH_MAP[o.wh]||{}).s||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).s||''):'')),
             h('td',{style:{fontSize:9}},o.shipping?'¥'+fm(o.shipping):'-'),
-            h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},o.status)),
+            h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},o.status),
+              (function(){var rd=orderReadiness(o);if(!rd.has)return null;return rd.ready
+                ?h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#065F46',background:'#ECFDF5',border:'1px solid #A7F3D0',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'発注待ちパーツが入庫で揃いました。出荷へ進めます'},'🟢 入庫済・出荷可')
+                :h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#9A3412',background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'発注待ち（未入庫）のパーツが残っています'},'🟠 発注待ち '+rd.shortCount+'/'+rd.total+'件');})()
+            ),
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){detail[1](o);}},'詳細'),
               h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(){openQuote(o,'quote');}},'見積'),
