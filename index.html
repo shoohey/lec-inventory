@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v17.2（要望24差し戻し＋25エンド納品先＋26リピート発注）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.0（P2 アプリ内ログイン＋権限：営業=閲覧専用）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1558,6 +1558,12 @@ var USERS=[
   {id:'admin',name:'管理者',loc:'honsha_office',role:'admin'},
   {id:'saito',name:'齋藤',loc:'honsha_office',role:'user'}
 ];
+/* v18 P2: 簡易パスワードハッシュ（クライアント側のソフトアクセス制御。強固な暗号ではない点に留意）。
+   USERS[].pw に hashPw(平文) を保存。pw 未設定ユーザーは従来通りパスワード無しでログイン可（ロックアウト防止）。
+   role: admin(管理者・全権) / user(事務・編集可) / sales(営業・閲覧+見積確認のみ=書込不可) */
+function hashPw(s){var h=5381;s=String(s||'');for(var i=0;i<s.length;i++){h=(((h<<5)+h)+s.charCodeAt(i))&0xffffffff;}return 'h'+(h>>>0).toString(36);}
+function findUserByName(nm){return USERS.find(function(u){return u.name===nm;});}
+function roleOf(nm){var u=findUserByName(nm);return u?(u.role||'user'):(nm?'user':'');}
 
 /* v14 D32: システム全体ロック判定（先勝ち） */
 var SYSTEM_LOCK={primary:null,/* presenceKey of primary user */ acquiredAt:null};
@@ -2228,6 +2234,7 @@ function App(){
   var userName=us(localStorage.getItem('lec_user_name')||'');
   var userLoc=us(localStorage.getItem('lec_user_loc')||'honsha_office');
   var loggedIn=us(!!localStorage.getItem('lec_user_name'));
+  var loginPw=us('');/* v18 P2: ログイン時パスワード入力 */
   var onlineUsers=us([]);
   var presenceStatus=us('connecting');/* connecting / connected / offline */
   var notif=us(null);
@@ -2426,9 +2433,17 @@ function App(){
   },[loggedIn[0],userName[0]]);
 
   function doLogin(){
-    if(!userName[0].trim())return;
-    localStorage.setItem('lec_user_name',userName[0].trim());
+    var nm=userName[0].trim();
+    if(!nm)return;
+    /* v18 P2: パスワード設定済ユーザーのみ照合。未設定ユーザーは従来通り通過（ロックアウト防止） */
+    var u=findUserByName(nm);
+    if(u&&u.pw){
+      if(hashPw(loginPw[0])!==u.pw){showToast('パスワードが違います');return;}
+    }
+    localStorage.setItem('lec_user_name',nm);
     localStorage.setItem('lec_user_loc',userLoc[0]);
+    localStorage.setItem('lec_user_role',roleOf(nm));
+    loginPw[1]('');
     loggedIn[1](true);
   }
 
@@ -2437,8 +2452,8 @@ function App(){
     return h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'linear-gradient(135deg,#142A45,#1E3A5F,#2A4F7A)'}},
       h('div',{style:{background:'#fff',borderRadius:16,padding:32,width:400,boxShadow:'0 20px 60px rgba(0,0,0,.3)'}},
         h('div',{style:{textAlign:'center',marginBottom:20}},
-          h('div',{style:{fontSize:20,fontWeight:900,color:'var(--nv)',marginBottom:4}},'LEC 在庫管理システム v14'),
-          h('div',{style:{fontSize:10,color:'var(--g400)'}},'登録済みユーザーから選択してログインしてください')
+          h('div',{style:{fontSize:20,fontWeight:900,color:'var(--nv)',marginBottom:4}},'LEC 在庫管理システム v18'),
+          h('div',{style:{fontSize:10,color:'var(--g400)'}},'登録済みユーザーから選択してログイン（パスワードは設定済の場合のみ）')
         ),
         h('div',{style:{marginBottom:12}},
           h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'お名前（選択）'),
@@ -2448,6 +2463,12 @@ function App(){
           ),
           h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'リストにない場合は下に直接入力'),
           h('input',{className:'inp',value:userName[0],onChange:function(e){userName[1](e.target.value);},placeholder:'例: 齋藤',style:{fontSize:14,padding:'8px 10px',marginTop:4},onKeyDown:function(e){if(e.key==='Enter')doLogin();}})
+        ),
+        /* v18 P2: パスワード（設定済ユーザーのみ必須。未設定ユーザーは空欄でログイン可） */
+        h('div',{style:{marginBottom:12}},
+          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'パスワード'),
+          h('input',{className:'inp',type:'password',value:loginPw[0],onChange:function(e){loginPw[1](e.target.value);},placeholder:'設定されている場合のみ入力',style:{fontSize:14,padding:'8px 10px'},onKeyDown:function(e){if(e.key==='Enter')doLogin();}}),
+          (function(){var u=findUserByName(userName[0]);return u&&u.pw?h('div',{style:{fontSize:9,color:'#975a16',marginTop:2}},'🔑 このユーザーはパスワードが必要です'):h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'パスワード未設定のユーザーは空欄のままログインできます');})()
         ),
         h('div',{style:{marginBottom:16}},
           h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'拠点'),
@@ -2465,6 +2486,11 @@ function App(){
 
   var TABS=[{k:'cust',l:'顧客選択'},{k:'inv',l:'在庫確認・見積'},{k:'orders',l:'案件管理'},{k:'parts',l:'部材在庫一覧'}];
   var myLocLabel=(LOCATIONS.find(function(l){return l.v===userLoc[0];})||{l:'本社'}).l;
+  /* v18 P2: ログインユーザーのロールを USERS から導出。営業(sales)は閲覧+見積確認のみ＝書込不可。
+     実効read-onlyは「同時編集ロック or 営業ロール」のいずれかでtrue。 */
+  var currentRole=roleOf(userName[0]);
+  var roleReadOnly=currentRole==='sales';
+  var effRO=isReadOnly[0]||roleReadOnly;
 
   return h('div',null,
     h('div',{className:'hdr'},
@@ -2473,7 +2499,7 @@ function App(){
         return h('button',{key:t.k,className:'tab'+(tab[0]===t.k?' on':''),onClick:function(){tab[1](t.k);}},t.l);
       })),
       /* v14 D32: 読み取り専用バナー */
-      isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（先にログイン中のユーザーが編集権限を保持）'):null,
+      roleReadOnly?h('div',{style:{background:'#975a16',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 閲覧専用（営業ロール：見積確認のみ可）'):(isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（先にログイン中のユーザーが編集権限を保持）'):null),
       /* v14.4 hotfix2: 'offline'は「同期サーバー無効」と表現変更（エラー→機能無効通知へ）
          Supabase Realtime未利用でもローカル動作は完全に可能なため、警告ではなく機能制限通知に。 */
       presenceStatus[0]==='offline'?h('span',{className:'online-count-bg local',title:'リアルタイム同期サーバーに接続できません。ローカル動作は完全に可能（データはブラウザに保存されます）'},'💾 ローカルモード'):
@@ -2497,10 +2523,10 @@ function App(){
       ),
       h('div',{className:'ver'},'v14.7')
     ),
-    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:isReadOnly[0]}),
-    h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:isReadOnly[0],repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);}}),
-    h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:isReadOnly[0],setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);}}),
-    h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:isReadOnly[0]}),
+    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO}),
+    h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);}}),
+    h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:effRO,setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);}}),
+    h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:effRO}),
     /* v14.4 hotfix2: 同時ログイン可視化バナー
        offline時はバナーを非表示にして画面の邪魔をしない（ヘッダーの「💾 ローカルモード」のみで状態を示す）
        offline = Supabase未利用環境。ローカル動作は完全に可能なので、過度な警告を表示しない方針に変更 */
@@ -2511,7 +2537,7 @@ function App(){
           onlineUsers[0].length>=2?('👥 '+onlineUsers[0].length+'人が同時利用中'):
           onlineUsers[0].length===1?'👤 あなたのみログイン中':
           '⏳ 接続中…',
-          isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},'✓ 編集権限')
+          roleReadOnly?h('span',{style:{color:'#975a16',marginLeft:6,fontSize:10}},'🔒 営業（閲覧専用）'):(isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},'✓ 編集権限'))
         ),
         onlineUsers[0].length>0?h('div',{className:'pf-users'},onlineUsers[0].map(function(u){
           var me=u.name===userName[0];
@@ -2539,11 +2565,23 @@ function App(){
                 return h('tr',{key:u.id},
                   h('td',null,u.name),
                   h('td',null,(LOCATIONS.find(function(l){return l.v===u.loc;})||{l:u.loc}).l),
-                  h('td',null,h('span',{className:'bg '+(u.role==='admin'?'bg-p':'bg-b')},u.role)),
-                  h('td',null,isAdmin?h('button',{className:'btn btn-xs btn-rd',onClick:function(){
+                  h('td',null,
+                    h('span',{className:'bg '+(u.role==='admin'?'bg-p':u.role==='sales'?'bg-y':'bg-b')},u.role==='admin'?'管理者':u.role==='sales'?'営業':'事務'),
+                    u.pw?h('span',{title:'パスワード設定済',style:{marginLeft:4,fontSize:10}},'🔑'):null
+                  ),
+                  h('td',null,isAdmin?h('span',null,
+                    /* v18 P2: パスワード設定/解除（管理者のみ） */
+                    h('button',{className:'btn btn-xs btn-ol',style:{marginRight:2},title:'パスワードを設定/変更/解除',onClick:function(){
+                      var pw=prompt('「'+u.name+'」のパスワードを入力（空欄で解除）:','');
+                      if(pw===null)return;
+                      if(pw.trim()===''){delete u.pw;showToast('パスワードを解除しました');}
+                      else{u.pw=hashPw(pw.trim());showToast('パスワードを設定しました');}
+                      saveUsers();bumpUsers[1](bumpUsers[0]+1);
+                    }},'🔑PW'),
+                    h('button',{className:'btn btn-xs btn-rd',onClick:function(){
                     if(!confirm('ユーザー「'+u.name+'」を削除しますか？'))return;
                     USERS.splice(i,1);saveUsers();bumpUsers[1](bumpUsers[0]+1);showToast('削除しました');
-                  }},'削除'):h('span',{style:{fontSize:8,color:'var(--g400)'}},'管理者のみ'))
+                  }},'削除')):h('span',{style:{fontSize:8,color:'var(--g400)'}},'管理者のみ'))
                 );
               }))
             ),
@@ -2560,7 +2598,7 @@ function App(){
             h('div',{style:{display:'flex',gap:6,alignItems:'flex-end'}},
               h('div',{style:{flex:2}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'名前'),h('input',{className:'inp',value:newUserName_[0],onChange:function(e){newUserName_[1](e.target.value);},placeholder:'例: 田中'})),
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'拠点'),h('select',{className:'inp',value:newUserLoc_[0],onChange:function(e){newUserLoc_[1](e.target.value);}},LOCATIONS.map(function(l){return h('option',{key:l.v,value:l.v},l.l);}))),
-              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'権限'),h('select',{className:'inp',value:newUserRole_[0],onChange:function(e){newUserRole_[1](e.target.value);}},h('option',{value:'user'},'一般'),h('option',{value:'admin'},'管理者'))),
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'権限'),h('select',{className:'inp',value:newUserRole_[0],onChange:function(e){newUserRole_[1](e.target.value);}},h('option',{value:'user'},'事務（編集可）'),h('option',{value:'sales'},'営業（閲覧+見積のみ）'),h('option',{value:'admin'},'管理者'))),
               h('button',{className:'btn btn-gn',onClick:function(){
                 var currentUser2=USERS.find(function(u){return u.name===userName[0];});
                 if(!currentUser2||currentUser2.role!=='admin'){showToast('管理者のみ追加可能です');return;}
