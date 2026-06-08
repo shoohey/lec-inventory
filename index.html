@@ -731,7 +731,9 @@ function orderReadiness(o){
   if(!u||!u.length)return {has:false,ready:true,shortCount:0,total:0};
   var need={};
   u.forEach(function(it){
-    var sig=(it.isDoor?'D':'P')+'|'+it.line+'|'+it.wh+'|'+it.key+'|'+(it.sub!==undefined?it.sub:'')+'|'+(it.color||'')+'|'+(it.size||'');
+    /* v18.13(Codex指摘): 共通在庫キー(鍵類)は gs/gh が全ライン合算するため、集約キーでもlineをjp2に正規化して
+       別ライン由来の同一共通部材を1グループに束ねる。さもないと各グループが同じ共有在庫と独立比較され合計超過を見逃す。 */
+    var sig=(it.isDoor?'D':'P')+'|'+(isCommonStockKey(it.key)?'jp2':it.line)+'|'+it.wh+'|'+it.key+'|'+(it.sub!==undefined?it.sub:'')+'|'+(it.color||'')+'|'+(it.size||'');
     if(!need[sig])need[sig]={it:it,qty:0};
     need[sig].qty+=(parseInt(it.qty)||0);
   });
