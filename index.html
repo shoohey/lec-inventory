@@ -1988,7 +1988,18 @@ function roleOf(nm){var u=findUserByName(nm);return u?(u.role||'user'):(nm?'user
 function lockEditorName(users){try{var pk=(typeof SYSTEM_LOCK!=='undefined'&&SYSTEM_LOCK)?SYSTEM_LOCK.primary:null;if(!pk||!Array.isArray(users))return '';var e=users.find(function(u){return u.presenceKey===pk;});return e?e.name:'';}catch(_){return '';}}
 
 /* v14 D32: システム全体ロック判定（先勝ち） */
-var SYSTEM_LOCK={primary:null,/* presenceKey of primary user */ acquiredAt:null};
+var SYSTEM_LOCK={primary:null,/* presenceKey of primary user */ acquiredAt:null, overrideName:null/* v18.17 要望5: 管理者が指定した編集権限ユーザー名(null=先勝ち自動) */};
+/* v18.17 要望5: 編集権限保持者(primary)を決定。overrideName指定時はその名のユーザー(最古参加)を優先、無ければ先勝ち(最古参加)。純粋関数=vm検証可。 */
+function resolveEditor(allKeys,users,overrideName,myKey){
+  var sorted=(allKeys||[]).slice().sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
+  var primaryKey=null;
+  if(overrideName){
+    var cand=(users||[]).filter(function(u){return u.name===overrideName;}).sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
+    if(cand.length)primaryKey=cand[0].presenceKey;
+  }
+  if(!primaryKey)primaryKey=sorted.length?sorted[0].key:null;
+  return {primaryKey:primaryKey,amIPrimary:!!(primaryKey&&primaryKey===myKey)};
+}
 
 /* ========== DATA PERSISTENCE (localStorage) ========== */
 var LS_KEYS={orders:'lec_orders',nextON:'lec_nextON',stk:'lec_stk',held:'lec_held',incoming:'lec_incoming',nextIncId:'lec_nextIncId',editLog:'lec_editLog',custs:'lec_custs',users:'lec_users'};
@@ -2664,12 +2675,21 @@ function App(){
   /* v14 D32: システム全体ロック - 先勝ち判定 */
   var isReadOnly=us(false);/* 後発ログインは true で読み取り専用 */
   var myPresenceKey=ur('');
+  var recomputeLockRef=ur(null);/* v18.17 要望5: presenceハンドラ外からロック再計算を呼ぶ */
+  var editorOverrideName=us(null);/* v18.17 要望5: 管理者が指定した編集者名(UI表示用) */
   /* v14 D31: ユーザー管理モーダル（Codex P1対応: useStateはApp直下、IIFE内のurを排除） */
   var showUserMgmt=us(false);
   var bumpUsers=us(0);
   var newUserName_=us(''),newUserLoc_=us('honsha_office'),newUserRole_=us('user');
 
   var showToast=function(msg){toast[1](msg);setTimeout(function(){toast[1](null);},3000);};
+  /* v18.17 要望5: 管理者が編集権限を任意ユーザーに付与/解除。全端末へbroadcastし即時ロック再計算。 */
+  function setEditorOverride(name){
+    SYSTEM_LOCK.overrideName=name||null;editorOverrideName[1](name||null);
+    try{if(broadcastChannel)broadcastChannel.send({type:'broadcast',event:'editor_override',payload:{overrideName:SYSTEM_LOCK.overrideName,by:userName[0]}});}catch(e){}
+    if(recomputeLockRef.current)recomputeLockRef.current();
+    showToast(name?('編集権限を「'+name+'」に付与しました'):'編集権限を先勝ち(自動)に戻しました');
+  }
 
   /* Setup Supabase Presence & Broadcast */
   ue(function(){
@@ -2678,24 +2698,24 @@ function App(){
     var pKey=userName[0]+'_'+Date.now();
     myPresenceKey.current=pKey;
     var ch=supaClient.channel('lec-inventory-presence',{config:{presence:{key:pKey}}});
-    ch.on('presence',{event:'sync'},function(){
+    /* v18.17 要望5: ロック再計算（presence変化時＋override変更時に呼ぶ）。SYSTEM_LOCK.overrideName指定で編集者を任意指定可。 */
+    var recomputeLock=function(){
       var state=ch.presenceState();
-      var users=[];
-      var allKeys=[];
+      var users=[],allKeys=[];
       Object.keys(state).forEach(function(k){
         state[k].forEach(function(p){
           users.push({name:p.name,loc:p.loc,locLabel:p.locLabel,joinedAt:p.joinedAt||0,presenceKey:k});
           allKeys.push({key:k,joinedAt:p.joinedAt||0});
         });
       });
-      /* v14 D32: 最も早く参加したユーザーが「primary」、それ以外は読み取り専用 */
-      allKeys.sort(function(a,b){return a.joinedAt-b.joinedAt;});
-      var primary=allKeys[0];
-      SYSTEM_LOCK.primary=primary?primary.key:null;
-      var amIPrimary=primary&&primary.key===myPresenceKey.current;
-      isReadOnly[1](!amIPrimary&&allKeys.length>1);
+      /* v14 D32: 先勝ち(最古参加)が編集者。v18.17 要望5: overrideName指定時は指定ユーザーが編集者。 */
+      var res=resolveEditor(allKeys,users,SYSTEM_LOCK.overrideName,myPresenceKey.current);
+      SYSTEM_LOCK.primary=res.primaryKey;
+      isReadOnly[1](!res.amIPrimary&&allKeys.length>1);
       onlineUsers[1](users);
-    });
+    };
+    recomputeLockRef.current=recomputeLock;
+    ch.on('presence',{event:'sync'},function(){recomputeLock();});
     /* v14.4 hotfix2: 再接続試行回数を制限（無限ループ防止）
        Supabaseが恒久的に到達不可能な場合、3回失敗で諦めてローカルモードに固定 */
     var reconnectAttempts=0;
@@ -2788,7 +2808,7 @@ function App(){
       if(SYSTEM_LOCK.primary&&SYSTEM_LOCK.primary!==myPresenceKey.current)return;
       try{
         bch.send({type:'broadcast',event:'sync_state',payload:{
-          toKey:d.fromKey,user:userName[0],orders:ORDERS,held:HELD,nextON:nextON
+          toKey:d.fromKey,user:userName[0],orders:ORDERS,held:HELD,nextON:nextON,overrideName:SYSTEM_LOCK.overrideName
         }});
       }catch(e){console.warn('sync_state送信失敗',e);}
     });
@@ -2796,6 +2816,8 @@ function App(){
       var d=payload.payload;
       if(!d||d.toKey!==myPresenceKey.current)return;
       try{
+        /* v18.17 要望5: 遅延参加者へ編集権限の指定を伝播 */
+        if(d.overrideName!==undefined){SYSTEM_LOCK.overrideName=d.overrideName||null;editorOverrideName[1](d.overrideName||null);if(recomputeLockRef.current)recomputeLockRef.current();}
         if(d.orders){
           d.orders=normOrders(d.orders);/* v14.7: lines欠落の初期同期payloadでも落ちないよう正規化 */
           /* 案件No単位でupsert（ローカル未送信案件を保持しつつ既存案件を取得） */
@@ -2812,6 +2834,14 @@ function App(){
         notif[1]('✅ 既存の案件・仮押さえを同期しました');
         setTimeout(function(){notif[1](null);},4000);
       }catch(e){console.warn('初期同期の適用に失敗',e);}
+    });
+    /* v18.17 要望5: 管理者が編集権限を任意指定したら全端末へ伝播し、各端末でロック再計算 */
+    bch.on('broadcast',{event:'editor_override'},function(payload){
+      var d=payload.payload;if(!d)return;
+      SYSTEM_LOCK.overrideName=d.overrideName||null;editorOverrideName[1](d.overrideName||null);
+      if(recomputeLockRef.current)recomputeLockRef.current();
+      notif[1]('🔑 '+(d.by||'管理者')+'が編集権限を'+(SYSTEM_LOCK.overrideName?('「'+SYSTEM_LOCK.overrideName+'」に付与'):'先勝ち(自動)に変更')+'しました');
+      setTimeout(function(){notif[1](null);},5000);
     });
     bch.subscribe(function(status){
       if(status==='SUBSCRIBED'){
@@ -2981,6 +3011,18 @@ function App(){
             h('div',{style:{marginBottom:10,padding:8,background:isAdmin?'#FEF3C7':'#FEE2E2',borderRadius:6,fontSize:10,color:isAdmin?'#7C2D12':'#991B1B'}},
               isAdmin?'※あなたは管理者です。ユーザーを追加・削除できます。':'※あなたは管理者ではありません。閲覧のみ可能です。管理者にお問い合わせください。'
             ),
+            /* v18.17 要望5: 管理者が編集権限を任意のオンラインユーザーへ付与/解除 */
+            isAdmin?h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6}},
+              h('div',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',marginBottom:4}},'🔑 編集権限の指定'),
+              h('div',{style:{fontSize:9,color:'var(--g600)',marginBottom:6}},'現在の編集者: ',h('b',null,lockEditorName(onlineUsers[0])||editorOverrideName[0]||'（先勝ち＝最初にログインした人）'),' ',editorOverrideName[0]?'（管理者が指定）':'（自動・先勝ち）'),
+              h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',alignItems:'center'}},
+                h('span',{style:{fontSize:9,color:'var(--g500)'}},'オンライン中の人に付与:'),
+                (function(){var seen={},btns=[];(onlineUsers[0]||[]).forEach(function(u){if(seen[u.name])return;seen[u.name]=true;btns.push(h('button',{key:u.name,className:'btn btn-xs '+(editorOverrideName[0]===u.name?'btn-nv':'btn-ol'),onClick:function(){setEditorOverride(u.name);}},u.name));});return btns.length?btns:[h('span',{key:'_none',style:{fontSize:9,color:'var(--g400)'}},'（オンラインユーザーなし）')];})(),
+                h('button',{className:'btn btn-xs btn-gn',onClick:function(){setEditorOverride(userName[0]);}},'自分が取得'),
+                h('button',{className:'btn btn-xs btn-rd',onClick:function(){setEditorOverride(null);}},'解除（先勝ちに戻す）')
+              ),
+              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:4}},'※指定すると全端末に即時反映され、指定ユーザーが編集権限を持ちます（他は読み取り専用）。')
+            ):null,
             h('table',{className:'tbl'},
               h('thead',null,h('tr',null,h('th',null,'名前'),h('th',null,'拠点'),h('th',null,'権限'),h('th',{style:{width:80}},'操作'))),
               h('tbody',null,USERS.map(function(u,i){
