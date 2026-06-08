@@ -1931,6 +1931,8 @@ var USERS=[
 function hashPw(s){var h=5381;s=String(s||'');for(var i=0;i<s.length;i++){h=(((h<<5)+h)+s.charCodeAt(i))&0xffffffff;}return 'h'+(h>>>0).toString(36);}
 function findUserByName(nm){return USERS.find(function(u){return u.name===nm;});}
 function roleOf(nm){var u=findUserByName(nm);return u?(u.role||'user'):(nm?'user':'');}
+/* v18 P2(要望2/5): 現在「編集権限」を保持しているユーザー名を返す（先勝ちロックのprimary可視化用） */
+function lockEditorName(users){try{var pk=(typeof SYSTEM_LOCK!=='undefined'&&SYSTEM_LOCK)?SYSTEM_LOCK.primary:null;if(!pk||!Array.isArray(users))return '';var e=users.find(function(u){return u.presenceKey===pk;});return e?e.name:'';}catch(_){return '';}}
 
 /* v14 D32: システム全体ロック判定（先勝ち） */
 var SYSTEM_LOCK={primary:null,/* presenceKey of primary user */ acquiredAt:null};
@@ -2866,7 +2868,7 @@ function App(){
         return h('button',{key:t.k,className:'tab'+(tab[0]===t.k?' on':''),onClick:function(){tab[1](t.k);}},t.l);
       })),
       /* v14 D32: 読み取り専用バナー */
-      roleReadOnly?h('div',{style:{background:'#975a16',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 閲覧専用（営業ロール：見積確認のみ可）'):(isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（先にログイン中のユーザーが編集権限を保持）'):null),
+      roleReadOnly?h('div',{style:{background:'#975a16',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 閲覧専用（営業ロール：見積確認のみ可）'):(isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（編集中: '+(lockEditorName(onlineUsers[0])||'別のユーザー')+'）'):null),
       /* v14.4 hotfix2: 'offline'は「同期サーバー無効」と表現変更（エラー→機能無効通知へ）
          Supabase Realtime未利用でもローカル動作は完全に可能なため、警告ではなく機能制限通知に。 */
       presenceStatus[0]==='offline'?h('span',{className:'online-count-bg local',title:'リアルタイム同期サーバーに接続できません。ローカル動作は完全に可能（データはブラウザに保存されます）'},'💾 ローカルモード'):
@@ -2891,7 +2893,7 @@ function App(){
       h('div',{className:'ver'},'v14.7')
     ),
     h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO}),
-    h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);}}),
+    h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);}}),
     h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:effRO,setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);}}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:effRO}),
     /* v14.4 hotfix2: 同時ログイン可視化バナー
@@ -2904,7 +2906,7 @@ function App(){
           onlineUsers[0].length>=2?('👥 '+onlineUsers[0].length+'人が同時利用中'):
           onlineUsers[0].length===1?'👤 あなたのみログイン中':
           '⏳ 接続中…',
-          roleReadOnly?h('span',{style:{color:'#975a16',marginLeft:6,fontSize:10}},'🔒 営業（閲覧専用）'):(isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},'✓ 編集権限'))
+          roleReadOnly?h('span',{style:{color:'#975a16',marginLeft:6,fontSize:10}},'🔒 営業（閲覧専用）'):(isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'+(lockEditorName(onlineUsers[0])?'（編集中: '+lockEditorName(onlineUsers[0])+'）':'')):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},'✓ 編集権限'))
         ),
         onlineUsers[0].length>0?h('div',{className:'pf-users'},onlineUsers[0].map(function(u){
           var me=u.name===userName[0];
@@ -3174,8 +3176,8 @@ function InvPage(p){
 
   function addLine(){
     if(!cust)return;
-    /* v14 Codex P2対応: 読み取り専用モードでは書き込み禁止 */
-    if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+    /* v18 P2(要望4): 営業は明細追加→在庫確認まで可。書込ブロックは後発ログインの全体ロック(lockReadOnly)のみ */
+    if(p.lockReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
     var lock=!hasDoor[0]?'none':lk[0];
     if(tp[0]==='personal'&&lock==='none'&&hasDoor[0])lock='dialH110';
     var dt=isJP?doorType[0]:'door';
@@ -3192,6 +3194,7 @@ function InvPage(p){
   }
   function addPartLine(){
     if(!cust)return;
+    if(p.lockReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
     var pd=getPartAddDefs().find(function(d){return d.k===partType[0];});if(!pd)return;
     if(pd.expand){/* v16: レールセット等を構成部材へ分解して複数明細追加 */
       var pLnX=partLine[0]||ln[0];var lnmX=(LINES.find(function(l){return l.id===pLnX;})||{name:''}).name;var bqX=parseInt(partQty[0])||1;
@@ -3213,6 +3216,7 @@ function InvPage(p){
   /* Free input line (not in inventory) */
   var freeInputName=us(''),freeInputQty=us(1),freeInputUnit=us('個'),freeInputPrice=us(0),freeInputRemark=us('');
   function addFreeInputLine(){
+    if(p.lockReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
     if(!freeInputName[0].trim()){p.toast('商品名称を入力してください');return;}
     var nl=lines[0].concat([{id:Date.now(),isFreeInput:true,name:freeInputName[0].trim(),qty:parseInt(freeInputQty[0])||1,unit:freeInputUnit[0]||'個',unitPrice:parseInt(freeInputPrice[0])||0,remark:freeInputRemark[0]||'',line:ln[0],isPartOnly:true,partLabel:freeInputName[0].trim(),partKey:'free',isDoor:false,size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
     lines[1](nl);
@@ -3412,6 +3416,15 @@ function InvPage(p){
 
   function doQuoteOnly(){
     if(!lines[0].length)return;
+    /* v18 P2(要望3/4): 営業ロール・後発ログインは見積「確認」のみ。ORDERSへ保存せず採番もしない（プレビュー表示だけ） */
+    if(p.salesView||p.lockReadOnly){
+      var whP=selWH[0]||'honsha';
+      var shipInfoP=cust?calcShipping(lines[0],whP,cust.pref):null;
+      var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+      quoteOrder[1](previewOrder);showQuote[1](true);
+      p.toast(p.salesView?'見積プレビュー（営業は確認のみ・保存/仮押さえは事務へ）':'読み取り専用：見積プレビューのみ（保存不可）');
+      return;
+    }
     var wh=selWH[0]||'honsha';
     var shipInfo=cust?calcShipping(lines[0],wh,cust.pref):null;
     var pt3=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
@@ -3821,9 +3834,10 @@ function InvPage(p){
           ):null,
           /* Action buttons */
           h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
-            h('button',{className:'btn btn-nv',onClick:doQuoteOnly},'見積書のみ作成'),
-            h('button',{className:'btn btn-or',style:{fontSize:12,padding:'8px 14px'},onClick:doReserveOnly,disabled:!selWH[0]},'仮押さえのみ（見積無）'),
-            h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px'},onClick:doHoldAndQuote,disabled:!selWH[0]},'仮押さえ＆見積書作成'),
+            h('button',{className:'btn btn-nv',onClick:doQuoteOnly},p.salesView?'見積を確認（プレビュー）':'見積書のみ作成'),
+            p.salesView?null:h('button',{className:'btn btn-or',style:{fontSize:12,padding:'8px 14px'},onClick:doReserveOnly,disabled:!selWH[0]},'仮押さえのみ（見積無）'),
+            p.salesView?null:h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px'},onClick:doHoldAndQuote,disabled:!selWH[0]},'仮押さえ＆見積書作成'),
+            p.salesView?h('span',{style:{fontSize:9,color:'#975a16',alignSelf:'center'}},'営業ロール：仮押さえ・保存は事務へ依頼してください'):null,
             quoteOrder[0]&&!showQuote[0]?h('button',{className:'btn btn-tl',onClick:function(){showQuote[1](true);}},'📄 直近の見積を開く: '+quoteOrder[0].no):null
           ),
           /* Multi-warehouse options */
@@ -3846,7 +3860,7 @@ function InvPage(p){
                 );
               })
             ),
-            selMulti[0]!==null?h('div',{style:{padding:'8px 10px',borderTop:'1px solid var(--g200)'}},
+            selMulti[0]!==null&&!p.salesView?h('div',{style:{padding:'8px 10px',borderTop:'1px solid var(--g200)'}},
               h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px',width:'100%'},onClick:doHoldAndQuoteMulti},'この組合せで仮押さえ＆見積書作成')
             ):null
           ):null
