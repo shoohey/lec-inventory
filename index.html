@@ -1480,6 +1480,22 @@ function buildStockDiff(parsed){
   });
   return {diffs:diffs,unmapped:unmapped,sameCount:same,mappedCount:diffs.length+same,totalCount:(parsed||[]).length};
 }
+/* v18.15 P5(要望22): 取込差分をSTKへ反映（非破壊）。STKセルのみ更新しスナップショット(STK_SNAPSHOT_DATE)はbumpしないため
+   既存の在庫編集は保持される。現在値(gs)からdeltaを再計算するので再実行しても冪等。共通在庫(鍵類)はjp2へ集約書込。
+   差分は非扉(key/sub)のみ。_rbAddStock を再利用し oldV/newV を EDIT_LOG に記録する。 */
+function applyStockImport(diffs,editorNm){
+  var applied=0;
+  (diffs||[]).forEach(function(d){
+    var wl=normalizeStockLine(d.line,d.key);/* 鍵類はjp2へ集約 */
+    var curNow=gs(d.line,d.wh,d.key,d.sub);/* 現在値(共通は全ライン集約)。冪等にするため都度再取得 */
+    var delta=(parseInt(d.imported)||0)-curNow;
+    if(delta===0)return;
+    var r=_rbAddStock(wl,d.wh,d.key,d.sub,null,delta);
+    EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:d.key,sub:d.sub,color:null,wh:d.wh,oldVal:r.oldV,newVal:r.newV,label:(d.item||d.key)+'（在庫表取込）',editor:editorNm||'在庫表取込'});
+    applied++;
+  });
+  return applied;
+}
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
 function normalizeStockLine(line,key){
   if(isCommonStockKey(key))return 'jp2';
@@ -4892,7 +4908,7 @@ function PartsPage(p){
             snapshotForm[1]({date:fmt(tdy),type:'stock'});showSnapshotExcel[1](true);
           }},'📆 日付指定Excel'),
           /* v18.1 P5b: 在庫表取込（差分確認・読取専用＝STKに書き込まない） */
-          h('label',{className:'btn btn-xs btn-tl',style:{cursor:'pointer'},title:'在庫管理表.xlsx/CSVを取り込み、現在の在庫との差分を確認（在庫は変更しません）'},'📥 在庫表取込（差分）',
+          h('label',{className:'btn btn-xs btn-tl',style:{cursor:'pointer'},title:'在庫管理表.xlsx/CSVを取り込み、現在の在庫との差分を確認→必要なら反映（反映するまで在庫は変わりません）'},'📥 在庫表取込（差分→反映）',
             h('input',{type:'file',accept:'.xlsx,.xls,.csv',style:{display:'none'},onChange:function(e){
               var file=e.target.files&&e.target.files[0];if(!file)return;e.target.value='';
               var reader=new FileReader();
@@ -4908,10 +4924,20 @@ function PartsPage(p){
               reader.readAsArrayBuffer(file);
             }})
           ),
-          stockImport[0]?(function(){var di=stockImport[0];return h(Modal,{show:true,title:'在庫表 取込差分（読取専用・在庫は変更しません）',w:780,onClose:function(){stockImport[1](null);},
-            footer:h('button',{className:'btn btn-ol',onClick:function(){stockImport[1](null);}},'閉じる')},
+          stockImport[0]?(function(){var di=stockImport[0];return h(Modal,{show:true,title:'在庫表 取込差分 → 反映',w:780,onClose:function(){stockImport[1](null);},
+            footer:h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
+              di.diffs.length?h('input',{className:'inp',style:{width:120},placeholder:'編集者名(任意)',value:editorName[0],onChange:function(e){editorName[1](e.target.value);}}):null,
+              di.diffs.length?h('button',{className:'btn btn-gn',disabled:p.isReadOnly,onClick:function(){
+                if(p.isReadOnly){p.toast('読み取り専用モード中は反映できません');return;}
+                if(!confirm('取込差分 '+di.diffs.length+'件を在庫に反映します。\n各アイテムの在庫数を「取込」値へ更新します（在庫スナップショットは変更せず既存の在庫編集を保持）。\n\n反映しますか？'))return;
+                var n=applyStockImport(di.diffs,editorName[0]);
+                broadcastEdit(p.userName||editorName[0]||'不明','在庫表取込で'+n+'件の在庫を反映');
+                stockImport[1](null);bump[1](bump[0]+1);saveAll();
+                p.toast('在庫表取込: '+n+'件を在庫に反映しました');
+              }},'✅ 差分を在庫に反映（'+di.diffs.length+'件）'):null,
+              h('button',{className:'btn btn-ol',onClick:function(){stockImport[1](null);}},'閉じる'))},
             h('div',null,
-              h('div',{style:{padding:8,background:'#FEF3C7',borderRadius:6,fontSize:10,color:'#7C2D12',marginBottom:8}},'⚠️ これは差分の「確認」のみで、在庫(STK)には一切書き込みません。マッピング検証後に「反映」機能を追加予定です。'),
+              h('div',{style:{padding:8,background:'#FEF3C7',borderRadius:6,fontSize:10,color:'#7C2D12',marginBottom:8}},'⚠️ 「反映」を押すまで在庫は変更されません。反映は各アイテムを「取込」値へ更新します（在庫スナップショットはbumpせず既存の在庫編集を保持。EDIT_LOGに記録）。未対応行は反映されません。'),
               h('div',{style:{fontSize:11,marginBottom:6,fontWeight:600}},'解析 '+di.totalCount+'行 ／ マップ '+di.mappedCount+' ／ 差分 '+di.diffs.length+'件 ／ 未対応 '+di.unmapped.length+'件'),
               di.diffs.length?h('div',{className:'scy',style:{maxHeight:'52vh'}},h('table',{className:'tbl'},
                 h('thead',null,h('tr',null,h('th',null,'ライン'),h('th',null,'倉庫'),h('th',null,'アイテム'),h('th',null,'色'),h('th',null,'システム'),h('th',null,'取込'),h('th',null,'差'))),
