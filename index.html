@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.1（P5b 在庫表取込→差分確認＝読取専用）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.2（P5a 出荷指示書5型 公式様式生成）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1106,6 +1106,124 @@ function mapStockItem(item,colLabel){
   if(/サイドボード|SIDE\s*BOARD/i.test(it)){var ss=sizeOf();return (isBk||!ss)?null:{key:'side',sub:ss};}
   if(/バックボード|BACK\s*BOARD|Ｂａｃｋ/i.test(it)){var bs=sizeOf();return (isBk||!bs)?null:{key:'back',sub:bs};}
   return null;/* それ以外(扉/錠/ネジ/レール/黒側板等)は v1 未対応 */
+}
+/* ========== v18.2 P5a: 出荷指示書5型 完全一致生成 ==========
+   テンプレ全セル(SHIP_TEMPLATES)を再現し、動的セル(M=出荷総数/N=箱数/O=バラ＋ヘッダー)のみ充填。
+   静的セルは原本そのものなので「完全一致」。レール/ネジ等の曖昧行は空欄維持(手動運用)。 */
+var SHIP_TEMPLATES={"出荷指示書原本（SML）日本製":{"ref":"A1:AJ62","headerRow":3,"iriCol":11,"rows":[[4,16,"上下共通ボード(SMLXL共通）"],[5,8,"ベース\r\n（レール長×2・短×1）"],[6,300,"アンカー穴キャップ"],[7,20,"Ｓ　バック"],[8,20,"Ｓ　サイド※１台に付き２枚必要"],[9,16,"Ｍ　バック"],[10,16,"Ｍ　サイド※１台に付き２枚必要"],[11,16,"Ｌ　バック"],[12,16,"Ｌ　サイド※１台に付き２枚必要"],[13,20,"Ｓ　扉　パステルピンク"],[14,20,"Ｓ　扉　パステルブルー"],[15,20,"Ｓ　扉　パステルグリーン"],[16,20,"Ｓ　扉　パステルイエロー"],[17,20,"Ｓ　扉　パステルブラウン"],[18,16,"M　扉　パステルピンク"],[19,16,"M　扉　パステルブルー"],[20,16,"M　扉　パステルグリーン"],[21,16,"M　扉　パステルイエロー"],[22,16,"M　扉　パステルブラウン"],[23,16,"M　扉　ＨＬパステルピンク"],[24,16,"M　扉　ＨＬパステルブルー"],[25,16,"M　扉　ＨＬパステルグリーン"],[26,16,"M　扉　ＨＬパステルイエロー"],[27,16,"M　扉　ＨＬパステルブラウン"],[28,16,"M　扉　ＨＬクリア"],[29,16,"Ｌ　扉　パステルピンク"],[30,16,"Ｌ　扉　パステルブルー"],[31,16,"Ｌ　扉  パステルグリーン"],[32,16,"Ｌ　扉　パステルイエロー"],[33,16,"Ｌ　扉　パステルブラウン"],[34,192,"トッテ"],[35,32,"棚板（SMLXL共通）"],[36,2500,"ジョイントネジ(SMLXL共通）"],[37,6000,"目隠しネジ"],[38,500,"上下ジョイント(SMLXL共通）"],[39,300,"サイドジョイント"]],"cells":{"A1":"本社","A3":"出 荷 指 示 書【日本製用】","N3":"Ver.2","Q3":"㈱LEC担当：","A4":"名称","L4":"入数","M4":"出荷総数","N4":"出荷箱数","O4":"出荷バラ","Q4":"納品先名","A5":"上下共通ボード(SMLXL共通）","I5":"Black","K5":"Gray","L5":16,"N5":0,"O5":0,"A6":"ベース\r\n（レール長×2・短×1）","I6":"Black","K6":"Gray","L6":8,"N6":0,"O6":0,"A7":"アンカー穴キャップ","I7":"Black","K7":"Gray","L7":300,"N7":0,"O7":0,"Q7":"荷受人","A8":"Ｓ　バック","I8":"Black","K8":"Gray","L8":20,"N8":0,"O8":0,"A9":"Ｓ　サイド※１台に付き２枚必要","I9":"Black","K9":"Gray","L9":20,"N9":0,"O9":0,"Q9":"電話番号","A10":"Ｍ　バック","I10":"Black","K10":"Gray","L10":16,"N10":0,"O10":0,"A11":"Ｍ　サイド※１台に付き２枚必要","I11":"Black","K11":"Gray","L11":16,"N11":0,"O11":0,"Q11":"納品先住所","A12":"Ｌ　バック","I12":"Black","K12":"Gray","L12":16,"N12":0,"O12":0,"Q12":"〒","A13":"Ｌ　サイド※１台に付き２枚必要","I13":"Black","K13":"Gray","L13":16,"N13":0,"O13":0,"A14":"Ｓ　扉　パステルピンク","L14":20,"N14":0,"O14":0,"A15":"Ｓ　扉　パステルブルー","L15":20,"N15":0,"O15":0,"A16":"Ｓ　扉　パステルグリーン","L16":20,"N16":0,"O16":0,"Q16":"納品日時","A17":"Ｓ　扉　パステルイエロー","L17":20,"N17":0,"O17":0,"Q17":"2026/","A18":"Ｓ　扉　パステルブラウン","L18":20,"N18":0,"O18":0,"Q18":"混載便　or　チャーター便　or　引取り","A19":"M　扉　パステルピンク","L19":16,"N19":0,"O19":0,"A20":"M　扉　パステルブルー","L20":16,"N20":0,"O20":0,"Q20":"その他連絡事項","A21":"M　扉　パステルグリーン","L21":16,"N21":0,"O21":0,"Q21":"【荷送人】","S21":"(株)LEC","A22":"M　扉　パステルイエロー","L22":16,"N22":0,"O22":0,"Q22":"〒120-0005　東京都足立区綾瀬7-4-1","A23":"M　扉　パステルブラウン","L23":16,"N23":0,"O23":0,"Q23":"TEL：","S23":"03-5849-5563","A24":"M　扉　ＨＬパステルピンク","L24":16,"N24":0,"O24":0,"Q24":"\r\n※お客様直送の為、綺麗な箱でお願いします。\r\n\r\n※発送後に送り状を弊社までメールをお願いします。","A25":"M　扉　ＨＬパステルブルー","L25":16,"N25":0,"O25":0,"A26":"M　扉　ＨＬパステルグリーン","L26":16,"N26":0,"O26":0,"A27":"M　扉　ＨＬパステルイエロー","L27":16,"N27":0,"O27":0,"A28":"M　扉　ＨＬパステルブラウン","L28":16,"N28":0,"O28":0,"A29":"M　扉　ＨＬクリア","L29":16,"N29":0,"O29":0,"A30":"Ｌ　扉　パステルピンク","L30":16,"N30":0,"O30":0,"A31":"Ｌ　扉　パステルブルー","L31":16,"N31":0,"O31":0,"Q31":"出荷№","S31":"26-","A32":"Ｌ　扉  パステルグリーン","L32":16,"N32":0,"O32":0,"A33":"Ｌ　扉　パステルイエロー","L33":16,"N33":0,"O33":0,"Q33":"＜社内確認欄＞","A34":"Ｌ　扉　パステルブラウン","L34":16,"N34":0,"O34":0,"Q34":"事務確認","S34":"営業確認","U34":"出荷依頼","A35":"トッテ","L35":192,"N35":0,"O35":0,"U35":"北","A36":"棚板（SMLXL共通）","I36":"Black","K36":"Gray","L36":32,"N36":0,"O36":0,"U36":"/","A37":"ジョイントネジ(SMLXL共通）","I37":"Black","K37":"Gray","L37":2500,"N37":0,"O37":0,"Q37":"チャーター依頼","U37":"無・有（","A38":"目隠しネジ","I38":"Black","K38":"Gray","L38":6000,"N38":0,"O38":0,"Q38":"人工依頼","U38":"無・有（","A39":"上下ジョイント(SMLXL共通）","L39":500,"N39":0,"O39":0,"Q39":"その他外注","U39":"無・有（","A40":"サイドジョイント","L40":300,"N40":0,"O40":0,"Q40":"伝票（同梱・郵送・持参）","U40":"送付日：","M41":"正箱数：","N41":0,"O41":"箱＋バラ","L42":"全","M42":0,"M43":"パーツ"},"merges":["AB30:AC30","AB16:AC16","AD16:AJ16","AB17:AJ17","AB18:AC18","AD18:AJ18","U40:Y40","Q24:Y29","AD20:AJ20","AB21:AJ21","AB22:AC22","AD22:AJ22","AB20:AC20","AB24:AC24","AD24:AJ24","AB25:AJ25","AB26:AC26","AD26:AJ26","AB28:AC28","AD30:AJ30","AD28:AJ28","AB29:AJ29","A37:G37","A40:K40","Q40:T40","A34:K34","Q34:R34","S34:T34","Q37:T37","A38:G38","Q38:T38","A39:K39","Q39:T39","A32:K32","A33:K33","Q33:Y33","U34:Y34","A35:K35","Q35:R36","S35:T36","A36:G36","A30:K30","A31:K31","Q31:R31","S31:T31","U31:Y31","A29:K29","A23:K23","Q23:R23","S23:Y23","A22:K22","Q22:Y22","A24:K24","A25:K25","A26:K26","A27:K27","A28:K28","A19:K19","A20:K20","Q20:Y20","A21:K21","Q21:R21","S21:Y21","A16:K16","Q16:Y16","A17:K17","Q17:Y17","A18:K18","Q18:Y18","A15:K15","A9:G9","Q9:Y9","A10:G10","Q10:Y10","A11:G11","Q11:Y11","A12:G12","R12:Y12","A13:G13","Q13:Y14","A14:K14","A5:G5","Q5:Y6","A6:G6","Q7:Y7","A8:G8","Q8:X8","A4:K4","Q4:Y4","A1:F1","A3:M3","N3:O3","T3:U3","V3:Y3"]},"出荷指示書原本(SS・3S)日本製":{"ref":"A1:AJ62","headerRow":3,"iriCol":11,"rows":[[4,20,"SS上下共通ボード"],[5,10,"SSベース\r\n（レール長×2・短×1）"],[6,300,"アンカー穴キャップ"],[7,20,"SＳ　バック"],[8,20,"ＳS　サイド※１台に付き２枚必要"],[9,20,"３S　バック"],[10,20,"３S　サイド※１台に付き２枚必要"],[11,20,"SS　扉　パステルピンク"],[12,20,"SS　扉　パステルブルー"],[13,20,"SS　扉　パステルグリーン"],[14,20,"SS　扉　パステルイエロー"],[15,20,"SS　扉　パステルブラウン"],[16,20,"３S　扉　パステルピンク"],[17,20,"３S　扉　パステルブルー"],[18,20,"３S　扉　パステルグリーン"],[19,20,"３S　扉　パステルイエロー"],[20,20,"３S　扉　パステルブラウン"],[21,192,"トッテ"],[22,50,"SS棚板"],[23,2500,"SSジョイントネジ"],[24,6000,"目隠しネジ"],[25,500,"SS上下ジョイント"],[26,400,"SSサイドレール"],[27,200,"SSバックレール"]],"cells":{"A1":"本社","A3":"出 荷 指 示 書【日本製用】","N3":"Ver.2","Q3":"㈱LEC担当：","A4":"名称","L4":"入数","M4":"出荷総数","N4":"出荷箱数","O4":"出荷バラ","Q4":"納品先名","A5":"SS上下共通ボード","I5":"Black","K5":"Gray","L5":20,"N5":0,"O5":0,"A6":"SSベース\r\n（レール長×2・短×1）","I6":"Black","K6":"Gray","L6":10,"N6":0,"O6":0,"A7":"アンカー穴キャップ","I7":"Black","K7":"Gray","L7":300,"N7":0,"O7":0,"Q7":"荷受人","A8":"SＳ　バック","I8":"Black","K8":"Gray","L8":20,"N8":0,"O8":0,"A9":"ＳS　サイド※１台に付き２枚必要","I9":"Black","K9":"Gray","L9":20,"N9":0,"O9":0,"Q9":"電話番号","A10":"３S　バック","I10":"Black","K10":"Gray","L10":20,"N10":0,"O10":0,"A11":"３S　サイド※１台に付き２枚必要","I11":"Black","K11":"Gray","L11":20,"N11":0,"O11":0,"Q11":"納品先住所","A12":"SS　扉　パステルピンク","L12":20,"N12":0,"O12":0,"Q12":"〒","A13":"SS　扉　パステルブルー","L13":20,"N13":0,"O13":0,"A14":"SS　扉　パステルグリーン","L14":20,"N14":0,"O14":0,"A15":"SS　扉　パステルイエロー","L15":20,"N15":0,"O15":0,"A16":"SS　扉　パステルブラウン","L16":20,"N16":0,"O16":0,"Q16":"納品日時","A17":"３S　扉　パステルピンク","L17":20,"N17":0,"O17":0,"Q17":"2026/","A18":"３S　扉　パステルブルー","L18":20,"N18":0,"O18":0,"Q18":"混載便　or　チャーター便　or　引取り","A19":"３S　扉　パステルグリーン","L19":20,"N19":0,"O19":0,"A20":"３S　扉　パステルイエロー","L20":20,"N20":0,"O20":0,"Q20":"その他連絡事項","A21":"３S　扉　パステルブラウン","L21":20,"N21":0,"O21":0,"Q21":"【荷送人】","S21":"(株)LEC","A22":"トッテ","L22":192,"N22":0,"O22":0,"Q22":"〒120-0005　東京都足立区綾瀬7-4-1","A23":"SS棚板","I23":"Black","K23":"Gray","L23":50,"N23":0,"O23":0,"Q23":"TEL：","S23":"03-5849-5563","A24":"SSジョイントネジ","I24":"Black","K24":"Gray","L24":2500,"N24":0,"O24":0,"Q24":"\r\n※お客様直送の為、綺麗な箱でお願いします。\r\n\r\n※発送後に送り状を弊社までメールをお願いします。","A25":"目隠しネジ","I25":"Black","K25":"Gray","L25":6000,"N25":0,"O25":0,"A26":"SS上下ジョイント","L26":500,"N26":0,"O26":0,"A27":"SSサイドレール","L27":400,"N27":0,"O27":0,"A28":"SSバックレール","L28":200,"N28":0,"O28":0,"Q31":"出荷№","S31":"26-","U31":"00","Q33":"＜社内確認欄＞","Q34":"事務確認","S34":"営業確認","U34":"出荷依頼","U35":"北","U36":"/","Q37":"チャーター依頼","U37":"無・有（","Q38":"人工依頼","U38":"無・有（","Q39":"その他外注","U39":"無・有（","Q40":"伝票（同梱・郵送・持参）","U40":"送付日：","M41":"正箱数：","N41":0,"O41":"箱＋バラ","L42":"全","M42":0,"M43":"パーツ"},"merges":["AD26:AJ26","AB28:AC28","AD28:AJ28","AB29:AJ29","AB30:AC30","AD30:AJ30","U40:Y40","Q24:Y29","AB16:AC16","AD16:AJ16","AB17:AJ17","AB18:AC18","AD18:AJ18","AB20:AC20","AD20:AJ20","AB21:AJ21","AB22:AC22","AD22:AJ22","AB24:AC24","AD24:AJ24","AB25:AJ25","AB26:AC26","A37:K37","A40:K40","Q40:T40","A34:K34","Q34:R34","S34:T34","Q37:T37","A38:K38","Q38:T38","A39:K39","Q39:T39","A32:K32","A33:K33","Q33:Y33","U34:Y34","A35:K35","Q35:R36","S35:T36","A36:K36","A30:K30","A31:K31","Q31:R31","S31:T31","U31:Y31","A24:G24","A26:K26","A27:K27","A28:K28","A29:K29","Q23:R23","S23:Y23","A19:K19","A20:K20","Q20:Y20","A21:K21","Q21:R21","S21:Y21","A22:K22","Q22:Y22","A16:K16","Q16:Y16","A17:K17","Q17:Y17","A18:K18","Q18:Y18","A15:K15","A9:G9","Q9:Y9","A10:G10","Q10:Y10","A11:G11","Q11:Y11","A12:K12","R12:Y12","A13:K13","Q13:Y14","A14:K14","A5:G5","Q5:Y6","A6:G6","Q7:Y7","A8:G8","Q8:X8","A4:K4","Q4:Y4","A1:F1","A3:M3","N3:O3","T3:U3","V3:Y3"]},"出荷指示書原本（XL）":{"ref":"A1:I38","headerRow":2,"iriCol":1,"rows":[[3,16,"トップボード(SMLXL共通）"],[4,8,"ベース（レール・アジャスターセット）（SMLXL共通）"],[5,16,"Ｍバック   ※XL１台に付き2枚必要"],[6,16,"Ｍサイド   ※XL１台に付き4枚必要"],[7,8,"ＸＬ　door　ピンク"],[8,8,"ＸＬ　door 　スカイブルー"],[9,8,"ＸＬ　door   アップルグリーン"],[10,8,"ＸＬ　door　ライトイエロー"],[11,8,"ＸＬ　door　ライトブラウン"],[12,16,"XLハンガーラック"],[13,16,"ＸＬコネクター"],[14,100,"ダイヤル錠（D003）"],[15,32,"棚板（SMLXL共通）"],[16,500,"ジョイントネジ(SMLXL共通）"],[17,500,"目隠しネジ"],[18,0,"上下ジョイント(SMLXL共通）"]],"cells":{"A1":"東京本社","A2":"出　荷　指　示　書","D2":"台湾製","F2":"㈱ＬＥＣ　担当：","I2":46023,"A3":"名称","B3":"入数","C3":"出荷　　　　(全数量）","D3":"出荷　　　　　　（箱数）","E3":"出荷　　　　　（バラ）","G3":"納品先名","A4":"トップボード(SMLXL共通）","B4":16,"D4":0,"E4":0,"A5":"ベース（レール・アジャスターセット）（SMLXL共通）","B5":8,"D5":0,"E5":0,"A6":"Ｍバック   ※XL１台に付き2枚必要","B6":16,"D6":0,"E6":0,"A7":"Ｍサイド   ※XL１台に付き4枚必要","B7":16,"D7":0,"E7":0,"G7":"荷受人及び連絡先","A8":"ＸＬ　door　ピンク","B8":8,"D8":0,"E8":0,"A9":"ＸＬ　door 　スカイブルー","B9":8,"D9":0,"E9":0,"A10":"ＸＬ　door   アップルグリーン","B10":8,"D10":0,"E10":0,"A11":"ＸＬ　door　ライトイエロー","B11":8,"D11":0,"E11":0,"G11":"納品先住所","A12":"ＸＬ　door　ライトブラウン","B12":8,"D12":0,"E12":0,"A13":"XLハンガーラック","B13":16,"D13":0,"E13":0,"A14":"ＸＬコネクター","B14":16,"D14":0,"E14":0,"A15":"ダイヤル錠（D003）","B15":100,"D15":0,"E15":0,"G15":"納品日時","A16":"棚板（SMLXL共通）","B16":32,"D16":0,"E16":0,"A17":"ジョイントネジ(SMLXL共通）","B17":500,"D17":0,"E17":0,"A18":"目隠しネジ","B18":500,"D18":0,"E18":0,"A19":"上下ジョイント(SMLXL共通）","B19":0,"G20":"工事依頼の有無","G21":"無","G24":"その他連絡事項","G25":"※荷送人は㈱LEC〒120-0005　東京都足立区綾瀬7-4-1　ＴＥＬ：03-5849-5563でお願いします。　　　　　　　　　　　　　　　　　","G34":"指示Ｎｏ．26-0058","G35":"事務確認","H35":"営業確認","I35":"出荷済み"},"merges":["G21:I22","G24:I24","G25:I32","G36:G37","H36:H37","I36:I37","G20:I20","A2:C2","F2:H2","G3:I3","G4:I5","G6:I6","G7:I7","G8:I9","G11:I11","G12:I13","G15:I15","G16:I18"]},"出荷指示書原本(台湾製)":{"ref":"A1:T38","headerRow":2,"iriCol":1,"rows":[[3,16,"トップボード"],[4,8,"ベース（レール長×2・短×1)"],[5,20,"Ｓバック"],[6,20,"Ｓサイド※１台に付き２枚必要"],[7,20,"Ｓdoor　ピンク"],[8,20,"Ｓdoor　スカイブルー"],[9,20,"Ｓdoor　アップルグリーン"],[10,20,"Ｓdoor　ライトイエロー"],[11,20,"Ｓdoor　ライトブラウン"],[12,16,"Ｍバック"],[13,16,"Ｍサイド※１台に付き２枚必要"],[14,16,"Mdoor　ピンク"],[15,16,"Mdoor　スカイブルー"],[16,16,"Mdoor　アップルグリーン"],[17,16,"Mdoor　ライトイエロー"],[18,16,"Mdoor　ライトブラウン"],[19,16,"Mdoor　ＨＬピンク"],[20,16,"Mdoor　ＨＬスカイブルー"],[21,16,"Mdoor　ＨＬアップルグリーン"],[22,16,"Mdoor　ＨＬライトイエロー"],[23,16,"Mdoor　ＨＬライトブラウン"],[24,16,"Mdoor　ＨＬクリア"],[25,16,"Ｌバック"],[26,16,"Lサイド※１台に付き２枚必要"],[27,16,"Ｌdoor　ピンク"],[28,16,"Ｌdoor　スカイブルー"],[29,16,"Ｌdoor　アップルグリーン"],[30,16,"Ｌdoor　ライトイエロー"],[31,16,"Ｌdoor　ライトブラウン"],[32,0,"トッテ"],[33,32,"棚板"],[34,0,"ジョイントネジ"],[35,0,"目隠しネジ"],[36,0,"上下ジョイント"],[37,0,"サイドジョイント"]],"cells":{"A1":"本社","A2":"出　荷　指　示　書","D2":"台湾製","I2":46023,"A3":"名称","B3":"入数","C3":"出荷　　　　(全数量）","D3":"出荷　　　　　　（箱数）","E3":"出荷　　　　　（バラ）","G3":"納品先名","A4":"トップボード","B4":16,"D4":0,"E4":0,"A5":"ベース（レール長×2・短×1)","B5":8,"D5":0,"E5":0,"A6":"Ｓバック","B6":20,"D6":0,"E6":0,"A7":"Ｓサイド※１台に付き２枚必要","B7":20,"D7":0,"E7":0,"G7":"荷受人及び連絡先","A8":"Ｓdoor　ピンク","B8":20,"D8":0,"E8":0,"A9":"Ｓdoor　スカイブルー","B9":20,"D9":0,"E9":0,"A10":"Ｓdoor　アップルグリーン","B10":20,"D10":0,"E10":0,"A11":"Ｓdoor　ライトイエロー","B11":20,"D11":0,"E11":0,"G11":"納品先住所","A12":"Ｓdoor　ライトブラウン","B12":20,"D12":0,"E12":0,"A13":"Ｍバック","B13":16,"D13":0,"E13":0,"A14":"Ｍサイド※１台に付き２枚必要","B14":16,"D14":0,"E14":0,"A15":"Mdoor　ピンク","B15":16,"D15":0,"E15":0,"G15":"納品日時","A16":"Mdoor　スカイブルー","B16":16,"D16":0,"E16":0,"L16":"【荷送人】","N16":"(株)LEC","A17":"Mdoor　アップルグリーン","B17":16,"D17":0,"E17":0,"L17":"〒120-0005　東京都足立区綾瀬7-4-1","A18":"Mdoor　ライトイエロー","B18":16,"D18":0,"E18":0,"L18":"TEL：","N18":"03-5849-5563","A19":"Mdoor　ライトブラウン","B19":16,"D19":0,"E19":0,"A20":"Mdoor　ＨＬピンク","B20":16,"D20":0,"E20":0,"G20":"工事依頼の有無","L20":"【荷送人】","N20":"㈱プラロッカー","A21":"Mdoor　ＨＬスカイブルー","B21":16,"D21":0,"E21":0,"G21":"無","L21":"〒121-0055　東京都足立区加平1-19-10","A22":"Mdoor　ＨＬアップルグリーン","B22":16,"D22":0,"E22":0,"L22":"TEL：","N22":"03-6721-7491","A23":"Mdoor　ＨＬライトイエロー","B23":16,"D23":0,"E23":0,"A24":"Mdoor　ＨＬライトブラウン","B24":16,"D24":0,"E24":0,"G24":"その他連絡事項","L24":"【荷送人】","N24":"プラスチックロッカー㈱","A25":"Mdoor　ＨＬクリア","B25":16,"D25":0,"E25":0,"G25":"※お客様直送の為、綺麗な箱でお願いします。\r\n\r\n※発送後に送り状を弊社までメールをお願いします。","L25":"〒116-0001　東京都荒川区町屋1-9-7","A26":"Ｌバック","B26":16,"D26":0,"E26":0,"L26":"TEL：","N26":"03-5856-0603","A27":"Lサイド※１台に付き２枚必要","B27":16,"D27":0,"E27":0,"A28":"Ｌdoor　ピンク","B28":16,"D28":0,"E28":0,"L28":"【荷送人】","N28":"㈱グローバル","A29":"Ｌdoor　スカイブルー","B29":16,"D29":0,"E29":0,"L29":"〒116-0001　東京都荒川区町屋1-5-3","A30":"Ｌdoor　アップルグリーン","B30":16,"D30":0,"E30":0,"L30":"TEL：","N30":"03-5849-5755","A31":"Ｌdoor　ライトイエロー","B31":16,"D31":0,"E31":0,"A32":"Ｌdoor　ライトブラウン","B32":16,"D32":0,"E32":0,"A33":"トッテ","B33":0,"A34":"棚板","B34":32,"D34":0,"E34":0,"G34":"指示Ｎｏ．26-0058","A35":"ジョイントネジ","B35":0,"G35":"事務確認","H35":"営業確認","I35":"出荷済み","A36":"目隠しネジ","B36":0,"A37":"上下ジョイント","B37":0,"A38":"サイドジョイント"},"merges":["L28:M28","N28:T28","L29:T29","L30:M30","N30:T30","L24:M24","N24:T24","L25:T25","L26:M26","N26:T26","L20:M20","N20:T20","L21:T21","L22:M22","N22:T22","L16:M16","N16:T16","L17:T17","L18:M18","N18:T18","G21:I22","G24:I24","G25:I32","G36:G37","H36:H37","I36:I37","G20:I20","A2:C2","F2:H2","G3:I3","G4:I5","G6:I6","G7:I7","G8:I9","G11:I11","G12:I13","G15:I15","G16:I18"]},"出荷指示書原本 (台湾製Sα）":{"ref":"A1:AJ62","headerRow":3,"iriCol":11,"rows":[[4,16,"TOP　BOARD（GRAY）"],[5,8,"BASE（７ｃｍ）＆Rail set\r\n（GRAY）"],[6,16,"Sα Ｂａｃｋboard"],[7,16,"Sα SIDE BOARD"],[8,16,"Sα DOOR BOARD　（RED）"],[9,16,"Sα DOOR BOARD　（BLUE）"],[10,16,"Sα DOOR BOARD　（GREEN）"],[11,32,"SHELF BOARD（GRAY）"],[12,800,"CONNECYION SCREW（BLACK）"],[13,400,"BLINDFOLD SCREW（GRAY）"],[14,50,"SHORT　RAIL"],[15,100,"LONG　RAIL"],[18,192,"トッテ"],[19,150,"南京錠"],[20,50,"ダイヤル錠（H110）"],[21,50,"ダイヤル錠（H111）"],[22,100,"シリンダー錠"]],"cells":{"A1":"新柏倉庫株式会社　様","A3":"出 荷 指 示 書　【台湾製】","N3":"Sα用","Q3":"㈱LEC担当：","A4":"名称","L4":"入数","M4":"出荷総数","N4":"出荷箱数","O4":"出荷バラ","Q4":"納品先名","A5":"TOP　BOARD（GRAY）","G5":"上下共通ボード","L5":16,"N5":0,"O5":0,"A6":"BASE（７ｃｍ）＆Rail set\r\n（GRAY）","G6":"ベースボード\r\n（レール長×2・短×1）","L6":8,"N6":0,"O6":0,"A7":"Sα Ｂａｃｋboard","G7":"バックボード","L7":16,"N7":0,"O7":0,"Q7":"荷受人","A8":"Sα SIDE BOARD","G8":"サイドボード　\r\n※１台に付き２枚必要","L8":16,"N8":0,"O8":0,"A9":"Sα DOOR BOARD　（RED）","G9":"扉　スモーキーレッド","L9":16,"N9":0,"O9":0,"Q9":"電話番号","A10":"Sα DOOR BOARD　（BLUE）","G10":"扉　スモーキーブルー","L10":16,"N10":0,"O10":0,"A11":"Sα DOOR BOARD　（GREEN）","G11":"扉　スモーキーグリーン","L11":16,"N11":0,"O11":0,"Q11":"納品先住所","A12":"SHELF BOARD（GRAY）","G12":"棚板","L12":32,"N12":0,"O12":0,"Q12":"〒","A13":"CONNECYION SCREW（BLACK）","G13":"横連結ネジ","L13":800,"N13":0,"O13":0,"A14":"BLINDFOLD SCREW（GRAY）","G14":"目隠しネジ","L14":400,"N14":0,"O14":0,"A15":"SHORT　RAIL","G15":"レール　短","L15":50,"N15":0,"O15":0,"A16":"LONG　RAIL","G16":"レール　長","L16":100,"N16":0,"O16":0,"Q16":"納品日時","Q17":"2026/","A18":"＜以下、鍵は日本製と共通になります＞","Q18":"混載便　or　チャーター便　or　引取り","A19":"トッテ","L19":192,"N19":0,"O19":0,"A20":"南京錠","L20":150,"N20":0,"O20":0,"Q20":"その他連絡事項","A21":"ダイヤル錠（H110）","L21":50,"N21":0,"O21":0,"Q21":"【荷送人】","S21":"(株)LEC","A22":"ダイヤル錠（H111）","L22":50,"N22":0,"O22":0,"Q22":"〒120-0005　東京都足立区綾瀬7-4-1","A23":"シリンダー錠","L23":100,"N23":0,"O23":0,"Q23":"TEL：","S23":"03-5849-5563","Q24":"\r\n※お客様直送の為、綺麗な箱でお願いします。\r\n\r\n※発送後に送り状を弊社までメールをお願いします。","Q31":"出荷№","S31":"S26-","U31":"00","Q33":"＜社内確認欄＞","Q34":"事務確認","S34":"営業確認","U34":"出荷依頼","U35":"北","U36":"/","Q37":"チャーター依頼","U37":"無・有（","Q38":"人工依頼","U38":"無・有（","Q39":"その他外注","U39":"無・有（","Q40":"伝票（同梱・郵送・持参）","U40":"送付日：","M41":"正箱数：","N41":0,"O41":"箱＋バラ","L42":"全","M42":0,"M43":"パーツ"},"merges":["AB28:AC28","AD28:AJ28","AB29:AJ29","AB30:AC30","AD30:AJ30","AB24:AC24","AD24:AJ24","AB25:AJ25","AB26:AC26","AD26:AJ26","AB20:AC20","AD20:AJ20","AB21:AJ21","AB22:AC22","AD22:AJ22","AB16:AC16","AD16:AJ16","AB17:AJ17","AB18:AC18","AD18:AJ18","A40:K40","Q40:T40","A34:K34","Q34:R34","S34:T34","U40:Y40","Q37:T37","U34:Y34","A35:K35","Q35:R36","S35:T36","A36:K36","A37:K37","A32:K32","A33:K33","Q33:Y33","A38:K38","Q38:T38","A39:K39","Q39:T39","A30:K30","A31:K31","Q31:R31","S31:T31","U31:Y31","A24:K24","A25:K25","A26:K26","A27:K27","A28:K28","A29:K29","Q24:Y29","Q22:Y22","A23:K23","Q23:R23","S23:Y23","A18:K18","Q18:Y18","A19:K19","A20:K20","Q20:Y20","A21:K21","Q21:R21","S21:Y21","A15:F15","G15:K15","A16:F16","G16:K16","Q16:Y16","A17:K17","Q17:Y17","A12:F12","G12:K12","R12:Y12","A13:F13","G13:K13","Q13:Y14","A14:F14","G14:K14","A10:F10","G10:K10","Q10:Y10","A11:F11","G11:K11","Q11:Y11","A9:F9","G9:K9","Q9:Y9","A5:F5","G5:K5","Q5:Y6","A6:F6","G6:K6","A7:F7","G7:K7","Q7:Y7","A1:F1","A3:M3","N3:O3","T3:U3","V3:Y3","A4:K4","Q4:Y4","A8:F8","G8:K8","Q8:X8"]}};
+function shipTemplateKey(order){
+  var lns=order.lines||[];
+  var ln=lns.find(function(l){return !l.isFreeInput&&!l.isPartOnly;})||lns[0]||{};
+  if(ln.line==='sa')return '出荷指示書原本 (台湾製Sα）';
+  if(ln.line==='tw')return '出荷指示書原本(台湾製)';
+  if(ln.size==='XL')return '出荷指示書原本（XL）';
+  var grp=(typeof sizeObj==='function'&&ln.size)?sizeObj(ln.size).grp:'sml';
+  return grp==='ss'?'出荷指示書原本(SS・3S)日本製':'出荷指示書原本（SML）日本製';
+}
+function shipSize(n){
+  n=String(n);
+  if(/ＸＬ|XL/i.test(n))return 'XL';
+  if(/３Ｓ|3S/i.test(n))return '3S';
+  if(/ＳＳ|SS/i.test(n))return 'SS';
+  var m=n.match(/[ＳＭＬSML]/);
+  if(m){var c=m[0];if(c==='Ｌ'||c==='L')return 'L';if(c==='Ｍ'||c==='M')return 'M';if(c==='Ｓ'||c==='S')return 'S';}
+  return '';
+}
+var SHIP_COLOR_MAP={'パステルピンク':'pp','パステルブルー':'pb','パステルグリーン':'pg','パステルイエロー':'py','パステルブラウン':'pbr','クリア':'cl','スカイブルー':'sb','アップルグリーン':'ag','ライトイエロー':'ly','ライトブラウン':'lbr','アイボリー':'iv','スモーキーレッド':'sr','スモーキーブルー':'sbl','スモーキーグリーン':'sgr','ピンク':'pp','ブルー':'pb','グリーン':'pg','イエロー':'py','ブラウン':'pbr'};
+function shipColor(n){
+  n=String(n);var found=null;
+  Object.keys(SHIP_COLOR_MAP).forEach(function(k){if(n.indexOf(k)>=0&&(!found||k.length>found.length))found=k;});
+  return found?SHIP_COLOR_MAP[found]:null;
+}
+/* 行名→BOMキー。ボード/扉/サイド/バック等の明確行のみ。レール/ネジ/ジョイントは null(空欄維持)。 */
+function shipRowToBOM(name){
+  var n=String(name||'');
+  if(/上下共通ボード|トップボード|TOP\s*BOARD/i.test(n))return {key:'top',sub:(/SS|3S|ＳＳ|３Ｓ/.test(n)?'ss':'sml')};
+  if(/ベース|BASE/i.test(n))return {key:'base',sub:(/SS|3S|ＳＳ|３Ｓ/.test(n)?'ss':'sml'),sumBlack:'base_bk'};
+  if(/アンカー穴キャップ/.test(n))return {key:'anchorCap',anyColor:true};
+  if(/棚板|SHELF/i.test(n))return {key:'shelf',sub:(/SS|3S|ＳＳ|３Ｓ/.test(n)?'ss':'sml'),sumBlack:'shelf_bk'};
+  if(/トッテ/.test(n))return {key:'totte',anyColor:true};
+  if(/ネジ|ジョイント|レール|RAIL|SCREW|CONNEC/i.test(n))return null;
+  if(/扉|DOOR/i.test(n)){var dk=/ＨＬ|HL|ホタ/.test(n)?'doorH':'door';return {key:dk,sub:shipSize(n),color:shipColor(n),isDoor:true};}
+  if(/バック|BACK|Ｂａｃｋ/i.test(n))return {key:'back',sub:shipSize(n)};
+  if(/サイド|SIDE/i.test(n))return {key:'side',sub:shipSize(n)};
+  return null;
+}
+/* order全明細のBOMを {key|sub|color: qty} に集約（扉は色別展開・部分解放を差引・倉庫横断合算）。 */
+function aggregateOrderBOM(order){
+  var agg={};
+  function add(key,sub,color,qty){if(!(qty>0))return;var k=key+'|'+(sub||'')+'|'+(color||'');agg[k]=(agg[k]||0)+qty;}
+  var prSub={},prDoor={};
+  (order._partialReleases||[]).forEach(function(r){var ln_=r.line||'_';if(r.isDoor){prDoor[ln_+'|'+r.key+'|'+(r.color||'')+'|'+(r.doorSub||'')]=(prDoor[ln_+'|'+r.key+'|'+(r.color||'')+'|'+(r.doorSub||'')]||0)+r.released;}else{prSub[ln_+'|'+r.key+'|'+(r.sub||'')]=(prSub[ln_+'|'+r.key+'|'+(r.sub||'')]||0)+r.released;}});
+  (order.lines||[]).forEach(function(ln){
+    if(ln.isFreeInput)return;
+    var bom;
+    if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,isDoor:true,doorSub:ln.partSub,color:ln.color});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty});}else{bom.push({key:ln.partKey,qty:ln.qty});}}
+    else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
+    bom.forEach(function(b){
+      if(b.isDoor){
+        var bd=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:b.color||ln.color,qty:b.qty}];
+        bd.forEach(function(dc){var q=dc.qty;var pk=ln.line+'|'+b.key+'|'+(dc.color||'')+'|'+(b.doorSub||ln.size||'');if(prDoor[pk]>0){var d=Math.min(q,prDoor[pk]);q-=d;prDoor[pk]-=d;}add(b.key,b.doorSub||ln.size,dc.color,q);});
+      }else{
+        var q=b.qty;var pk=ln.line+'|'+b.key+'|'+(b.sub||'');if(prSub[pk]>0){var d=Math.min(q,prSub[pk]);q-=d;prSub[pk]-=d;}add(b.key,b.sub,null,q);
+      }
+    });
+  });
+  return agg;
+}
+function shipLookupAgg(agg,m){
+  if(!m)return 0;
+  if(m.isDoor)return agg[m.key+'|'+(m.sub||'')+'|'+(m.color||'')]||0;
+  if(m.anyColor){var s=0;Object.keys(agg).forEach(function(k){if(k.indexOf(m.key+'|')===0)s+=agg[k];});return s;}
+  var v=agg[m.key+'|'+(m.sub||'')+'|']||0;
+  if(m.sumBlack)v+=agg[m.sumBlack+'|'+(m.sub||'')+'|']||0;
+  return v;
+}
+/* テンプレ(完全一致)に数量+ヘッダーを充填して worksheet を返す。 */
+function buildShipInstruction(order){
+  var tk=shipTemplateKey(order);var tpl=SHIP_TEMPLATES[tk];
+  if(!tpl)return null;
+  var agg=aggregateOrderBOM(order);
+  var cells={};Object.keys(tpl.cells).forEach(function(a){cells[a]=tpl.cells[a];});
+  /* ヘッダー: A1=倉庫名 */
+  cells['A1']=(WH_MAP[order.wh]?WH_MAP[order.wh].n:order.wh)||cells['A1']||'';
+  /* 納品先/エンド納品先/顧客から宛先を決定 */
+  var cust=CUSTS.find(function(c){return c.id===order.cid;});
+  var eu=order.endUser&&(order.endUser.name||order.endUser.address)?order.endUser:null;
+  var st=order.shipTo||{};
+  var hv={name:eu?eu.name:(st.name||(cust?cust.name:'')),postal:eu?eu.postal:(st.postal||(cust&&cust.postal||'')),address:eu?eu.address:(st.address||(cust?cust.pref+(cust.city||''):'')),phone:eu?eu.phone:(st.phone||(cust&&cust.phone||''))};
+  /* ラベルセルを探し、その右隣(value)へ充填。テンプレ差異に耐えるため label→value はラベルセルの次の非ラベル列に置く */
+  function fillByLabel(labelRe,val){
+    if(val==null||val==='')return;
+    Object.keys(tpl.cells).forEach(function(a){
+      if(labelRe.test(String(tpl.cells[a]))){
+        var rc=XLSX.utils.decode_cell(a);
+        var vaddr=XLSX.utils.encode_cell({r:rc.r,c:rc.c+1});/* ラベルの右隣 */
+        if(cells[vaddr]===undefined||cells[vaddr]==='')cells[vaddr]=val;
+      }
+    });
+  }
+  fillByLabel(/^納品先名/,hv.name);
+  fillByLabel(/^電話番号/,hv.phone);
+  fillByLabel(/^〒$/,hv.postal);
+  fillByLabel(/^納品先住所/,hv.address);
+  if(order.deliveryDate)fillByLabel(/^納品日時/,order.deliveryDate);
+  /* 部材行の数量充填: M=出荷総数, N=出荷箱数(=floor(総数/入数)満箱), O=出荷バラ(=余り) */
+  (tpl.rows||[]).forEach(function(rw){
+    var ri=rw[0],iri=rw[1]||0,name=rw[2];
+    var m=shipRowToBOM(name);if(!m)return;
+    var qty=shipLookupAgg(agg,m);if(!(qty>0))return;
+    var box=iri>0?Math.floor(qty/iri):0,bara=iri>0?(qty%iri):qty;
+    cells[XLSX.utils.encode_cell({r:ri,c:12})]=qty;/* M 出荷総数 */
+    cells[XLSX.utils.encode_cell({r:ri,c:13})]=box;/* N 出荷箱数 */
+    cells[XLSX.utils.encode_cell({r:ri,c:14})]=bara;/* O 出荷バラ */
+  });
+  /* cells → worksheet */
+  var ws={};
+  Object.keys(cells).forEach(function(a){var v=cells[a];if(v===''||v==null)return;ws[a]={v:v,t:(typeof v==='number'?'n':'s')};});
+  ws['!ref']=tpl.ref;
+  if(tpl.merges&&tpl.merges.length)ws['!merges']=tpl.merges.map(function(s){return XLSX.utils.decode_range(s);});
+  return {ws:ws,sheetName:tk.replace('出荷指示書原本','出荷指示書').slice(0,28)};
 }
 /* sheets=[{name, aoa}]（aoa=二次元配列）→ パース結果。各行に line/wh/item/colorLabel/qty/map/mapped を付与。 */
 function parseStockImport(sheets){
@@ -3920,6 +4038,17 @@ function OrdersPage(p){
               h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,fontWeight:700},title:'出荷指示書を新規ウィンドウで出力',onClick:function(){openQuote(o,'shipping');}},'📄 出荷指示書'),
               /* v14.2: 出荷指示書のExcel出力（PDF生成と別に部材一覧入りExcel） */
               h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'出荷指示書をExcel形式で出力',onClick:function(){generateExcel(o,'shipping');}},'📊 出荷Excel'),
+              /* v18.2 P5a: 公式様式(5型テンプレ完全一致)の出荷指示書を出力 */
+              h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:2,fontWeight:700},title:'公式様式(SML/SS・3S/XL/台湾製/Sα)の出荷指示書を出力',onClick:function(){
+                try{
+                  var r=buildShipInstruction(o);
+                  if(!r||!r.ws){p.toast('出荷指示書テンプレートが見つかりません（製品ライン未判定）');return;}
+                  var wb=XLSX.utils.book_new();var sn=r.sheetName||'出荷指示書';
+                  wb.SheetNames.push(sn);wb.Sheets[sn]=r.ws;
+                  XLSX.writeFile(wb,'出荷指示書_'+o.no+'.xlsx');
+                  p.toast('出荷指示書(公式様式)を出力: '+o.no);
+                }catch(err){p.toast('出力エラー: '+err.message);}
+              }},'📋 出荷指示書(様式)'),
               h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){generateExcel(o,'quote');}},'見積Excel'),
               /* 一覧から直接削除 */
               h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,background:'#991B1B'},onClick:function(){
