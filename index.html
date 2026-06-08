@@ -3350,6 +3350,18 @@ function InvPage(p){
     freeInputName[1]('');freeInputQty[1](1);freeInputPrice[1](0);freeInputRemark[1]('');
   }
   function remLine(id){var nl=lines[0].filter(function(l){return l.id!==id;});lines[1](nl);nl.length?doCheck(nl):(whResults[1]([]),multiWH[1]([]));}
+  /* v18.20 要望16: 各明細が供給可能な倉庫を可視化（部材ごとに倉庫を見て選ぶ補助。在庫/holdは変更しない読み取り専用） */
+  function lineWhAvail(l){
+    if(!l||l.isFreeInput)return null;
+    return h('div',{style:{fontSize:7,marginTop:1,display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
+      h('span',{style:{color:'var(--g400)'}},'供給可:'),
+      WH_IDS.map(function(w){
+        if(!hasStock(l.line,w))return null;
+        var ok=false;try{ok=checkAllLinesWH([l],w).ok;}catch(e){}
+        return h('span',{key:w,style:{padding:'0 3px',borderRadius:2,fontWeight:700,color:ok?'#065F46':'#9CA3AF',background:ok?'#ECFDF5':'#F3F4F6',border:'1px solid '+(ok?'#A7F3D0':'#E5E7EB')},title:ok?'この倉庫で充足':'在庫不足'},((WH_MAP[w]||{}).s||(WH_MAP[w]||{}).n||w)+(ok?'✓':'×'));
+      })
+    );
+  }
 
   function doCheck(ls){
     if(!ls||!ls.length){whResults[1]([]);multiWH[1]([]);return;}
@@ -3822,7 +3834,8 @@ function InvPage(p){
                 h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--op)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:900}},'P'),
                 h('div',{style:{flex:1,fontSize:10}},
                   h('b',null,l.partLabel),
-                  h('div',{style:{fontSize:8,color:'var(--g400)'}},(lo?lo.mark+' ':'')+l.qty+(l.isDoor?'枚':'個')+' @¥'+fm(l.unitPrice))
+                  h('div',{style:{fontSize:8,color:'var(--g400)'}},(lo?lo.mark+' ':'')+l.qty+(l.isDoor?'枚':'個')+' @¥'+fm(l.unitPrice)),
+                  lineWhAvail(l)
                 ),
                 h('b',{style:{fontSize:10}},l.unitPrice>0?'¥'+fm(l.qty*l.unitPrice):''),
                 h('button',{className:'btn btn-xs btn-rd',onClick:function(){remLine(l.id);}},'✕')
@@ -3837,7 +3850,8 @@ function InvPage(p){
                 l.colorBreakdown?h('div',{style:{fontSize:8,color:'var(--pr)',fontWeight:600}},l.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join(', ')):null,
                 h('div',{style:{fontSize:8,color:'var(--g400)'}},
                   (lo?lo.mark+' ':'')+(to?to.l+' ':'')+(isNoDoor?'[扉なし] ':'')+l.islands+'列×'+l.tiers+'段'+(l.hasBase===false?' ベース無':'')+(l.shelfQty>0?' 棚板'+l.shelfQty+'枚':'')
-                )
+                ),
+                lineWhAvail(l)
               ),
               h('b',{style:{fontSize:12}},fm(l.qty)+'台'),
               h('button',{className:'btn btn-xs btn-rd',onClick:function(){remLine(l.id);}},'✕')
