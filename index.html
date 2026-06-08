@@ -3866,6 +3866,8 @@ function InvPage(p){
                   wr.ship?h('div',{style:{fontSize:11,color:'var(--g600)',marginTop:2}},'送料: ¥'+fm(wr.ship.shipping)):null,
                   wr.ship?h('div',{style:{fontSize:9,color:'var(--g400)'}},'('+wr.ship.weight+'kg × ¥'+wr.ship.rate+'/kg)'):null,
                   wr.ship&&wr.ship.charter?h('div',{style:{fontSize:9,color:'#DC2626'}},'チャーター便 +¥30,000'):null,
+                  /* v18.16 P3連動: 運賃表ベースの精密試算を倉庫カードに参考併記（距離解決時のみ・本番送料は不変） */
+                  (function(){var fr=cust?calcFreight({wh:wr.whId,lines:lines[0]},cust.city||'',cust.pref||''):null;return fr&&fr.ok?h('div',{style:{fontSize:9,color:'#1e3a5f',marginTop:2,fontWeight:700,borderTop:'1px dashed #cbd5e1',paddingTop:2},title:'運賃表ベースの精密試算（'+fr.weight+'kg・'+fr.distance+'km'+(fr.approxDistance?'/暫定距離':'')+'）。本番送料には自動反映しません'},'運賃表試算: ¥'+fm(fr.quoted)+(fr.approxDistance?'(暫定)':'')):null;})(),
                   !wr.check.ok?h('div',{style:{fontSize:9,color:'#B91C1C',marginTop:2}},
                     '不足: '+wr.check.items.filter(function(i){return!i.ok;}).slice(0,2).map(function(i){return i.label;}).join(', ')
                   ):null
