@@ -73,6 +73,18 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 }
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .notif-bar{position:fixed;top:52px;right:20px;background:#7C3AED;color:#fff;padding:8px 14px;border-radius:8px;font-size:10px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:250;animation:sIn .3s,fO .3s 4.7s forwards;max-width:400px}
+/* v18.14 P6(要望5): スマホ向けタッチUI。クラスベース要素のみ対象（インラインstyleの2カラムはInvPageのisMobileで縦積み） */
+@media(max-width:768px){
+  .hdr{height:auto;min-height:48px;flex-wrap:wrap;padding:4px 10px;gap:6px}
+  .tabs{margin-left:0;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tab{padding:9px 14px;font-size:14px}
+  .btn{min-height:38px}
+  .inp{min-height:36px;font-size:16px}/* 16px未満だとiOSが入力時にズームする */
+  .chd{padding:8px 10px}
+  .online-bar{max-width:100%}
+  .presence-floating{left:8px;right:8px;bottom:8px;max-width:none}
+  .page table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
+}
 @media print{.no-print{display:none!important}body{background:#fff}}
 </style>
 </head>
@@ -3130,6 +3142,14 @@ function CustPage(p){
 /* ========== MAIN PAGE: INVENTORY CHECK & QUOTE ========== */
 function InvPage(p){
   var cust=p.selCust;
+  /* v18.14 P6(要望5): スマホ判定。営業の見積動線をスマホで使えるよう左右2カラムを縦積みに切替える */
+  var isMobile=us(typeof window!=='undefined'&&window.innerWidth<=768);
+  ue(function(){
+    if(typeof window==='undefined')return;
+    var onR=function(){isMobile[1](window.innerWidth<=768);};
+    window.addEventListener('resize',onR);
+    return function(){window.removeEventListener('resize',onR);};
+  },[]);
   var ln=us('jp2'),sz=us('M'),tp=us('standard'),cl=us('pb'),lk=us('dialH110');
   var doorType=us('door');
   var hasDoor=us(true);/* 扉の有無 (true=扉あり / false=扉なし) */
@@ -3531,9 +3551,9 @@ function InvPage(p){
     h('div',{className:'cbar fi'},h('div',{style:{flex:1}},h('b',{style:{fontSize:13}},cust.name),h('span',{style:{fontSize:9,opacity:.7,marginLeft:8}},cust.id+' | '+cust.pref+(cust.city||'')+' | 地域: '+getRegion(cust.pref))),h('button',{className:'btn btn-xs btn-ol',style:{color:'#fff',borderColor:'rgba(255,255,255,.3)'},onClick:function(){p.setTab('cust');}},'変更')),
 
     /* v14.2: 左右独立スクロール - 商品選択と倉庫別在庫を別々にスクロール可能に */
-    h('div',{style:{display:'flex',gap:14,alignItems:'flex-start',height:'calc(100vh - 130px)',minHeight:480}},
-      /* LEFT: Config (独立スクロール) */
-      h('div',{style:{width:320,flexShrink:0,overflowY:'auto',overflowX:'hidden',maxHeight:'100%',paddingRight:4}},
+    h('div',{style:{display:'flex',flexDirection:isMobile[0]?'column':'row',gap:14,alignItems:'flex-start',height:isMobile[0]?'auto':'calc(100vh - 130px)',minHeight:isMobile[0]?0:480}},
+      /* LEFT: Config (独立スクロール。スマホでは全幅・縦積み) */
+      h('div',{style:{width:isMobile[0]?'100%':320,flexShrink:0,overflowY:isMobile[0]?'visible':'auto',overflowX:'hidden',maxHeight:isMobile[0]?'none':'100%',paddingRight:isMobile[0]?0:4}},
         h('div',{className:'card',style:{marginBottom:8}},
           h('div',{className:'chd'},h('h3',null,'商品選択')),
           h('div',{style:{padding:10}},
@@ -3809,8 +3829,8 @@ function InvPage(p){
       ),
 
       /* RIGHT: Results */
-      /* RIGHT: 倉庫別在庫（独立スクロール） */
-      h('div',{style:{flex:1,minWidth:0,overflowY:'auto',overflowX:'hidden',maxHeight:'100%',paddingRight:4}},
+      /* RIGHT: 倉庫別在庫（独立スクロール。スマホでは全幅・縦積み） */
+      h('div',{style:{flex:1,width:isMobile[0]?'100%':'auto',minWidth:0,overflowY:isMobile[0]?'visible':'auto',overflowX:'hidden',maxHeight:isMobile[0]?'none':'100%',paddingRight:isMobile[0]?0:4}},
         whResults[0].length>0?h('div',{className:'fi'},
           /* Warehouse comparison */
           h('div',{className:'card',style:{marginBottom:8}},
