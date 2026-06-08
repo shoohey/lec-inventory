@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.5（P3-3 行先→距離・運賃原価＝例¥2523照合）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.6（P3-4a 請求重量・実重量切上げ＋calcFreight）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1277,6 +1277,31 @@ function freightCost(tableKey,distanceKm,weightKg){
   var shokei=freightShokei(tableKey);
   var genka=lk.rate+shokei;
   return {rate:lk.rate,shokei:shokei,genka:genka,quoted:Math.ceil(genka*1.1),weightBracket:lk.weightBracket,distBracket:lk.distBracket,over:false};
+}
+/* v18.6 P3-4a: 請求重量(実重量・箱数切上げ)＋送料一括算出。
+   ユーザー確定ルール: 部材ごとに箱数=ceil(配送枚数/入数)、請求重量=Σ箱数×実重(容積重量は使わない)。 */
+function calcShipWeightBilling(order){
+  var agg=aggregateOrderBOM(order);
+  var bySub={};
+  Object.keys(agg).forEach(function(kk){var p=kk.split('|');var ks=p[0]+'|'+p[1];bySub[ks]=(bySub[ks]||0)+agg[kk];});
+  var aw=0,boxes=0;
+  Object.keys(bySub).forEach(function(ks){
+    var p=ks.split('|');var d=shipPartDim(p[0],p[1]);if(!d)return;
+    var box=Math.ceil(bySub[ks]/d.iri);boxes+=box;aw+=box*d.jitsu;
+  });
+  return {actualWeight:Math.round(aw*10)/10,boxes:boxes};
+}
+/* 受注＋行先市 → 送料一式。発倉庫で運賃表選択→行先で距離列→請求重量(実重量切上)→freightCost。
+   距離不明(misshu本社発で都市リスト未対応 等)は ok:false で返す。 */
+function calcFreight(order,destCity){
+  var table=shipTableForWarehouse(order.wh);
+  var bw=calcShipWeightBilling(order);
+  var distance=destCity?destFindDistance(table,destCity):null;
+  if(distance==null)return {ok:false,reason:'distance_unknown',table:table,weight:bw.actualWeight,boxes:bw.boxes};
+  var fc=freightCost(table,distance,bw.actualWeight);
+  if(!fc)return {ok:false,reason:'no_rate',table:table,weight:bw.actualWeight};
+  if(fc.over)return {ok:false,reason:'over_weight_charter',table:table,weight:bw.actualWeight,distance:distance};
+  return {ok:true,table:table,distance:distance,weight:bw.actualWeight,boxes:bw.boxes,rate:fc.rate,shokei:fc.shokei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
 }
 function calcShipWeight(order){
   var agg=aggregateOrderBOM(order);/* key|sub|color → qty */
