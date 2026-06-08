@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.9（P3-C 運賃編集UI＋変更履歴・管理者）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.10（P3-B 混載vsチャーター比較）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1347,6 +1347,41 @@ function calcFreight(order,destCity,destPref){
   if(!fc)return {ok:false,reason:'no_rate',table:table,weight:bw.actualWeight};
   if(fc.over)return {ok:false,reason:'over_weight_charter',table:table,weight:bw.actualWeight,distance:dd.km};
   return {ok:true,table:table,distance:dd.km,approxDistance:dd.approx,weight:bw.actualWeight,boxes:bw.boxes,rate:fc.rate,shokei:fc.shokei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
+}
+/* v18.10 P3-B: チャーター料金表（PDFページ5・尼高運輸/関西・札幌発）。距離km×車格(2t/4t/10t)→円。参考比較用。
+   車格=2t(積載2000kg)/4t(~2500kg)/10t(13000kg)・容積/重量変動あり。本社発のチャーター表は未提供。 */
+var CHARTER_TABLES={
+  kansai:{dep:'amago',dist:[25,50,100,150,200,250,300,350,400,450,500,550,600,650,700,750,800],
+    '2t':[20000,22000,26000,30000,35000,40000,43000,48000,null,null,null,null,null,null,null,null,null],
+    '4t':[23000,26000,30000,35000,40000,45000,50000,57000,63000,69000,75000,81000,87000,87000,95000,100000,104000],
+    '10t':[32000,34000,37000,42000,50000,58000,63000,70000,75000,80000,85000,93000,100000,100000,110000,118000,125000]},
+  sapporo:{dep:'sapporo',dist:[25,50,100,150,200,250,300,350,400],
+    '2t':[null,30000,42000,44000,48000,54000,75000,null,null],
+    '4t':[null,35000,49000,50000,62500,69000,88000,100000,110000]}
+};
+var CHARTER_CAP={'2t':2000,'4t':2500,'10t':13000};
+/* 発倉庫→チャーター表。尼高/関西発=kansai、札幌発=sapporo、他=null(本社発チャーター表は未提供)。 */
+function charterTableForWarehouse(whId){
+  if(whId==='amago'||whId==='kansai')return 'kansai';
+  if(whId==='sapporo')return 'sapporo';
+  return null;
+}
+/* 距離km＋車格→チャーター料金。距離は次のkmブラケットへ繰上げ。 */
+function charterRate(tableKey,distanceKm,sharkaku){
+  var t=CHARTER_TABLES[tableKey];if(!t)return null;var row=t[sharkaku];if(!row)return null;
+  var di=-1;for(var i=0;i<t.dist.length;i++){if(t.dist[i]>=distanceKm){di=i;break;}}
+  if(di<0)di=t.dist.length-1;
+  return {price:row[di],distBracket:t.dist[di]};
+}
+/* 請求重量→推奨車格(積載量基準・参考)。容積で要判断のため全車格価格も返す。 */
+function charterCost(whId,distanceKm,weightKg){
+  var tableKey=charterTableForWarehouse(whId);if(!tableKey||distanceKm==null)return {ok:false};
+  var t=CHARTER_TABLES[tableKey];
+  var prices={};['2t','4t','10t'].forEach(function(sk){if(t[sk]){var r=charterRate(tableKey,distanceKm,sk);if(r&&r.price!=null)prices[sk]={price:r.price,distBracket:r.distBracket};}});
+  /* 推奨車格(積載量基準・参考) */
+  var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&weightKg<=CHARTER_CAP[sk])suggest=sk;});
+  if(!suggest){var keys=Object.keys(prices);suggest=keys.length?keys[keys.length-1]:null;}
+  return {ok:Object.keys(prices).length>0,table:tableKey,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
 }
 function calcShipWeight(order){
   var agg=aggregateOrderBOM(order);/* key|sub|color → qty */
@@ -4294,7 +4329,26 @@ function OrdersPage(p){
               fr.reason==='over_weight_charter'?('請求重量 '+fr.weight+'kg が運賃表の上限超過 → チャーター便対象'):
               ('送料試算不可（'+(fr.reason||'')+'）')
             ),
-            fr.ok&&fr.approxDistance?h('div',{style:{fontSize:9,color:'#975a16',marginTop:3}},'※本社発の距離は都道府県別の暫定値です（運賃編集で補正予定）'):null
+            fr.ok&&fr.approxDistance?h('div',{style:{fontSize:9,color:'#975a16',marginTop:3}},'※本社発の距離は都道府県別の暫定値です（運賃編集で補正予定）'):null,
+            /* v18.10 P3-B: 混載 vs チャーター 比較（参考） */
+            (function(){
+              if(!fr.ok)return null;
+              var ch=charterCost(o.wh,fr.distance,fr.weight);
+              if(!ch.ok){
+                return charterTableForWarehouse(o.wh)?null:h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※チャーター比較は尼高/札幌発のみ対応（本社発のチャーター表は未提供）');
+              }
+              var mix=fr.genka;/* 混載は運賃原価で比較 */
+              var cheaper=ch.suggestPrice!=null&&ch.suggestPrice<mix?'charter':'mix';
+              return h('div',{style:{marginTop:6,paddingTop:6,borderTop:'1px dashed var(--g300)'}},
+                h('div',{style:{fontSize:10,fontWeight:700,marginBottom:3}},'混載 vs チャーター（参考比較）'),
+                h('div',{style:{display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}},
+                  h('span',{style:cheaper==='mix'?{fontWeight:700,color:'#276749'}:{}},'混載 運賃原価: ¥'+fm(mix)+(cheaper==='mix'?' ◀安い':'')),
+                  h('span',null,'｜チャーター: '+['2t','4t','10t'].map(function(sk){return ch.prices[sk]?sk+'=¥'+fm(ch.prices[sk].price):null;}).filter(Boolean).join(' / ')),
+                  ch.suggestPrice!=null?h('span',{style:cheaper==='charter'?{fontWeight:700,color:'#c53030'}:{}},'｜推奨車格 '+ch.suggest+'=¥'+fm(ch.suggestPrice)+(cheaper==='charter'?' ◀安い':'')):null
+                ),
+                h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'※チャーター車格は積載量基準の参考（実際は容積で要判断）。価格表はページ5（尼高運輸2025.10）。')
+              );
+            })()
           );
         })(),
         h('div',{style:{marginBottom:10}},
