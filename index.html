@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.2（P5a 出荷指示書5型 公式様式生成）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.3（P3-1 送料 重量＋容積重量算出エンジン）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1224,6 +1224,25 @@ function buildShipInstruction(order){
   ws['!ref']=tpl.ref;
   if(tpl.merges&&tpl.merges.length)ws['!merges']=tpl.merges.map(function(s){return XLSX.utils.decode_range(s);});
   return {ws:ws,sheetName:tk.replace('出荷指示書原本','出荷指示書').slice(0,28)};
+}
+/* ========== v18.3 P3-1: 送料の重量＋容積重量算出（送料計算表の部材寸法に基づく実データ計算） ==========
+   送料計算表(★送料計算表.xlsx)の部材別 実重(箱)・容積(箱)・入数 を正規化したマスタ。
+   箱数=配送枚数/入数(端数可)・実重量=Σ箱数×実重・容積重量=Σ箱数×容積・請求重量=max(実重量,容積重量)。
+   ※この関数は算出のみ。既存calcShippingの置換は段階導入(運賃マトリクス実装後)。 */
+var PART_DIMS={"side|L":{"iri":16,"jitsu":18.5,"yoseki":35},"side|XL":{"iri":16,"jitsu":13.3,"yoseki":26},"side|M":{"iri":16,"jitsu":13.3,"yoseki":26},"side|SS":{"iri":20,"jitsu":8.4,"yoseki":14},"side|S":{"iri":20,"jitsu":13.1,"yoseki":26},"back|L":{"iri":16,"jitsu":10.3,"yoseki":19},"back|XL":{"iri":16,"jitsu":7,"yoseki":14},"back|M":{"iri":16,"jitsu":7,"yoseki":14},"back|SS":{"iri":20,"jitsu":4.6,"yoseki":9},"back|S":{"iri":20,"jitsu":7,"yoseki":15},"door|L":{"iri":16,"jitsu":14,"yoseki":26},"door|SS":{"iri":20,"jitsu":4.4,"yoseki":10},"door|M":{"iri":16,"jitsu":10.4,"yoseki":20},"door|S":{"iri":20,"jitsu":8.5,"yoseki":20},"top|sml":{"iri":16,"jitsu":11.9,"yoseki":21},"top|ss":{"iri":20,"jitsu":8.2,"yoseki":13},"base|sml":{"iri":8,"jitsu":8.1,"yoseki":24},"base|ss":{"iri":10,"jitsu":6.1,"yoseki":21},"shelf|ss":{"iri":50,"jitsu":7.7,"yoseki":9},"shelf|sml":{"iri":32,"jitsu":11.8,"yoseki":13},"door|XL":{"iri":8,"jitsu":18.6,"yoseki":32}};
+function shipPartDim(key,sub){var k=(key==='doorH')?'door':key;return PART_DIMS[k+'|'+sub]||null;}
+function calcShipWeight(order){
+  var agg=aggregateOrderBOM(order);/* key|sub|color → qty */
+  var bySub={};
+  Object.keys(agg).forEach(function(kk){var p=kk.split('|');var ks=p[0]+'|'+p[1];bySub[ks]=(bySub[ks]||0)+agg[kk];});
+  var aw=0,vw=0,boxes=0,unmapped=[];
+  Object.keys(bySub).forEach(function(ks){
+    var p=ks.split('|');var d=shipPartDim(p[0],p[1]);
+    if(!d){if(bySub[ks]>0)unmapped.push(ks);return;}
+    var box=bySub[ks]/d.iri;boxes+=box;aw+=box*d.jitsu;vw+=box*d.yoseki;
+  });
+  aw=Math.round(aw*1000)/1000;vw=Math.round(vw*1000)/1000;
+  return {actualWeight:aw,volumeWeight:vw,chargeWeight:Math.max(aw,vw),boxes:Math.round(boxes*1000)/1000,unmapped:unmapped};
 }
 /* sheets=[{name, aoa}]（aoa=二次元配列）→ パース結果。各行に line/wh/item/colorLabel/qty/map/mapped を付与。 */
 function parseStockImport(sheets){
