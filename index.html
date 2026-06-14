@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.16（営業権限/入庫可視化/在庫取込反映/スマホ対応/送料連動）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.21（同時利用バー開閉/倉庫間移動の在庫修正/鍵DB整合/週次バックアップ/編集権限指定/正式送料/取り寄せ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -49,6 +49,13 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .presence-floating .pf-dot{width:12px;height:12px;border-radius:50%;background:#22C55E;box-shadow:0 0 10px #22C55E;animation:pulse 2s infinite}
 .presence-floating .pf-users{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;font-size:11px;font-weight:700;color:var(--gn)}
 .presence-floating .pf-title{font-size:13px;font-weight:900;color:var(--nv)}
+/* v18.21 要望: 右下の同時利用バーを開閉(最小化)できるように */
+.presence-floating:not(.collapsed){padding-right:30px}
+.presence-floating.collapsed{cursor:pointer;padding:8px 14px;gap:7px;max-width:none}
+.presence-floating.collapsed:hover{box-shadow:0 8px 30px rgba(34,197,94,.55)}
+.presence-floating .pf-caret{font-size:13px;color:#94a3b8;margin-left:2px}
+.presence-floating .pf-toggle{position:absolute;top:50%;right:6px;transform:translateY(-50%);border:none;background:transparent;cursor:pointer;font-size:15px;line-height:1;color:#94a3b8;padding:3px 5px;border-radius:6px}
+.presence-floating .pf-toggle:hover{background:#eef2f7;color:var(--nv)}
 /* v14.4: ヘッダーのオンラインバッジを強化 */
 .online-count-bg{display:inline-flex;align-items:center;gap:4px;background:var(--gn);color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:900;letter-spacing:.5px;margin-left:8px;box-shadow:0 2px 6px rgba(34,197,94,.4)}
 .online-count-bg.solo{background:#64748B;box-shadow:0 2px 6px rgba(100,116,139,.3)}
@@ -322,14 +329,16 @@ var LINE_COLORS={
     {v:'sr',l:'スモーキーレッド',x:'#CD5C5C'},{v:'sbl',l:'スモーキーブルー',x:'#6A8EAE'},{v:'sgr',l:'スモーキーグリーン',x:'#6B8E6B'}
   ]
 };
+/* v18.21 要望18: 商品選択の錠前を実在庫キー(部材在庫一覧/パーツ単品 cat:'lock')と同名・同数で紐付け。
+   旧 dialH110/dialH111 は在庫キーが存在せず(在庫は dialH110new/dialH111new のみ)常に欠品表示になっていたため実在庫キーへ修正。
+   cylinderMaster は削除15項目で確定のため除去。汎用cylinderは在庫に対応キーが無く(在庫はcylinderShort/Long系)要吉野確認のため暫定保持。 */
 var LOCK_TYPES=[
-  {v:'dialH110',l:'ダイヤル錠 H110',s:'ダイヤル錠（H110）'},
-  {v:'dialH111',l:'ダイヤル錠 H111',s:'ダイヤル錠（H111）'},
+  {v:'dialH110new',l:'ダイヤル錠 H110(新)',s:'ダイヤル錠（H110）'},
+  {v:'dialH111new',l:'ダイヤル錠 H111(新)',s:'ダイヤル錠（H111）'},
   {v:'dialDST',l:'ダイヤル錠 DST',s:'ダイヤル錠（DST）'},
   {v:'totte',l:'トッテ',s:'トッテ'},
   {v:'padlock',l:'南京錠',s:'南京錠'},
   {v:'cylinder',l:'シリンダー錠',s:'シリンダー錠'},
-  {v:'cylinderMaster',l:'シリンダー錠（マスター組）',s:'シリンダー錠（マスター組）'},
   {v:'coinReturn',l:'コインリターン錠',s:'コインリターン錠'},
   {v:'none',l:'鍵なし',s:''}
 ];
@@ -1023,6 +1032,27 @@ function _rbAddStock(lineId,wh,key,sub,color,delta){
   }
   return {oldV:oldV,newV:newV};
 }
+/* v18.21 修正: 共通在庫(鍵類)は物理在庫が複数ライン(jp/jp2/tw等)のバケットに分散しうる。
+   gs()は全ライン合算するため、出庫もjp2単独ではなく全バケット横断で減算しないと、
+   Math.max(0)クランプで出庫が部分消失し在庫が増殖する（倉庫間移動バグ）。
+   gsと同じ読み取り/バケット判定で当該倉庫の物理在庫を qty 分だけ確実に減らす。oldV/newVは合計値。 */
+function _rbDrainCommon(wh,key,sub,qty){
+  var useSub=(sub!==undefined);/* gs() と同一判定 */
+  function rd(s){if(useSub){var o=s[key];return(o&&parseInt(o[sub]))||0;}return parseInt(s[key])||0;}
+  var before=0;
+  LINES.forEach(function(ln){var s=STK[ln.id]&&STK[ln.id][wh];if(s)before+=rd(s);});
+  var remaining=qty;
+  LINES.forEach(function(ln){
+    if(remaining<=0)return;
+    if(!STK[ln.id]||!STK[ln.id][wh])return;
+    var s=STK[ln.id][wh],cur=rd(s);
+    if(cur<=0)return;
+    var take=Math.min(cur,remaining);
+    if(useSub){if(!s[key])s[key]={};s[key][sub]=cur-take;}else{s[key]=cur-take;}
+    remaining-=take;
+  });
+  return {oldV:before,newV:Math.max(0,before-qty)};
+}
 /* 出荷時に EDIT_LOG へ積んだ「出荷消費」を逆仕訳して STK を倉庫へ戻す。
    未戻し(_rb未設定)のエントリのみ対象とし二重戻しを防止。EDIT_LOG が無ければ _shippedActualHeld をフォールバック。 */
 function restoreShippedStock(order){
@@ -1514,11 +1544,47 @@ function transferStock(lineId,key,sub,fromWh,toWh,qty,label,editorNm){
   var free=gs(wl,fromWh,key,sub)-gh(wl,fromWh,key,sub);
   if(free<qty)return {ok:false,reason:'insufficient',avail:free};
   var ts=new Date().toLocaleString('ja-JP');
-  var rOut=_rbAddStock(wl,fromWh,key,sub,null,-qty);
+  var rOut=isCommonStockKey(key)?_rbDrainCommon(fromWh,key,sub,qty):_rbAddStock(wl,fromWh,key,sub,null,-qty);
   var rIn=_rbAddStock(wl,toWh,key,sub,null,qty);
   EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:(label||key)+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
   EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:(label||key)+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
   return {ok:true,moved:qty};
+}
+/* v18.21 要望28: 在庫表と顧客情報のバックアップをExcelで一括書き出し（毎週・吉野さんへ送付用）。
+   静的サイト構成のため自動メール送付は不可。ワンクリック書き出し＋週次リマインド(7日)で運用する。 */
+function exportFullBackup(editorNm){
+  if(typeof XLSX==='undefined'){alert('エクスポート機能を初期化できませんでした');return false;}
+  var wb=XLSX.utils.book_new();
+  /* 顧客一覧 */
+  var custAoa=[['顧客ID','顧客名','都道府県','市区町村','郵便番号','電話','FAX','担当者','営業担当']];
+  (CUSTS||[]).forEach(function(c){custAoa.push([c.id||'',c.name||'',c.pref||'',c.city||'',c.postal||'',c.phone||'',c.fax||'',c.contactPerson||c.contact||'',c.salesPerson||'']);});
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(custAoa),'顧客一覧');
+  /* 在庫データ（全ライン×倉庫×部材の生値。扉は色/サイズまで展開） */
+  var stkAoa=[['ライン','倉庫','部材キー','サイズ/色','数量']];
+  function whName(w){return(WH_MAP[w]&&WH_MAP[w].n)||w;}
+  Object.keys(STK||{}).forEach(function(lineId){
+    var whs=STK[lineId]||{};
+    Object.keys(whs).forEach(function(wh){
+      var keys=whs[wh]||{};
+      Object.keys(keys).forEach(function(key){
+        var v=keys[key];
+        if(typeof v==='number'){if(v)stkAoa.push([lineId,whName(wh),key,'',v]);}
+        else if(v&&typeof v==='object'){
+          Object.keys(v).forEach(function(a){
+            var vv=v[a];
+            if(typeof vv==='number'){if(vv)stkAoa.push([lineId,whName(wh),key,a,vv]);}
+            else if(vv&&typeof vv==='object'){Object.keys(vv).forEach(function(b){if(vv[b])stkAoa.push([lineId,whName(wh),key,a+'/'+b,vv[b]]);});}
+          });
+        }
+      });
+    });
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(stkAoa),'在庫データ');
+  var stamp=((typeof td2==='function'?td2():'')||'').replace(/\//g,'-')||'backup';
+  XLSX.writeFile(wb,'LECバックアップ_顧客在庫_'+stamp+'.xlsx');
+  try{localStorage.setItem('lec_last_backup',new Date().toISOString().slice(0,10));}catch(_){}
+  try{EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),label:'データバックアップ書き出し（顧客+在庫）',editor:editorNm||'バックアップ'});}catch(_){}
+  return true;
 }
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
 function normalizeStockLine(line,key){
@@ -2694,6 +2760,7 @@ function App(){
   var loginPw=us('');/* v18 P2: ログイン時パスワード入力 */
   var onlineUsers=us([]);
   var presenceStatus=us('connecting');/* connecting / connected / offline */
+  var presenceMin=us(localStorage.getItem('lec_presence_min')==='1');/* v18.21 右下同時利用バーの最小化状態 */
   var notif=us(null);
   var channelRef=ur(null);
   /* v14 D32: システム全体ロック - 先勝ち判定 */
@@ -3006,7 +3073,13 @@ function App(){
     /* v14.4 hotfix2: 同時ログイン可視化バナー
        offline時はバナーを非表示にして画面の邪魔をしない（ヘッダーの「💾 ローカルモード」のみで状態を示す）
        offline = Supabase未利用環境。ローカル動作は完全に可能なので、過度な警告を表示しない方針に変更 */
-    loggedIn[0]&&presenceStatus[0]!=='offline'?h('div',{className:'presence-floating'+(onlineUsers[0].length<=1?' solo':''),title:onlineUsers[0].length>=2?'他のユーザーがログイン中。仮押さえはリアルタイム同期されます':'現在あなたのみログイン中です'},
+    loggedIn[0]&&presenceStatus[0]!=='offline'?(presenceMin[0]?
+      h('div',{className:'presence-floating collapsed'+(onlineUsers[0].length<=1?' solo':''),title:'クリックで同時利用バーを開く',onClick:function(){presenceMin[1](false);try{localStorage.setItem('lec_presence_min','0');}catch(_){}}},
+        h('span',{className:'pf-dot'}),
+        h('span',{style:{fontWeight:900,fontSize:13,color:'var(--nv)'}},onlineUsers[0].length>=2?('👥 '+onlineUsers[0].length):(onlineUsers[0].length===1?'👤':'⏳')),
+        h('span',{className:'pf-caret'},'▴')
+      ):h('div',{className:'presence-floating'+(onlineUsers[0].length<=1?' solo':''),title:onlineUsers[0].length>=2?'他のユーザーがログイン中。仮押さえはリアルタイム同期されます':'現在あなたのみログイン中です'},
+      h('button',{className:'pf-toggle',title:'最小化',onClick:function(){presenceMin[1](true);try{localStorage.setItem('lec_presence_min','1');}catch(_){}}},'▾'),
       h('span',{className:'pf-dot'}),
       h('div',null,
         h('div',{className:'pf-title'},
@@ -3023,7 +3096,7 @@ function App(){
         })):null,
         onlineUsers[0].length>=2?h('div',{style:{fontSize:9,color:'var(--gn)',marginTop:4,fontWeight:600}},'💬 他のユーザーの仮押さえ・編集は自動で反映されます'):null
       )
-    ):null,
+    )):null,
     /* v14 D31: ユーザー管理モーダル - Codex P2対応: 管理者ロール強制 */
     showUserMgmt[0]?h(Modal,{show:true,title:'ユーザー管理（v14）',w:550,onClose:function(){showUserMgmt[1](false);},
       footer:h('button',{className:'btn btn-ol',onClick:function(){showUserMgmt[1](false);}},'閉じる')},
@@ -3232,7 +3305,7 @@ function InvPage(p){
     window.addEventListener('resize',onR);
     return function(){window.removeEventListener('resize',onR);};
   },[]);
-  var ln=us('jp2'),sz=us('M'),tp=us('standard'),cl=us('pb'),lk=us('dialH110');
+  var ln=us('jp2'),sz=us('M'),tp=us('standard'),cl=us('pb'),lk=us('dialH110new');
   var doorType=us('door');
   var hasDoor=us(true);/* 扉の有無 (true=扉あり / false=扉なし) */
   var hasNameplate=us(false),hasNamePaper=us(false);
@@ -3262,12 +3335,12 @@ function InvPage(p){
   function changeLine(v){ln[1](v);cl[1]((LINE_COLORS[v]||[])[0]?LINE_COLORS[v][0].v:'');var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
   /* Fix: sync lock state when switching to personal type (#16) */
   ue(function(){
-    if(tp[0]==='personal'&&lk[0]==='none')lk[1]('dialH110');
+    if(tp[0]==='personal'&&lk[0]==='none')lk[1]('dialH110new');
   },[tp[0]]);
   /* 扉なし時は自動で錠なし */
   ue(function(){
     if(!hasDoor[0])lk[1]('none');
-    else if(lk[0]==='none'&&tp[0]==='personal')lk[1]('dialH110');
+    else if(lk[0]==='none'&&tp[0]==='personal')lk[1]('dialH110new');
   },[hasDoor[0]]);
   /* 顧客変更時に明細・見積ドラフトをクリア */
   ue(function(){
@@ -3306,7 +3379,7 @@ function InvPage(p){
     /* v18 P2(要望4): 営業は明細追加→在庫確認まで可。書込ブロックは後発ログインの全体ロック(lockReadOnly)のみ */
     if(p.lockReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
     var lock=!hasDoor[0]?'none':lk[0];
-    if(tp[0]==='personal'&&lock==='none'&&hasDoor[0])lock='dialH110';
+    if(tp[0]==='personal'&&lock==='none'&&hasDoor[0])lock='dialH110new';
     var dt=isJP?doorType[0]:'door';
     var cb=null;
     if(multiColor[0]&&hasDoor[0]&&colorBreak[0].length>0){
@@ -4924,6 +4997,12 @@ function PartsPage(p){
           h('button',{className:'btn btn-xs btn-ol',onClick:function(){showEditLog[1](true);}},'履歴'),
           /* v14.2: 在庫項目マスタ管理 */
           h('button',{className:'btn btn-xs btn-or',onClick:function(){showItemMaster[1](true);}},'⚙ 項目管理'),
+          /* v18.21 要望28: 週次バックアップ（管理者のみ）。在庫表+顧客をExcel書き出し→吉野さんへ送付。7日以上未実施で赤表示。 */
+          roleOf(p.userName)==='admin'?(function(){
+            var last=null;try{last=localStorage.getItem('lec_last_backup');}catch(_){}
+            var overdue=true;if(last){var dms=Date.parse(last);if(!isNaN(dms))overdue=((Date.now()-dms)/86400000)>=7;}
+            return h('button',{key:'bk',className:'btn btn-xs '+(overdue?'btn-rd':'btn-gn'),title:'在庫表と顧客情報をExcelで書き出し（毎週バックアップ→吉野さんへ送付用）。'+(last?'　最終書き出し: '+last:'　未実施'),onClick:function(){if(exportFullBackup(p.userName)&&p&&typeof p.toast==='function')p.toast('バックアップを書き出しました（'+new Date().toISOString().slice(0,10)+'）。吉野さんへ送付してください。');}},'💾 バックアップ'+(overdue?'（要）':''));
+          })():null,
           /* v18.9 P3-C: 運賃編集（管理者のみ） */
           roleOf(p.userName)==='admin'?h('button',{className:'btn btn-xs btn-pr',onClick:function(){showFreightEdit[1](true);},title:'送料の諸経費・本社発の都道府県距離を編集（管理者）'},'🚚 運賃編集'):null,
           showFreightEdit[0]?(function(){
