@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.23（アカウント発行ID/PW即時発行・全端末同期/運賃表500kg超の補正/出荷指示書XL・台湾製の数量列修正/同時利用バー開閉/倉庫間移動の在庫修正/鍵DB整合/週次バックアップ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.24（初期アカウント3つ=管理者/営業/事務に整理/アカウント発行ID-PW即時発行・全端末同期/運賃表500kg超の補正/出荷指示書XL・台湾製の数量列修正/同時利用バー開閉/倉庫間移動の在庫修正/鍵DB整合/週次バックアップ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2076,9 +2076,12 @@ var ORDERS=[],nextON=1;
 var EDIT_LOG=[];
 
 /* v14 D31: ユーザー管理（管理者が追加・削除） */
+/* v18.24 要望6: 初期アカウントを3つ(管理者/営業/事務)に。本番のパスワードはクラウド(lec_state.users)で管理。
+   ここはクラウド未取得時のフォールバック定義(PWなし)。実運用のPWは管理者がユーザー管理から設定/変更する。 */
 var USERS=[
   {id:'admin',name:'管理者',loc:'honsha_office',role:'admin'},
-  {id:'saito',name:'齋藤',loc:'honsha_office',role:'user'}
+  {id:'u_sales',name:'営業',loc:'honsha_office',role:'sales'},
+  {id:'u_jimu',name:'事務',loc:'honsha_office',role:'user'}
 ];
 /* v18 P2: 簡易パスワードハッシュ（クライアント側のソフトアクセス制御。強固な暗号ではない点に留意）。
    USERS[].pw に hashPw(平文) を保存。pw 未設定ユーザーは従来通りパスワード無しでログイン可（ロックアウト防止）。
