@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.22（運賃表500kg超の補正/出荷指示書XL・台湾製の数量列修正/同時利用バー開閉/倉庫間移動の在庫修正/鍵DB整合/週次バックアップ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.23（アカウント発行ID/PW即時発行・全端末同期/運賃表500kg超の補正/出荷指示書XL・台湾製の数量列修正/同時利用バー開閉/倉庫間移動の在庫修正/鍵DB整合/週次バックアップ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2784,6 +2784,7 @@ function App(){
   var showUserMgmt=us(false);
   var bumpUsers=us(0);
   var newUserName_=us(''),newUserLoc_=us('honsha_office'),newUserRole_=us('user');
+  var newUserPw_=us(''),lastIssued_=us(null);/* v18.23 要望6: アカウント発行(ID/PW同時設定)＋発行内容を相手に送れるよう表示 */
 
   var showToast=function(msg){toast[1](msg);setTimeout(function(){toast[1](null);},3000);};
   /* v18.17 要望5: 管理者が編集権限を任意ユーザーに付与/解除。全端末へbroadcastし即時ロック再計算。 */
@@ -3110,9 +3111,24 @@ function App(){
       )
     )):null,
     /* v14 D31: ユーザー管理モーダル - Codex P2対応: 管理者ロール強制 */
-    showUserMgmt[0]?h(Modal,{show:true,title:'ユーザー管理（v14）',w:550,onClose:function(){showUserMgmt[1](false);},
+    showUserMgmt[0]?h(Modal,{show:true,title:'ユーザー管理 / アカウント発行',w:560,onClose:function(){showUserMgmt[1](false);},
       footer:h('button',{className:'btn btn-ol',onClick:function(){showUserMgmt[1](false);}},'閉じる')},
       h('div',null,
+        /* v18.23 要望6: 発行したアカウント情報を表示（相手に送る用・コピー可） */
+        (function(){
+          var li=lastIssued_[0];if(!li)return null;
+          var roleL=li.role==='admin'?'管理者':li.role==='sales'?'営業（閲覧+見積）':'事務（編集可）';
+          var txt='【LEC在庫管理システム ログイン情報】\nログインID（お名前）: '+li.name+'\nパスワード: '+(li.pw||'（未設定）')+'\n権限: '+roleL+'\nURL: https://shoohey.github.io/lec-inventory/';
+          return h('div',{style:{marginBottom:12,padding:'12px 14px',background:'#e8f3ed',border:'1px solid #bfe0cc',borderRadius:8}},
+            h('div',{style:{fontSize:12,fontWeight:800,color:'#276749',marginBottom:6}},'✅ アカウントを発行しました（この内容を相手に送ってください）'),
+            h('pre',{style:{fontSize:12,lineHeight:'1.7',background:'#fff',border:'1px solid #cfe6d8',borderRadius:6,padding:'8px 10px',margin:0,whiteSpace:'pre-wrap',fontFamily:'monospace'}},txt),
+            h('div',{style:{display:'flex',gap:6,marginTop:8}},
+              h('button',{className:'btn btn-xs btn-gn',onClick:function(){try{navigator.clipboard.writeText(txt);showToast('コピーしました。メール等で相手に送ってください');}catch(e){showToast('コピーできませんでした。手動で選択してください');}}},'📋 コピー'),
+              h('button',{className:'btn btn-xs btn-ol',onClick:function(){lastIssued_[1](null);}},'閉じる')
+            ),
+            h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:4}},'※パスワードは暗号化保存され、後から確認できません。控えを取ってから閉じてください。')
+          );
+        })(),
         (function(){
           var currentUser=USERS.find(function(u){return u.name===userName[0];});
           var isAdmin=currentUser&&currentUser.role==='admin';
@@ -3147,13 +3163,13 @@ function App(){
                     h('button',{className:'btn btn-xs btn-ol',style:{marginRight:2},title:'パスワードを設定/変更/解除',onClick:function(){
                       var pw=prompt('「'+u.name+'」のパスワードを入力（空欄で解除）:','');
                       if(pw===null)return;
-                      if(pw.trim()===''){delete u.pw;showToast('パスワードを解除しました');}
-                      else{u.pw=hashPw(pw.trim());showToast('パスワードを設定しました');}
-                      saveUsers();bumpUsers[1](bumpUsers[0]+1);
+                      if(pw.trim()===''){delete u.pw;showToast('パスワードを解除しました');lastIssued_[1](null);}
+                      else{u.pw=hashPw(pw.trim());showToast('パスワードを設定しました');lastIssued_[1]({name:u.name,pw:pw.trim(),role:u.role});}
+                      saveUsers();cloudSave(userName[0],true);bumpUsers[1](bumpUsers[0]+1);
                     }},'🔑PW'),
                     h('button',{className:'btn btn-xs btn-rd',onClick:function(){
                     if(!confirm('ユーザー「'+u.name+'」を削除しますか？'))return;
-                    USERS.splice(i,1);saveUsers();bumpUsers[1](bumpUsers[0]+1);showToast('削除しました');
+                    USERS.splice(i,1);saveUsers();cloudSave(userName[0],true);bumpUsers[1](bumpUsers[0]+1);showToast('削除しました');
                   }},'削除')):h('span',{style:{fontSize:8,color:'var(--g400)'}},'管理者のみ'))
                 );
               }))
@@ -3167,22 +3183,29 @@ function App(){
           var isAdmin=currentUser&&currentUser.role==='admin';
           if(!isAdmin)return null;
           return h('div',{style:{marginTop:12,padding:10,background:'var(--g50)',borderRadius:6}},
-            h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6}},'新規ユーザー追加'),
-            h('div',{style:{display:'flex',gap:6,alignItems:'flex-end'}},
-              h('div',{style:{flex:2}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'名前'),h('input',{className:'inp',value:newUserName_[0],onChange:function(e){newUserName_[1](e.target.value);},placeholder:'例: 田中'})),
-              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'拠点'),h('select',{className:'inp',value:newUserLoc_[0],onChange:function(e){newUserLoc_[1](e.target.value);}},LOCATIONS.map(function(l){return h('option',{key:l.v,value:l.v},l.l);}))),
-              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'権限'),h('select',{className:'inp',value:newUserRole_[0],onChange:function(e){newUserRole_[1](e.target.value);}},h('option',{value:'user'},'事務（編集可）'),h('option',{value:'sales'},'営業（閲覧+見積のみ）'),h('option',{value:'admin'},'管理者'))),
+            h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6}},'🆕 アカウント発行（新規ユーザー）'),
+            h('div',{style:{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap'}},
+              h('div',{style:{flex:'2 1 100px'}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'ログインID（名前）'),h('input',{className:'inp',value:newUserName_[0],onChange:function(e){newUserName_[1](e.target.value);},placeholder:'例: 営業1 / 田中'})),
+              h('div',{style:{flex:'2 1 100px'}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'パスワード'),h('input',{className:'inp',value:newUserPw_[0],onChange:function(e){newUserPw_[1](e.target.value);},placeholder:'相手に伝えるPW'})),
+              h('div',{style:{flex:'1 1 80px'}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'拠点'),h('select',{className:'inp',value:newUserLoc_[0],onChange:function(e){newUserLoc_[1](e.target.value);}},LOCATIONS.map(function(l){return h('option',{key:l.v,value:l.v},l.l);}))),
+              h('div',{style:{flex:'1 1 80px'}},h('label',{style:{fontSize:8,color:'var(--g500)',display:'block'}},'権限'),h('select',{className:'inp',value:newUserRole_[0],onChange:function(e){newUserRole_[1](e.target.value);}},h('option',{value:'user'},'事務（編集可）'),h('option',{value:'sales'},'営業（閲覧+見積のみ）'),h('option',{value:'admin'},'管理者'))),
               h('button',{className:'btn btn-gn',onClick:function(){
                 var currentUser2=USERS.find(function(u){return u.name===userName[0];});
-                if(!currentUser2||currentUser2.role!=='admin'){showToast('管理者のみ追加可能です');return;}
+                if(!currentUser2||currentUser2.role!=='admin'){showToast('管理者のみ発行可能です');return;}
                 var n=newUserName_[0].trim();
-                if(!n){showToast('名前を入力してください');return;}
-                USERS.push({id:'u_'+Date.now(),name:n,loc:newUserLoc_[0],role:newUserRole_[0]});
-                saveUsers();bumpUsers[1](bumpUsers[0]+1);
-                newUserName_[1]('');
-                showToast('ユーザーを追加しました');
-              }},'＋ 追加')
-            )
+                if(!n){showToast('ログインID（名前）を入力してください');return;}
+                if(USERS.some(function(x){return x.name===n;})){showToast('同じ名前のユーザーが既に存在します');return;}
+                var role=newUserRole_[0],pw=newUserPw_[0].trim();
+                var nu={id:'u_'+Date.now(),name:n,loc:newUserLoc_[0],role:role};
+                if(pw)nu.pw=hashPw(pw);
+                USERS.push(nu);
+                saveUsers();cloudSave(userName[0],true);bumpUsers[1](bumpUsers[0]+1);
+                lastIssued_[1]({name:n,pw:pw,role:role});
+                newUserName_[1]('');newUserPw_[1]('');
+                showToast('アカウントを発行しました');
+              }},'発行')
+            ),
+            h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:6}},'※発行すると全端末に同期され、相手はこのID/パスワードでログインできます。パスワード空欄なら未設定（その名前で誰でもログイン可）。')
           );
         })()
       )
