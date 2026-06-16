@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.24（初期アカウント3つ=管理者/営業/事務に整理/アカウント発行ID-PW即時発行・全端末同期/運賃表500kg超の補正/出荷指示書XL・台湾製の数量列修正/同時利用バー開閉/倉庫間移動の在庫修正/鍵DB整合/週次バックアップ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.25（出荷Excelに様式統合し一括DL/部材一覧の錠前を具体名表示/様式の納品先名=顧客名・錠前を追記/商品選択に錠前追加/Sα上下ジョイント除外/編集権限を先勝ち維持・吉野ログインで奪わない/読取でも在庫確認可/在庫表取込のエラー明示）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -332,13 +332,27 @@ var LINE_COLORS={
 /* v18.21 要望18: 商品選択の錠前を実在庫キー(部材在庫一覧/パーツ単品 cat:'lock')と同名・同数で紐付け。
    旧 dialH110/dialH111 は在庫キーが存在せず(在庫は dialH110new/dialH111new のみ)常に欠品表示になっていたため実在庫キーへ修正。
    cylinderMaster は削除15項目で確定のため除去。汎用cylinderは在庫に対応キーが無く(在庫はcylinderShort/Long系)要吉野確認のため暫定保持。 */
+/* v18.25 要望⑦: 商品選択の錠前を「パーツ単価追加(cat:'lock')」と同じ品揃えに統一。
+   旧 dialH110/H111 等も選択可能に戻し、シリンダー錠カム長/短・H112 も追加（在庫が無いキーは在庫確認で欠品表示になるが選択は可）。 */
 var LOCK_TYPES=[
   {v:'dialH110new',l:'ダイヤル錠 H110(新)',s:'ダイヤル錠（H110）'},
   {v:'dialH111new',l:'ダイヤル錠 H111(新)',s:'ダイヤル錠（H111）'},
+  {v:'dialH110',l:'ダイヤル錠 H110',s:'ダイヤル錠（H110）'},
+  {v:'dialH111',l:'ダイヤル錠 H111',s:'ダイヤル錠（H111）'},
+  {v:'dialH112',l:'ダイヤル錠 H112(自由式)',s:'ダイヤル錠（H112）'},
   {v:'dialDST',l:'ダイヤル錠 DST',s:'ダイヤル錠（DST）'},
-  {v:'totte',l:'トッテ',s:'トッテ'},
   {v:'padlock',l:'南京錠',s:'南京錠'},
+  {v:'totte',l:'トッテ',s:'トッテ'},
   {v:'cylinder',l:'シリンダー錠',s:'シリンダー錠'},
+  {v:'cylinderLongStd',l:'シリンダー錠(カム長Std)',s:'シリンダー錠'},
+  {v:'cylinderLongF',l:'シリンダー錠(カム長F)',s:'シリンダー錠'},
+  {v:'cylinderLongB',l:'シリンダー錠(カム長B)',s:'シリンダー錠'},
+  {v:'cylinderShortStd',l:'シリンダー錠(カム短Std)',s:'シリンダー錠'},
+  {v:'cylinderShortF',l:'シリンダー錠(カム短F)',s:'シリンダー錠'},
+  {v:'cylinderShortB',l:'シリンダー錠(カム短B)',s:'シリンダー錠'},
+  {v:'cylinderShortC',l:'シリンダー錠(カム短C)',s:'シリンダー錠'},
+  {v:'cylinderExchange',l:'内筒交換錠',s:'シリンダー錠'},
+  {v:'cylinderExchangeSpare',l:'内筒交換用予備',s:'シリンダー錠'},
   {v:'coinReturn',l:'コインリターン錠',s:'コインリターン錠'},
   {v:'none',l:'鍵なし',s:''}
 ];
@@ -833,7 +847,8 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     bom.push({key:shelfKey,sub:grp,qty:shelfQty,label:'棚板('+grp.toUpperCase()+'・'+shelfColorLabel+')',reason:shelfQty+'枚',shelfColor:shelfColor});
   }
   /* Vertical joints: 常設タイプは不要。パーソナルは1台につき3個必要 (1台=島×段) */
-  if(isPersonal){
+  /* v18.25 要望⑧: Sα(新台湾製/line='sa')はパーソナルでも上下ジョイント(SML)が存在しないため除外（アンカー穴キャップ854行と同様にopts.line判定） */
+  if(isPersonal&&opts.line!=='sa'){
     bom.push({key:'vj',sub:grp,qty:n*3,label:'上下ジョイント('+grp.toUpperCase()+')',reason:n+'台×3'});
   }
   /* v14 A2: サイドジョイントは自動加算しない。手動入力(opts.sideJointQty)のみで計上 */
@@ -873,7 +888,9 @@ function calcBOM(size,islands,tiers,lock,type,opts){
       if(openLine)lockN=Math.max(0,n-(openLine.qty||0));
     }
     if(lockN>0){
-      bom.push({key:lock,qty:lockN,label:LOCK_TYPES.find(function(lt){return lt.v===lock;})?LOCK_TYPES.find(function(lt){return lt.v===lock;}).l:'錠前',reason:lockN+'台×1'+(lockN!==n?'（オープン'+(n-lockN)+'台除外）':'')});
+      /* v18.25 要望①: 錠前ラベルを具体名(ダイヤル錠 H110 等)に。partLabelJP(PART_LABELS)を一次参照し、
+         LOCK_TYPES未掲載の旧キー(dialH110等)でも『錠前』へ汎用化されず仮押さえ詳細と同名で出る。 */
+      bom.push({key:lock,qty:lockN,label:(partLabelJP(lock)||(LOCK_TYPES.find(function(lt){return lt.v===lock;})||{}).l||'錠前'),reason:lockN+'台×1'+(lockN!==n?'（オープン'+(n-lockN)+'台除外）':'')});
     }
   }
   return bom;
@@ -1259,22 +1276,22 @@ function buildShipInstruction(order){
   var eu=order.endUser&&(order.endUser.name||order.endUser.address)?order.endUser:null;
   var st=order.shipTo||{};
   var hv={name:eu?eu.name:(st.name||(cust?cust.name:'')),postal:eu?eu.postal:(st.postal||(cust&&cust.postal||'')),address:eu?eu.address:(st.address||(cust?cust.pref+(cust.city||''):'')),phone:eu?eu.phone:(st.phone||(cust&&cust.phone||''))};
-  /* ラベルセルを探し、その右隣(value)へ充填。テンプレ差異に耐えるため label→value はラベルセルの次の非ラベル列に置く */
-  function fillByLabel(labelRe,val){
-    if(val==null||val==='')return;
-    Object.keys(tpl.cells).forEach(function(a){
-      if(labelRe.test(String(tpl.cells[a]))){
-        var rc=XLSX.utils.decode_cell(a);
-        var vaddr=XLSX.utils.encode_cell({r:rc.r,c:rc.c+1});/* ラベルの右隣 */
-        if(cells[vaddr]===undefined||cells[vaddr]==='')cells[vaddr]=val;
-      }
-    });
+  /* v18.25 要望②: 納品先名(=顧客名)等を様式の正しい入力欄へ充填。
+     旧実装はラベルの右隣(c+1)へ書いていたが、テンプレはラベルが結合セルで「下/右」が入力欄のため値が画面に出なかった。
+     5テンプレの結合構造を解析し、実入力セルを直接指定する（SML/SS/Sα=Q列レイアウト, XL/台湾製=G列レイアウト）。 */
+  function setCell(addr,val){if(val==null||val==='')return;if(cells[addr]===undefined||cells[addr]==='')cells[addr]=val;}
+  var qLayout=/納品先名/.test(String(tpl.cells['Q4']||''));
+  if(qLayout){
+    setCell('Q5',hv.name);          /* 納品先名: ラベルQ4 / 入力欄Q5:Y6 */
+    setCell('Q10',hv.phone);        /* 電話番号: ラベルQ9 / 入力欄Q10:Y10 */
+    setCell('R12',hv.postal);       /* 〒: ラベルQ12 / 入力欄R12:Y12 */
+    setCell('Q13',hv.address);      /* 納品先住所: ラベルQ11 / 入力欄Q13:Y14 */
+    if(order.deliveryDate)setCell('Q17',order.deliveryDate);/* 納品日時: ラベルQ16 / 入力Q17 */
+  }else{
+    setCell('G4',hv.name);          /* 納品先名: ラベルG3 / 入力欄G4:I5 */
+    setCell('G12',(hv.postal?'〒'+hv.postal+' ':'')+(hv.address||''));/* 納品先住所: ラベルG11 / 入力欄G12:I13 */
+    if(order.deliveryDate)setCell('G16',order.deliveryDate);/* 納品日時: ラベルG15 / 入力欄G16:I18 */
   }
-  fillByLabel(/^納品先名/,hv.name);
-  fillByLabel(/^電話番号/,hv.phone);
-  fillByLabel(/^〒$/,hv.postal);
-  fillByLabel(/^納品先住所/,hv.address);
-  if(order.deliveryDate)fillByLabel(/^納品日時/,order.deliveryDate);
   /* v18.22 修正(本番既知バグ): 数量列はテンプレ毎に異なる（SML/SS/Sα=入数L列→出荷総数M/箱数N/バラO、XL/台湾製=入数B列→C/D/E）。
      固定M/N/O(12/13/14)書込はXL(用紙範囲A〜I外で全数量が消失)・台湾製(荷送人欄L/N列を破壊)を壊すため、入数列(iriCol)基準で算出する。
      出荷総数=入数列+1, 出荷箱数=+2, 出荷バラ=+3。 */
@@ -1288,10 +1305,36 @@ function buildShipInstruction(order){
     cells[XLSX.utils.encode_cell({r:ri,c:qBox})]=box;/* 出荷箱数 (入数列+2) */
     cells[XLSX.utils.encode_cell({r:ri,c:qBara})]=bara;/* 出荷バラ (入数列+3) */
   });
+  /* v18.25 要望④: SML/SS等の様式には錠前(鍵)行が無く（XL/Sαは汎用行のみ）出力時に鍵が消えるため、
+     注文の実際の錠前を末尾に明示行として追記する（「全項目載せる」方針）。検索キー等は除外し本体の鍵のみ。 */
+  var refStr=tpl.ref;
+  (function(){
+    var lockRows=[];
+    Object.keys(agg).forEach(function(k){
+      var key=k.split('|')[0],qty=agg[k];
+      if(!(qty>0))return;
+      if(!/^(dial|padlock|cylinder|coinReturn)/.test(key)||/^dialKey/.test(key))return;/* 本体の錠前のみ（検索キー dialKey* は除外） */
+      lockRows.push({label:partLabelJP(key)||key,qty:qty});
+    });
+    if(!lockRows.length)return;
+    var maxR=0;/* 既存の最終使用行(0始まり) */
+    Object.keys(cells).forEach(function(a){var mm=a.match(/(\d+)$/);if(mm)maxR=Math.max(maxR,parseInt(mm[1])-1);});
+    (tpl.rows||[]).forEach(function(rw){maxR=Math.max(maxR,rw[0]);});
+    var startR=maxR+2;/* 1行空けて見出し */
+    cells[XLSX.utils.encode_cell({r:startR,c:0})]='＜錠前（鍵）＞';
+    lockRows.forEach(function(lr,i){
+      var rr=startR+1+i;
+      cells[XLSX.utils.encode_cell({r:rr,c:0})]=lr.label;
+      cells[XLSX.utils.encode_cell({r:rr,c:qTot})]=lr.qty;/* 出荷総数列に数量 */
+    });
+    var lastR=startR+lockRows.length;
+    var rng=XLSX.utils.decode_range(tpl.ref);
+    if(rng.e.r<lastR){rng.e.r=lastR;refStr=XLSX.utils.encode_range(rng);}
+  })();
   /* cells → worksheet */
   var ws={};
   Object.keys(cells).forEach(function(a){var v=cells[a];if(v===''||v==null)return;ws[a]={v:v,t:(typeof v==='number'?'n':'s')};});
-  ws['!ref']=tpl.ref;
+  ws['!ref']=refStr;
   if(tpl.merges&&tpl.merges.length)ws['!merges']=tpl.merges.map(function(s){return XLSX.utils.decode_range(s);});
   return {ws:ws,sheetName:tk.replace('出荷指示書原本','出荷指示書').slice(0,28)};
 }
@@ -2095,13 +2138,19 @@ function lockEditorName(users){try{var pk=(typeof SYSTEM_LOCK!=='undefined'&&SYS
 /* v14 D32: システム全体ロック判定（先勝ち） */
 var SYSTEM_LOCK={primary:null,/* presenceKey of primary user */ acquiredAt:null, overrideName:null/* v18.17 要望5: 管理者が指定した編集権限ユーザー名(null=先勝ち自動) */};
 /* v18.17 要望5: 編集権限保持者(primary)を決定。overrideName指定時はその名のユーザー(最古参加)を優先、無ければ先勝ち(最古参加)。純粋関数=vm検証可。 */
-function resolveEditor(allKeys,users,overrideName,myKey){
+function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
   var sorted=(allKeys||[]).slice().sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
+  var onlineKeys=sorted.map(function(k){return k.key;});
   var primaryKey=null;
+  /* 1) 管理者が手動で編集者を指定(override)した場合のみ最優先（自動ではなく明示操作） */
   if(overrideName){
     var cand=(users||[]).filter(function(u){return u.name===overrideName;}).sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
     if(cand.length)primaryKey=cand[0].presenceKey;
   }
+  /* 2) v18.25 要望⑤: 入った順(先勝ち)を最優先で維持。現在の編集者がオンラインのままなら、
+     後から参加した人（最高権限の吉野さんのログイン含む）に編集権限を自動で奪われない（操作途中の保護）。 */
+  if(!primaryKey&&currentPrimary&&onlineKeys.indexOf(currentPrimary)>=0)primaryKey=currentPrimary;
+  /* 3) 現在の編集者が居ない（離脱）時のみ、最古参加=先頭が新しい編集者になる。 */
   if(!primaryKey)primaryKey=sorted.length?sorted[0].key:null;
   return {primaryKey:primaryKey,amIPrimary:!!(primaryKey&&primaryKey===myKey)};
 }
@@ -2682,6 +2731,11 @@ function generateExcel(order,docType){
     var wsBom=XLSX.utils.aoa_to_sheet(bomData);
     wsBom['!cols']=[{wch:14},{wch:36},{wch:10},{wch:10},{wch:14},{wch:24}];
     XLSX.utils.book_append_sheet(wb,wsBom,'部材一覧(BOM)');
+    /* v18.25 要望③: 公式様式(出荷指示書テンプレ完全一致)を同一ブックの3枚目として統合し、1ファイルで一括ダウンロード。 */
+    try{
+      var shipTpl=buildShipInstruction(order);
+      if(shipTpl&&shipTpl.ws){XLSX.utils.book_append_sheet(wb,shipTpl.ws,shipTpl.sheetName||'出荷指示書(様式)');}
+    }catch(eShip){console.warn('様式統合に失敗',eShip);}
   }
   XLSX.writeFile(wb,cfg.sheet+'_'+order.no+'.xlsx');
 }
@@ -2815,10 +2869,18 @@ function App(){
           allKeys.push({key:k,joinedAt:p.joinedAt||0});
         });
       });
-      /* v14 D32: 先勝ち(最古参加)が編集者。v18.17 要望5: overrideName指定時は指定ユーザーが編集者。 */
-      var res=resolveEditor(allKeys,users,SYSTEM_LOCK.overrideName,myPresenceKey.current);
+      /* v14 D32: 先勝ち(最古参加)が編集者。v18.17 要望5: overrideName指定時は指定ユーザーが編集者。
+         v18.25 要望⑤: 現編集者(SYSTEM_LOCK.primary)がオンラインなら維持＝吉野さんログインでも権限を奪わない。 */
+      var res=resolveEditor(allKeys,users,SYSTEM_LOCK.overrideName,myPresenceKey.current,SYSTEM_LOCK.primary);
       SYSTEM_LOCK.primary=res.primaryKey;
-      isReadOnly[1](!res.amIPrimary&&allKeys.length>1);
+      var newRO=!res.amIPrimary&&allKeys.length>1;
+      /* v18.25 要望⑤: 編集中に読み取り専用へ切り替わった瞬間に通知（入力内容は保持・権限が戻れば保存可）。 */
+      if(newRO&&!SYSTEM_LOCK._roWas){
+        notif[1]('🔒 別のユーザーが編集中のため読み取り専用になりました。入力中の内容は保持され、編集権限が戻れば保存できます。');
+        setTimeout(function(){notif[1](null);},6000);
+      }
+      SYSTEM_LOCK._roWas=newRO;
+      isReadOnly[1](newRO);
       onlineUsers[1](users);
     };
     recomputeLockRef.current=recomputeLock;
@@ -3415,7 +3477,7 @@ function InvPage(p){
   function addLine(){
     if(!cust)return;
     /* v18 P2(要望4): 営業は明細追加→在庫確認まで可。書込ブロックは後発ログインの全体ロック(lockReadOnly)のみ */
-    if(p.lockReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+    /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     var lock=!hasDoor[0]?'none':lk[0];
     if(tp[0]==='personal'&&lock==='none'&&hasDoor[0])lock='dialH110new';
     var dt=isJP?doorType[0]:'door';
@@ -3432,7 +3494,7 @@ function InvPage(p){
   }
   function addPartLine(){
     if(!cust)return;
-    if(p.lockReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+    /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     var pd=getPartAddDefs().find(function(d){return d.k===partType[0];});if(!pd)return;
     if(pd.expand){/* v16: レールセット等を構成部材へ分解して複数明細追加 */
       var pLnX=partLine[0]||ln[0];var lnmX=(LINES.find(function(l){return l.id===pLnX;})||{name:''}).name;var bqX=parseInt(partQty[0])||1;
@@ -3454,7 +3516,7 @@ function InvPage(p){
   /* Free input line (not in inventory) */
   var freeInputName=us(''),freeInputQty=us(1),freeInputUnit=us('個'),freeInputPrice=us(0),freeInputRemark=us('');
   function addFreeInputLine(){
-    if(p.lockReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+    /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     if(!freeInputName[0].trim()){p.toast('商品名称を入力してください');return;}
     var nl=lines[0].concat([{id:Date.now(),isFreeInput:true,name:freeInputName[0].trim(),qty:parseInt(freeInputQty[0])||1,unit:freeInputUnit[0]||'個',unitPrice:parseInt(freeInputPrice[0])||0,remark:freeInputRemark[0]||'',line:ln[0],isPartOnly:true,partLabel:freeInputName[0].trim(),partKey:'free',isDoor:false,size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
     lines[1](nl);
@@ -5125,8 +5187,17 @@ function PartsPage(p){
                   var sheets=wb.SheetNames.map(function(n){return {name:n,aoa:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''})};});
                   var diff=buildStockDiff(parseStockImport(sheets));
                   stockImport[1](diff);
-                  p.toast('取込: 差分'+diff.diffs.length+'件 / 未対応'+diff.unmapped.length+'件（在庫は未変更）');
-                }catch(err){p.toast('取込エラー: '+err.message);}
+                  /* v18.25 要望⑨: 解析0行のときは原因が分かるよう案内（形式不一致の集計表など）。 */
+                  if(diff.totalCount===0){
+                    p.toast('在庫表を認識できませんでした（解析0行）。対応形式は「倉庫別シートに『アイテム』『色』『現在庫数』列がある在庫管理表」です。倉庫横断の集計表（本社第一/本社第二…列で現在庫数列なし）は未対応です。');
+                  }else{
+                    p.toast('取込: 差分'+diff.diffs.length+'件 / 未対応'+diff.unmapped.length+'件（在庫は未変更）');
+                  }
+                }catch(err){
+                  /* v18.25 要望⑨: パスワード保護ファイルは読み込めないので明示する。 */
+                  var em=String((err&&err.message)||err);
+                  p.toast(/password/i.test(em)?'このExcelはパスワード保護されています。パスワードを解除して保存し直してから取り込んでください。':'取込エラー: '+em);
+                }
               };
               reader.readAsArrayBuffer(file);
             }})
@@ -5146,6 +5217,13 @@ function PartsPage(p){
             h('div',null,
               h('div',{style:{padding:8,background:'#FEF3C7',borderRadius:6,fontSize:10,color:'#7C2D12',marginBottom:8}},'⚠️ 「反映」を押すまで在庫は変更されません。反映は各アイテムを「取込」値へ更新します（在庫スナップショットはbumpせず既存の在庫編集を保持。EDIT_LOGに記録）。未対応行は反映されません。'),
               h('div',{style:{fontSize:11,marginBottom:6,fontWeight:600}},'解析 '+di.totalCount+'行 ／ マップ '+di.mappedCount+' ／ 差分 '+di.diffs.length+'件 ／ 未対応 '+di.unmapped.length+'件'),
+              /* v18.25 要望⑨: 0行のときは形式不一致と分かるよう案内 */
+              di.totalCount===0?h('div',{style:{padding:10,background:'#FEE2E2',borderRadius:6,fontSize:11,color:'#991B1B',marginBottom:8,lineHeight:1.7}},
+                h('div',{style:{fontWeight:700,marginBottom:4}},'在庫表を認識できませんでした（解析0行）'),
+                '対応形式は「倉庫ごとのシートに ',h('b',null,'アイテム / 色 / 現在庫数'),' の列がある在庫管理表」です（例: 2026年本社在庫管理表.xlsx）。',
+                h('br',null),'倉庫横断の集計表（本社第一・本社第二…の列で「現在庫数」列が無い形式）や、パスワード保護されたファイルは取込できません。',
+                h('br',null),'※いつもお使いの集計表をそのまま取り込みたい場合は、その実ファイルをお送りください。形式に合わせて対応します。'
+              ):null,
               di.diffs.length?h('div',{className:'scy',style:{maxHeight:'52vh'}},h('table',{className:'tbl'},
                 h('thead',null,h('tr',null,h('th',null,'ライン'),h('th',null,'倉庫'),h('th',null,'アイテム'),h('th',null,'色'),h('th',null,'システム'),h('th',null,'取込'),h('th',null,'差'))),
                 h('tbody',null,di.diffs.slice(0,400).map(function(d,i){return h('tr',{key:i},
