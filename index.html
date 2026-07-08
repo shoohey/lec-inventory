@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.27（監査27項目→修正依頼7件: 営業/後発の共有在庫書換え穴を封鎖／鍵類編集の在庫増殖修正／返品リピートの部材欠落修正／出荷指示書テンプレ一致／入庫予定の取消・編集・差戻し＋クラウド同期／PC文字拡大／在庫一覧の削除項目整理・レール4種）＋v18.26集計在庫表取込</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.28（出荷指示書を5シート正本(2026-07-08受領)と完全一致: 旧fix撤去・荷送人/入力ガイド欄追加・箱数バラ数式再現・納品日反映／✎様式手修正(納品先・品名書換・数量を手入力→全端末共有)／在庫表取込の鍵類変種の過少集約を修正(検索キー等は変種合算)）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1312,14 +1312,15 @@ function shipLookupAgg(agg,m){
   if(m.sumBlack)v+=agg[m.sumBlack+'|'+(m.sub||'')+'|']||0;
   return v;
 }
-/* v18.26 P5b: テンプレ実物(出荷指示書フォーマット.xlsx)との残差分（監査確定）を build 時に上書き。
-   SHIP_TEMPLATES巨大リテラル(重複断片が多く安全に直接編集不可)は温存する。
-   ・SML A40/L40: コード「サイドジョイント/300」→ テンプレ「レールセット/400」(いずれもレール/ジョイントで数量自動充填対象外＝表示ラベルと入数のみ)
-   ・Q24: テンプレの同梱物文言（SML=鍵資料 / SS=組み立て資料）・Sα=ドライバー連絡文言 に統一 */
+/* v18.28: 出荷指示書は 2026-07-08 受領の5シート正本（出荷指示書フォーマット_5シート.xlsx, 全セル突合済み）を正とする。
+   旧v18.26 fix（別ファイル『出荷指示書フォーマット.xlsx』基準の SML A40=レールセット/L40=400・Q24同梱物文言）は正本と逆行するため撤去。
+   正本のみに存在した参考欄（SML入力ガイドAA1-AA9・荷送人4社ブロックAB16-AD30・V3改訂日）と、改行コード正規化(\r\n→\n)セルを追加。
+   SHIP_TEMPLATES巨大リテラル(重複断片が多く安全に直接編集不可)は温存し build 時に上書きする方式は従来どおり。 */
 var SHIP_TPL_FIX={
-  '出荷指示書原本（SML）日本製':{'A40':'レールセット','L40':400,'Q24':'\n※請求書、納品書、物品受領書、鍵資料は同梱になります。'},
-  '出荷指示書原本(SS・3S)日本製':{'Q24':'\n※請求書、納品書、物品受領書、組み立て資料は同梱になります。'},
-  '出荷指示書原本 (台湾製Sα）':{'Q24':'\n※お客様直送の為、綺麗な箱でお願いします。\n\n※発送後にドライバーさんのご連絡等をメールにてお知らせください。'}
+  "出荷指示書原本（SML）日本製":{"AA1":"＜入力について＞","AA3":"A1セルは、倉庫名（本社、新柏倉庫、尼高運輸等）を入力","V3":46023,"AA4":"商品のパーツ数をM列（出荷総数）に入力","AA5":"A5～40のセルに無い商品は、名前を書き換えて入力","A6":"ベース\n（レール長×2・短×1）","AA6":"Q5（納品先名）に顧客名を入力","AA7":"Q10（電話番号）に電話番号を入力","AA8":"R12（納品先住所）に郵便番号を入力","AA9":"Q13（納品先住所）に郵住所を入力","AB16":"【荷送人】","AD16":"(株)LEC","AB17":"〒120-0005　東京都足立区綾瀬7-4-1","AB18":"TEL：","AD18":"03-5849-5563","AB20":"【荷送人】","AD20":"㈱プラロッカー","AB21":"〒121-0055　東京都足立区加平1-19-10","AB22":"TEL：","AD22":"03-6721-7491","AB24":"【荷送人】","AD24":"プラスチックロッカー㈱","Q24":"\n※お客様直送の為、綺麗な箱でお願いします。\n\n※発送後に送り状を弊社までメールをお願いします。","AB25":"〒116-0001　東京都荒川区町屋1-9-7","AB26":"TEL：","AD26":"03-5856-0603","AB28":"【荷送人】","AD28":"㈱グローバル","AB29":"〒116-0001　東京都荒川区町屋1-5-3","AB30":"TEL：","AD30":"03-5849-5755"},
+  "出荷指示書原本(SS・3S)日本製":{"V3":46143,"A6":"SSベース\n（レール長×2・短×1）","AB16":"【荷送人】","AD16":"(株)LEC","AB17":"〒120-0005　東京都足立区綾瀬7-4-1","AB18":"TEL：","AD18":"03-5849-5563","AB20":"【荷送人】","AD20":"㈱プラロッカー","AB21":"〒121-0055　東京都足立区加平1-19-10","AB22":"TEL：","AD22":"03-6721-7491","AB24":"【荷送人】","AD24":"プラスチックロッカー㈱","Q24":"\n※お客様直送の為、綺麗な箱でお願いします。\n\n※発送後に送り状を弊社までメールをお願いします。","AB25":"〒116-0001　東京都荒川区町屋1-9-7","AB26":"TEL：","AD26":"03-5856-0603","AB28":"【荷送人】","AD28":"㈱グローバル","AB29":"〒116-0001　東京都荒川区町屋1-5-3","AB30":"TEL：","AD30":"03-5849-5755"},
+  "出荷指示書原本(台湾製)":{"G25":"※お客様直送の為、綺麗な箱でお願いします。\n\n※発送後に送り状を弊社までメールをお願いします。"},
+  "出荷指示書原本 (台湾製Sα）":{"V3":46057,"A6":"BASE（７ｃｍ）＆Rail set\n（GRAY）","G6":"ベースボード\n（レール長×2・短×1）","G8":"サイドボード　\n※１台に付き２枚必要","AB16":"【荷送人】","AD16":"(株)LEC","AB17":"〒120-0005　東京都足立区綾瀬7-4-1","AB18":"TEL：","AD18":"03-5849-5563","AB20":"【荷送人】","AD20":"㈱プラロッカー","AB21":"〒121-0055　東京都足立区加平1-19-10","AB22":"TEL：","AD22":"03-6721-7491","AB24":"【荷送人】","AD24":"プラスチックロッカー㈱","Q24":"\n※お客様直送の為、綺麗な箱でお願いします。\n\n※発送後に送り状を弊社までメールをお願いします。","AB25":"〒116-0001　東京都荒川区町屋1-9-7","AB26":"TEL：","AD26":"03-5856-0603","AB28":"【荷送人】","AD28":"㈱グローバル","AB29":"〒116-0001　東京都荒川区町屋1-5-3","AB30":"TEL：","AD30":"03-5849-5755"}
 };
 /* Q列レイアウト(SML/SS/Sα)共通：荷受人敬称Y8＋社内確認欄グリッド(拠点北/東/西/本/KE・区切り/・無有の閉じ括弧）と/)。既存値は温存。 */
 var SHIP_TPL_FIX_QGRID={'Y8':'様','V35':'東','W35':'西','X35':'本','Y35':'KE','V36':'/','W36':'/','X36':'/','Y36':'/','X37':'）','Y37':'/','X38':'）','Y38':'/','X39':'）','Y39':'/'};
@@ -1336,6 +1337,11 @@ function buildShipInstruction(order){
   var eu=order.endUser&&(order.endUser.name||order.endUser.address)?order.endUser:null;
   var st=order.shipTo||{};
   var hv={name:eu?eu.name:(st.name||(cust?cust.name:'')),postal:eu?eu.postal:(st.postal||(cust&&cust.postal||'')),address:eu?eu.address:(st.address||(cust?cust.pref+(cust.city||''):'')),phone:eu?eu.phone:(st.phone||(cust&&cust.phone||''))};
+  /* v18.28 顧客要望: 出荷指示書の手入力修正。案件の order.shipEdit（✎様式手修正モーダルで保存）が自動値より優先。
+     {name,phone,postal,address,delivery, rows:{[テンプレ行index]:{label,qty}}} 形式・空欄項目は自動値のまま。 */
+  var se=order.shipEdit||{};
+  if(se.name)hv.name=se.name;if(se.phone)hv.phone=se.phone;if(se.postal)hv.postal=se.postal;if(se.address)hv.address=se.address;
+  var dlv=se.delivery||order.deliveryDate||'';
   /* v18.25 要望②: 納品先名(=顧客名)等を様式の正しい入力欄へ充填。
      旧実装はラベルの右隣(c+1)へ書いていたが、テンプレはラベルが結合セルで「下/右」が入力欄のため値が画面に出なかった。
      5テンプレの結合構造を解析し、実入力セルを直接指定する（SML/SS/Sα=Q列レイアウト, XL/台湾製=G列レイアウト）。 */
@@ -1346,29 +1352,46 @@ function buildShipInstruction(order){
     setCell('Q10',hv.phone);        /* 電話番号: ラベルQ9 / 入力欄Q10:Y10 */
     setCell('R12',hv.postal);       /* 〒: ラベルQ12 / 入力欄R12:Y12 */
     setCell('Q13',hv.address);      /* 納品先住所: ラベルQ11 / 入力欄Q13:Y14 */
-    if(order.deliveryDate)setCell('Q17',order.deliveryDate);/* 納品日時: ラベルQ16 / 入力Q17 */
+    if(dlv)cells['Q17']=dlv;/* 納品日時: ラベルQ16 / 入力Q17。正本はQ17='2026/'プリセット済で空セル限定のsetCellでは反映されないため直接上書き(v18.28) */
   }else{
     setCell('G4',hv.name);          /* 納品先名: ラベルG3 / 入力欄G4:I5 */
     setCell('G12',(hv.postal?'〒'+hv.postal+' ':'')+(hv.address||''));/* 納品先住所: ラベルG11 / 入力欄G12:I13 */
-    if(order.deliveryDate)setCell('G16',order.deliveryDate);/* 納品日時: ラベルG15 / 入力欄G16:I18 */
+    if(dlv)cells['G16']=dlv;/* 納品日時: ラベルG15 / 入力欄G16:I18（手修正se.delivery優先） */
   }
   /* v18.22 修正(本番既知バグ): 数量列はテンプレ毎に異なる（SML/SS/Sα=入数L列→出荷総数M/箱数N/バラO、XL/台湾製=入数B列→C/D/E）。
      固定M/N/O(12/13/14)書込はXL(用紙範囲A〜I外で全数量が消失)・台湾製(荷送人欄L/N列を破壊)を壊すため、入数列(iriCol)基準で算出する。
      出荷総数=入数列+1, 出荷箱数=+2, 出荷バラ=+3。 */
+  /* v18.28: 5シート正本との残差分を build 時に反映（SHIP_TPL_FIX定義部のコメント参照）。
+     ✎様式手修正の品名書換(A列)より前に適用する — 後で適用するとA6(改行正規化)が手修正の書換を上書きして消すため。 */
+  var tplFix=SHIP_TPL_FIX[tk];if(tplFix)Object.keys(tplFix).forEach(function(a){cells[a]=tplFix[a];});
   var qTot=((typeof tpl.iriCol==='number')?tpl.iriCol:11)+1,qBox=qTot+1,qBara=qTot+2;
   var sumTot=0,sumBox=0;/* v18.26: テンプレ数式 M42=SUM(M5:M40)/N41=SUM(N5:N40) のキャッシュ値 */
   (tpl.rows||[]).forEach(function(rw){
     var ri=rw[0],iri=rw[1]||0,name=rw[2];
-    var m=shipRowToBOM(name);if(!m)return;
-    var qty=shipLookupAgg(agg,m);if(!(qty>0))return;
+    var ro=(se.rows&&se.rows[ri])||null;/* v18.28: この行の手修正（品名書換/数量） */
+    if(ro&&ro.label)cells[XLSX.utils.encode_cell({r:ri,c:0})]=ro.label;/* A列品名の書換（正本入力ガイド「A5～40のセルに無い商品は、名前を書き換えて入力」に対応） */
+    var m=shipRowToBOM(name);
+    var qty=m?shipLookupAgg(agg,m):0;
+    if(ro&&ro.qty!=null&&ro.qty!=='')qty=parseInt(ro.qty)||0;/* 数量の手修正が最優先（0=行を空に） */
+    if(!(qty>0))return;
     var box=iri>0?Math.floor(qty/iri):0,bara=iri>0?(qty%iri):qty;
     cells[XLSX.utils.encode_cell({r:ri,c:qTot})]=qty;/* 出荷総数 (入数列+1) */
     cells[XLSX.utils.encode_cell({r:ri,c:qBox})]=box;/* 出荷箱数 (入数列+2) */
     cells[XLSX.utils.encode_cell({r:ri,c:qBara})]=bara;/* 出荷バラ (入数列+3) */
     sumTot+=qty;sumBox+=box;
   });
-  /* v18.26 P5b: テンプレ実物との残差分（監査確定）を build 時に反映。 */
-  var tplFix=SHIP_TPL_FIX[tk];if(tplFix)Object.keys(tplFix).forEach(function(a){cells[a]=tplFix[a];});
+  /* v18.28: 正本は出荷箱数/バラ列が全部材行で数式（=INT(M5/L5) / =M5-(N5*L5)、XL/台湾はB列入数基準のC/D/E列）。
+     テンプレ由来の静的0と上で充填した値を同じ数式＋キャッシュ値へ変換して正本と一致させる
+     （出力後にM列を手修正しても箱数/バラが追随する）。N41/M42のSUMは後段のqLayoutブロックで上書き。 */
+  (function(){
+    var iriL=XLSX.utils.encode_col((typeof tpl.iriCol==='number')?tpl.iriCol:11),totL=XLSX.utils.encode_col(qTot),boxL=XLSX.utils.encode_col(qBox),baraL=XLSX.utils.encode_col(qBara);
+    Object.keys(cells).forEach(function(a){
+      var v=cells[a];if(typeof v!=='number')return;
+      var mm=a.match(/^([A-Z]+)([0-9]+)$/);if(!mm)return;
+      if(mm[1]===boxL)cells[a]={f:'INT('+totL+mm[2]+'/'+iriL+mm[2]+')',v:v};
+      else if(mm[1]===baraL)cells[a]={f:totL+mm[2]+'-('+boxL+mm[2]+'*'+iriL+mm[2]+')',v:v};
+    });
+  })();
   if(qLayout){
     Object.keys(SHIP_TPL_FIX_QGRID).forEach(function(a){if(cells[a]===undefined||cells[a]==='')cells[a]=SHIP_TPL_FIX_QGRID[a];});
     cells['M42']={f:'SUM(M5:M40)',v:sumTot};/* 全パーツ出荷総数（テンプレ数式） */
@@ -1711,7 +1734,9 @@ function parseAggregateStock(sheets){
   });
   /* 同一STKセルへ落ちる複数行を集約（冪等性の担保）:
      ・共通在庫(錠前/トッテ等)= 版(Ver.1/Ver.2)をまたいで同一プール(gs/normalizeStockLineが全ライン集約)。
-       版ごとに二重計上しないよう (倉庫,キー,sub) 単位で「最大値」の1行に集約。
+       v18.28: 2段階集約に修正。(a)同一変種(品名×色ラベル)が版をまたいで重複記載された場合はmaxで重複排除、
+       (b)変種違い(例: 検索キーH110/H111/Cマスター/井門DST→searchKey、マスターキーF/B→masterKey)は実在の別在庫なので合算。
+       旧実装は(倉庫,キー,sub)単位で一律max→変種を1行に潰し過少取込していた(実測: 検索キー本社 物理147→101)。
      ・非共通(ハンガー/コネクター/サイドジョイント/ドアポケット/ネジ等、STK側に色の区別が無いキー)=
        同一版内で色違い行(黒/グレー)が同じバケットへ落ちるため (ライン,倉庫,キー,sub) 単位で「合算」。 */
   var gmap={},order=[];
@@ -1721,10 +1746,22 @@ function parseAggregateStock(sheets){
     var gk=r.map.isDoor?('D|'+r.line+'|'+r.wh+'|'+r.map.key+'|'+r.map.color+'|'+r.map.size)
       :common?('C|'+r.wh+'|'+r.map.key+'|'+(r.map.sub||''))
       :('N|'+r.line+'|'+r.wh+'|'+r.map.key+'|'+(r.map.sub||''));
+    if(common){
+      if(gmap[gk]===undefined){gmap[gk]=order.length;order.push(r);r._vmax={};}
+      var ex=order[gmap[gk]];
+      var vk=(r.item||'')+'|'+(r.colorLabel||'');
+      if(!(ex._vmax[vk]>=r.qty))ex._vmax[vk]=r.qty;/* (a) 同一変種の版またぎ=max */
+      var s=0;Object.keys(ex._vmax).forEach(function(k2){s+=ex._vmax[k2];});
+      ex.qty=s;/* (b) 変種違い=合算 */
+      /* 差分モーダルの誤読防止: 合算行のラベルに変種数を明示（例: H110 ほか3変種合算） */
+      var vn=Object.keys(ex._vmax).length;
+      if(ex._vlabel0===undefined)ex._vlabel0=ex.colorLabel||'';
+      if(vn>1)ex.colorLabel=(ex._vlabel0?ex._vlabel0+' ':'')+'ほか'+(vn-1)+'変種合算';
+      return;
+    }
     if(gmap[gk]===undefined){gmap[gk]=order.length;order.push(r);return;}
-    var ex=order[gmap[gk]];
-    if(common){if(r.qty>ex.qty)order[gmap[gk]]=r;}/* 共通=最大 */
-    else{ex.qty=(ex.qty||0)+r.qty;}/* 非共通/扉重複=合算 */
+    var ex2=order[gmap[gk]];
+    ex2.qty=(ex2.qty||0)+r.qty;/* 非共通/扉重複=合算 */
   });
   return order;
 }
@@ -1767,7 +1804,10 @@ function applyStockImport(diffs,editorNm){
     var curNow=gs(d.line,d.wh,d.key,d.sub);/* 現在値(共通は全ライン集約)。冪等にするため都度再取得 */
     var delta=(parseInt(d.imported)||0)-curNow;
     if(delta===0)return;
-    var r=_rbAddStock(wl,d.wh,d.key,d.sub,null,delta);
+    /* v18.28: 共通在庫(鍵類)の減方向はjp2バケット単独減算だとMath.max(0)クランプで消失しうる
+       (物理在庫がjp01/tw等に分散するため、取込値まで下がらず残deltaが出続けた)。
+       transferStock(v18.21)と同じく_rbDrainCommonで全バケット横断で確実に減らす。 */
+    var r=(delta<0&&isCommonStockKey(d.key))?_rbDrainCommon(d.wh,d.key,(d.sub==null?undefined:d.sub),-delta):_rbAddStock(wl,d.wh,d.key,d.sub,null,delta);
     EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:d.key,sub:d.sub,color:null,wh:d.wh,oldVal:r.oldV,newVal:r.newV,label:(d.item||d.key)+'（在庫表取込）',editor:editorNm||'在庫表取込'});
     applied++;
   });
@@ -4606,6 +4646,7 @@ function QuotePreview(p){
 function OrdersPage(p){
   var filter=us('all'),detail=us(null),showQ=us(null);
   var shipModal=us(null);/* order to show shipping modal for */
+  var shipEditModal=us(null);/* v18.28: 出荷指示書(様式)の手入力修正モーダル {order,autoHv,name,phone,postal,address,delivery,rows:[{ri,iri,name,auto,label,qty}]} */
   var shipForm=us({shipToName:'',shipToPostal:'',shipToAddress:'',shipToPhone:'',shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:'',shipNo:''});
   var fl=ORDERS.filter(function(o){return filter[0]==='all'||o.status===filter[0];}).sort(function(a,b){return b.no>a.no?1:-1;});
 
@@ -4735,6 +4776,23 @@ function OrdersPage(p){
                   p.toast('出荷指示書(公式様式)を出力: '+o.no);
                 }catch(err){p.toast('出力エラー: '+err.message);}
               }},'📋 出荷指示書(様式)'),
+              /* v18.28 顧客要望: 出荷指示書(様式)を手入力で修正（納品先・納品日・品名書換・数量）。案件に保存され様式/出荷Excel両方に反映 */
+              h('button',{className:'btn btn-xs btn-ol',style:{marginLeft:2,fontWeight:700},title:'出荷指示書(様式)の内容を手入力で修正。保存すると「📋 出荷指示書(様式)」と「📊 出荷Excel」の様式シートに反映されます',onClick:function(){
+                var tk=shipTemplateKey(o);var tpl=SHIP_TEMPLATES[tk];
+                if(!tpl){p.toast('出荷指示書テンプレートが見つかりません（製品ライン未判定）');return;}
+                var agg;try{agg=aggregateOrderBOM(o);}catch(err){agg={};}
+                var se=o.shipEdit||{};var ser=se.rows||{};
+                var c0=CUSTS.find(function(x){return x.id===o.cid;});
+                var eu0=o.endUser&&(o.endUser.name||o.endUser.address)?o.endUser:null;
+                var st0=o.shipTo||{};
+                var autoHv={name:eu0?eu0.name:(st0.name||(c0?c0.name:'')),postal:eu0?eu0.postal:(st0.postal||(c0&&c0.postal||'')),address:eu0?eu0.address:(st0.address||(c0?c0.pref+(c0.city||''):'')),phone:eu0?eu0.phone:(st0.phone||(c0&&c0.phone||'')),delivery:o.deliveryDate||''};
+                var rows=(tpl.rows||[]).map(function(rw){
+                  var m=shipRowToBOM(rw[2]);var auto=m?shipLookupAgg(agg,m):0;
+                  var ro=ser[rw[0]]||{};
+                  return {ri:rw[0],iri:rw[1]||0,name:rw[2],auto:auto,label:ro.label||'',qty:(ro.qty!=null&&ro.qty!=='')?String(ro.qty):''};
+                });
+                shipEditModal[1]({order:o,autoHv:autoHv,name:se.name||'',phone:se.phone||'',postal:se.postal||'',address:se.address||'',delivery:se.delivery||'',rows:rows});
+              }},'✎ 様式手修正'),
               h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){generateExcel(o,'quote');}},'見積Excel'),
               /* 一覧から直接削除 */
               h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,background:'#991B1B'},onClick:function(){
@@ -4927,6 +4985,70 @@ function OrdersPage(p){
       )
     ):null,
     /* Shipping instruction modal */
+    /* v18.28 顧客要望: 出荷指示書(様式)の手入力修正モーダル。空欄=自動値。保存内容は order.shipEdit に永続化され全端末へ同期 */
+    shipEditModal[0]?h(Modal,{show:true,title:'✎ 出荷指示書(様式)の手修正 — '+shipEditModal[0].order.no,w:680,onClose:function(){shipEditModal[1](null);},
+      footer:h('div',{style:{display:'flex',gap:6}},
+        h('button',{className:'btn btn-ol',onClick:function(){shipEditModal[1](null);}},'キャンセル'),
+        h('button',{className:'btn btn-ol',title:'この案件の手修正をすべて消して自動値に戻す',onClick:function(){
+          if(p.isReadOnly){p.toast('読み取り専用モード中は変更できません');return;}
+          var o3=shipEditModal[0].order;
+          if(!o3.shipEdit){shipEditModal[1](null);return;}
+          delete o3.shipEdit;saveAll();
+          broadcastOrderUpdate(p.userName||'',o3.no+' 出荷指示書(様式)の手修正をクリア');
+          p.toast('手修正をクリアしました（自動値に戻ります）');shipEditModal[1](null);p.bump&&p.bump();
+        }},'自動値に戻す'),
+        h('button',{className:'btn btn-rd',onClick:function(){
+          if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+          var m0=shipEditModal[0];var o2=m0.order;
+          var rowsOv={};
+          m0.rows.forEach(function(r2){
+            var e2={};
+            if(r2.label&&r2.label.trim())e2.label=r2.label.trim();
+            if(r2.qty!==''&&!isNaN(parseInt(r2.qty))&&parseInt(r2.qty)>=0)e2.qty=parseInt(r2.qty);
+            if(e2.label!==undefined||e2.qty!==undefined)rowsOv[r2.ri]=e2;
+          });
+          var se2={};
+          if(m0.name.trim())se2.name=m0.name.trim();
+          if(m0.phone.trim())se2.phone=m0.phone.trim();
+          if(m0.postal.trim())se2.postal=m0.postal.trim();
+          if(m0.address.trim())se2.address=m0.address.trim();
+          if(m0.delivery.trim())se2.delivery=m0.delivery.trim();
+          if(Object.keys(rowsOv).length)se2.rows=rowsOv;
+          if(Object.keys(se2).length)o2.shipEdit=se2;else delete o2.shipEdit;
+          saveAll();
+          broadcastOrderUpdate(p.userName||'',o2.no+' 出荷指示書(様式)を手修正');
+          p.toast(Object.keys(se2).length?'手修正を保存しました。「📋 出荷指示書(様式)」「📊 出荷Excel」の出力に反映されます':'手修正なし（自動値のまま）');
+          shipEditModal[1](null);p.bump&&p.bump();
+        }},'保存'))},
+      h('div',null,
+        h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'空欄の項目は自動値（顧客/エンド納品先・在庫計算の数量）が使われます。入力した項目だけが様式に反映され、案件に保存されて全端末で共有されます。'),
+        h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6,borderBottom:'1px solid var(--g200)',paddingBottom:4}},'納品先（空欄=自動）'),
+        h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+          h('div',{style:{flex:2}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'納品先名'),h('input',{className:'inp',value:shipEditModal[0].name,placeholder:shipEditModal[0].autoHv.name||'',onChange:function(e){shipEditModal[1](Object.assign({},shipEditModal[0],{name:e.target.value}));}})),
+          h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'〒'),h('input',{className:'inp',value:shipEditModal[0].postal,placeholder:shipEditModal[0].autoHv.postal||'',onChange:function(e){shipEditModal[1](Object.assign({},shipEditModal[0],{postal:e.target.value}));}}))
+        ),
+        h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+          h('div',{style:{flex:2}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'住所'),h('input',{className:'inp',value:shipEditModal[0].address,placeholder:shipEditModal[0].autoHv.address||'',onChange:function(e){shipEditModal[1](Object.assign({},shipEditModal[0],{address:e.target.value}));}})),
+          h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'電話番号'),h('input',{className:'inp',value:shipEditModal[0].phone,placeholder:shipEditModal[0].autoHv.phone||'',onChange:function(e){shipEditModal[1](Object.assign({},shipEditModal[0],{phone:e.target.value}));}}))
+        ),
+        h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'納品日時（例: 2026/07/15 午前中）'),h('input',{className:'inp',value:shipEditModal[0].delivery,placeholder:shipEditModal[0].autoHv.delivery||'',style:{width:240},onChange:function(e){shipEditModal[1](Object.assign({},shipEditModal[0],{delivery:e.target.value}));}})),
+        h('div',{style:{fontSize:11,fontWeight:700,margin:'10px 0 4px',borderBottom:'1px solid var(--g200)',paddingBottom:4}},'部材行（品名の書換・出荷総数の手修正）'),
+        h('div',{className:'scy',style:{maxHeight:'40vh'}},h('table',{className:'tbl'},
+          h('thead',null,h('tr',null,h('th',null,'様式の品名'),h('th',null,'品名を書き換える場合'),h('th',{style:{textAlign:'right'}},'入数'),h('th',{style:{textAlign:'right'}},'自動数量'),h('th',{style:{textAlign:'right'}},'手修正数量'))),
+          h('tbody',null,shipEditModal[0].rows.map(function(r2,i2){
+            function upd(patch){var m2=Object.assign({},shipEditModal[0]);m2.rows=m2.rows.slice();m2.rows[i2]=Object.assign({},m2.rows[i2],patch);shipEditModal[1](m2);}
+            return h('tr',{key:r2.ri},
+              h('td',{style:{fontSize:9,whiteSpace:'normal'}},r2.name),
+              h('td',null,h('input',{className:'inp',value:r2.label,placeholder:'（そのまま）',style:{minWidth:110,fontSize:10},onChange:function(e){upd({label:e.target.value});}})),
+              h('td',{style:{textAlign:'right',fontSize:10}},r2.iri||'-'),
+              h('td',{style:{textAlign:'right',fontSize:10,fontWeight:700}},r2.auto),
+              h('td',{style:{textAlign:'right'}},h('input',{className:'inp',type:'number',min:0,value:r2.qty,placeholder:String(r2.auto),style:{width:74,fontSize:10,textAlign:'right'},onChange:function(e){upd({qty:e.target.value});}}))
+            );
+          }))
+        )),
+        h('div',{style:{fontSize:9,color:'var(--g500)',marginTop:6}},'※使っていない行の品名を書き換えれば、リストに無い商品も様式に載せられます（正本の入力ガイドと同じ運用）。手修正数量に0を入れるとその行は空欄になります。箱数・バラ・合計はExcel側の数式で自動計算されます。')
+      )
+    ):null,
     shipModal[0]?h(Modal,{show:true,title:'出荷指示 — '+shipModal[0].no,w:550,onClose:function(){shipModal[1](null);},
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){shipModal[1](null);}},'キャンセル'),
