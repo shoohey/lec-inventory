@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.28（出荷指示書を5シート正本(2026-07-08受領)と完全一致: 旧fix撤去・荷送人/入力ガイド欄追加・箱数バラ数式再現・納品日反映／✎様式手修正(納品先・品名書換・数量を手入力→全端末共有)／在庫表取込の鍵類変種の過少集約を修正(検索キー等は変種合算)）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.29（出荷指示書の印刷レイアウトを5シート正本と一致: 印刷範囲(ヘルパー列除外・錠前まで動的拡張)・A4縦/縮小率・余白・実列幅・横中央を注入(fflate)。セル内容はv18.28の正本完全一致を維持）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -107,6 +107,8 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- v18.29: 出荷指示書の印刷レイアウト(pageSetup/縮小率/印刷範囲)を正本と一致させるため、SheetJS書き出し後のxlsxをZIP再編集する軽量ライブラリ。未読込でも従来出力にフォールバック -->
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 "use strict";
@@ -1324,6 +1326,21 @@ var SHIP_TPL_FIX={
 };
 /* Q列レイアウト(SML/SS/Sα)共通：荷受人敬称Y8＋社内確認欄グリッド(拠点北/東/西/本/KE・区切り/・無有の閉じ括弧）と/)。既存値は温存。 */
 var SHIP_TPL_FIX_QGRID={'Y8':'様','V35':'東','W35':'西','X35':'本','Y35':'KE','V36':'/','W36':'/','X36':'/','Y36':'/','X37':'）','Y37':'/','X38':'）','Y38':'/','X39':'）','Y39':'/'};
+/* v18.29 顧客要望「印刷レイアウトも正本と一致」: 5シート正本(出荷指示書フォーマット_5シート.xlsx)の印刷設定をテンプレ別に保持。
+   right=印刷範囲の右端列 / bottom=印刷範囲の下端行(基準。錠前追記で実使用行まで動的拡張) / scale=縮小率(%) / center=横中央揃え / margins=余白 / cols=正本の実列幅XML。
+   SheetJS 0.20.3 は pageSetup/一部cols を書き出せないため writeXlsxWithPrint(fflate) でZIP再編集して注入する。SML/SS・3Sは列幅共通。 */
+var SHIP_PRINT_M_JP={left:0.7086614173228347,right:0.5118110236220472,top:0.7480314960629921,bottom:0.7480314960629921,header:0.31496062992125984,footer:0.31496062992125984};
+var SHIP_PRINT_M_TW={left:0.5905511811023623,right:0.5905511811023623,top:0.5905511811023623,bottom:0.5905511811023623,header:0.5118110236220472,footer:0.5118110236220472};
+var SHIP_COLS_SML='<cols><col min="1" max="6" width="3.625" customWidth="1"/><col min="7" max="7" width="3.75" customWidth="1"/><col min="8" max="8" width="2.625" customWidth="1"/><col min="9" max="9" width="3.625" customWidth="1"/><col min="10" max="10" width="2.625" customWidth="1"/><col min="11" max="11" width="3.625" customWidth="1"/><col min="12" max="12" width="5.625" customWidth="1"/><col min="13" max="15" width="8.625" customWidth="1"/><col min="16" max="16" width="2.875" customWidth="1"/><col min="17" max="25" width="4.125" customWidth="1"/><col min="26" max="27" width="9"/><col min="28" max="36" width="4.25" customWidth="1"/><col min="37" max="16384" width="9"/></cols>';
+var SHIP_PRINT={
+ "出荷指示書原本（SML）日本製":{right:'Y',bottom:41,scale:75,center:false,margins:SHIP_PRINT_M_JP,cols:SHIP_COLS_SML},
+ "出荷指示書原本(SS・3S)日本製":{right:'Y',bottom:41,scale:75,center:false,margins:SHIP_PRINT_M_JP,cols:SHIP_COLS_SML},
+ "出荷指示書原本（XL）":{right:'I',bottom:38,scale:83,center:true,margins:SHIP_PRINT_M_TW,cols:'<cols><col min="1" max="1" width="28.25" customWidth="1"/><col min="2" max="2" width="7" customWidth="1"/><col min="3" max="5" width="9.25" customWidth="1"/><col min="6" max="6" width="5.625" customWidth="1"/><col min="7" max="9" width="10.125" customWidth="1"/><col min="10" max="16384" width="9"/></cols>'},
+ "出荷指示書原本(台湾製)":{right:'I',bottom:38,scale:81,center:true,margins:SHIP_PRINT_M_TW,cols:'<cols><col min="1" max="1" width="28.25" customWidth="1"/><col min="2" max="2" width="7" customWidth="1"/><col min="3" max="5" width="9.25" customWidth="1"/><col min="6" max="8" width="9"/><col min="9" max="9" width="11.625" customWidth="1"/><col min="10" max="11" width="9"/><col min="12" max="20" width="4.25" customWidth="1"/><col min="21" max="16384" width="9"/></cols>'},
+ "出荷指示書原本 (台湾製Sα）":{right:'Y',bottom:41,scale:71,center:false,margins:SHIP_PRINT_M_JP,cols:'<cols><col min="1" max="5" width="3.625" customWidth="1"/><col min="6" max="6" width="8.125" customWidth="1"/><col min="7" max="7" width="3.75" customWidth="1"/><col min="8" max="8" width="2.625" customWidth="1"/><col min="9" max="9" width="3.625" customWidth="1"/><col min="10" max="10" width="2.625" customWidth="1"/><col min="11" max="11" width="6.25" customWidth="1"/><col min="12" max="12" width="5.375" customWidth="1"/><col min="13" max="15" width="8.625" customWidth="1"/><col min="16" max="16" width="2.875" customWidth="1"/><col min="17" max="25" width="4.125" customWidth="1"/><col min="26" max="27" width="9"/><col min="28" max="36" width="4.25" customWidth="1"/><col min="37" max="16384" width="9"/></cols>'}
+};
+/* 正本cols XML → SheetJS !cols(wch配列)。fflate失敗時のフォールバック用に近似列幅を付ける(max=16384は40列で打切り)。 */
+function colsXmlToWch(xml){var arr=[],re=/<col min="(\d+)" max="(\d+)" width="([\d.]+)"/g,m;while(m=re.exec(xml)){var mn=+m[1],mx=Math.min(+m[2],40),w=+m[3];for(var c=mn;c<=mx;c++)arr[c-1]={wch:w};}return arr;}
 /* テンプレ(完全一致)に数量+ヘッダーを充填して worksheet を返す。 */
 function buildShipInstruction(order){
   var tk=shipTemplateKey(order);var tpl=SHIP_TEMPLATES[tk];
@@ -1430,7 +1447,59 @@ function buildShipInstruction(order){
     ws[a]={v:v,t:(typeof v==='number'?'n':'s')};});
   ws['!ref']=refStr;
   if(tpl.merges&&tpl.merges.length)ws['!merges']=tpl.merges.map(function(s){return XLSX.utils.decode_range(s);});
-  return {ws:ws,sheetName:tk.replace('出荷指示書原本','出荷指示書').slice(0,28)};
+  /* v18.29: 印刷レイアウトを正本と一致（顧客要望）。余白/実列幅を設定し、印刷範囲は錠前追記に合わせ下端を実使用行まで動的拡張。
+     pageSetup(縮小率/A4/portrait/fitToPage)・cols実寸・印刷範囲は writeXlsxWithPrint(fflate) が注入する。 */
+  var pinfo=null,sp=SHIP_PRINT[tk];
+  if(sp){
+    ws['!margins']=sp.margins;
+    ws['!cols']=colsXmlToWch(sp.cols);
+    var maxUsedR=0;Object.keys(ws).forEach(function(a){if(a[0]==='!')return;var mm=a.match(/(\d+)$/);if(mm)maxUsedR=Math.max(maxUsedR,parseInt(mm[1]));});
+    pinfo={area:'$A$1:$'+sp.right+'$'+Math.max(sp.bottom,maxUsedR),scale:sp.scale,center:sp.center,cols:sp.cols};
+  }
+  return {ws:ws,sheetName:tk.replace('出荷指示書原本','出荷指示書').slice(0,28),tk:tk,print:pinfo};
+}
+/* v18.29: 出荷指示書xlsxを「印刷レイアウト付き」で書き出す（顧客要望「印刷レイアウトも正本と一致」）。
+   SheetJS 0.20.3 は pageSetup/一部cols を書き出せないため、XLSX.write(array)→fflateでZIP展開→worksheet XMLへ
+   sheetPr(fitToPage)/pageSetup(A4=paperSize9・縮小率scale・portrait)/printOptions(横中央)/cols(正本の実列幅) を注入→再ZIP→Blobダウンロード。
+   印刷範囲(_xlnm.Print_Area)は呼び出し側が wb.Workbook.Names に設定しSheetJSが出力する。
+   perSheet[i]={scale,center,cols}|null はブックのシート順に対応(null=無加工)。fflate未読込/例外時は従来 XLSX.writeFile にフォールバック（＝従来動作＋印刷範囲/余白/近似列幅は残る）。 */
+function writeXlsxWithPrint(wb,filename,perSheet){
+  try{
+    if(typeof fflate==='undefined'||typeof Blob==='undefined'||!(perSheet&&perSheet.some(Boolean)))throw new Error('fflate/Blob未対応 or 印刷設定なし');
+    var arr=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+    var files=fflate.unzipSync(new Uint8Array(arr));
+    var dec=new TextDecoder(),enc=new TextEncoder();
+    /* シート順(workbook.xml の並び) → worksheet XML パス を rels で正引き */
+    var wbx=dec.decode(files['xl/workbook.xml']||new Uint8Array());
+    var rels=dec.decode(files['xl/_rels/workbook.xml.rels']||new Uint8Array());
+    var rid2t={};rels.replace(/Id="([^"]+)"[^>]*?Target="([^"]+)"/g,function(m,a,b){rid2t[a]=b;return m;});
+    var rids=[];wbx.replace(/<sheet\b[^>]*>/g,function(s){var mm=s.match(/r:id="([^"]+)"/);rids.push(mm?mm[1]:null);return s;});
+    for(var i=0;i<perSheet.length;i++){
+      var ps=perSheet[i];if(!ps)continue;
+      var tgt=rid2t[rids[i]];if(!tgt)continue;tgt=tgt.replace(/^\//,'');if(tgt.indexOf('xl/')!==0)tgt='xl/'+tgt;
+      if(!files[tgt])continue;
+      var xml=dec.decode(files[tgt]);
+      /* sheetPr(fitToPage=1) を先頭子要素に */
+      if(/<sheetPr[ >]/.test(xml)){
+        if(!/pageSetUpPr/.test(xml)){xml=xml.replace(/<sheetPr([^>]*)>/,'<sheetPr$1><pageSetUpPr fitToPage="1"/>');xml=xml.replace(/<sheetPr([^>]*)\/>/,'<sheetPr$1><pageSetUpPr fitToPage="1"/></sheetPr>');}
+      }else{xml=xml.replace(/(<worksheet[^>]*>)/,'$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');}
+      /* cols(正本の実列幅)へ差し替え。無ければ sheetData 直前に挿入 */
+      if(ps.cols){if(/<cols>[\s\S]*?<\/cols>/.test(xml))xml=xml.replace(/<cols>[\s\S]*?<\/cols>/,ps.cols);else xml=xml.replace(/(<sheetData)/,ps.cols+'$1');}
+      /* printOptions(横中央) は pageMargins の直前 */
+      if(ps.center&&!/<printOptions/.test(xml))xml=xml.replace(/(<pageMargins[^>]*\/>)/,'<printOptions horizontalCentered="1"/>$1');
+      /* pageSetup(A4/縮小率/portrait) は pageMargins の直後 */
+      var pgs='<pageSetup paperSize="9" '+(ps.scale?'scale="'+ps.scale+'" ':'fitToWidth="1" fitToHeight="0" ')+'orientation="portrait"/>';
+      if(/<pageMargins[^>]*\/>/.test(xml))xml=xml.replace(/(<pageMargins[^>]*\/>)/,'$1'+pgs);
+      else xml=xml.replace(/(<\/worksheet>)/,'<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'+pgs+'$1');
+      files[tgt]=enc.encode(xml);
+    }
+    var out=fflate.zipSync(files,{level:6});
+    var blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var url=(window.URL||window.webkitURL).createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();
+    setTimeout(function(){try{document.body.removeChild(a);}catch(e){}(window.URL||window.webkitURL).revokeObjectURL(url);},1500);
+    return true;
+  }catch(e){console.warn('印刷設定付き出力に失敗、通常出力へフォールバック',e);try{XLSX.writeFile(wb,filename);}catch(e2){console.error('通常出力も失敗',e2);}return false;}
 }
 /* ========== v18.3 P3-1: 送料の重量＋容積重量算出（送料計算表の部材寸法に基づく実データ計算） ==========
    送料計算表(★送料計算表.xlsx)の部材別 実重(箱)・容積(箱)・入数 を正規化したマスタ。
@@ -2955,11 +3024,23 @@ function generateExcel(order,docType){
     var wsBom=XLSX.utils.aoa_to_sheet(bomData);
     wsBom['!cols']=[{wch:14},{wch:36},{wch:10},{wch:10},{wch:14},{wch:24}];
     XLSX.utils.book_append_sheet(wb,wsBom,'部材一覧(BOM)');
-    /* v18.25 要望③: 公式様式(出荷指示書テンプレ完全一致)を同一ブックの3枚目として統合し、1ファイルで一括ダウンロード。 */
+    /* v18.25 要望③: 公式様式(出荷指示書テンプレ完全一致)を同一ブックの3枚目として統合し、1ファイルで一括ダウンロード。
+       v18.29 顧客要望: 印刷レイアウトも正本と一致（工場様式シートに 印刷範囲/縮小率/余白/実列幅 を付与）。 */
+    var shipPerSheet=null;
     try{
       var shipTpl=buildShipInstruction(order);
-      if(shipTpl&&shipTpl.ws){XLSX.utils.book_append_sheet(wb,shipTpl.ws,shipTpl.sheetName||'出荷指示書(様式)');}
+      if(shipTpl&&shipTpl.ws){
+        var fIdx=wb.SheetNames.length;/* この後 append する工場様式シートの0始まりインデックス */
+        XLSX.utils.book_append_sheet(wb,shipTpl.ws,shipTpl.sheetName||'出荷指示書(様式)');
+        var fName=wb.SheetNames[fIdx];/* SheetJSが確定した実シート名 */
+        if(shipTpl.print&&fName){
+          wb.Workbook=wb.Workbook||{};wb.Workbook.Names=wb.Workbook.Names||[];
+          wb.Workbook.Names.push({Name:'_xlnm.Print_Area',Ref:"'"+fName+"'!"+shipTpl.print.area,Sheet:fIdx});
+          shipPerSheet=[];shipPerSheet[fIdx]={scale:shipTpl.print.scale,center:shipTpl.print.center,cols:shipTpl.print.cols};
+        }
+      }
     }catch(eShip){console.warn('様式統合に失敗',eShip);}
+    if(shipPerSheet){writeXlsxWithPrint(wb,cfg.sheet+'_'+order.no+'.xlsx',shipPerSheet);return;}
   }
   XLSX.writeFile(wb,cfg.sheet+'_'+order.no+'.xlsx');
 }
@@ -4770,9 +4851,17 @@ function OrdersPage(p){
                 try{
                   var r=buildShipInstruction(o);
                   if(!r||!r.ws){p.toast('出荷指示書テンプレートが見つかりません（製品ライン未判定）');return;}
-                  var wb=XLSX.utils.book_new();var sn=r.sheetName||'出荷指示書';
-                  wb.SheetNames.push(sn);wb.Sheets[sn]=r.ws;
-                  XLSX.writeFile(wb,'出荷指示書_'+o.no+'.xlsx');
+                  var wb=XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb,r.ws,r.sheetName||'出荷指示書');
+                  var sn=wb.SheetNames[0];
+                  /* v18.29: 印刷レイアウト(正本一致)を付与。印刷範囲/縮小率/余白/実列幅 */
+                  var perS=null;
+                  if(r.print){
+                    wb.Workbook={Names:[{Name:'_xlnm.Print_Area',Ref:"'"+sn+"'!"+r.print.area,Sheet:0}]};
+                    perS=[{scale:r.print.scale,center:r.print.center,cols:r.print.cols}];
+                  }
+                  if(perS)writeXlsxWithPrint(wb,'出荷指示書_'+o.no+'.xlsx',perS);
+                  else XLSX.writeFile(wb,'出荷指示書_'+o.no+'.xlsx');
                   p.toast('出荷指示書(公式様式)を出力: '+o.no);
                 }catch(err){p.toast('出力エラー: '+err.message);}
               }},'📋 出荷指示書(様式)'),
