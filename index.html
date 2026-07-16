@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.31（追加修正4件: 台数入力方式の選択・複数ブロック対応/送料計算表の再取込・札幌完全版/扉色未定の選択追加/日本製Ver2 XLのコネクター・ハンガーパイプ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.32（修正9件: パーソナル台数・ベース個別入力/ネジ・サイドJ・目隠し自動計算/島設定/扉色配分の0削除/SSαコネクターSS/jp2 XL扉アラート/仮押さえ案件連動/ログイン項目順・PW必須化）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -265,6 +265,7 @@ function applyCloudDoc(doc,opts){
         });
       }catch(e){}
     }
+    rebuildHeldFromOrders();/* v18.32 要望⑦: クラウド取込後にORDERS基準でHELDを再構成（案件0件なのに押さえ済が残る孤児を清掃） */
     saveAll();
   }catch(e){console.warn('applyCloudDoc failed',e);}
 }
@@ -828,12 +829,30 @@ function sizeObj(v){return SIZES.find(function(s){return s.v===v;})||SIZES[0];}
    blocks(2件以上)=「2列3段＋1列2段」/ inputMode:'direct'=「台数指定・ベースN枚」/ 従来=「N列×M段」。
    x=列と段の区切り文字（見積書の従来表記は'×'なし）。 */
 function lineUnits(l){var u=parseInt(l&&l.unitsOverride,10);return u>0?u:(((l&&l.islands)||0)*((l&&l.tiers)||0));}
+/* v18.32 要望①: 明細のベース枚数を一元解決。direct入力のパーソナルは islands=ベース入力値を尊重
+   （従来はベース=台数固定）。grid系パーソナル(inputMode無し)は従来どおり台数=ベース。 */
+function lineBaseCount(l){
+  if(l&&l.type==='personal'){
+    var b=parseInt(l&&l.islands,10);
+    return (l.inputMode==='direct'&&b>0)?b:lineUnits(l);
+  }
+  return (l&&l.islands)||0;
+}
 function lineSpecLabel(l,x){
   x=x==null?'×':x;
-  if(l&&l.blocks&&l.blocks.length>1)return l.blocks.map(function(b){return b.c+'列'+b.t+'段';}).join('＋');
-  if(l&&l.inputMode==='direct')return l.type==='personal'?('台数指定 '+(l.qty||lineUnits(l))+'台'):('台数指定・ベース'+((l&&l.islands)||0)+'枚');
+  if(l&&l.blocks&&l.blocks.length>1){
+    /* v18.32 要望③: 島(g)が複数なら「島1: 3列3段＋2列2段／島2: …」表記（gなし旧データは従来の＋連結） */
+    var gm={},go=[];
+    l.blocks.forEach(function(b){var g=parseInt(b&&b.g)||0;if(!gm[g]){gm[g]=[];go.push(g);}gm[g].push(b.c+'列'+b.t+'段');});
+    go.sort(function(a,b){return a-b;});
+    if(go.length>1)return go.map(function(g,i){return '島'+(i+1)+': '+gm[g].join('＋');}).join('／');
+    return l.blocks.map(function(b){return b.c+'列'+b.t+'段';}).join('＋');
+  }
+  if(l&&l.inputMode==='direct')return l.type==='personal'?('台数指定 '+(l.qty||lineUnits(l))+'台'+(lineBaseCount(l)!==(l.qty||lineUnits(l))?'・ベース'+lineBaseCount(l)+'枚':'')):('台数指定・ベース'+((l&&l.islands)||0)+'枚');
   return ((l&&l.islands)||0)+'列'+x+((l&&l.tiers)||0)+'段';
 }
+/* v18.32 要望⑥: 日本製Ver.2はXL扉の取扱なし（XL扉は台湾製のみ。パーツ単品追加で台湾製XL扉を選択する運用） */
+function isJp2XLDoorBlocked(line,size){return line==='jp2'&&size==='XL';}
 function calcBOM(size,islands,tiers,lock,type,opts){
   opts=opts||{};
   /* v18.31 要望: 台数入力方式の拡張。opts.unitsOverride(>0)があれば台数nはそれを採用。
@@ -876,8 +895,9 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     var baseColor=opts.baseColor||'gy';
     var baseColorLabel=baseColor==='bk'?'ブラック':'グレー';
     var baseKey=baseColor==='bk'?'base_bk':'base';
-    var baseQty=isPersonal?n:islands;
-    var baseReason=isPersonal?(n+'台×1'):(islands+'島×1');
+    /* v18.32 要望①: direct入力のパーソナルは islands=ベース指定枚数を尊重（grid系は従来どおり n） */
+    var baseQty=isPersonal?((opts.inputMode==='direct'&&islands>0)?islands:n):islands;
+    var baseReason=isPersonal?(baseQty===n?(n+'台×1'):('ベース指定'+baseQty+'枚')):(islands+'島×1');
     bom.push({key:baseKey,sub:grp,qty:baseQty,label:'ベースボード('+grp.toUpperCase()+'・'+baseColorLabel+')',reason:baseReason,baseColor:baseColor});
   }
   /* Shelf - optional. shelfColor='bk'時は shelf_bk キー、'gy'時は shelf キーで在庫照会
@@ -907,13 +927,18 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     bom.push({key:'connector',sub:'XL',qty:n,label:'XLコネクター',reason:n+'台×1'});
     bom.push({key:'hanger',qty:n,label:'ハンガーパイプ',reason:n+'台×1'});
   }
+  /* v18.32 要望⑤: 日本製Ver.2(jp2)のSSα(SSA)はコネクター(SS)必須（SS×2連結構造）。
+     SSAはLINE_SIZES上jp2専用だが、isXLPartsと同様にライン明示条件で安全側に */
+  if(size==='SSA'&&opts.line==='jp2'){
+    bom.push({key:'connector',sub:'SS',qty:n,label:'SSコネクター',reason:n+'台×1'});
+  }
   /* Anchor cap (アンカー穴キャップ): opts.hasCap=true かつベース有の場合のみ。
      v14 A5: 台湾製(tw)・Sα(sa)は対象外。日本製Ver.1/Ver.2のみ自動加算。
      v14.3: 個数はベース(base)と同数 = パーソナルなら n、常設なら islands に戻す */
   if(opts.hasCap===true&&opts.hasBase!==false&&opts.line!=='tw'&&opts.line!=='sa'){
     var capColor=opts.baseColor||'gy';
     var capColorLabel=capColor==='bk'?'ブラック':'グレー';
-    var capQty=isPersonal?n:islands;
+    var capQty=isPersonal?((opts.inputMode==='direct'&&islands>0)?islands:n):islands;/* v18.32 要望①: ベースと同数を維持 */
     bom.push({key:'anchorCap',sub:capColor,qty:capQty,label:'アンカー穴キャップ('+capColorLabel+')',reason:'ベースと同数('+capQty+')',capColor:capColor});
   }
   /* v14 A3/A4: ジョイントネジ・目隠しネジは自動加算を廃止。完全に手動入力(opts.jointScrewQty/opts.capScrewQty)に。
@@ -938,6 +963,61 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     }
   }
   return bom;
+}
+
+/* v18.32 要望②③: ネジ・サイドジョイント・目隠しネジの自動計算（顧客提供「ネジ計算表」Excelの確定式）。
+   blocks=[{c:列,t:段,g:島番号(省略時0)}] を島(g)ごとにグルーピングし、島単位で計算して合計する。
+   島内に複数ブロック（例: 3列3段＋2列2段）がある場合はバウンディング(総列×最大段)との差から
+   欠損個数・欠損段数を自動導出（欠損段数=先頭/末尾ブロックの段差＝島の外側面にのみサイドJが付くため）。
+   type='personal'|'standard'。hasSide=サイドあり（パーソナルのみ有効。Excelのシート1/2に対応）。
+   式（Excel原本どおり）:
+   - パーソナル(サイドあり): SJ=段×2−欠損段 / ジョイント=(列-1)×段×2−欠損個×2＋SJ×2 / 目隠し=(段×6−段×2)×2+2＋欠損段×2
+   - パーソナル(サイドなし): ジョイント=(列-1)×段×2−欠損個×2 / 目隠し=段×6×2
+   - 常設: ジョイント=(列-1)×段×4−欠損個×4 / 目隠し=(段×6+3)×2 */
+function calcScrewNeeds(blocks,type,hasSide){
+  var groups={};
+  (blocks||[]).forEach(function(b){
+    var g=parseInt(b&&b.g)||0;
+    if(!groups[g])groups[g]=[];
+    groups[g].push({c:parseInt(b&&b.c)||1,t:parseInt(b&&b.t)||1});
+  });
+  var islands=[],tot={joint:0,sj:0,cap:0};
+  Object.keys(groups).sort(function(a,b){return a-b;}).forEach(function(gk){
+    var bl=groups[gk];
+    var cols=bl.reduce(function(s,b){return s+b.c;},0);
+    var maxT=bl.reduce(function(m,b){return Math.max(m,b.t);},0);
+    var units=bl.reduce(function(s,b){return s+b.c*b.t;},0);
+    var missing=cols*maxT-units;                       /* 欠損個数=バウンディング−実台数 */
+    var missT=(maxT-bl[0].t)+(maxT-bl[bl.length-1].t); /* 欠損段数=先頭・末尾ブロックの段差 */
+    var r={joint:0,sj:0,cap:0,units:units};
+    if(type==='personal'&&hasSide){
+      var sjBase=maxT*2;                               /* ベース分込 */
+      r.sj=Math.max(0,sjBase-missT);
+      r.joint=Math.max(0,((cols-1)*maxT*2-missing*2)+r.sj*2);
+      r.cap=Math.max(0,missT*2+((maxT*6-sjBase)*2+2));
+    }else if(type==='personal'){
+      r.joint=Math.max(0,(cols-1)*maxT*2-missing*2);
+      r.cap=maxT*6*2;
+    }else{ /* standard 常設 */
+      r.joint=Math.max(0,(cols-1)*maxT*4-missing*4);
+      r.cap=(maxT*6+3)*2;
+    }
+    islands.push(r);tot.joint+=r.joint;tot.sj+=r.sj;tot.cap+=r.cap;
+  });
+  return {islands:islands,total:tot};
+}
+/* v18.32 要望②: 製品ラインが当該部材の在庫を保有しているか（いずれかの倉庫で>0か。sub付きはいずれかのsubで>0）。
+   ネジ自動計上のライン別ゲート。台湾製・日本製Ver.1はネジ/サイドJ/目隠しの在庫取扱が無く（マイグレーションで
+   キー自体は0で全ラインに存在するため、キー有無ではなく在庫量で判定）、無条件に自動計上すると
+   在庫確認が全倉庫NG化するため、在庫を持つラインのみ自動入力する */
+function lineStocksPart(line,key){
+  var s=STK[line];if(!s)return false;
+  return WH_IDS.some(function(w){
+    var v=s[w]&&s[w][key];
+    if(v==null)return false;
+    if(typeof v==='object'){return Object.keys(v).some(function(k2){return (parseInt(v[k2])||0)>0;});}
+    return (parseInt(v)||0)>0;
+  });
 }
 
 function checkWH(line,wh,bom,color,size){
@@ -1180,6 +1260,57 @@ function releaseOrderHeld(order){
     ln._actualHeld=[];ln._hadActualHeld=false;
   });
 }
+/* v18.32 要望⑦: HELD(仮押さえ集計)を ORDERS(仮押さえ/受注確定の _actualHeld 台帳)から再構成する。
+   案件は墓標(deletedNos)で全端末から確実に消えるが、HELD はタブスリープ/オフライン端末が
+   古い全量を書き戻す経路があり「案件0件なのに押さえ済が残る」孤児が発生していた。
+   ORDERS を真実源に HELD を導出し直すことで受信のたびに自己修復する（冪等・何度呼んでも安全）。
+   旧形式(v13以前=_actualHeld も _hadActualHeld も無い)行が現役案件に混在する場合は
+   再構成不能のため何もせず false（完全後方互換）。cloudSave はここでは呼ばない（書き戻しループ防止）。 */
+function rebuildHeldFromOrders(){
+  try{
+    var fresh={};
+    LINES.forEach(function(ln){
+      fresh[ln.id]={};
+      WH_IDS.forEach(function(w){fresh[ln.id][w]={door:{},doorH:{}};});
+    });
+    var legacy=false;
+    ORDERS.forEach(function(o){
+      if(o.status!=='仮押さえ'&&o.status!=='受注確定')return;
+      (o.lines||[]).forEach(function(ln){
+        if(ln.isFreeInput)return;
+        if(!(ln._actualHeld&&ln._actualHeld.length)){
+          /* legacy=v13以前の旧形式（台帳フィールド自体が存在しない）のみ。releaseOrderHeld後の空配列(_actualHeld=[])は
+             「何も押さえていない」ことが確定しているため対象外（差戻し→前進で status のみ仮押さえに戻した案件で
+             再構成が永久停止する誤発動を防ぐ）。isPartOnly行(lineUnits=0)は ln.qty で数量判定 */
+          if(ln._actualHeld===undefined&&!ln._hadActualHeld&&(lineUnits(ln)>0||(parseInt(ln.qty)||0)>0))legacy=true;
+          return;
+        }
+        ln._actualHeld.forEach(function(b){
+          var hl=b.heldLine||normalizeStockLine(ln.line,b.key);
+          var wh=b._wh||ln._heldWh||o.wh;
+          if(!hl||!wh)return;
+          if(!fresh[hl])fresh[hl]={};
+          if(!fresh[hl][wh])fresh[hl][wh]={door:{},doorH:{}};
+          var t=fresh[hl][wh],q=parseInt(b.qty)||0;
+          if(q<=0)return;
+          if(b.isDoor){
+            if(!t[b.key])t[b.key]={};
+            if(!t[b.key][b.color])t[b.key][b.color]={};
+            t[b.key][b.color][b.size]=(t[b.key][b.color][b.size]||0)+q;
+          }else if(b.sub!==undefined){
+            if(!t[b.key]||typeof t[b.key]!=='object')t[b.key]={};
+            t[b.key][b.sub]=(t[b.key][b.sub]||0)+q;
+          }else{
+            t[b.key]=(parseInt(t[b.key])||0)+q;
+          }
+        });
+      });
+    });
+    if(legacy){console.warn('[rebuildHeldFromOrders] 旧形式(押さえ台帳なし)の明細が現役案件に混在するため再構成をスキップしました');return false;}
+    HELD=fresh;
+    return true;
+  }catch(e){console.warn('rebuildHeldFromOrders failed',e);return false;}
+}
 /* ステータス差し戻しに伴う在庫巻き戻しのディスパッチャ。戻り値 mode で UI 文言を切替。 */
 function rollbackInventory(order,fromStatus,toStatus){
   var SF=STATUS_FLOW,fi=SF.indexOf(fromStatus),ti=SF.indexOf(toStatus);
@@ -1203,6 +1334,7 @@ function cloneLinesForRepeat(srcLines){
     if(n.blocks)n.blocks=n.blocks.map(function(b){return Object.assign({},b);});/* v18.31: 複数ブロックの参照共有を防ぐ */
     if(n.colorBreakdown)n.colorBreakdown=n.colorBreakdown.map(function(c){return Object.assign({},c);});
     delete n._actualHeld;delete n._heldWh;delete n._hadActualHeld;delete n._shippedActualHeld;delete n._partialReleases;delete n._returned;/* v18.27: 返品フラグも除去。返品済み案件をリピート複製すると _returned が残り computeOrderParts(4967 if(ln._returned)return;) で新案件の部材が集計されないバグを修正 */
+    if(isJp2XLDoorBlocked(n.line,n.size)&&!n.noDoor){n.noDoor=true;n.lock='none';n.color='';delete n.colorBreakdown;}/* v18.32 要望⑥: jp2 XLの旧扉あり明細をリピート復元しても扉なしに強制 */
     return n;
   });
 }
@@ -1292,12 +1424,14 @@ function shipTemplateKey(order){
   return grp==='ss'?'出荷指示書原本(SS・3S)日本製':'出荷指示書原本（SML）日本製';
 }
 function shipSize(n){
-  n=String(n);
-  if(/ＸＬ|XL/i.test(n))return 'XL';
-  if(/３Ｓ|3S/i.test(n))return '3S';
-  if(/ＳＳ|SS/i.test(n))return 'SS';
-  var m=n.match(/[ＳＭＬSML]/);
-  if(m){var c=m[0];if(c==='Ｌ'||c==='L')return 'L';if(c==='Ｍ'||c==='M')return 'M';if(c==='Ｓ'||c==='S')return 'S';}
+  /* v18.32 要望⑤: テンプレ行名は「SＳ　バック」のような全角/半角混在があるため、先に全角英数を半角へ正規化。
+     従来はSS・3Sテンプレのサイド/バック/扉行が S と誤判定され数量が充填されなかった */
+  n=String(n).replace(/[Ａ-Ｚａ-ｚ０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0xFEE0);});
+  if(/XL/i.test(n))return 'XL';
+  if(/3S/i.test(n))return '3S';
+  if(/SS/i.test(n))return 'SS';
+  var m=n.match(/[SML]/);
+  if(m){var c=m[0];if(c==='L')return 'L';if(c==='M')return 'M';return 'S';}
   return '';
 }
 var SHIP_COLOR_MAP={'パステルピンク':'pp','パステルブルー':'pb','パステルグリーン':'pg','パステルイエロー':'py','パステルブラウン':'pbr','クリア':'cl','スカイブルー':'sb','アップルグリーン':'ag','ライトイエロー':'ly','ライトブラウン':'lbr','アイボリー':'iv','スモーキーレッド':'sr','スモーキーブルー':'sbl','スモーキーグリーン':'sgr','ピンク':'pp','ブルー':'pb','グリーン':'pg','イエロー':'py','ブラウン':'pbr'};
@@ -1308,7 +1442,8 @@ function shipColor(n){
 }
 /* 行名→BOMキー。ボード/扉/サイド/バック等の明確行のみ。レール/ネジ/ジョイントは null(空欄維持)。 */
 function shipRowToBOM(name){
-  var n=String(name||'');
+  /* v18.32 要望⑤: shipSizeと同様、全角英数を半角へ正規化してから判定（SS/3Sテンプレの混在表記対策） */
+  var n=String(name||'').replace(/[Ａ-Ｚａ-ｚ０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0xFEE0);});
   if(/上下共通ボード|トップボード|TOP\s*BOARD/i.test(n))return {key:'top',sub:(/SS|3S|ＳＳ|３Ｓ/.test(n)?'ss':'sml')};
   if(/ベース|BASE/i.test(n))return {key:'base',sub:(/SS|3S|ＳＳ|３Ｓ/.test(n)?'ss':'sml'),sumBlack:'base_bk'};
   if(/アンカー穴キャップ/.test(n))return {key:'anchorCap',anyColor:true};
@@ -1457,25 +1592,34 @@ function buildShipInstruction(order){
      注文の実際の錠前を末尾に明示行として追記する（「全項目載せる」方針）。検索キー等は除外し本体の鍵のみ。 */
   var refStr=tpl.ref;
   (function(){
-    var lockRows=[];
+    var lockRows=[],extraRows=[];
     Object.keys(agg).forEach(function(k){
-      var key=k.split('|')[0],qty=agg[k];
+      var parts=k.split('|'),key=parts[0],qty=agg[k];
       if(!(qty>0))return;
+      /* v18.32 要望⑤: SSコネクターはテンプレ行が存在しない（コネクター行はXL固定マップ）ため末尾に追記。
+         XLコネクターはテンプレ行で充填済みなので対象外（二重計上しない） */
+      if(key==='connector'&&parts[1]==='SS'){extraRows.push({label:'SSコネクター',qty:qty});return;}
       if(!/^(dial|padlock|cylinder|coinReturn)/.test(key)||/^dialKey/.test(key))return;/* 本体の錠前のみ（検索キー dialKey* は除外） */
       lockRows.push({label:partLabelJP(key)||key,qty:qty});
     });
-    if(!lockRows.length)return;
+    if(!lockRows.length&&!extraRows.length)return;
     var maxR=0;/* 既存の最終使用行(0始まり) */
     Object.keys(cells).forEach(function(a){var mm=a.match(/(\d+)$/);if(mm)maxR=Math.max(maxR,parseInt(mm[1])-1);});
     (tpl.rows||[]).forEach(function(rw){maxR=Math.max(maxR,rw[0]);});
-    var startR=maxR+2;/* 1行空けて見出し */
-    cells[XLSX.utils.encode_cell({r:startR,c:0})]='＜錠前（鍵）＞';
-    lockRows.forEach(function(lr,i){
-      var rr=startR+1+i;
-      cells[XLSX.utils.encode_cell({r:rr,c:0})]=lr.label;
-      cells[XLSX.utils.encode_cell({r:rr,c:qTot})]=lr.qty;/* 出荷総数列に数量 */
+    var startR=maxR+2;/* 1行空けて開始 */
+    var rr=startR;
+    extraRows.forEach(function(er){
+      cells[XLSX.utils.encode_cell({r:rr,c:0})]=er.label;
+      cells[XLSX.utils.encode_cell({r:rr,c:qTot})]=er.qty;rr++;
     });
-    var lastR=startR+lockRows.length;
+    if(lockRows.length){
+      cells[XLSX.utils.encode_cell({r:rr,c:0})]='＜錠前（鍵）＞';rr++;
+      lockRows.forEach(function(lr){
+        cells[XLSX.utils.encode_cell({r:rr,c:0})]=lr.label;
+        cells[XLSX.utils.encode_cell({r:rr,c:qTot})]=lr.qty;rr++;/* 出荷総数列に数量 */
+      });
+    }
+    var lastR=rr-1;
     var rng=XLSX.utils.decode_range(tpl.ref);
     if(rng.e.r<lastR){rng.e.r=lastR;refStr=XLSX.utils.encode_range(rng);}
   })();
@@ -2735,6 +2879,17 @@ var USERS=[
 function hashPw(s){var h=5381;s=String(s||'');for(var i=0;i<s.length;i++){h=(((h<<5)+h)+s.charCodeAt(i))&0xffffffff;}return 'h'+(h>>>0).toString(36);}
 function findUserByName(nm){return USERS.find(function(u){return u.name===nm;});}
 function roleOf(nm){var u=findUserByName(nm);return u?(u.role||'user'):(nm?'user':'');}
+/* v18.32 要望⑨: ログイン検証の純関数化。未登録氏名はログイン不可（従来は任意氏名がノーチェックで通過）。
+   パスワード設定済ユーザーは照合必須。PW未設定の登録済ユーザーは従来どおり空欄で通過
+   （初期フォールバック3アカウントのロックアウト防止。完全必須化は全ユーザーへのPW設定後に可能）。 */
+function validateLogin(nm,pw,users){
+  nm=String(nm||'').trim();
+  if(!nm)return {ok:false,reason:'empty'};
+  var u=(users||USERS).find(function(x){return x.name===nm;});
+  if(!u)return {ok:false,reason:'unregistered'};
+  if(u.pw&&hashPw(pw||'')!==u.pw)return {ok:false,reason:'badpw'};
+  return {ok:true,user:u};
+}
 /* v18 P2(要望2/5): 現在「編集権限」を保持しているユーザー名を返す（先勝ちロックのprimary可視化用） */
 function lockEditorName(users){try{var pk=(typeof SYSTEM_LOCK!=='undefined'&&SYSTEM_LOCK)?SYSTEM_LOCK.primary:null;if(!pk||!Array.isArray(users))return '';var e=users.find(function(u){return u.presenceKey===pk;});return e?e.name:'';}catch(_){return '';}}
 
@@ -2961,7 +3116,7 @@ function generateQuoteHTML(order,docType){
   /* Base - aggregate from lines that have base */
   var baseLines=order.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
   /* v14.3: ベースはパーソナルでn(1台×1枚)、常設はislandsに戻す（上下共通ボードはtop側でn*2化） */
-  var ti=baseLines.reduce(function(s,l){return s+(l.type==='personal'?lineUnits(l):l.islands);},0);/* v18.31: 複数ブロック/台数直接入力は lineUnits(unitsOverride) で台数解決 */
+  var ti=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0);/* v18.32 要望①: ベース枚数はlineBaseCountで一元解決（directパーソナルのベース個別指定に追従。calcBOMのベース行と常に一致） */
   if(ti>0){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
@@ -3442,6 +3597,7 @@ function App(){
   var userLoc=us(localStorage.getItem('lec_user_loc')||'honsha_office');
   var loggedIn=us(!!localStorage.getItem('lec_user_name'));
   var loginPw=us('');/* v18 P2: ログイン時パスワード入力 */
+  var loginRole=us('');/* v18.32 要望⑧: ログイン画面の権限選択（氏名リストの絞り込み＋登録権限との照合。実効権限は従来どおりroleOf()でUSERSから導出） */
   var onlineUsers=us([]);
   var presenceStatus=us('connecting');/* connecting / connected / offline */
   var presenceMin=us(localStorage.getItem('lec_presence_min')==='1');/* v18.21 右下同時利用バーの最小化状態 */
@@ -3483,6 +3639,19 @@ function App(){
     if(recomputeLockRef.current)recomputeLockRef.current();
     showToast('編集権限を「'+next.name+'」に渡しました');
   }
+
+  /* v18.32 要望⑨: 未ログイン時にクラウドのユーザーマスタのみ先読み（新規端末でもPW照合・未登録拒否を成立させる。read-onlyで書込なし） */
+  ue(function(){
+    if(loggedIn[0]||!supaClient)return;
+    try{
+      supaClient.from(CLOUD_TABLE).select('doc').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
+        try{
+          var d=res&&res.data&&res.data.doc;
+          if(d&&Array.isArray(d.users)&&d.users.length){USERS=d.users;saveUsers();bumpUsers[1](function(v){return v+1;});}
+        }catch(e){}
+      },function(e){});
+    }catch(e){}
+  },[]);
 
   /* Setup Supabase Presence & Broadcast */
   ue(function(){
@@ -3593,6 +3762,7 @@ function App(){
           if(d.nextON)nextON=d.nextON;
           if(d.held)HELD=d.held;
           if(d.stk){STK=d.stk;ensureStkLateAdditions();}/* v15.0: broadcast受信STKにもレール補充 */
+          if(!d.heavy)rebuildHeldFromOrders();/* v18.32 要望⑦: 受信のたびにORDERS基準でHELDを再構成し孤児仮押さえを自動清掃。heavy(直近10案件のみの軽量同期)はORDERSが不完全なためスキップ */
           saveAll();
           bump[1](function(v){return v+1;});
         }catch(e){
@@ -3630,6 +3800,7 @@ function App(){
         }
         if(d.held)HELD=mergeHeldDeep(HELD,d.held);
         if(d.nextON&&d.nextON>nextON)nextON=d.nextON;
+        rebuildHeldFromOrders();/* v18.32 要望⑦: 初期同期後もORDERS基準でHELDを正規化（stale端末からの孤児復活を防止） */
         saveAll();
         bump[1](function(v){return v+1;});
         notif[1]('✅ 既存の案件・仮押さえを同期しました');
@@ -3710,11 +3881,17 @@ function App(){
   function doLogin(){
     var nm=userName[0].trim();
     if(!nm)return;
-    /* v18 P2: パスワード設定済ユーザーのみ照合。未設定ユーザーは従来通り通過（ロックアウト防止） */
-    var u=findUserByName(nm);
-    if(u&&u.pw){
-      if(hashPw(loginPw[0])!==u.pw){showToast('パスワードが違います');return;}
+    /* v18.32 要望⑨: 未登録氏名は拒否＋PW設定済ユーザーは照合必須（validateLoginに集約） */
+    var r=validateLogin(nm,loginPw[0],USERS);
+    if(!r.ok){
+      showToast(r.reason==='unregistered'
+        ?'登録されていない氏名です。管理者に「ユーザー管理 → アカウント発行」で登録を依頼してください'
+        :'パスワードが違います');
+      return;
     }
+    /* v18.32 要望⑧: 権限を選択済みで登録権限と不一致なら弾く（権限選択は絞り込み用。実効権限はUSERS登録値） */
+    if(loginRole[0]&&(r.user.role||'user')!==loginRole[0]){showToast('選択した権限と登録されている権限が一致しません');return;}
+    userName[1](nm);/* v18.32: trim済み氏名をstateへ書き戻す（前後空白つきログインでroleOfが不一致になり営業の閲覧専用が外れる穴を塞ぐ） */
     localStorage.setItem('lec_user_name',nm);
     localStorage.setItem('lec_user_loc',userLoc[0]);
     localStorage.setItem('lec_user_role',roleOf(nm));
@@ -3728,28 +3905,38 @@ function App(){
       h('div',{style:{background:'#fff',borderRadius:16,padding:32,width:400,boxShadow:'0 20px 60px rgba(0,0,0,.3)'}},
         h('div',{style:{textAlign:'center',marginBottom:20}},
           h('div',{style:{fontSize:20,fontWeight:900,color:'var(--nv)',marginBottom:4}},'LEC 在庫管理システム v18'),
-          h('div',{style:{fontSize:10,color:'var(--g400)'}},'登録済みユーザーから選択してログイン（パスワードは設定済の場合のみ）')
+          h('div',{style:{fontSize:10,color:'var(--g400)'}},'登録済みユーザーのみログインできます（氏名＋パスワード）')
+        ),
+        /* v18.32 要望⑧: 入力項目を「権限 → 氏名 → 拠点 → パスワード」の順に */
+        h('div',{style:{marginBottom:12}},
+          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'権限'),
+          h('select',{className:'inp',value:loginRole[0],onChange:function(e){loginRole[1](e.target.value);userName[1]('');},style:{fontSize:14,padding:'8px 10px'}},
+            h('option',{value:''},'-- 選択してください --'),
+            h('option',{value:'admin'},'管理者'),
+            h('option',{value:'sales'},'営業'),
+            h('option',{value:'user'},'事務')
+          )
         ),
         h('div',{style:{marginBottom:12}},
-          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'お名前（選択）'),
+          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'氏名（選択）'),
           h('select',{className:'inp',value:userName[0],onChange:function(e){userName[1](e.target.value);},style:{fontSize:14,padding:'8px 10px',marginBottom:6}},
             h('option',{value:''},'-- 選択してください --'),
-            USERS.map(function(u){return h('option',{key:u.id,value:u.name},u.name+(u.role==='admin'?'（管理者）':''));})
+            USERS.filter(function(u){return !loginRole[0]||((u.role||'user')===loginRole[0]);}).map(function(u){return h('option',{key:u.id,value:u.name},u.name+(u.role==='admin'?'（管理者）':''));})
           ),
-          h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'リストにない場合は下に直接入力'),
+          h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'リストにない場合は下に氏名を直接入力（※登録済みユーザーのみログイン可）'),
           h('input',{className:'inp',value:userName[0],onChange:function(e){userName[1](e.target.value);},placeholder:'例: 齋藤',style:{fontSize:14,padding:'8px 10px',marginTop:4},onKeyDown:function(e){if(e.key==='Enter')doLogin();}})
         ),
-        /* v18 P2: パスワード（設定済ユーザーのみ必須。未設定ユーザーは空欄でログイン可） */
         h('div',{style:{marginBottom:12}},
-          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'パスワード'),
-          h('input',{className:'inp',type:'password',value:loginPw[0],onChange:function(e){loginPw[1](e.target.value);},placeholder:'設定されている場合のみ入力',style:{fontSize:14,padding:'8px 10px'},onKeyDown:function(e){if(e.key==='Enter')doLogin();}}),
-          (function(){var u=findUserByName(userName[0]);return u&&u.pw?h('div',{style:{fontSize:9,color:'#975a16',marginTop:2}},'🔑 このユーザーはパスワードが必要です'):h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'パスワード未設定のユーザーは空欄のままログインできます');})()
-        ),
-        h('div',{style:{marginBottom:16}},
           h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'拠点'),
           h('select',{className:'inp',value:userLoc[0],onChange:function(e){userLoc[1](e.target.value);},style:{fontSize:14,padding:'8px 10px'}},
             LOCATIONS.map(function(loc){return h('option',{key:loc.v,value:loc.v},loc.l);})
           )
+        ),
+        /* v18 P2/v18.32 要望⑨: パスワード（未登録氏名はdoLoginで拒否。PW設定済ユーザーは照合必須） */
+        h('div',{style:{marginBottom:16}},
+          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'パスワード'),
+          h('input',{className:'inp',type:'password',value:loginPw[0],onChange:function(e){loginPw[1](e.target.value);},placeholder:'パスワードを入力',style:{fontSize:14,padding:'8px 10px'},onKeyDown:function(e){if(e.key==='Enter')doLogin();}}),
+          (function(){var u=findUserByName(userName[0]);return u&&u.pw?h('div',{style:{fontSize:9,color:'#975a16',marginTop:2}},'🔑 このユーザーはパスワードが必要です'):h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'パスワード未設定のユーザーは管理者に設定を依頼してください（設定までは空欄でログイン可）');})()
         ),
         h('button',{className:'btn btn-nv',style:{width:'100%',padding:'10px',fontSize:14},onClick:doLogin},'ログイン'),
         h('div',{style:{marginTop:12,padding:8,background:'#FEF3C7',borderRadius:6,fontSize:9,color:'#7C2D12',lineHeight:1.5}},
@@ -4068,7 +4255,7 @@ function InvPage(p){
   /* v18.31 要望: 台数入力方式の選択。inputMode='grid'(列×段連動・複数ブロック可) / 'direct'(台数とベース数だけ入力)。
      gridのブロックは blocks=[{c:列,t:段},...]（例: 2列3段＋1列2段＝8台）。旧 isl/tier 入力は blocks 1件に統合 */
   var inputMode=us('grid');
-  var blocks=us([{c:'1',t:'1'}]);
+  var blocks=us([{c:'1',t:'1',g:0}]);/* v18.32 要望③: g=島番号（島ごとに列×段ブロック群を持てる） */
   var dQty=us(''),dBase=us('');/* directモード: 台数・ベース数 */
   var extraJointScrew=us(0),extraCapScrew=us(0);/* 手動追加のジョイントネジ・目隠しネジ */
   var lines=us([]),whResults=us([]),selWH=us(null);
@@ -4085,6 +4272,7 @@ function InvPage(p){
   /* v14 A3/A4: 目隠しネジは色別(ブラック/グレー)、サイドジョイントも手動入力 */
   var extraSideJoint=us(0);/* サイドジョイント手動追加 */
   var extraCapScrewGy=us(0);/* 目隠しネジ(グレー)手動追加 */
+  var hasSideJt=us(true);/* v18.32 要望②: パーソナルのサイドあり/なし（ネジ計算表のシート1/2切替。自動計算にのみ影響） */
   /* v14 A6: パーツ単品追加用の製品ラインを独立管理（明細の本体ラインと異なる選択可能） */
   var partLine=us('jp01');
   /* Parts-only mode */
@@ -4093,6 +4281,7 @@ function InvPage(p){
   var colors=LINE_COLORS[ln[0]]||[];
   var sizes=LINE_SIZES[ln[0]]||[];
   var isJP=ln[0]==='jp01'||ln[0]==='jp2';
+  var jp2XLNoDoor=isJp2XLDoorBlocked(ln[0],sz[0]);/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ） */
   function changeLine(v){ln[1](v);cl[1]((LINE_COLORS[v]||[])[0]?LINE_COLORS[v][0].v:'');var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
   /* Fix: sync lock state when switching to personal type (#16) */
   ue(function(){
@@ -4103,6 +4292,13 @@ function InvPage(p){
     if(!hasDoor[0])lk[1]('none');
     else if(lk[0]==='none'&&tp[0]==='personal')lk[1]('dialH110new');
   },[hasDoor[0]]);
+  /* v18.32 要望⑥: jp2×XL選択中は扉なしへ強制（XL扉は台湾製のみ。パーツ単品追加から台湾製XL扉を選択する運用）。
+     強制で落とした場合は jp2×XL を離れた時に扉ありへ復元する（強制の巻き添えで以後の明細が扉なし開始になるのを防ぐ） */
+  var jp2XLForcedOff=ur(false);
+  ue(function(){
+    if(jp2XLNoDoor&&hasDoor[0]){jp2XLForcedOff.current=true;hasDoor[1](false);}
+    else if(!jp2XLNoDoor&&jp2XLForcedOff.current){jp2XLForcedOff.current=false;hasDoor[1](true);}
+  },[jp2XLNoDoor,hasDoor[0]]);
   /* 顧客変更時に明細・見積ドラフトをクリア */
   ue(function(){
     lines[1]([]);
@@ -4130,7 +4326,9 @@ function InvPage(p){
     quoteSalesPerson[1](ro.salesPersonOverride||'');
     endUser[1](ro.endUser?Object.assign({name:'',postal:'',address:'',phone:''},ro.endUser):{name:'',postal:'',address:'',phone:''});
     if(typeof doCheck==='function')doCheck(cloned);
-    p.toast('リピート発注: '+(ro.no||'')+' の内容を読み込みました。倉庫・在庫を確認して見積/仮押さえしてください');
+    /* v18.32 要望⑥: 旧jp2 XL扉あり明細は clone時に扉・錠前を除外するため、黙って金額が変わらないよう明示通知 */
+    var strippedXLDoor=(ro.lines||[]).some(function(l){return isJp2XLDoorBlocked(l.line,l.size)&&!l.noDoor;});
+    p.toast('リピート発注: '+(ro.no||'')+' の内容を読み込みました。倉庫・在庫を確認して見積/仮押さえしてください'+(strippedXLDoor?'　※日本製Ver.2のXL扉は取扱がないため扉・錠前を除外しました（XL扉は台湾製をパーツ単品追加でご選択ください）':''));
     p.clearRepeat&&p.clearRepeat();
   },[p.repeatOrder]);
   /* v18.31: 入力方式に応じて 台数(qty)・ベース枚数(baseCount=常設のベースボード数) を導出。
@@ -4138,25 +4336,47 @@ function InvPage(p){
   var qty,baseCount;
   if(inputMode[0]==='direct'){
     qty=parseInt(dQty[0])||1;
-    baseCount=tp[0]==='personal'?qty:(parseInt(dBase[0])||1);
+    /* v18.32 要望①: パーソナルも台数とベース数を個別入力可（空欄・0・負数は従来どおりベース=台数/1へフォールバック） */
+    var _db=Math.max(0,parseInt(dBase[0])||0);
+    baseCount=_db>0?_db:(tp[0]==='personal'?qty:1);
   }else{
     qty=blocks[0].reduce(function(s,b){return s+(parseInt(b.c)||1)*(parseInt(b.t)||1);},0);
     baseCount=blocks[0].reduce(function(s,b){return s+(parseInt(b.c)||1);},0);
     if(tp[0]==='personal')baseCount=qty;
   }
+  /* v18.32 要望②③: 列×段(grid)選択時、ネジ・サイドジョイント・目隠しネジを自動計算して入力欄へ反映。
+     顧客提供「ネジ計算表」の確定式(calcScrewNeeds)。島(g)ごとに計算して合計。
+     blocks/タイプ/サイド有無/入力方式の変更時に上書きし、その後の手動修正は構成を変えない限り保持される。
+     Sα(sa)はサイドジョイント部材が存在しないためサイドなし式で計算（上下ジョイント除外と同じライン別ガード）。
+     目隠しネジは在庫実態(jp2/Sαはグレーが主流)によりグレー欄へ自動入力（黒が必要な場合は手動で振替可）。 */
+  var screwCalc=inputMode[0]==='grid'?calcScrewNeeds(blocks[0],tp[0],tp[0]==='personal'&&hasSideJt[0]&&ln[0]!=='sa'):null;
+  /* ライン別在庫ゲート＋ゲート適用後の自動入力値（tw/jp01はネジ在庫の取扱なし→自動入力しない） */
+  var screwGates=screwCalc?{joint:lineStocksPart(ln[0],'jointScrew_'+sizeObj(sz[0]).grp+'_bk'),sj:lineStocksPart(ln[0],'sj'),cap:lineStocksPart(ln[0],'capScrew_gy')}:null;
+  var screwAuto=screwCalc?{joint:screwGates.joint?screwCalc.total.joint:0,sj:(tp[0]==='personal'&&screwGates.sj&&hasSideJt[0]&&ln[0]!=='sa')?screwCalc.total.sj:0,cap:screwGates.cap?screwCalc.total.cap:0}:null;
+  ue(function(){
+    if(!screwAuto){
+      /* direct切替時は自動値をリセット（直前のgrid構成のネジ数が無関係な明細へ混入するのを防ぐ） */
+      extraJointScrew[1](0);extraSideJoint[1](0);extraCapScrewGy[1](0);
+      return;
+    }
+    extraJointScrew[1](screwAuto.joint);
+    extraSideJoint[1](screwAuto.sj);
+    extraCapScrewGy[1](screwAuto.cap);
+  },[JSON.stringify(blocks[0]),tp[0],hasSideJt[0],inputMode[0],ln[0],sz[0]]);
 
   function addLine(){
     if(!cust)return;
     /* v18 P2(要望4): 営業は明細追加→在庫確認まで可。書込ブロックは後発ログインの全体ロック(lockReadOnly)のみ */
     /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
-    var lock=!hasDoor[0]?'none':lk[0];
-    if(tp[0]==='personal'&&lock==='none'&&hasDoor[0])lock='dialH110new';
+    var lock=(!hasDoor[0]||jp2XLNoDoor)?'none':lk[0];/* v18.32 要望⑥: jp2×XLは扉なし＝錠なしを保存時にも強制 */
+    if(tp[0]==='personal'&&lock==='none'&&hasDoor[0]&&!jp2XLNoDoor)lock='dialH110new';
     var dt=isJP?doorType[0]:'door';
     var cb=null;
     if(multiColor[0]&&hasDoor[0]&&colorBreak[0].length>0){
-      var total=colorBreak[0].reduce(function(s,x){return s+x.qty;},0);
+      /* v18.32 要望④: 配分欄は空文字を許容（"050"防止）。集計・保存境界で数値へ正規化（負数は0にクランプ） */
+      var total=colorBreak[0].reduce(function(s,x){return s+Math.max(0,parseInt(x.qty)||0);},0);
       if(total!==qty){p.toast('色配分の合計('+total+')が台数('+qty+')と一致しません');return;}
-      cb=colorBreak[0].filter(function(x){return x.qty>0;});
+      cb=colorBreak[0].map(function(x){return{color:x.color,qty:Math.max(0,parseInt(x.qty)||0)};}).filter(function(x){return x.qty>0;});
     }
     /* v18.31: 入力方式ごとに islands(=ベース枚数の基準)/tiers/blocks/unitsOverride を確定。
        grid1ブロック=従来形式（islands×tiers、後方互換フィールドのみ）。
@@ -4164,16 +4384,16 @@ function InvPage(p){
        direct=islands=ベース入力値(パーソナルは台数)・tiers=0・unitsOverride=台数 */
     var spec;
     if(inputMode[0]==='direct'){
-      spec={islands:tp[0]==='personal'?qty:(parseInt(dBase[0])||1),tiers:0,unitsOverride:qty,inputMode:'direct'};
+      spec={islands:baseCount,tiers:0,unitsOverride:qty,inputMode:'direct'};/* v18.32 要望①: パーソナルもベース入力値を尊重 */
     }else{
-      var bl=blocks[0].map(function(b){return {c:parseInt(b.c)||1,t:parseInt(b.t)||1};});
+      var bl=blocks[0].map(function(b){return {c:parseInt(b.c)||1,t:parseInt(b.t)||1,g:parseInt(b.g)||0};});/* v18.32 要望③: 島番号gも保存（旧クライアントは未知フィールドとして無害） */
       if(bl.length>1){
         spec={islands:bl.reduce(function(s,b){return s+b.c;},0),tiers:0,unitsOverride:qty,blocks:bl};
       }else{
         spec={islands:bl[0].c,tiers:bl[0].t};
       }
     }
-    var lineObj={id:Date.now(),line:ln[0],size:sz[0],type:tp[0],noDoor:!hasDoor[0],color:!hasDoor[0]?'':(cb?cb[0].color:cl[0]),qty:qty,islands:spec.islands,tiers:spec.tiers,lock:lock,doorType:dt,hasBase:hasBase[0],baseColor:isJP?baseColor[0]:'gy',hasCap:isJP?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:ln[0]==='tw'?'gy':shelfColor[0],hasNameplate:hasNameplate[0],hasNamePaper:hasNamePaper[0],jointScrewQty:parseInt(extraJointScrew[0])||0,capScrewQty:parseInt(extraCapScrew[0])||0,capScrewGyQty:parseInt(extraCapScrewGy[0])||0,sideJointQty:parseInt(extraSideJoint[0])||0};
+    var lineObj={id:Date.now(),line:ln[0],size:sz[0],type:tp[0],noDoor:!hasDoor[0]||jp2XLNoDoor,color:(!hasDoor[0]||jp2XLNoDoor)?'':(cb?cb[0].color:cl[0]),qty:qty,islands:spec.islands,tiers:spec.tiers,lock:lock,doorType:dt,hasBase:hasBase[0],baseColor:isJP?baseColor[0]:'gy',hasCap:isJP?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:ln[0]==='tw'?'gy':shelfColor[0],hasNameplate:hasNameplate[0],hasNamePaper:hasNamePaper[0],jointScrewQty:parseInt(extraJointScrew[0])||0,capScrewQty:parseInt(extraCapScrew[0])||0,capScrewGyQty:parseInt(extraCapScrewGy[0])||0,sideJointQty:parseInt(extraSideJoint[0])||0};
     if(spec.unitsOverride)lineObj.unitsOverride=spec.unitsOverride;
     if(spec.blocks)lineObj.blocks=spec.blocks;
     if(spec.inputMode)lineObj.inputMode=spec.inputMode;
@@ -4185,6 +4405,8 @@ function InvPage(p){
     if(!cust)return;
     /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     var pd=getPartAddDefs().find(function(d){return d.k===partType[0];});if(!pd)return;
+    /* v18.32 要望⑥: パーツ単品でも日本製Ver.2のXL扉は選択不可（XL扉は台湾製のみ取扱） */
+    if(pd.isDoor&&(partLine[0]||ln[0])==='jp2'&&partSub[0]==='XL'){p.toast('日本製Ver.2にXLサイズの扉の取扱はありません。製品ラインを「台湾製」に切り替えてXL扉をご選択ください');return;}
     if(pd.expand){/* v16: レールセット等を構成部材へ分解して複数明細追加 */
       var pLnX=partLine[0]||ln[0];var lnmX=(LINES.find(function(l){return l.id===pLnX;})||{name:''}).name;var bqX=parseInt(partQty[0])||1;
       var exLines=pd.expand.map(function(e,ei){return {id:Date.now()+ei,line:pLnX,isPartOnly:true,partKey:e.key,partSub:undefined,partColor:null,isDoor:false,qty:bqX*e.qty,unitPrice:0,partLabel:e.label+'（'+pd.l+'）【'+lnmX+'】',size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'};});
@@ -4614,13 +4836,16 @@ function InvPage(p){
                 h('select',{className:'inp',value:tp[0],onChange:function(e){tp[1](e.target.value);}},TYPES.map(function(t){return h('option',{key:t.v,value:t.v},t.l);})))
             ),
             /* 扉の有無チェック (オープンタイプ廃止の代替) */
-            h('div',{style:{marginBottom:6,padding:'5px 8px',background:hasDoor[0]?'var(--bp)':'var(--yp)',borderRadius:5,display:'flex',alignItems:'center',gap:8}},
-              h('label',{style:{fontSize:10,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:4}},
-                h('input',{type:'checkbox',checked:hasDoor[0],onChange:function(){hasDoor[1](!hasDoor[0]);}}),
+            h('div',{style:{marginBottom:jp2XLNoDoor?2:6,padding:'5px 8px',background:hasDoor[0]?'var(--bp)':'var(--yp)',borderRadius:5,display:'flex',alignItems:'center',gap:8}},
+              h('label',{style:{fontSize:10,fontWeight:700,cursor:jp2XLNoDoor?'not-allowed':'pointer',display:'flex',alignItems:'center',gap:4,opacity:jp2XLNoDoor?.55:1}},
+                h('input',{type:'checkbox',checked:hasDoor[0]&&!jp2XLNoDoor,disabled:jp2XLNoDoor,onChange:function(){if(jp2XLNoDoor)return;hasDoor[1](!hasDoor[0]);}}),
                 '扉あり'
               ),
               h('span',{style:{fontSize:9,color:hasDoor[0]?'var(--nv)':'#8B6914'}},hasDoor[0]?'（扉・錠前を含む）':'（オープン: 扉/錠なし）')
             ),
+            /* v18.32 要望⑥: jp2×XL＋扉の赤字アラート（この画面では扉を選択できない） */
+            jp2XLNoDoor?h('div',{style:{marginBottom:6,padding:'5px 8px',background:'#FEE2E2',border:'1px solid #FCA5A5',borderRadius:5,fontSize:9,fontWeight:700,color:'#DC2626',lineHeight:1.5}},
+              'XLサイズの扉は台湾製になります。パーツ単品追加よりご選択ください'):null,
             /* Door type selector - only for jp01/jp2 and 扉あり */
             isJP&&hasDoor[0]?h('div',{style:{marginBottom:6}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'扉タイプ'),
@@ -4649,8 +4874,9 @@ function InvPage(p){
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)',display:'flex',alignItems:'center',gap:4,cursor:'pointer'}},
                 h('input',{type:'checkbox',checked:multiColor[0],onChange:function(){
                   if(!multiColor[0]){
-                    var init=colors.filter(function(c){return !c.order||c.und;}).map(function(c){return{color:c.v,qty:0};});
-                    init.push({color:'open',qty:0});/* オープン(扉なし)選択肢 */
+                    /* v18.32 要望④: 初期値は空欄（デフォルト0だと"050"のような先頭0が入るため。dQtyと同じ生文字列方式） */
+                    var init=colors.filter(function(c){return !c.order||c.und;}).map(function(c){return{color:c.v,qty:''};});
+                    init.push({color:'open',qty:''});/* オープン(扉なし)選択肢 */
                     var sel=init.find(function(x){return x.color===cl[0];});
                     if(sel)sel.qty=qty;
                     colorBreak[1](init);
@@ -4662,12 +4888,12 @@ function InvPage(p){
               multiColor[0]?h('div',{style:{marginTop:4,padding:6,background:'var(--g50)',borderRadius:6,border:'1px solid var(--g200)'}},
                 colors.filter(function(c){return !c.order||c.und;}).concat([{v:'open',l:'オープン(扉なし)',x:'repeating-linear-gradient(45deg,#fff,#fff 4px,#e5e7eb 4px,#e5e7eb 8px)',isOpen:true}]).map(function(c){
                   var cb=colorBreak[0].find(function(x){return x.color===c.v;});
-                  var v=cb?cb.qty:0;
+                  var v=cb?cb.qty:'';/* v18.32 要望④: 未入力は空欄表示（0固定をやめ"050"を防止） */
                   return h('div',{key:c.v,style:{display:'flex',alignItems:'center',gap:4,marginBottom:2}},
                     h('span',{style:{display:'inline-block',width:12,height:12,borderRadius:2,background:c.x,border:c.isOpen?'1px dashed #94a3b8':'none'}}),
                     h('span',{style:{fontSize:9,fontWeight:c.isOpen?700:600,width:80,color:c.isOpen?'#475569':'inherit'}},c.l),
                     h('input',{className:'inp',type:'number',min:0,max:999,value:v,onChange:function(e){
-                      var nv=parseInt(e.target.value)||0;
+                      var nv=e.target.value;/* v18.32 要望④: 生文字列で保持し、集計・保存境界でparseInt（dQtyと同方式） */
                       var found=colorBreak[0].find(function(x){return x.color===c.v;});
                       var nc;
                       if(found){nc=colorBreak[0].map(function(x){return x.color===c.v?{color:c.v,qty:nv}:x;});}
@@ -4677,9 +4903,9 @@ function InvPage(p){
                     h('span',{style:{fontSize:8,color:'var(--g400)'}},'台')
                   );
                 }),
-                h('div',{style:{marginTop:4,fontSize:9,fontWeight:700,color:(function(){var t=colorBreak[0].reduce(function(s,x){return s+x.qty;},0);return t===qty?'var(--gn)':'#DC2626';})()}},
-                  '合計: '+colorBreak[0].reduce(function(s,x){return s+x.qty;},0)+' / '+qty+'台',
-                  colorBreak[0].reduce(function(s,x){return s+x.qty;},0)!==qty?' （台数と一致させてください）':' OK'
+                h('div',{style:{marginTop:4,fontSize:9,fontWeight:700,color:(function(){var t=colorBreak[0].reduce(function(s,x){return s+(parseInt(x.qty)||0);},0);return t===qty?'var(--gn)':'#DC2626';})()}},
+                  '合計: '+colorBreak[0].reduce(function(s,x){return s+(parseInt(x.qty)||0);},0)+' / '+qty+'台',
+                  colorBreak[0].reduce(function(s,x){return s+(parseInt(x.qty)||0);},0)!==qty?' （台数と一致させてください）':' OK'
                 )
               ):null
             ):null,
@@ -4692,25 +4918,53 @@ function InvPage(p){
               })
             ),
             inputMode[0]==='grid'?h('div',{style:{marginBottom:4}},
-              blocks[0].map(function(b,bi){
-                return h('div',{key:bi,style:{display:'flex',gap:4,alignItems:'flex-end',marginBottom:2}},
-                  h('div',{style:{flex:1}},bi===0?h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'島数（列）'):null,
-                    h('input',{className:'inp',type:'number',min:1,max:50,value:b.c,onChange:function(e){var v=e.target.value;blocks[1](blocks[0].map(function(x,i){return i===bi?{c:v,t:x.t}:x;}));},style:{textAlign:'center',fontWeight:700,fontSize:14}})),
-                  h('span',{style:{fontSize:10,paddingBottom:6,color:'var(--g500)'}},'列 ×'),
-                  h('div',{style:{flex:1}},bi===0?h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'段数'):null,
-                    h('input',{className:'inp',type:'number',min:1,max:10,value:b.t,onChange:function(e){var v=e.target.value;blocks[1](blocks[0].map(function(x,i){return i===bi?{c:x.c,t:v}:x;}));},style:{textAlign:'center',fontWeight:700,fontSize:14}})),
-                  h('span',{style:{fontSize:10,paddingBottom:6,color:'var(--g500)'}},'段'),
-                  blocks[0].length>1?h('button',{className:'btn',title:'このブロックを削除',style:{fontSize:11,padding:'2px 8px',marginBottom:2},onClick:function(){blocks[1](blocks[0].filter(function(_,i){return i!==bi;}));}},'−'):null
-                );
-              }),
-              h('button',{className:'btn',style:{fontSize:9,padding:'2px 8px',marginTop:2},onClick:function(){blocks[1](blocks[0].concat([{c:'1',t:'1'}]));}},'＋ ブロック追加（例: 2列3段＋1列2段＝8台）')
+              /* v18.32 要望③: 島(g)ごとにブロック群を描画。島が複数のときは枠＋見出しで区切る */
+              (function(){
+                var gvals=[];blocks[0].forEach(function(b){var g=parseInt(b.g)||0;if(gvals.indexOf(g)<0)gvals.push(g);});
+                gvals.sort(function(a,b){return a-b;});
+                var multiIsland=gvals.length>1;
+                return gvals.map(function(gv,gi){
+                  return h('div',{key:'g'+gv,style:multiIsland?{border:'1px solid var(--g200)',borderRadius:5,padding:'3px 5px',marginBottom:3,background:'#FAFCFF'}:null},
+                    multiIsland?h('div',{style:{fontSize:8,fontWeight:700,color:'var(--nv)',marginBottom:1}},'島'+(gi+1)):null,
+                    blocks[0].map(function(b,bi){
+                      if((parseInt(b.g)||0)!==gv)return null;
+                      var firstOfIsland=blocks[0].findIndex(function(x){return (parseInt(x.g)||0)===gv;})===bi;/* 各島の先頭行にラベル表示 */
+                      return h('div',{key:bi,style:{display:'flex',gap:4,alignItems:'flex-end',marginBottom:2}},
+                        h('div',{style:{flex:1}},firstOfIsland?h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'列数'):null,
+                          h('input',{className:'inp',type:'number',min:1,max:50,value:b.c,onChange:function(e){var v=e.target.value;blocks[1](blocks[0].map(function(x,i){return i===bi?{c:v,t:x.t,g:x.g}:x;}));},style:{textAlign:'center',fontWeight:700,fontSize:14}})),
+                        h('span',{style:{fontSize:10,paddingBottom:6,color:'var(--g500)'}},'列 ×'),
+                        h('div',{style:{flex:1}},firstOfIsland?h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'段数'):null,
+                          h('input',{className:'inp',type:'number',min:1,max:10,value:b.t,onChange:function(e){var v=e.target.value;blocks[1](blocks[0].map(function(x,i){return i===bi?{c:x.c,t:v,g:x.g}:x;}));},style:{textAlign:'center',fontWeight:700,fontSize:14}})),
+                        h('span',{style:{fontSize:10,paddingBottom:6,color:'var(--g500)'}},'段'),
+                        blocks[0].length>1?h('button',{className:'btn',title:'このブロックを削除',style:{fontSize:11,padding:'2px 8px',marginBottom:2},onClick:function(){blocks[1](blocks[0].filter(function(_,i){return i!==bi;}));}},'−'):null
+                      );
+                    }),
+                    h('button',{className:'btn',style:{fontSize:9,padding:'2px 8px',marginTop:2},onClick:function(){
+                      var idx=-1;blocks[0].forEach(function(x,i){if((parseInt(x.g)||0)===gv)idx=i;});
+                      var nb=blocks[0].slice();nb.splice(idx+1,0,{c:'1',t:'1',g:gv});blocks[1](nb);
+                    }},'＋ ブロック追加'+(multiIsland?'（島'+(gi+1)+'内: 例 3列3段＋2列2段）':'（例: 2列3段＋1列2段＝8台）'))
+                  );
+                });
+              })(),
+              h('button',{className:'btn',style:{fontSize:9,padding:'2px 8px',marginTop:2,fontWeight:700,color:'var(--nv)',borderColor:'var(--nv)'},onClick:function(){
+                var mx=0;blocks[0].forEach(function(b){mx=Math.max(mx,parseInt(b.g)||0);});
+                blocks[1](blocks[0].concat([{c:'1',t:'1',g:mx+1}]));
+              }},'＋ 島追加（例: 島1=3列3段＋2列2段、島2=3列4段＋1列3段）')
             ):h('div',{style:{display:'flex',gap:4,marginBottom:4}},
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'#1e3a5f'}},'台数'),h('input',{className:'inp',type:'number',min:1,value:dQty[0],onChange:function(e){dQty[1](e.target.value);},style:{textAlign:'center',fontWeight:700,fontSize:14,background:'#EFF6FF'}})),
-              tp[0]!=='personal'?h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'#1e3a5f'}},'ベースの数'),h('input',{className:'inp',type:'number',min:1,value:dBase[0],onChange:function(e){dBase[1](e.target.value);},style:{textAlign:'center',fontWeight:700,fontSize:14,background:'#EFF6FF'}})):h('div',{style:{flex:1,fontSize:9,color:'var(--g500)',alignSelf:'flex-end',paddingBottom:4}},'パーソナルはベース=台数（自動）')
+              /* v18.32 要望①: パーソナルもベース数を個別入力可（空欄=台数で従来挙動） */
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'#1e3a5f'}},'ベースの数'+(tp[0]==='personal'?'（空欄=台数）':'')),h('input',{className:'inp',type:'number',min:1,value:dBase[0],placeholder:tp[0]==='personal'?String(qty):'',onChange:function(e){dBase[1](e.target.value);},style:{textAlign:'center',fontWeight:700,fontSize:14,background:'#EFF6FF'}}))
             ),
             h('div',{style:{padding:'4px 8px',background:'var(--bp)',borderRadius:5,fontSize:10,marginBottom:6}},
               h('b',{style:{color:'var(--nv)',fontSize:14}},fm(qty)+'台'),
-              inputMode[0]==='grid'&&blocks[0].length>1?h('span',{style:{marginLeft:6,color:'var(--g500)'}},'（'+blocks[0].map(function(b){return (parseInt(b.c)||1)+'列'+(parseInt(b.t)||1)+'段';}).join('＋')+'）'):null,
+              inputMode[0]==='grid'&&blocks[0].length>1?h('span',{style:{marginLeft:6,color:'var(--g500)'}},'（'+(function(){
+                /* v18.32 要望③: 島が複数なら「島1: 3列3段＋2列2段 ／ 島2: …」表記 */
+                var gm={},order=[];
+                blocks[0].forEach(function(b){var g=parseInt(b.g)||0;if(!gm[g]){gm[g]=[];order.push(g);}gm[g].push((parseInt(b.c)||1)+'列'+(parseInt(b.t)||1)+'段');});
+                order.sort(function(a,b){return a-b;});
+                if(order.length>1)return order.map(function(g,i){return '島'+(i+1)+': '+gm[g].join('＋');}).join(' ／ ');
+                return gm[order[0]].join('＋');
+              })()+'）'):null,
               hasBase[0]?h('span',{style:{marginLeft:6,color:'var(--g500)'}},'（ベース: '+baseCount+'枚）'):null
             ),
             hasDoor[0]?h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'錠前'+(tp[0]==='personal'?' （必須）':'')),
@@ -4735,7 +4989,17 @@ function InvPage(p){
             /* v18.27: ネームプレート・ネーム厚紙は「削除15項目」のため在庫確認/パーツの選択UIを撤去（在庫表・見積から削除）。既存案件のBOM計算(calcBOM 888-889)は後方互換のため保持 */
             /* v14 A2/A3/A4: サイドジョイント・ネジは常設・パーソナル両方で手動入力（自動加算廃止） */
             h('div',{style:{padding:'4px 6px',marginBottom:6,background:'#FEF3C7',borderRadius:5,fontSize:9}},
-              h('div',{style:{fontWeight:700,color:'#7C2D12',marginBottom:3}},'ネジ・サイドジョイント手動入力（v14: 自動加算廃止）'),
+              h('div',{style:{fontWeight:700,color:'#7C2D12',marginBottom:3}},screwCalc?'ネジ・サイドジョイント（列×段から自動計算 — 修正可）':'ネジ・サイドジョイント手動入力（v14: 自動加算廃止）'),
+              /* v18.32 要望②: パーソナルはサイドあり/なしで計算式が変わる（ネジ計算表シート1/2） */
+              screwCalc&&tp[0]==='personal'?h('label',{style:{display:'flex',alignItems:'center',gap:3,marginBottom:3,cursor:'pointer',fontWeight:700}},
+                h('input',{type:'checkbox',checked:hasSideJt[0]&&ln[0]!=='sa',disabled:ln[0]==='sa',onChange:function(){hasSideJt[1](!hasSideJt[0]);}}),
+                'サイドあり（サイドジョイント計上）'+(ln[0]==='sa'?' ※Sαはサイドジョイント設定なし':'')):null,
+              /* v18.32 要望③: 島ごとの自動計算結果とトータルを表示（在庫取扱のないラインは計算値のみ提示し自動入力しない） */
+              screwCalc&&!screwGates.joint&&!screwGates.cap?h('div',{style:{fontSize:8,color:'#7C2D12',marginBottom:3,lineHeight:1.6}},
+                '※この製品ラインはネジ類の在庫取扱がないため自動入力しません（計算値: ジョイント'+screwCalc.total.joint+'本・目隠し'+screwCalc.total.cap+'本。必要な場合は手動入力してください）'):
+              screwCalc?h('div',{style:{fontSize:8,color:'#7C2D12',marginBottom:3,lineHeight:1.6}},
+                screwCalc.islands.length>1?screwCalc.islands.map(function(x,i){return '島'+(i+1)+': ジョイント'+x.joint+(tp[0]==='personal'&&hasSideJt[0]&&ln[0]!=='sa'?'・サイドJ'+x.sj:'')+'・目隠し'+x.cap;}).join('　')+'　→ ':null,
+                h('b',null,'合計: ジョイントネジ'+screwAuto.joint+'本'+(tp[0]==='personal'&&hasSideJt[0]&&ln[0]!=='sa'?'・サイドJ'+screwAuto.sj+'個':'')+'・目隠しネジ'+screwAuto.cap+'本（自動入力済み）')):null,
               h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},
                 tp[0]==='personal'?h('label',{style:{display:'flex',alignItems:'center',gap:3}},'サイドJ',h('input',{className:'inp',type:'number',min:0,value:extraSideJoint[0],onChange:function(e){extraSideJoint[1](e.target.value);},style:{width:50,textAlign:'center'}}),'個'):null,
                 h('label',{style:{display:'flex',alignItems:'center',gap:3}},'ジョイントネジ',h('input',{className:'inp',type:'number',min:0,value:extraJointScrew[0],onChange:function(e){extraJointScrew[1](e.target.value);},style:{width:50,textAlign:'center'}}),'本'),
@@ -5082,7 +5346,7 @@ function QuotePreview(p){
   });
   var baseLines=o.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
   /* v14.3: ベースはパーソナルでn(1台×1枚)、常設はislands。上下共通ボードはtop側でn*2化 */
-  var ti=baseLines.reduce(function(s,l){return s+(l.type==='personal'?lineUnits(l):l.islands);},0);/* v18.31: 複数ブロック/台数直接入力は lineUnits(unitsOverride) で台数解決 */
+  var ti=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0);/* v18.32 要望①: ベース枚数はlineBaseCountで一元解決（directパーソナルのベース個別指定に追従。calcBOMのベース行と常に一致） */
   if(ti>0){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
@@ -5441,6 +5705,7 @@ function OrdersPage(p){
                 var idx=ORDERS.findIndex(function(x){return x.no===o.no;});
                 if(idx>=0)ORDERS.splice(idx,1);
                 markOrderDeleted(o.no);/* v14.6: 削除墓標を記録し全端末/リロード後も復活させない */
+                rebuildHeldFromOrders();/* v18.32 要望⑦: 削除直後にORDERS基準でHELDを正規化 */
                 p.toast('削除: '+o.no);saveAll();
                 broadcastOrderUpdate(p.userName||'',o.no+' 案件削除');/* v14.6: 一覧削除も他端末/クラウドへ伝播 */
                 p.bump&&p.bump();
@@ -5496,6 +5761,7 @@ function OrdersPage(p){
           var idx=ORDERS.findIndex(function(o){return o.no===od.no;});
           if(idx>=0)ORDERS.splice(idx,1);
           markOrderDeleted(od.no);/* v14.6: 削除墓標を記録し全端末/リロード後も復活させない */
+          rebuildHeldFromOrders();/* v18.32 要望⑦: 削除直後にORDERS基準でHELDを正規化 */
           p.toast('案件を削除しました: '+od.no);
           detail[1](null);saveAll();
           /* v14.2: 案件削除を他ユーザーに通知 */
@@ -7096,7 +7362,7 @@ function PartsPage(p){
               if(!STK[ln.line]||!STK[ln.line][wh3])return;
               /* v18.31: XLコネクター/ハンガーパイプはv18.31以前の出荷では消費されていない（jp2 XLのBOM追加が遡及するため）。
                  EDIT_LOGの「出荷消費」実績がある場合のみ返品加算する（幽霊在庫防止） */
-              if((b.key==='connector'||b.key==='hanger')&&!EDIT_LOG.some(function(e){return e&&e.key===b.key&&e.label&&e.label.indexOf('出荷消費 '+op.order.no)>=0;}))return;
+              if((b.key==='connector'||b.key==='hanger')&&!EDIT_LOG.some(function(e){return e&&e.key===b.key&&(e.sub===undefined||b.sub===undefined||e.sub===b.sub)&&e.label&&e.label.indexOf('出荷消費 '+op.order.no)>=0;}))return;/* v18.32 要望⑤: sub(XL/SS)も照合。XL＋SSα混在の旧出荷返品でSSコネクターが幽霊在庫化するのを防止 */
               if(b.isDoor){
                 if(!STK[ln.line][wh3][b.key])STK[ln.line][wh3][b.key]={};
                 var doorColors=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
@@ -7369,8 +7635,17 @@ function PartsPage(p){
           od.lines.forEach(function(ln){
             ln.qty=Math.round(ln.qty*rate);
             if(!ln.isFreeInput&&!ln.isPartOnly){
-              /* v18.31: 複数ブロック/台数直接入力の明細は unitsOverride=新台数・ベース(islands)は倍率スケール。blocksは実態と乖離するため破棄しdirect扱いへ */
-              if(parseInt(ln.unitsOverride,10)>0){ln.unitsOverride=Math.max(1,ln.qty);ln.islands=Math.max(1,Math.round(ln.islands*rate));ln.tiers=0;if(ln.blocks&&rate!==1){delete ln.blocks;ln.inputMode='direct';}}
+              /* v18.31: 複数ブロック/台数直接入力の明細は unitsOverride=新台数・ベース(islands)は倍率スケール。blocksは実態と乖離するため破棄しdirect扱いへ
+                 v18.32 要望①の回帰対策: パーソナルの複数ブロック明細は islands=Σ列（ベース枚数ではない）のため、
+                 direct化する時はベース=台数へ正規化する。既にdirectの明細は islands=ベース指定枚数なので倍率スケールを維持 */
+              if(parseInt(ln.unitsOverride,10)>0){
+                ln.unitsOverride=Math.max(1,ln.qty);
+                var toDirect=ln.blocks&&rate!==1;
+                if(ln.type==='personal'&&toDirect){ln.islands=Math.max(1,ln.qty);}
+                else{ln.islands=Math.max(1,Math.round(ln.islands*rate));}
+                ln.tiers=0;
+                if(toDirect){delete ln.blocks;ln.inputMode='direct';}
+              }
               else{ln.islands=Math.max(1,Math.round(ln.islands*Math.sqrt(rate)));ln.tiers=Math.max(1,Math.round(ln.tiers*Math.sqrt(rate)));}
             }
           });
