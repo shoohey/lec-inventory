@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.32（修正9件: パーソナル台数・ベース個別入力/ネジ・サイドJ・目隠し自動計算/島設定/扉色配分の0削除/SSαコネクターSS/jp2 XL扉アラート/仮押さえ案件連動/ログイン項目順・PW必須化）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.33（7/23MTG 20項目: ベース枚数=列数/ネジ計算サイズ別/送料ヤマト・追加箱数/SSα部材/SSW追加/上下共通ボード・パステル表記統一/島複製/見積書直接編集・粗利計算/顧客CSV取込・属性）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -177,6 +177,7 @@ function buildCloudDoc(){
     customParts:cp,customIrisu:ci,
     freightTables:(typeof FREIGHT_TABLES_OVR!=='undefined'?FREIGHT_TABLES_OVR:{}),/* v18.30: 運賃表アップロードの全端末共有 */
     vendorCodes:(typeof VENDOR_CODES!=='undefined'?VENDOR_CODES:{}),/* v18.30: 業者コード紐づけの全端末共有 */
+    costMaster:(typeof COST_MASTER!=='undefined'?COST_MASTER:{}),/* v18.33 要望⑱: 原価マスタの全端末共有 */
     deletedNos:DELETED_ORDER_NOS.slice(-500),
     stkSnapshot:STK_SNAPSHOT_DATE,
     _ts:Date.now()
@@ -255,6 +256,10 @@ function applyCloudDoc(doc,opts){
     if(doc.vendorCodes&&typeof doc.vendorCodes==='object'&&typeof VENDOR_CODES!=='undefined'){
       try{VENDOR_CODES=doc.vendorCodes;saveVendorCodes();}catch(e){}
     }
+    /* v18.33 要望⑱: 原価マスタ（品番→原価）の全端末共有 */
+    if(doc.costMaster&&typeof doc.costMaster==='object'&&typeof COST_MASTER!=='undefined'){
+      try{COST_MASTER=doc.costMaster;saveCostMaster();}catch(e){}
+    }
     if(doc.customIrisu&&typeof doc.customIrisu==='object'){
       try{
         localStorage.setItem('lec_custom_irisu',JSON.stringify(doc.customIrisu));
@@ -324,9 +329,11 @@ var SIZES=[
   {v:'XL',l:'XLサイズ',p:8300,code:'MYPL-E-XL',grp:'sml',dim:'W308×D465×H700mm',dimIn:''},
   {v:'3S',l:'3Sサイズ',p:8300,code:'MYPL-E-3S',grp:'ss',dim:'W285×D350×H175mm',dimIn:'W244×D327×H155mm'},
   {v:'SS',l:'SSサイズ',p:8300,code:'MYPL-E-SS',grp:'ss',dim:'W285×D350×H292mm',dimIn:'W244×D327×H271mm'},
-  {v:'SSA',l:'SSαサイズ',p:16600,code:'MYPL-E-SSA',grp:'ss',dbl:true,dim:'W285×D350×H467mm',dimIn:'W244×D327×Hmm'}
+  {v:'SSA',l:'SSαサイズ',p:16600,code:'MYPL-E-SSA',grp:'ss',dbl:true,dim:'W285×D350×H467mm',dimIn:'W244×D327×Hmm'},
+  /* v18.33 要望⑤: SSW（1台＝上下共通ボード1・SSサイド4・SSバックボード2・扉なし）。単価はSS×2構成の暫定16600（顧客確認事項） */
+  {v:'SSW',l:'SSWサイズ',p:16600,code:'MYPL-E-SSW',grp:'ss',ssw:true,dim:'',dimIn:''}
 ];
-var LINE_SIZES={jp01:['S','M','L','XL','3S','SS'],jp2:['S','M','L','XL','3S','SS','SSA'],tw:['S','M','L','XL','3S','SS'],sa:['S']};
+var LINE_SIZES={jp01:['S','M','L','XL','3S','SS'],jp2:['S','M','L','XL','3S','SS','SSA','SSW'],tw:['S','M','L','XL','3S','SS'],sa:['S']};
 var TYPES=[{v:'standard',l:'常設タイプ'},{v:'personal',l:'パーソナルタイプ'}];
 /* v18.31 顧客要望: 「扉色未定」疑似色(und)を全ラインに追加。見積段階で扉は必要だが色未確定のケース用。
    order:true を流用することで 在庫照会スキップ/仮押さえ・出荷消費スキップ/常にOK扱い の既存受発注インフラに乗る。
@@ -334,15 +341,16 @@ var TYPES=[{v:'standard',l:'常設タイプ'},{v:'personal',l:'パーソナル�
    見積金額は元々扉色非依存(サイズ単価に内包)のため、色未定でも扉分は満額計上される（要望どおり）。 */
 var UND_COLOR={v:'und',l:'扉色未定',x:'repeating-linear-gradient(45deg,#f8fafc,#f8fafc 4px,#cbd5e1 4px,#cbd5e1 8px)',order:true,und:true};
 var LINE_COLORS={
+  /* v18.33 要望⑦: 扉色は正式名称（パステル○○）で表記統一（色コードv:'pb'等は在庫キー・保存データのため不変） */
   jp01:[
-    {v:'pb',l:'ブルー',x:'#A8D5E2'},{v:'pg',l:'グリーン',x:'#A8D8A0'},{v:'pp',l:'ピンク',x:'#F4B4C4'},
-    {v:'py',l:'イエロー',x:'#F4E5A0'},{v:'pbr',l:'ブラウン',x:'#C4A882'},
+    {v:'pb',l:'パステルブルー',x:'#A8D5E2'},{v:'pg',l:'パステルグリーン',x:'#A8D8A0'},{v:'pp',l:'パステルピンク',x:'#F4B4C4'},
+    {v:'py',l:'パステルイエロー',x:'#F4E5A0'},{v:'pbr',l:'パステルブラウン',x:'#C4A882'},
     {v:'bk',l:'ブラック',x:'#3A3A3A',order:true},{v:'gy',l:'グレー',x:'#808080'},{v:'iv',l:'アイボリー',x:'#FFFFF0'},
     UND_COLOR
   ],
   jp2:[
-    {v:'pb',l:'ブルー',x:'#A8D5E2'},{v:'pg',l:'グリーン',x:'#A8D8A0'},{v:'pp',l:'ピンク',x:'#F4B4C4'},
-    {v:'py',l:'イエロー',x:'#F4E5A0'},{v:'pbr',l:'ブラウン',x:'#C4A882'},
+    {v:'pb',l:'パステルブルー',x:'#A8D5E2'},{v:'pg',l:'パステルグリーン',x:'#A8D8A0'},{v:'pp',l:'パステルピンク',x:'#F4B4C4'},
+    {v:'py',l:'パステルイエロー',x:'#F4E5A0'},{v:'pbr',l:'パステルブラウン',x:'#C4A882'},
     {v:'bk',l:'ブラック',x:'#3A3A3A',order:true},{v:'gy',l:'グレー',x:'#808080',order:true},{v:'iv',l:'アイボリー',x:'#FFFFF0',order:true},
     UND_COLOR
   ],
@@ -364,11 +372,12 @@ function isUndColor(colorId){return colorId==='und';}
    cylinderMaster は削除15項目で確定のため除去。汎用cylinderは在庫に対応キーが無く(在庫はcylinderShort/Long系)要吉野確認のため暫定保持。 */
 /* v18.25 要望⑦: 商品選択の錠前を「パーツ単価追加(cat:'lock')」と同じ品揃えに統一。
    旧 dialH110/H111 等も選択可能に戻し、シリンダー錠カム長/短・H112 も追加（在庫が無いキーは在庫確認で欠品表示になるが選択は可）。 */
+/* v18.33 追A: ダイヤル錠の「新ラッチ」「(新)」表記を削除し型番のみに（現行主流のdialH110new/H111newを無印に、旧型は「(旧)」で区別） */
 var LOCK_TYPES=[
-  {v:'dialH110new',l:'ダイヤル錠 H110(新)',s:'ダイヤル錠（H110）'},
-  {v:'dialH111new',l:'ダイヤル錠 H111(新)',s:'ダイヤル錠（H111）'},
-  {v:'dialH110',l:'ダイヤル錠 H110',s:'ダイヤル錠（H110）'},
-  {v:'dialH111',l:'ダイヤル錠 H111',s:'ダイヤル錠（H111）'},
+  {v:'dialH110new',l:'ダイヤル錠 H110',s:'ダイヤル錠（H110）'},
+  {v:'dialH111new',l:'ダイヤル錠 H111',s:'ダイヤル錠（H111）'},
+  {v:'dialH110',l:'ダイヤル錠 H110(旧)',s:'ダイヤル錠（H110）'},
+  {v:'dialH111',l:'ダイヤル錠 H111(旧)',s:'ダイヤル錠（H111）'},
   {v:'dialH112',l:'ダイヤル錠 H112(自由式)',s:'ダイヤル錠（H112）'},
   {v:'dialDST',l:'ダイヤル錠 DST',s:'ダイヤル錠（DST）'},
   {v:'padlock',l:'南京錠',s:'南京錠'},
@@ -390,14 +399,14 @@ var BASE_COLORS=[{v:'gy',l:'グレー'},{v:'bk',l:'ブラック'}];
 var SHELF_COLORS=[{v:'gy',l:'グレー'},{v:'bk',l:'ブラック'}];
 var SHELF_PRICE=2000;
 var PART_DEFS=[
-  {k:'top',l:'トップボード',hasSub:'grp'},{k:'side',l:'サイドボード',hasSub:'size'},
+  {k:'top',l:'上下共通ボード',hasSub:'grp'},{k:'side',l:'サイドボード',hasSub:'size'},
   {k:'back',l:'バックボード',hasSub:'size'},{k:'door',l:'扉（同色）',hasSub:'size',hasColor:true,isDoor:true,doorKey:'door'},
   {k:'doorH',l:'扉（ホタ）',hasSub:'size',hasColor:true,isDoor:true,doorKey:'doorH'},
   {k:'base',l:'ベースボード',hasSub:'grp'},{k:'shelf',l:'棚板',hasSub:'grp'},
   {k:'vj',l:'上下ジョイント',hasSub:'grp'},{k:'sj',l:'サイドジョイント',hasSub:'grp'},
   {k:'hanger',l:'ハンガーパイプ'},{k:'connector',l:'XLコネクター',hasSub:'size'},
   {k:'dial',l:'ダイヤル錠（旧型）'},
-  {k:'dialH110',l:'ダイヤル錠 H110'},{k:'dialH111',l:'ダイヤル錠 H111'},
+  {k:'dialH110',l:'ダイヤル錠 H110(旧)'},{k:'dialH111',l:'ダイヤル錠 H111(旧)'},
   {k:'dialDST',l:'ダイヤル錠 DST'},{k:'totte',l:'トッテ'},{k:'padlock',l:'南京錠'},
   {k:'cylinder',l:'シリンダー錠'},{k:'cylinderMaster',l:'シリンダー錠（マスター組）'},{k:'coinReturn',l:'コインリターン錠'},
   {k:'anchorCap',l:'アンカー穴キャップ'},{k:'jointScrew',l:'ジョイントネジ'},{k:'capScrew',l:'目隠しネジ'},
@@ -430,10 +439,10 @@ var PART_ADD_DEFS=[
   {k:'jointScrew_ss_gy',l:'ジョイントネジ（SS・3S・グレー）'},
   {k:'capScrew_bk',l:'目隠しネジ（ブラック）'},
   {k:'capScrew_gy',l:'目隠しネジ（グレー）'},
-  {k:'dialH110',l:'ダイヤル錠 H110'},
-  {k:'dialH110new',l:'ダイヤル錠 H110(新ラッチ)'},
-  {k:'dialH111',l:'ダイヤル錠 H111'},
-  {k:'dialH111new',l:'ダイヤル錠 H111(新ラッチ)'},
+  {k:'dialH110',l:'ダイヤル錠 H110(旧)'},
+  {k:'dialH110new',l:'ダイヤル錠 H110'},
+  {k:'dialH111',l:'ダイヤル錠 H111(旧)'},
+  {k:'dialH111new',l:'ダイヤル錠 H111'},
   {k:'dialH112',l:'ダイヤル錠 H112(自由式)'},
   {k:'dialDST',l:'ダイヤル錠 DST'},
   {k:'dialOpnus',l:'ダイヤル錠(オプナス)'},
@@ -488,14 +497,14 @@ function baseLabel(baseColor,hasCap){var c=baseColor==='bk'?'ブラック':'グ�
 
 /* v14.2: パーツキー → 日本語ラベル変換マップ（仮押さえ表示・Excel出力で使用） */
 var PART_LABELS={
-  top:'トップボード',side:'サイドボード',back:'バックボード',
+  top:'上下共通ボード',side:'サイドボード',back:'バックボード',
   door:'扉(同色)',doorH:'扉(ホタ)',
   base:'ベースボード(グレー)',base_bk:'ベースボード(ブラック)',
   shelf:'棚板(グレー)',shelf_bk:'棚板(ブラック)',
   vj:'上下ジョイント',sj:'サイドジョイント',
   hanger:'ハンガーパイプ',connector:'コネクター',
-  dial:'ダイヤル錠(旧型)',dialH110:'ダイヤル錠 H110',dialH110new:'ダイヤル錠 H110(新ラッチ)',
-  dialH111:'ダイヤル錠 H111',dialH111new:'ダイヤル錠 H111(新ラッチ)',
+  dial:'ダイヤル錠(旧型)',dialH110:'ダイヤル錠 H110(旧)',dialH110new:'ダイヤル錠 H110',
+  dialH111:'ダイヤル錠 H111(旧)',dialH111new:'ダイヤル錠 H111',
   dialH112:'ダイヤル錠 H112(自由式)',dialImon:'ダイヤル錠 井門',dialDST:'ダイヤル錠 DST',
   totte:'トッテ',handle:'トッテ(旧ハンドル)',
   padlock:'南京錠',cylinder:'シリンダー錠',cylinderMaster:'シリンダー錠（マスター組）',
@@ -825,16 +834,19 @@ function isOrderColor(lineId,colorId){
 
 /* ========== BOM CALCULATION ========== */
 function sizeObj(v){return SIZES.find(function(s){return s.v===v;})||SIZES[0];}
+/* v18.33 要望⑧: 新台湾製(sa)のサイズ表記は「Sα」のみ（在庫キーは size='S'/grp='sml' のまま。表示ラベルだけ差替） */
+function sizeLabel(line,size){return line==='sa'?'Sα':sizeObj(size).l;}
 /* v18.31: 明細の台数（unitsOverride対応）と構成ラベル。
    blocks(2件以上)=「2列3段＋1列2段」/ inputMode:'direct'=「台数指定・ベースN枚」/ 従来=「N列×M段」。
    x=列と段の区切り文字（見積書の従来表記は'×'なし）。 */
 function lineUnits(l){var u=parseInt(l&&l.unitsOverride,10);return u>0?u:(((l&&l.islands)||0)*((l&&l.tiers)||0));}
-/* v18.32 要望①: 明細のベース枚数を一元解決。direct入力のパーソナルは islands=ベース入力値を尊重
-   （従来はベース=台数固定）。grid系パーソナル(inputMode無し)は従来どおり台数=ベース。 */
+/* v18.32 要望①: 明細のベース枚数を一元解決。direct入力のパーソナルは islands=ベース入力値を尊重。
+   v18.33 要望⑩: 列×段入力のパーソナルもベース=列数（=islands）。grid明細はislandsにΣ列が保存済みのためそのまま採用し、
+   islands未保存の旧データのみ台数へフォールバック。 */
 function lineBaseCount(l){
   if(l&&l.type==='personal'){
     var b=parseInt(l&&l.islands,10);
-    return (l.inputMode==='direct'&&b>0)?b:lineUnits(l);
+    return b>0?b:lineUnits(l);
   }
   return (l&&l.islands)||0;
 }
@@ -862,7 +874,7 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   var n=(_uo>0)?_uo:islands*tiers,so=sizeObj(size),grp=so.grp,bom=[];
   /* type: 'standard'(常設) / 'personal'(パーソナル)。noDoor=true で扉なし */
   var isPersonal=type==='personal',isStandard=type==='standard';
-  var noDoor=opts.noDoor===true||type==='open';/* オープンタイプは廃止予定だが過去データ互換のためtype==='open'も扉なし扱い */
+  var noDoor=opts.noDoor===true||type==='open'||so.ssw===true;/* オープンタイプは廃止予定だが過去データ互換のためtype==='open'も扉なし扱い。v18.33 要望⑤: SSWは扉なし固定 */
   /* v14 A10: XLサイズはMサイズ×2セット引きを全製品ラインで適用 */
   var isXL=size==='XL';
   /* v18.31 顧客指摘: 日本製Ver.2(jp2)のXLもXLコネクター・ハンガーパイプ必須（台湾XLと同構造）。jp01 XLは顧客言及なしのため従来どおり対象外 */
@@ -870,11 +882,20 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   /* Boards always included */
   /* v14.3: パーソナルは上下共通ボード(=top)を上下2枚使うため n*2 枚。常設は1台×1枚 */
   var topQty=isPersonal?n*2:n;
-  var topReason=isPersonal?(n+'台×2（上下共通ボード: 上下2枚使用）'):(n+'台×1');
-  bom.push({key:'top',sub:grp,qty:topQty,label:'トップボード('+grp.toUpperCase()+')'+(isPersonal?'※上下共通':''),reason:topReason});
-  if(so.dbl){
+  var topReason=isPersonal?(n+'台×2（上下2枚使用）'):(n+'台×1');
+  /* v18.33 要望⑥⑧: 「トップボード」表記を「上下共通ボード（サイズ）」に統一（在庫キーtopは不変）。saはSα表記 */
+  bom.push({key:'top',sub:grp,qty:topQty,label:'上下共通ボード('+(opts.line==='sa'?'Sα':(grp==='ss'?'SS・3S':grp.toUpperCase()))+')',reason:topReason});
+  if(so.ssw){
+    /* v18.33 要望⑤: SSW1台＝上下共通ボード1・SSサイド4・SSバックボード2・扉なし（noDoorはso.sswで強制済み） */
     bom.push({key:'side',sub:'SS',qty:n*4,label:'サイドボード(SS)',reason:n+'台×4'});
     bom.push({key:'back',sub:'SS',qty:n*2,label:'バックボード(SS)',reason:n+'台×2'});
+  }else if(so.dbl){
+    /* v18.33 要望④: SSα1台＝上下共通ボード1・SSサイド2・3Sサイド2・SSバックボード1・3Sバックボード1・SSコネクター1
+       （従来のSSサイド4/SSバック2から変更。SS×2連結ではなくSS+3S連結構造。コネクターは下のSSA専用計上で処理済み） */
+    bom.push({key:'side',sub:'SS',qty:n*2,label:'サイドボード(SS)',reason:n+'台×2'});
+    bom.push({key:'side',sub:'3S',qty:n*2,label:'サイドボード(3S)',reason:n+'台×2'});
+    bom.push({key:'back',sub:'SS',qty:n*1,label:'バックボード(SS)',reason:n+'台×1'});
+    bom.push({key:'back',sub:'3S',qty:n*1,label:'バックボード(3S)',reason:n+'台×1'});
   }else if(isXL){
     /* v14 A10: XLサイズはサイド/バックともにMサイズで代替（全ライン共通） */
     bom.push({key:'side',sub:'M',qty:n*4,label:'サイドボード(M) ※XL用',reason:n+'台×4 (XL1台=Mサイド4枚)'});
@@ -895,9 +916,10 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     var baseColor=opts.baseColor||'gy';
     var baseColorLabel=baseColor==='bk'?'ブラック':'グレー';
     var baseKey=baseColor==='bk'?'base_bk':'base';
-    /* v18.32 要望①: direct入力のパーソナルは islands=ベース指定枚数を尊重（grid系は従来どおり n） */
-    var baseQty=isPersonal?((opts.inputMode==='direct'&&islands>0)?islands:n):islands;
-    var baseReason=isPersonal?(baseQty===n?(n+'台×1'):('ベース指定'+baseQty+'枚')):(islands+'島×1');
+    /* v18.32 要望①: direct入力のパーソナルは islands=ベース指定枚数を尊重
+       v18.33 要望⑩: 列×段入力のパーソナルもベース=列数（islands=Σ列）。islands未保存の旧データのみ台数へフォールバック */
+    var baseQty=isPersonal?(islands>0?islands:n):islands;
+    var baseReason=isPersonal?(baseQty===n?(n+'台×1'):(opts.inputMode==='direct'?('ベース指定'+baseQty+'枚'):(baseQty+'列×1'))):(islands+'島×1');
     bom.push({key:baseKey,sub:grp,qty:baseQty,label:'ベースボード('+grp.toUpperCase()+'・'+baseColorLabel+')',reason:baseReason,baseColor:baseColor});
   }
   /* Shelf - optional. shelfColor='bk'時は shelf_bk キー、'gy'時は shelf キーで在庫照会
@@ -974,7 +996,29 @@ function calcBOM(size,islands,tiers,lock,type,opts){
    - パーソナル(サイドあり): SJ=段×2−欠損段 / ジョイント=(列-1)×段×2−欠損個×2＋SJ×2 / 目隠し=(段×6−段×2)×2+2＋欠損段×2
    - パーソナル(サイドなし): ジョイント=(列-1)×段×2−欠損個×2 / 目隠し=段×6×2
    - 常設: ジョイント=(列-1)×段×4−欠損個×4 / 目隠し=(段×6+3)×2 */
-function calcScrewNeeds(blocks,type,hasSide){
+/* v18.33 要望①: ネジ計算表(2026-07-23版)のサイズ別シートに準拠。size→計算表シート群の対応 */
+function screwSizeGrp(size){return size==='XL'?'xl':(size==='SSA'?'ssa':(sizeObj(size).grp==='ss'?'ss':'sml'));}
+function calcScrewNeeds(blocks,type,hasSide,sizeGrp){
+  sizeGrp=sizeGrp||'sml';
+  /* サイズ群別係数（顧客ネジ計算表の各シート数式）
+     常設ジョイント: SML=(列-1)×段×4 / SS・3S=×2 / XL=×8 / SSα=×4
+     常設目隠し:     SML=(段×6+3)×2 / SS・3S=(段×2+2)×2 / XL=((段×6)×2+3)×2 / SSα=(段×4+2)×2
+     パーソナルはSML・SS3Sシートのみ存在（XL/SSαのパーソナルは計算表に定義が無いためSML式へフォールバック） */
+  var jStdMul={sml:4,ss:2,xl:8,ssa:4}[sizeGrp]||4;
+  var capStd={
+    sml:function(t){return (t*6+3)*2;},
+    ss:function(t){return (t*2+2)*2;},
+    xl:function(t){return ((t*6)*2+3)*2;},
+    ssa:function(t){return ((t*4)+2)*2;}
+  }[sizeGrp]||function(t){return (t*6+3)*2;};
+  var capPSide={
+    sml:function(t,sjBase){return (t*6-sjBase)*2+2;},
+    ss:function(t,sjBase){return ((t*2-sjBase)*2+2)*2;}
+  }[sizeGrp]||function(t,sjBase){return (t*6-sjBase)*2+2;};
+  var capPNoSide={
+    sml:function(t){return (t*6)*2;},
+    ss:function(t){return ((t*2)+2)*2;}
+  }[sizeGrp]||function(t){return (t*6)*2;};
   var groups={};
   (blocks||[]).forEach(function(b){
     var g=parseInt(b&&b.g)||0;
@@ -994,13 +1038,13 @@ function calcScrewNeeds(blocks,type,hasSide){
       var sjBase=maxT*2;                               /* ベース分込 */
       r.sj=Math.max(0,sjBase-missT);
       r.joint=Math.max(0,((cols-1)*maxT*2-missing*2)+r.sj*2);
-      r.cap=Math.max(0,missT*2+((maxT*6-sjBase)*2+2));
+      r.cap=Math.max(0,missT*2+capPSide(maxT,sjBase));
     }else if(type==='personal'){
       r.joint=Math.max(0,(cols-1)*maxT*2-missing*2);
-      r.cap=maxT*6*2;
+      r.cap=capPNoSide(maxT);
     }else{ /* standard 常設 */
-      r.joint=Math.max(0,(cols-1)*maxT*4-missing*4);
-      r.cap=(maxT*6+3)*2;
+      r.joint=Math.max(0,(cols-1)*maxT*jStdMul-missing*jStdMul);
+      r.cap=capStd(maxT);
     }
     islands.push(r);tot.joint+=r.joint;tot.sj+=r.sj;tot.cap+=r.cap;
   });
@@ -1407,7 +1451,8 @@ function mapStockItem(item,colLabel){
   if(/コインリターン/.test(it)){return {key:'coinReturn'};}
   if(/オプナス/.test(it)){return {key:'dialOpnus'};}
   if(/日乃本|日の本/.test(it)){return {key:'dialImon'};}
-  if(/ダイヤル錠/.test(it)){var code=it+' '+c;if(/H110/.test(code))return {key:'dialH110new'};if(/H111/.test(code))return {key:'dialH111new'};if(/H112/.test(code))return {key:'dialH112'};if(/DST|D003/.test(code))return {key:'dialDST'};return null;}
+  /* v18.33 追A: 「(旧)」表記の行は旧キー(dialH110/dialH111)へ。無印はv18.21以降どおり新キー(dialH110new/dialH111new)へ */
+  if(/ダイヤル錠/.test(it)){var code=it+' '+c;if(/旧/.test(code)){if(/H110/.test(code))return {key:'dialH110'};if(/H111/.test(code))return {key:'dialH111'};}if(/H110/.test(code))return {key:'dialH110new'};if(/H111/.test(code))return {key:'dialH111new'};if(/H112/.test(code))return {key:'dialH112'};if(/DST|D003/.test(code))return {key:'dialDST'};return null;}
   return null;/* それ以外(レール/特殊部材/黒側板等)は未対応 */
 }
 /* ========== v18.2 P5a: 出荷指示書5型 完全一致生成 ==========
@@ -1689,7 +1734,8 @@ function writeXlsxWithPrint(wb,filename,perSheet){
    箱数=配送枚数/入数(端数可)・実重量=Σ箱数×実重・容積重量=Σ箱数×容積・請求重量=max(実重量,容積重量)。
    ※この関数は算出のみ。既存calcShippingの置換は段階導入(運賃マトリクス実装後)。 */
 var PART_DIMS={"side|L":{"iri":16,"jitsu":18.5,"yoseki":35},"side|XL":{"iri":16,"jitsu":13.3,"yoseki":26},"side|M":{"iri":16,"jitsu":13.3,"yoseki":26},"side|SS":{"iri":20,"jitsu":8.4,"yoseki":14},"side|S":{"iri":20,"jitsu":13.1,"yoseki":26},"back|L":{"iri":16,"jitsu":10.3,"yoseki":19},"back|XL":{"iri":16,"jitsu":7,"yoseki":14},"back|M":{"iri":16,"jitsu":7,"yoseki":14},"back|SS":{"iri":20,"jitsu":4.6,"yoseki":9},"back|S":{"iri":20,"jitsu":7,"yoseki":15},"door|L":{"iri":16,"jitsu":14,"yoseki":26},"door|SS":{"iri":20,"jitsu":4.4,"yoseki":10},"door|M":{"iri":16,"jitsu":10.4,"yoseki":20},"door|S":{"iri":20,"jitsu":8.5,"yoseki":20},"top|sml":{"iri":16,"jitsu":11.9,"yoseki":21},"top|ss":{"iri":20,"jitsu":8.2,"yoseki":13},"base|sml":{"iri":8,"jitsu":8.1,"yoseki":24},"base|ss":{"iri":10,"jitsu":6.1,"yoseki":21},"shelf|ss":{"iri":50,"jitsu":7.7,"yoseki":9},"shelf|sml":{"iri":32,"jitsu":11.8,"yoseki":13},"door|XL":{"iri":8,"jitsu":18.6,"yoseki":32}};
-function shipPartDim(key,sub){var k=(key==='doorH')?'door':key;return PART_DIMS[k+'|'+sub]||null;}
+/* v18.33 要望⑨: 3SはSSとして計算（送料計算表の明記）。従来は side|3S 等が未マップで重量計上から漏れていた */
+function shipPartDim(key,sub){var k=(key==='doorH')?'door':key;var s=(sub==='3S')?'SS':sub;return PART_DIMS[k+'|'+s]||null;}
 /* v18.4 P3-2: 地域別運賃マトリクス（実データ）。misshu=PDF混載・r5_amago/r6_sapporo=西濃混載(xlsx)・charter=チャーター。
    各表 dist[](距離km昇順・「○kmまで」)・weights[](重量kg昇順・「○kgまで」)・rates[重量idx][距離idx]=円。
    freightLookup=重量を次のkgブラケット・距離を次のkmブラケットへ丸めて運賃を返す。
@@ -1954,17 +2000,89 @@ function freightLookup(tableKey,distanceKm,weightKg){
 function shipTableForWarehouse(whId){
   if(whId==='amago')return 'r5_amago';
   if(whId==='sapporo')return 'r6_sapporo';
+  /* v18.33 要望⑨: 本社・関西営業所発はヤマト宅急便（1箱単位料金）。送料計算表の説明B（シート1・2）準拠 */
+  if(whId==='honsha')return 'y_honsha';
+  if(whId==='kansai')return 'y_kansai';
   return 'misshu';
+}
+/* v18.33 要望⑨: 本社・関西営業所発 ヤマト宅急便運賃表（送料計算表シート1=本社2023.9・シート2=関西2024.7・税抜）。
+   箱サイズ=サイドボードのケースサイズ（3辺計）: L/XL→160, M/S→140, SS/3S/SSα→120。
+   運賃原価=1箱料金×箱数（切上げ整数箱）、見積記載運賃=原価×1.1 */
+var YAMATO_REGIONS=['hokkaido','kitatohoku','minamitohoku','kanto','shinetsu','hokuriku','chubu','kansai','chugoku','shikoku','kyushu','okinawa'];
+var YAMATO_REGION_LABEL={hokkaido:'北海道',kitatohoku:'北東北',minamitohoku:'南東北',kanto:'関東',shinetsu:'信越',hokuriku:'北陸',chubu:'中部',kansai:'関西',chugoku:'中国',shikoku:'四国',kyushu:'九州',okinawa:'沖縄'};
+var YAMATO_PREF_REGION={'北海道':'hokkaido','青森県':'kitatohoku','秋田県':'kitatohoku','岩手県':'kitatohoku','宮城県':'minamitohoku','山形県':'minamitohoku','福島県':'minamitohoku','茨城県':'kanto','栃木県':'kanto','群馬県':'kanto','埼玉県':'kanto','千葉県':'kanto','東京都':'kanto','神奈川県':'kanto','山梨県':'kanto','新潟県':'shinetsu','長野県':'shinetsu','富山県':'hokuriku','石川県':'hokuriku','福井県':'hokuriku','静岡県':'chubu','愛知県':'chubu','岐阜県':'chubu','三重県':'chubu','滋賀県':'kansai','京都府':'kansai','大阪府':'kansai','兵庫県':'kansai','奈良県':'kansai','和歌山県':'kansai','鳥取県':'chugoku','島根県':'chugoku','岡山県':'chugoku','広島県':'chugoku','山口県':'chugoku','徳島県':'shikoku','香川県':'shikoku','愛媛県':'shikoku','高知県':'shikoku','福岡県':'kyushu','佐賀県':'kyushu','長崎県':'kyushu','熊本県':'kyushu','大分県':'kyushu','宮崎県':'kyushu','鹿児島県':'kyushu','沖縄県':'okinawa'};
+var YAMATO_TABLES={
+  y_honsha:{label:'本社発 ヤマト宅急便（2023.9）',sizes:[60,80,100,120,140,160,180,200],rates:{
+    60:[830,600,520,520,520,520,520,600,680,750,830,1320],
+    80:[1030,800,720,720,720,720,720,800,880,950,1030,1880],
+    100:[1220,990,910,910,910,910,910,990,1060,1140,1220,2460],
+    120:[1320,1090,1010,1010,1010,1010,1010,1090,1160,1240,1320,3050],
+    140:[1410,1180,1110,1110,1110,1110,1110,1180,1260,1340,1410,3660],
+    160:[1600,1370,1290,1290,1290,1290,1290,1370,1450,1520,1600,4250],
+    180:[3750,3390,2780,2780,2780,2780,2780,3390,3510,3510,3750,5450],
+    200:[4350,3990,3380,3380,3380,3380,3380,3990,4110,4110,4350,6150]}},
+  y_kansai:{label:'関西営業所発 ヤマト宅急便（2024.7）',sizes:[60,80,100,120,140,160,180,200],rates:{
+    60:[1740,1140,1040,940,940,840,840,840,840,840,940,1320],
+    80:[2000,1340,1240,1140,1140,1040,1040,1040,1040,1040,1140,1880],
+    100:[2280,1560,1460,1360,1360,1260,1260,1260,1260,1260,1360,2460],
+    120:[2570,1760,1660,1660,1560,1460,1460,1460,1460,1460,1560,3050],
+    140:[2880,1980,1880,1780,1780,1680,1680,1680,1680,1680,1780,3660],
+    160:[3170,2180,2080,1980,1980,1880,1880,1880,1880,1880,1980,4250],
+    180:[5170,3830,3710,3390,3390,2780,2780,2780,2780,2780,3390,6550],
+    200:[6370,4830,4710,4090,4090,3380,3380,3380,3380,3380,4090,8050]}}
+};
+function yamatoBoxSizeForSize(size){
+  if(size==='L'||size==='XL')return 160;
+  if(size==='M'||size==='S')return 140;
+  return 120;/* SS/3S/SSA/SSW */
+}
+function yamatoBoxSizeForOrder(order){
+  var best=null;
+  ((order&&order.lines)||[]).forEach(function(l){
+    if(!l||l.isFreeInput)return;
+    var sz=l.size;if(!sz)return;
+    var bs=yamatoBoxSizeForSize(sz);
+    if(best==null||bs>best)best=bs;
+  });
+  return best==null?140:best;
+}
+function yamatoFreightCost(tableKey,destPref,boxes,boxSize){
+  var t=YAMATO_TABLES[tableKey];if(!t)return null;
+  var region=YAMATO_PREF_REGION[destPref];if(!region)return null;
+  var ri=YAMATO_REGIONS.indexOf(region);if(ri<0)return null;
+  var row=t.rates[boxSize];if(!row)return null;
+  var rate=row[ri];if(rate==null)return null;
+  var boxCount=Math.max(1,Math.ceil(boxes||0));
+  var genka=rate*boxCount;
+  return {rate:rate,region:region,boxCount:boxCount,boxSize:boxSize,genka:genka,quoted:markupCeil(genka)};
 }
 function destFindDistance(tableKey,destCity){
   var t=effRT(tableKey);if(!t||!t.cities)return null;/* v18.30: アップロード運賃表を優先 */
-  var dc=String(destCity||'').replace(/[市区町村郡]/g,'').trim();if(!dc)return null;
+  var dcRaw=String(destCity||'').trim();
+  var dc=dcRaw.replace(/[市区町村郡]/g,'').trim();if(!dc)return null;
   var dists=Object.keys(t.cities).map(Number).sort(function(a,b){return a-b;});
-  for(var i=0;i<dists.length;i++){
-    var km=dists[i],arr=t.cities[km]||[];
-    for(var k=0;k<arr.length;k++){
-      var c=String(arr[k]).replace(/[市区町村郡]/g,'').trim();
-      if(c&&(c.indexOf(dc)>=0||dc.indexOf(c)>=0))return km;
+  /* v18.33 要望⑨バグ修正: (a)「郡山」→「山」等の1文字化で無関係行先（和歌山・市川・町田…）に誤マッチし
+     送料が過少になる問題 → 一致部分1文字は原文包含時のみ採用。
+     (b)「京田辺」に「田辺」が部分一致して近距離を先に拾う問題 → 完全一致（・/区切りのセグメント単位）を
+     全距離で先に探し、無ければ従来の部分一致にフォールバックする2パス方式 */
+  var pass,km,arr,k;
+  for(pass=1;pass<=2;pass++){
+    for(var i=0;i<dists.length;i++){
+      km=dists[i];arr=t.cities[km]||[];
+      for(k=0;k<arr.length;k++){
+        var cRaw=String(arr[k]).trim();
+        var c=cRaw.replace(/[市区町村郡]/g,'').trim();
+        if(!c)continue;
+        if(pass===1){
+          var segs=c.split(/[・/／]/);
+          for(var s2=0;s2<segs.length;s2++){if(segs[s2]&&segs[s2]===dc)return km;}
+        }else{
+          if(c.indexOf(dc)>=0||dc.indexOf(c)>=0){
+            if(Math.min(c.length,dc.length)>=2)return km;
+            if(cRaw.indexOf(dcRaw)>=0||dcRaw.indexOf(cRaw)>=0)return km;
+          }
+        }
+      }
     }
   }
   return null;
@@ -1976,8 +2094,12 @@ var FREIGHT_OVR={};
   /* v18.31: r6_sapporoの表構成変更(50km列+10-60kg行追加)に伴い、旧構成のwi/diインデックスで保存されたセル上書きは誤適用になるため破棄（書込UIは現存せず通常は空） */
   try{if(FREIGHT_OVR.rates&&FREIGHT_OVR.rates.r6_sapporo){delete FREIGHT_OVR.rates.r6_sapporo;localStorage.setItem('lec_freight_override',JSON.stringify(FREIGHT_OVR));}}catch(e){}})();
 function freightDefShokei(tableKey){return (tableKey==='r5_amago'||tableKey==='r6_sapporo')?363:325;}
-/* v18.30 要望④: 諸経費の正式ルール=箱数×100円（送料計算表の実式 K31=(箱数計)×100 を反映。箱数は端数のまま）。
-   管理者が運賃編集で固定値を上書きしている場合はそちらを優先（従来互換）。箱数不明時は旧固定値へフォールバック。 */
+/* v18.33 要望⑨: ×1.1の浮動小数点誤差対策（5290×1.1=5819.000000000001→切上5820の1円ズレを防止）。
+   0.01円単位に丸めてから切上げ（Excelの L34=L32*1.1 表示値と一致） */
+function markupCeil(genka){return Math.ceil(Math.round(genka*110)/100);}
+/* v18.30 要望④/v18.33 要望⑨: 諸経費の正式ルール=(箱数+追加箱数)×100円
+   （2026-07-23版送料計算表の実式 K31=(K26追加箱数+K28箱数)×100。箱数K28は追加箱数込みのため、追加箱数は2回算入される）。
+   呼出側で boxes=箱数+追加箱数 を渡す。管理者が運賃編集で固定値を上書きしている場合はそちらを優先（従来互換）。箱数不明時は旧固定値へフォールバック。 */
 function freightShokei(tableKey,boxes){
   var g=(tableKey==='r5_amago'||tableKey==='r6_sapporo')?'seino':'misshu';
   if(FREIGHT_OVR.shokei&&FREIGHT_OVR.shokei[g]!=null)return FREIGHT_OVR.shokei[g];
@@ -2008,14 +2130,15 @@ function freightCost(tableKey,distanceKm,weightKg,boxes){
   var surcharge=(tableKey==='r5_amago'||tableKey==='r6_sapporo')?seinoSurcharge(distanceKm,weightKg):0;
   var chuukei=weightKg>1000?30000:0;
   var genka=lk.rate+shokei+surcharge;
-  return {rate:lk.rate,shokei:shokei,surcharge:surcharge,chuukei:chuukei,genka:genka,quoted:Math.ceil(genka*1.1)+chuukei,weightBracket:lk.weightBracket,distBracket:lk.distBracket,over:false};
+  return {rate:lk.rate,shokei:shokei,surcharge:surcharge,chuukei:chuukei,genka:genka,quoted:markupCeil(genka)+chuukei,weightBracket:lk.weightBracket,distBracket:lk.distBracket,over:false};
 }
 /* v18.30 要望④: 請求重量を送料計算表の実式に一致。箱数=配送枚数÷入数(端数のまま・切上げしない)、
    実重量=Σ箱数×実重(佐川用)、容積重量=Σ箱数×容積(第一貨物/西濃用)、課金重量=大きい方(かさ物のロッカーは容積が基準)。
    旧v18.6の「箱数切上げ×実重」は計算表(ＳＳ計算表ほか)の式 L=J/C・㌔数=Σ容積重量 と不一致だったため置換。 */
 function calcShipWeightBilling(order){
   var w=calcShipWeight(order);
-  return {actualWeight:w.actualWeight,volumeWeight:w.volumeWeight,chargeWeight:w.chargeWeight,boxes:w.boxes};
+  /* v18.33 要望⑨: 追加箱数(予備箱)を通す（calcFreightの諸経費=(箱数+追加箱数)×100 に必須。落とすと諸経費が過少になる） */
+  return {actualWeight:w.actualWeight,volumeWeight:w.volumeWeight,chargeWeight:w.chargeWeight,boxes:w.boxes,extraBoxes:w.extraBoxes||0};
 }
 /* 受注＋行先市 → 送料一式。発倉庫で運賃表選択→行先で距離列→請求重量(実重量切上)→freightCost。
    距離不明(misshu本社発で都市リスト未対応 等)は ok:false で返す。 */
@@ -2044,12 +2167,20 @@ function calcFreight(order,destCity,destPref){
   var table=shipTableForWarehouse(order.wh);
   var bw=calcShipWeightBilling(order);
   var cw=bw.chargeWeight;/* v18.30: 課金重量=max(実重量,容積重量)。計算表の㌔数(容積重量合計)に一致 */
+  /* v18.33 要望⑨: 本社・関西発はヤマト1箱単位方式（距離ではなく行先地域×箱サイズ） */
+  if(table==='y_honsha'||table==='y_kansai'){
+    var bs=yamatoBoxSizeForOrder(order);
+    var yf=yamatoFreightCost(table,destPref,bw.boxes,bs);
+    if(!yf)return {ok:false,reason:'distance_unknown',table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes};
+    return {ok:true,yamato:true,table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,extraBoxes:bw.extraBoxes,boxSize:yf.boxSize,boxCount:yf.boxCount,region:yf.region,rate:yf.rate,shokei:0,surcharge:0,chuukei:0,genka:yf.genka,quoted:yf.quoted};
+  }
   var dd=destDistanceFor(table,destCity,destPref);
   if(dd==null)return {ok:false,reason:'distance_unknown',table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes};
-  var fc=freightCost(table,dd.km,cw,bw.boxes);
+  /* v18.33 要望⑨: 諸経費=(箱数+追加箱数)×100（K31式）。boxesは追加箱数込みのため追加分をもう一度加える */
+  var fc=freightCost(table,dd.km,cw,bw.boxes+(bw.extraBoxes||0));
   if(!fc)return {ok:false,reason:'no_rate',table:table,weight:cw};
   if(fc.over)return {ok:false,reason:'over_weight_charter',table:table,weight:cw,distance:dd.km};
-  return {ok:true,table:table,distance:dd.km,approxDistance:dd.approx,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,rate:fc.rate,shokei:fc.shokei,surcharge:fc.surcharge,chuukei:fc.chuukei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
+  return {ok:true,table:table,distance:dd.km,approxDistance:dd.approx,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,extraBoxes:bw.extraBoxes,rate:fc.rate,shokei:fc.shokei,surcharge:fc.surcharge,chuukei:fc.chuukei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
 }
 /* v18.18 P3連動: FREIGHT_OVR.officialMode が ON のとき、距離解決できる単一倉庫見積は運賃表エンジンの見積運賃(quoted)を正式送料に採用。
    OFF(既定)または距離解決不可なら従来の簡易送料(fallback)を返す＝既定では完全に従来挙動（無回帰）。 */
@@ -2083,11 +2214,16 @@ function charterRate(tableKey,distanceKm,sharkaku){
 /* v18.30 要望④: 行先ベースのチャーター表(新柏全国チャーター)を行先市名の部分一致で引く */
 function charterCostDest(tableKey,destCity,weightKg){
   var t=effCT(tableKey);if(!t||!t.entries)return {ok:false};
-  var dc=String(destCity||'').replace(/[市区町村郡]/g,'').trim();if(!dc)return {ok:false};
+  var dcRaw=String(destCity||'').trim();
+  var dc=dcRaw.replace(/[市区町村郡]/g,'').trim();if(!dc)return {ok:false};
   var hit=null;
   for(var i=0;i<t.entries.length;i++){
-    var e=t.entries[i];var d=String(e.dest||'').replace(/[市区町村郡]/g,'').trim();
-    if(d&&(d.indexOf(dc)>=0||dc.indexOf(d)>=0)){hit=e;break;}
+    var e=t.entries[i];var dRaw=String(e.dest||'').trim();var d=dRaw.replace(/[市区町村郡]/g,'').trim();
+    /* v18.33 要望⑨バグ修正: 1文字一致の誤爆防止（destFindDistanceと同じガード） */
+    if(d&&(d.indexOf(dc)>=0||dc.indexOf(d)>=0)){
+      if(Math.min(d.length,dc.length)>=2){hit=e;break;}
+      if(dRaw.indexOf(dcRaw)>=0||dcRaw.indexOf(dRaw)>=0){hit=e;break;}
+    }
   }
   if(!hit)return {ok:false};
   var prices={};
@@ -2109,6 +2245,18 @@ function charterCost(whId,distanceKm,weightKg,destCity){
   if(!suggest){var keys=Object.keys(prices);suggest=keys.length?keys[keys.length-1]:null;}
   return {ok:Object.keys(prices).length>0,table:tableKey,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
 }
+/* v18.33 要望⑨: 注文台数に応じた追加箱数（予備箱）。送料計算表 表1（K26/K20セルへの手入力を自動化）。
+   1〜30台=1箱 / 31〜50=2 / 51〜100=3 / 101〜200=4 / 201〜300=6 / 301〜500=10（500超は表の上限10を維持）。
+   予備箱は1箱30kg換算で㌔数・箱数に加算（計算表セルコメント「予備の箱は、1箱大体30kgとして計算」） */
+function shipExtraBoxes(units){
+  if(!(units>0))return 0;
+  if(units<=30)return 1;
+  if(units<=50)return 2;
+  if(units<=100)return 3;
+  if(units<=200)return 4;
+  if(units<=300)return 6;
+  return 10;
+}
 function calcShipWeight(order){
   var agg=aggregateOrderBOM(order);/* key|sub|color → qty */
   var bySub={};
@@ -2119,8 +2267,12 @@ function calcShipWeight(order){
     if(!d){if(bySub[ks]>0)unmapped.push(ks);return;}
     var box=bySub[ks]/d.iri;boxes+=box;aw+=box*d.jitsu;vw+=box*d.yoseki;
   });
+  /* v18.33 要望⑨: 追加箱数（予備箱）を台数から自動加算 */
+  var units=((order&&order.lines)||[]).reduce(function(s,l){return s+((l&&!l.isPartOnly&&!l.isFreeInput)?lineUnits(l):0);},0);
+  var extra=shipExtraBoxes(units);
+  boxes+=extra;aw+=extra*30;vw+=extra*30;
   aw=Math.round(aw*1000)/1000;vw=Math.round(vw*1000)/1000;
-  return {actualWeight:aw,volumeWeight:vw,chargeWeight:Math.max(aw,vw),boxes:Math.round(boxes*1000)/1000,unmapped:unmapped};
+  return {actualWeight:aw,volumeWeight:vw,chargeWeight:Math.max(aw,vw),boxes:Math.round(boxes*1000)/1000,extraBoxes:extra,units:units,unmapped:unmapped};
 }
 /* sheets=[{name, aoa}]（aoa=二次元配列）→ パース結果。各行に line/wh/item/colorLabel/qty/map/mapped を付与。 */
 function parseStockImport(sheets){
@@ -2826,7 +2978,8 @@ function checkAllLinesWH(lines,wh){
       var free=stock-held;
       var pass=free>=a.qty;
       if(!pass)allOk=false;
-      allItems.push({label:a.label+'（共通プール）',need:a.qty,stock:stock,held:held,free:free,ok:pass,shortage:Math.max(0,a.qty-free)});
+      /* v18.33 追A: ユーザー向け表示から「共通プール」表記を削除（全ライン合算の仕組みは不変） */
+      allItems.push({label:a.label,need:a.qty,stock:stock,held:held,free:free,ok:pass,shortage:Math.max(0,a.qty-free)});
     });
     delete allItems._commonAgg;
   }
@@ -2917,6 +3070,91 @@ function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
 var LS_KEYS={orders:'lec_orders',nextON:'lec_nextON',stk:'lec_stk',held:'lec_held',incoming:'lec_incoming',nextIncId:'lec_nextIncId',editLog:'lec_editLog',custs:'lec_custs',users:'lec_users'};
 function saveUsers(){try{localStorage.setItem(LS_KEYS.users,JSON.stringify(USERS));}catch(e){console.warn('saveUsers failed',e);}}
 function saveOrders(){try{localStorage.setItem(LS_KEYS.orders,JSON.stringify(ORDERS));localStorage.setItem(LS_KEYS.nextON,String(nextON));}catch(e){console.warn('saveOrders failed',e);}}
+/* ========== v18.33 要望⑱: 粗利計算（原価マスタ＋八木熊品番紐付け） ==========
+   COST_MASTER: {品番: 原価円}。原価表はLEC側でアップロード（品番,原価のCSV/Excel。原価は企業情報のため共有ファイルには含めない運用）。
+   KEY_TO_YAGI: 集計キー(key|sub|color)→八木熊品番。商品コードnew.xlsx(2026-07-23提供)の八木熊シートから採録。
+   品番が無い部材（鍵類・トッテ等）と上下共通ボード品番3種の紐付け（吉野さんから後日連携）は原価未設定として集計。 */
+var COST_MASTER={};
+function saveCostMaster(){try{localStorage.setItem('lec_cost_master',JSON.stringify(COST_MASTER));}catch(e){}}
+(function(){try{COST_MASTER=JSON.parse(localStorage.getItem('lec_cost_master')||'{}')||{};}catch(e){COST_MASTER={};}})();
+var KEY_TO_YAGI={
+  'top|sml':'01703000','top|ss':'01857600',
+  'base|sml':'01856700','base_bk|sml':'01882200','base|ss':'01876800','base_bk|ss':'01880600',
+  'side|S':'01860600','side|M':'01860700','side|L':'01863600','side|SS':'01862200','side|3S':'01862300',
+  'back|S':'01860800','back|M':'01860900','back|L':'01863500','back|SS':'01868600','back|3S':'01868700',
+  'shelf|sml':'01897200','shelf_bk|sml':'01877400','shelf|ss':'01876700','shelf_bk|ss':'01862100',
+  'vj|sml':'01895400','vj|ss':'01895600','sj|sml':'01896300',
+  'jointScrew_sml_bk|':'01855000','jointScrew_ss_bk|':'01869000','capScrew_gy|':'01869300',
+  'anchorCap|gy':'01856600','anchorCap|bk':'01880400',
+  'topJoint|':'01896500',
+  'railSideSML|':'01878800','railBackSML|':'01878900','railSideSS|':'01879000','railBackSS|':'01879100',
+  'door|S|pb':'01714500','door|S|pg':'01714200','door|S|pp':'01714300','door|S|py':'01714100','door|S|pbr':'01714400','door|S|iv':'01752600','door|S|gy':'01721000',
+  'door|M|pb':'01707000','door|M|pg':'01708200','door|M|pp':'01708400','door|M|py':'01708000','door|M|pbr':'01708600','door|M|iv':'01707500','door|M|gy':'01707700','door|M|bk':'01905800',
+  'door|L|pb':'01712100','door|L|pg':'01711700','door|L|pp':'01711800','door|L|py':'01711600','door|L|pbr':'01711900','door|L|iv':'01711500','door|L|gy':'01824200',
+  'door|SS|pb':'01867000','door|SS|pg':'01866200','door|SS|pp':'01867100','door|SS|py':'01867200','door|SS|pbr':'01867300','door|SS|iv':'01867400','door|SS|gy':'01867500',
+  'door|3S|pb':'01870300','door|3S|pg':'01870400','door|3S|pp':'01870500','door|3S|py':'01870600','door|3S|pbr':'01870700','door|3S|iv':'01870800','door|3S|gy':'01870900',
+  'doorH|S|pb':'01715000','doorH|S|pg':'01714700','doorH|S|pp':'01714800','doorH|S|py':'01714600','doorH|S|pbr':'01714900','doorH|S|iv':'01883800','doorH|S|gy':'01883900',
+  'doorH|M|pb':'01710000','doorH|M|pg':'01709400','doorH|M|pp':'01709600','doorH|M|py':'01709200','doorH|M|pbr':'01709800','doorH|M|iv':'01708800','doorH|M|gy':'01709000',
+  'doorH|L|pb':'01713200','doorH|L|pg':'01712400','doorH|L|pp':'01712600','doorH|L|py':'01712300','doorH|L|pbr':'01713000','doorH|L|iv':'01712200','doorH|L|gy':'01752700',
+  'doorH|SS|pb':'01884000','doorH|SS|pg':'01884100','doorH|SS|pp':'01884200','doorH|SS|py':'01884300','doorH|SS|pbr':'01884400','doorH|SS|iv':'01884500','doorH|SS|gy':'01884600'
+};
+function yagiCodeFor(key,sub,color){
+  if(key==='door'||key==='doorH'){var s3=(sub==='3S')?'3S':sub;return KEY_TO_YAGI[key+'|'+s3+'|'+(color||'')]||null;}
+  var k=KEY_TO_YAGI[key+'|'+(sub||'')];
+  return k||KEY_TO_YAGI[key+'|']||null;
+}
+/* 鍵類・付属（=粗利区分「鍵類」）の判定: 共通プールキー＋錠前系 */
+function isLockCostKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0||/^dial|^cylinder|^padlock|^totte|^searchKey|^masterKey|^coinReturn/.test(key);}
+/* 案件→粗利区分別の売価・原価集計。原価はBOM数量×COST_MASTER[品番]。品番or原価が無い部材は missing にカウント */
+function calcGrossProfit(order){
+  var cat={body:{sell:0,cost:0,missing:0},lock:{sell:0,cost:0,missing:0},base:{sell:0,cost:0,missing:0},shelf:{sell:0,cost:0,missing:0}};
+  (order.lines||[]).forEach(function(l){
+    if(l.isFreeInput){cat.body.sell+=l.qty*(l.unitPrice||0);return;}
+    if(l.isPartOnly){
+      var c=(l.partKey==='base'||l.partKey==='base_bk')?'base':(l.partKey==='shelf'||l.partKey==='shelf_bk')?'shelf':(isLockCostKey(l.partKey)?'lock':'body');
+      cat[c].sell+=l.qty*(l.unitPrice||0);return;
+    }
+    var so=sizeObj(l.size);
+    cat.body.sell+=l.qty*so.p;
+    var sq=parseInt(l.shelfQty)||0;if(sq>0)cat.shelf.sell+=sq*SHELF_PRICE;
+  });
+  var baseLines=(order.lines||[]).filter(function(l){return !l.isPartOnly&&!l.isFreeInput&&l.hasBase!==false;});
+  cat.base.sell+=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0)*4000;
+  var agg=aggregateOrderBOM(order);
+  Object.keys(agg).forEach(function(kk){
+    var pp=kk.split('|');var key=pp[0],sub=pp[1],color=pp[2];var qty=agg[kk];if(!(qty>0))return;
+    var c=(key==='base'||key==='base_bk')?'base':(key==='shelf'||key==='shelf_bk')?'shelf':(isLockCostKey(key)?'lock':'body');
+    var code=yagiCodeFor(key,sub,color);
+    var cost=code!=null?COST_MASTER[code]:null;
+    if(cost==null){cat[c].missing+=1;return;}
+    cat[c].cost+=qty*cost;
+  });
+  var total={sell:0,cost:0,missing:0};
+  ['body','lock','base','shelf'].forEach(function(c){total.sell+=cat[c].sell;total.cost+=cat[c].cost;total.missing+=cat[c].missing;});
+  return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:total,hasCost:Object.keys(COST_MASTER).length>0};
+}
+/* 原価表アップロード: 「品番,原価」列を含むCSV/Excel（1シート目）。ヘッダ行の「品番」「原価」を検出、無ければ 1列目=品番/最終数値列=原価 */
+function parseCostMasterAoa(aoa){
+  var res={},cnt=0;
+  var hdr=-1,ci={code:-1,cost:-1};
+  for(var r=0;r<Math.min(aoa.length,10);r++){
+    var row=aoa[r]||[];
+    row.forEach(function(x,i){var s=String(x||'');if(/品番|商品コード/.test(s)&&ci.code<0)ci.code=i;if(/原価|仕入|単価/.test(s)&&ci.cost<0)ci.cost=i;});
+    if(ci.code>=0&&ci.cost>=0){hdr=r;break;}
+  }
+  for(var rr=(hdr>=0?hdr+1:0);rr<aoa.length;rr++){
+    var rw=aoa[rr]||[];if(!rw.length)continue;
+    var code,cost;
+    if(hdr>=0){code=String(rw[ci.code]||'').trim();cost=parseFloat(rw[ci.cost]);}
+    else{
+      code=String(rw[0]||'').trim();cost=NaN;
+      for(var c2=rw.length-1;c2>=1;c2--){var v=parseFloat(rw[c2]);if(!isNaN(v)){cost=v;break;}}
+    }
+    if(!code||isNaN(cost))continue;
+    res[code]=cost;cnt++;
+  }
+  return {map:res,count:cnt};
+}
 function saveStock(){try{localStorage.setItem(LS_KEYS.stk,JSON.stringify(STK));}catch(e){console.warn('saveStock failed',e);}}
 function saveHeld(){try{localStorage.setItem(LS_KEYS.held,JSON.stringify(HELD));}catch(e){console.warn('saveHeld failed',e);}}
 function saveIncoming(){try{localStorage.setItem(LS_KEYS.incoming,JSON.stringify(INCOMING));localStorage.setItem(LS_KEYS.nextIncId,String(nextIncId));}catch(e){console.warn('saveIncoming failed',e);}}
@@ -3133,18 +3371,20 @@ function generateQuoteHTML(order,docType){
   var subject=order.subject||'';
   if(!subject){
     subject=hasNonPart?productName((order.lines.find(function(l){return!l.isPartOnly;})||{}).line||'jp01')+'ロッカー':'パーツ単品';
-    if(hasNonPart){var npl=order.lines.filter(function(l){return!l.isPartOnly;});if(npl.length===1){var fl=npl[0];subject=productName(fl.line)+' '+sizeObj(fl.size).l+' '+lineSpecLabel(fl,'');}else if(npl.length>1){subject+=' '+npl.length+'仕様混在';}}
+    /* v18.33 要望⑮: 件名は「商品名・サイズ・台数」表記（例: Mサイズ 30台）。列×段表記は使わない */
+    if(hasNonPart){var npl=order.lines.filter(function(l){return!l.isPartOnly;});if(npl.length===1){var fl=npl[0];subject=productName(fl.line)+' '+sizeLabel(fl.line,fl.size)+' '+fm(fl.qty||lineUnits(fl))+'台';}else if(npl.length>1){subject=productName(npl[0].line)+' '+npl.map(function(fl){return sizeLabel(fl.line,fl.size)+' '+fm(fl.qty||lineUnits(fl))+'台';}).join('／');}}
   }
   var payTerms=order.paymentTerms||'前払い（銀行振り込み）';
   var slipCode=cfg.slipPrefix+'-'+order.no;
 
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+cfg.title+' '+order.no+'</title>';
   html+='<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">';
+  /* v18.33 要望⑫: A4印刷を考慮したフォントバランス調整（本文10.5px・表9.5px・見出し8.5px） */
   html+='<style>@page{size:A4;margin:15mm 12mm}*{margin:0;padding:0;box-sizing:border-box}';
-  html+='body{font-family:"Noto Sans JP",sans-serif;padding:20px 25px;font-size:10px;color:#222;line-height:1.6}';
-  html+='table{width:100%;border-collapse:collapse;margin:8px 0;font-size:9px}th,td{border:1px solid #999;padding:3px 6px}';
-  html+='th{background:#f0f0f0;font-weight:600;text-align:center;font-size:8px;white-space:nowrap}td.r{text-align:right}td.c{text-align:center}';
-  html+='.cfg-row td{border-left:none;border-right:none;font-size:9px;font-weight:600;color:#333;padding:2px 6px}';
+  html+='body{font-family:"Noto Sans JP",sans-serif;padding:20px 25px;font-size:10.5px;color:#222;line-height:1.65}';
+  html+='table{width:100%;border-collapse:collapse;margin:8px 0;font-size:9.5px}th,td{border:1px solid #999;padding:3px 6px}';
+  html+='th{background:#f0f0f0;font-weight:600;text-align:center;font-size:8.5px;white-space:nowrap}td.r{text-align:right}td.c{text-align:center}';
+  html+='.cfg-row td{border-left:none;border-right:none;font-size:9.5px;font-weight:600;color:#333;padding:2px 6px}';
   html+='.tot-box{margin-left:auto;width:300px;font-size:10px;border:1px solid #999;margin-top:8px}';
   html+='.trow{display:flex;justify-content:space-between;padding:3px 10px;border-bottom:1px solid #ddd}';
   html+='.trow.main{font-size:13px;font-weight:900;background:#f8f8f8;border-bottom:2px solid #333}.trow.sub{font-size:8px;color:#666}';
@@ -3154,15 +3394,17 @@ function generateQuoteHTML(order,docType){
   html+='<div style="display:flex;justify-content:space-between;margin-bottom:12px">';
   html+='<div style="width:52%;border-left:3px solid #222;padding:8px 12px;font-size:10px;line-height:1.8">';
   html+='<div style="font-size:14px;font-weight:700;margin-bottom:4px">'+(cust?cust.name:'')+' 御中</div>';
-  html+='<div style="display:flex;justify-content:space-between;font-size:9px"><span>'+(cust&&cust.postal?'〒'+cust.postal:'')+'</span><span>顧客コード '+(cust?cust.id:'')+'</span></div>';
+  /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ移動。先方担当者（ご担当）は見積書から削除 */
+  html+='<div style="font-size:9px">'+(cust&&cust.postal?'〒'+cust.postal:'')+'</div>';
   html+='<div>'+(cust?cust.pref+(cust.city||''):'')+'</div>';
   html+='<div style="display:flex;gap:20px;font-size:9px"><span>電話番号 '+(cust&&cust.phone?cust.phone:'')+'</span><span>FAX番号 '+(cust&&cust.fax?cust.fax:'')+'</span></div>';
-  if(cust&&cust.contactPerson)html+='<div style="font-size:9px">ご担当: '+cust.contactPerson+' 様</div>';
+  html+='<div style="font-size:9px">顧客コード '+(cust?cust.id:'')+'</div>';
   html+='</div>';
   html+='<div style="width:44%;text-align:right;font-size:9px;line-height:1.8">';
   html+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">株式会社LEC</div>';
   var salesP=order.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
-  html+='〒120-0005<br>東京都足立区綾瀬7-4-1<br>TEL. 03-5849-5563&emsp;FAX. 03-5849-5564<br>登録番号:T4040001077220<br>担当者: '+salesP+'</div></div>';
+  /* v18.33 要望⑬: 弊社担当者名の重複を削除（伝票コード上部の欄に統一） */
+  html+='〒120-0005<br>東京都足立区綾瀬7-4-1<br>TEL. 03-5849-5563&emsp;FAX. 03-5849-5564<br>登録番号:T4040001077220</div></div>';
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
   if(!isShipping)html+='<div><b>件名:</b> '+subject+'</div>';
   html+='<div><b>担当者:</b> '+salesP+'</div>';
@@ -3204,7 +3446,10 @@ function generateQuoteHTML(order,docType){
     for(var i=0;i<Math.max(0,6-rows.length);i++)html+='<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
   }
   html+='</tbody></table>';
-  if(order.productNotes){var pnText=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');html+='<div style="margin:6px 0;padding:6px 10px;border:1px solid #E2E8F0;background:#F8FAFC;font-size:9px;border-radius:4px"><b>商品備考:</b> '+pnText.replace(/\n/g,'<br>')+'</div>';}
+  /* v18.33 要望⑰: 見積書系は商品備考を税込合計ボックスの下部罫線より下へ移設（出荷指示書・受領書は従来位置） */
+  var pnHtml='';
+  if(order.productNotes){var pnText=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');pnHtml='<div style="margin:8px 0 0 0;padding:6px 10px;border:1px solid #E2E8F0;background:#F8FAFC;font-size:9.5px;border-radius:4px"><b>商品備考:</b> '+pnText.replace(/\n/g,'<br>')+'</div>';}
+  if(pnHtml&&(isShipping||isReceipt))html+=pnHtml;
   if(isShipping){
     /* BOM detail table for shipping instruction
        v14.3 Codex P1対応: _partialReleases を BOM 数量から差し引いて表示する */
@@ -3233,7 +3478,7 @@ function generateQuoteHTML(order,docType){
         bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
         var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
         var colorName=(ln.type==='open'||!co)?'':co.l;
-        html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">'+productName(ln.line,true)+' '+sizeObj(ln.size).l+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'')+'</td></tr>';
+        html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">'+productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'')+'</td></tr>';
       }
       /* 扉は色別に展開、非扉はそのまま。部分解放を差し引く */
       var expandedB=[];
@@ -3284,6 +3529,7 @@ function generateQuoteHTML(order,docType){
     html+='<div class="trow sub"><span>10%対象&emsp;&yen;'+fm(subtotal)+'</span><span>(税)&emsp;&yen;'+fm(tax10)+'</span></div>';
     html+='<div class="trow sub"><span>8%軽減対&emsp;&yen;0</span><span>(税)&emsp;&yen;0</span></div>';
     html+='<div class="trow sub"><span>非課税対象&emsp;&yen;0</span></div></div>';
+    if(pnHtml)html+=pnHtml;/* v18.33 要望⑰: 商品備考は税込合計の下 */
   }
   html+='<div style="margin-top:16px;font-size:9px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
@@ -3336,10 +3582,12 @@ function generateExcel(order,docType){
   wsData.push(['住所',cust?cust.pref+(cust.city||''):'','','','','TEL. 03-5849-5563  FAX. 03-5849-5564']);
   var exSalesP=order.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
   var exPayTerms=order.paymentTerms||'前払い（銀行振り込み）';
-  wsData.push(['電話番号',cust&&cust.phone?cust.phone:'','FAX番号',cust&&cust.fax?cust.fax:'','','登録番号:T4040001077220  担当者: '+exSalesP]);
-  if(cust&&cust.contactPerson)wsData.push(['ご担当',cust.contactPerson+' 様']);
+  /* v18.33 要望⑬⑯: Excel出力も見積書HTMLと同様、担当者は伝票コード上部の欄に統一・先方担当者（ご担当）行は削除 */
+  wsData.push(['電話番号',cust&&cust.phone?cust.phone:'','FAX番号',cust&&cust.fax?cust.fax:'','','登録番号:T4040001077220']);
   wsData.push([]);
-  wsData.push(['件名',q.subject,'','担当者',exSalesP]);
+  /* v18.33 要望⑮: 出荷指示書Excelには件名を出さない（HTMLと同挙動） */
+  if(docType!=='shipping')wsData.push(['件名',q.subject,'','担当者',exSalesP]);
+  else wsData.push(['','','','担当者',exSalesP]);
   wsData.push([cfg.dateLabel,tdSlash(),'','伝票コード',q.slipCode]);
   if(docType==='quote'){
     wsData.push(['納期','別途相談','','有効期限','御見積後1ヶ月']);
@@ -3386,6 +3634,8 @@ function generateExcel(order,docType){
     wsData.push(['','','','','8%軽減対',0,'(税)',0]);
     wsData.push(['','','','','非課税対象',0]);
   }
+  /* v18.33 要望⑰: Excel出力も税込合計の直後に商品備考（HTMLと同順） */
+  if(order.productNotes&&!isReceipt){var pn=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');wsData.push([]);wsData.push(['商品備考: '+pn]);}
   wsData.push([]);
   if(docType==='invoice'){
     wsData.push(['お振込手数料はお客様にてご負担ください。']);
@@ -3396,7 +3646,7 @@ function generateExcel(order,docType){
     wsData.push(['振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック']);
   }
   if(order.notes){wsData.push([]);wsData.push(['備考: '+order.notes]);}
-  if(order.productNotes){var pn=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');wsData.push([]);wsData.push(['商品備考: '+pn]);}
+  if(order.productNotes&&isReceipt){var pn2=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');wsData.push([]);wsData.push(['商品備考: '+pn2]);}
   var ws=XLSX.utils.aoa_to_sheet(wsData);
   ws['!cols']=[{wch:14},{wch:42},{wch:8},{wch:8},{wch:12},{wch:14},{wch:8},{wch:20}];
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
@@ -3917,14 +4167,13 @@ function App(){
             h('option',{value:'user'},'事務')
           )
         ),
+        /* v18.33 要望③: 「リストにない場合」の氏名直接入力欄を削除（全ユーザーのPW設定完了に伴い、登録済みユーザーの選択のみに） */
         h('div',{style:{marginBottom:12}},
-          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'氏名（選択）'),
-          h('select',{className:'inp',value:userName[0],onChange:function(e){userName[1](e.target.value);},style:{fontSize:14,padding:'8px 10px',marginBottom:6}},
+          h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'氏名'),
+          h('select',{className:'inp',value:userName[0],onChange:function(e){userName[1](e.target.value);},style:{fontSize:14,padding:'8px 10px'}},
             h('option',{value:''},'-- 選択してください --'),
             USERS.filter(function(u){return !loginRole[0]||((u.role||'user')===loginRole[0]);}).map(function(u){return h('option',{key:u.id,value:u.name},u.name+(u.role==='admin'?'（管理者）':''));})
-          ),
-          h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'リストにない場合は下に氏名を直接入力（※登録済みユーザーのみログイン可）'),
-          h('input',{className:'inp',value:userName[0],onChange:function(e){userName[1](e.target.value);},placeholder:'例: 齋藤',style:{fontSize:14,padding:'8px 10px',marginTop:4},onKeyDown:function(e){if(e.key==='Enter')doLogin();}})
+          )
         ),
         h('div',{style:{marginBottom:12}},
           h('label',{style:{fontSize:10,fontWeight:600,color:'var(--g600)',display:'block',marginBottom:4}},'拠点'),
@@ -4123,23 +4372,110 @@ function App(){
   );
 }
 
+/* ========== v18.33 追B: 顧客CSV取込（Access出力16列） ========== */
+/* 列: 顧客コード,顧客名称,顧客フリガナ,顧客敬称,担当者名称,担当者名称フリガナ,担当者敬称,郵便番号,住所1,住所2,電話番号,FAX番号,携帯電話番号,Email1,Email2,備考
+   住所1から都道府県を分離して既存構造(pref/city)へマッピング。顧客コードでupsert（既存は属性(attr)・弊社担当を保持）。 */
+function parseCsvText(txt){
+  var rows=[],row=[],cur='',q=false;
+  for(var i=0;i<txt.length;i++){
+    var ch=txt[i];
+    if(q){
+      if(ch==='"'){if(txt[i+1]==='"'){cur+='"';i++;}else q=false;}
+      else cur+=ch;
+    }else{
+      if(ch==='"')q=true;
+      else if(ch===','){row.push(cur);cur='';}
+      else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&txt[i+1]==='\n')i++;row.push(cur);rows.push(row);row=[];cur='';}
+      else cur+=ch;
+    }
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  return rows;
+}
+function splitPrefAddr(a1,a2){
+  var s=String(a1||'').trim();
+  var m=s.match(/^(北海道|東京都|京都府|大阪府|..県|...県)/);
+  var pref=m?m[1]:'';
+  var city=(m?s.slice(m[1].length):s)+String(a2||'').trim();
+  return {pref:pref||'東京都',city:city};
+}
+function importCustsAoa(aoa){
+  var hdr=-1,ci={};
+  var COLS={id:/顧客コード/,name:/顧客名称/,kana:/顧客フリガナ/,tantou:/^担当者名称$/,postal:/郵便番号/,a1:/住所1/,a2:/住所2/,phone:/電話番号/,fax:/FAX番号/,mobile:/携帯電話番号/,e1:/Email1/i,e2:/Email2/i,note:/備考/};
+  for(var r=0;r<Math.min(aoa.length,5);r++){
+    var row=aoa[r]||[];var found={};
+    row.forEach(function(x,i){var s=String(x||'');Object.keys(COLS).forEach(function(k){if(COLS[k].test(s)&&found[k]==null)found[k]=i;});});
+    if(found.id!=null&&found.name!=null){hdr=r;ci=found;break;}
+  }
+  if(hdr<0)return {added:0,updated:0,skipped:0,error:'ヘッダ行（顧客コード・顧客名称）を認識できません'};
+  var added=0,updated=0,skipped=0;
+  for(var rr=hdr+1;rr<aoa.length;rr++){
+    var rw=aoa[rr]||[];
+    var id=String(rw[ci.id]||'').trim(),name=String(rw[ci.name]||'').trim();
+    if(!id||!name){skipped++;continue;}
+    var pa=splitPrefAddr(ci.a1!=null?rw[ci.a1]:'',ci.a2!=null?rw[ci.a2]:'');
+    var rec={id:id,name:name,pref:pa.pref,city:pa.city,
+      postal:String((ci.postal!=null?rw[ci.postal]:'')||'').trim(),
+      phone:String((ci.phone!=null?rw[ci.phone]:'')||'').trim(),
+      fax:String((ci.fax!=null?rw[ci.fax]:'')||'').trim(),
+      contactPerson:String((ci.tantou!=null?rw[ci.tantou]:'')||'').trim(),
+      kana:String((ci.kana!=null?rw[ci.kana]:'')||'').trim(),
+      mobile:String((ci.mobile!=null?rw[ci.mobile]:'')||'').trim(),
+      email:String((ci.e1!=null?rw[ci.e1]:'')||'').trim(),
+      note:String((ci.note!=null?rw[ci.note]:'')||'').trim()};
+    var ex=CUSTS.find(function(c){return c.id===id;});
+    if(ex){Object.assign(ex,rec);updated++;}/* attr(顧客属性)・salesPersonはrecに無いため保持される */
+    else{rec.contact='';rec.salesPerson='';rec.attr='';CUSTS.unshift(rec);added++;}
+  }
+  return {added:added,updated:updated,skipped:skipped};
+}
 /* ========== CUSTOMER PAGE ========== */
 function CustPage(p){
-  var sr=us(''),pf=us('all'),showAdd=us(false),bump=us(0);
+  var sr=us(''),pf=us('all'),af=us('all'),showAdd=us(false),bump=us(0);
   var editCust=us(null);/* 編集中顧客 */
-  var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:''});
+  var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:''});
+  /* v18.33 追B: 顧客属性フィルタの選択肢（登録済み属性のユニーク値） */
+  var attrs=[];CUSTS.forEach(function(c){if(c.attr&&attrs.indexOf(c.attr)<0)attrs.push(c.attr);});
   var fl=CUSTS.filter(function(c){
     if(pf[0]!=='all'&&c.pref!==pf[0])return false;
-    if(sr[0]&&c.name.indexOf(sr[0])<0&&c.id.indexOf(sr[0])<0&&(c.city||'').indexOf(sr[0])<0&&(c.contact||'').indexOf(sr[0])<0)return false;
+    if(af[0]!=='all'&&(c.attr||'')!==af[0])return false;/* v18.33 追B: 顧客属性フィルタ */
+    /* v18.33 要望⑲: 「担当者」(contact)欄の廃止に伴い検索対象からも除外（データは互換のため残置） */
+    if(sr[0]&&c.name.indexOf(sr[0])<0&&c.id.indexOf(sr[0])<0&&(c.city||'').indexOf(sr[0])<0)return false;
     return true;
   });
+  /* v18.33 追B: 顧客CSV/Excel取込（Access出力。SJIS/UTF-8両対応） */
+  function importCustFile(e){
+    var f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
+    if(p.isReadOnly){alert('読み取り専用モード中は顧客取込できません');return;}
+    var rd=new FileReader();
+    rd.onload=function(ev){
+      try{
+        var buf=ev.target.result,aoa;
+        if(/\.(xlsx|xls)$/i.test(f.name)){
+          var wb=XLSX.read(buf,{type:'array'});
+          aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false});
+        }else{
+          var txt;
+          try{txt=new TextDecoder('utf-8',{fatal:true}).decode(buf);}catch(e2){txt=new TextDecoder('shift_jis').decode(buf);}
+          aoa=parseCsvText(txt);
+        }
+        if(!confirm('顧客データを取込みます（顧客コードが一致する既存顧客は上書き更新・属性と弊社担当は保持）。よろしいですか？'))return;
+        var res=importCustsAoa(aoa);
+        if(res.error){alert(res.error);return;}
+        saveCusts();bump[1](bump[0]+1);
+        if(typeof cloudSave==='function')cloudSave(p.userName||'');
+        alert('顧客取込完了: 新規'+res.added+'件 / 更新'+res.updated+'件 / スキップ'+res.skipped+'件\n※「顧客属性」は取込後に各顧客の編集画面で入力してください（例: 学校・プール・温浴施設）');
+      }catch(err){alert('取込に失敗しました: '+(err&&err.message||err));}
+    };
+    rd.readAsArrayBuffer(f);
+  }
   function addCust(){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){alert('読み取り専用モード中は顧客追加できません');return;}
     var f=nf[0];if(!f.name)return;
-    var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||''};
+    var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:f.attr||''};
     CUSTS.unshift(nc);
-    nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:''});
+    nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:''});
     showAdd[1](false);bump[1](bump[0]+1);saveCusts();
     p.selectCust(nc);
   }
@@ -4168,18 +4504,25 @@ function CustPage(p){
 
   return h('div',{className:'page'+(p.tab==='cust'?' show':'')},h('div',{className:'card'},
     h('div',{className:'chd'},h('h3',null,'顧客DB（'+CUSTS.length+'件）'),
-      h('div',{style:{display:'flex',gap:4}},
+      h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
         h('button',{className:'btn btn-gn',onClick:function(){showAdd[1](true);}},'＋ 新規顧客追加'),
+        /* v18.33 追B: AccessエクスポートCSV/Excelの顧客取込 */
+        h('label',{className:'btn btn-tl',style:{cursor:'pointer'}},'📥 顧客CSV取込',
+          h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:importCustFile})),
+        /* v18.33 追B: 顧客属性フィルタ（例: 学校・プール・温浴施設。属性は顧客編集で入力） */
+        h('select',{className:'inp',value:af[0],onChange:function(e){af[1](e.target.value);},style:{width:110}},h('option',{value:'all'},'全属性'),attrs.map(function(a){return h('option',{key:a,value:a},a);})),
         h('select',{className:'inp',value:pf[0],onChange:function(e){pf[1](e.target.value);},style:{width:100}},h('option',{value:'all'},'全都道府県'),PREFS_ALL.map(function(pr){return h('option',{key:pr,value:pr},pr);})),
         h('input',{className:'inp',placeholder:'名前・ID・地域で検索…',value:sr[0],onChange:function(e){sr[1](e.target.value);},style:{width:180}})
       )
     ),
     h('div',{className:'scy',style:{maxHeight:'74vh'}},h('table',{className:'tbl'},
-      h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'法人名'),h('th',null,'都道府県'),h('th',null,'市区町村'),h('th',null,'〒'),h('th',null,'TEL'),h('th',null,'担当者'),h('th',null,'先方担当'),h('th',null,'弊社担当'),h('th',{style:{minWidth:160}},'操作'))),
+      /* v18.33 要望⑲: 「担当者」列を削除（先方担当・弊社担当の2つに統一）。追B: 顧客属性列を追加 */
+      h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'法人名'),h('th',null,'属性'),h('th',null,'都道府県'),h('th',null,'市区町村'),h('th',null,'〒'),h('th',null,'TEL'),h('th',null,'先方担当'),h('th',null,'弊社担当'),h('th',{style:{minWidth:160}},'操作'))),
       h('tbody',null,fl.map(function(c){return h('tr',{key:c.id},
-        h('td',null,h('b',null,c.id)),h('td',null,c.name),h('td',null,c.pref),h('td',null,c.city||''),
+        h('td',null,h('b',null,c.id)),h('td',null,c.name),
+        h('td',{style:{fontSize:9}},c.attr||''),
+        h('td',null,c.pref),h('td',null,c.city||''),
         h('td',{style:{fontSize:9}},c.postal||''),h('td',{style:{fontSize:9}},c.phone||''),
-        h('td',null,c.contact||''),
         h('td',null,c.contactPerson||''),
         h('td',null,c.salesPerson||''),
         h('td',{style:{whiteSpace:'nowrap'}},
@@ -4205,7 +4548,9 @@ function CustPage(p){
           h('div',{style:{flex:1}},h('label',{style:FL},'電話番号'),h('input',{className:'inp',value:editCust[0].phone||'',onChange:function(e){ufEdit('phone',e.target.value);}})),
           h('div',{style:{flex:1}},h('label',{style:FL},'FAX番号'),h('input',{className:'inp',value:editCust[0].fax||'',onChange:function(e){ufEdit('fax',e.target.value);}}))
         ),
-        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'担当者名'),h('input',{className:'inp',value:editCust[0].contact||'',onChange:function(e){ufEdit('contact',e.target.value);}}))),
+        /* v18.33 追B: 顧客属性（取込後に手入力。フィルタに使用） */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（例: 学校・プール・温浴施設）'),h('input',{className:'inp',value:editCust[0].attr||'',onChange:function(e){ufEdit('attr',e.target.value);},placeholder:'例: 学校'}))),
+        /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:editCust[0].contactPerson||'',onChange:function(e){ufEdit('contactPerson',e.target.value);}})),
           h('div',{style:{flex:1}},h('label',{style:FL},'弊社営業担当'),h('input',{className:'inp',value:editCust[0].salesPerson||'',onChange:function(e){ufEdit('salesPerson',e.target.value);}}))
@@ -4227,7 +4572,9 @@ function CustPage(p){
           h('div',{style:{flex:1}},h('label',{style:FL},'電話番号'),h('input',{className:'inp',value:nf[0].phone,onChange:function(e){uf('phone',e.target.value);},placeholder:'例: 03-1234-5678'})),
           h('div',{style:{flex:1}},h('label',{style:FL},'FAX番号'),h('input',{className:'inp',value:nf[0].fax,onChange:function(e){uf('fax',e.target.value);},placeholder:'例: 03-1234-5679'}))
         ),
-        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'担当者名'),h('input',{className:'inp',value:nf[0].contact,onChange:function(e){uf('contact',e.target.value);},placeholder:'例: 齋藤 勝'}))),
+        /* v18.33 追B: 顧客属性 */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（例: 学校・プール・温浴施設）'),h('input',{className:'inp',value:nf[0].attr||'',onChange:function(e){uf('attr',e.target.value);},placeholder:'例: 学校'}))),
+        /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:nf[0].contactPerson,onChange:function(e){uf('contactPerson',e.target.value);},placeholder:'例: 田中 太郎'})),
           h('div',{style:{flex:1}},h('label',{style:FL},'弊社営業担当'),h('input',{className:'inp',value:nf[0].salesPerson,onChange:function(e){uf('salesPerson',e.target.value);},placeholder:'例: 齋藤 勝'}))
@@ -4281,7 +4628,8 @@ function InvPage(p){
   var colors=LINE_COLORS[ln[0]]||[];
   var sizes=LINE_SIZES[ln[0]]||[];
   var isJP=ln[0]==='jp01'||ln[0]==='jp2';
-  var jp2XLNoDoor=isJp2XLDoorBlocked(ln[0],sz[0]);/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ） */
+  /* v18.33 要望⑤: SSWは扉なし製品のため、jp2×XLと同じ「扉なし強制」機構に乗せる（jp2XLNoDoor=強制扉なしフラグとして共用） */
+  var jp2XLNoDoor=isJp2XLDoorBlocked(ln[0],sz[0])||sz[0]==='SSW';/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ） */
   function changeLine(v){ln[1](v);cl[1]((LINE_COLORS[v]||[])[0]?LINE_COLORS[v][0].v:'');var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
   /* Fix: sync lock state when switching to personal type (#16) */
   ue(function(){
@@ -4341,15 +4689,16 @@ function InvPage(p){
     baseCount=_db>0?_db:(tp[0]==='personal'?qty:1);
   }else{
     qty=blocks[0].reduce(function(s,b){return s+(parseInt(b.c)||1)*(parseInt(b.t)||1);},0);
+    /* v18.33 要望⑩: パーソナルも列×段入力時のベース枚数=Σ列数（従来は台数で上書きしていたバグを撤去） */
     baseCount=blocks[0].reduce(function(s,b){return s+(parseInt(b.c)||1);},0);
-    if(tp[0]==='personal')baseCount=qty;
   }
   /* v18.32 要望②③: 列×段(grid)選択時、ネジ・サイドジョイント・目隠しネジを自動計算して入力欄へ反映。
      顧客提供「ネジ計算表」の確定式(calcScrewNeeds)。島(g)ごとに計算して合計。
      blocks/タイプ/サイド有無/入力方式の変更時に上書きし、その後の手動修正は構成を変えない限り保持される。
      Sα(sa)はサイドジョイント部材が存在しないためサイドなし式で計算（上下ジョイント除外と同じライン別ガード）。
      目隠しネジは在庫実態(jp2/Sαはグレーが主流)によりグレー欄へ自動入力（黒が必要な場合は手動で振替可）。 */
-  var screwCalc=inputMode[0]==='grid'?calcScrewNeeds(blocks[0],tp[0],tp[0]==='personal'&&hasSideJt[0]&&ln[0]!=='sa'):null;
+  /* v18.33 要望①: サイズ別のネジ計算表（SML/SS・3S/XL/SSα）に準拠。sz変更でも再計算（依存配列にsz[0]既存） */
+  var screwCalc=inputMode[0]==='grid'?calcScrewNeeds(blocks[0],tp[0],tp[0]==='personal'&&hasSideJt[0]&&ln[0]!=='sa',screwSizeGrp(sz[0])):null;
   /* ライン別在庫ゲート＋ゲート適用後の自動入力値（tw/jp01はネジ在庫の取扱なし→自動入力しない） */
   var screwGates=screwCalc?{joint:lineStocksPart(ln[0],'jointScrew_'+sizeObj(sz[0]).grp+'_bk'),sj:lineStocksPart(ln[0],'sj'),cap:lineStocksPart(ln[0],'capScrew_gy')}:null;
   var screwAuto=screwCalc?{joint:screwGates.joint?screwCalc.total.joint:0,sj:(tp[0]==='personal'&&screwGates.sj&&hasSideJt[0]&&ln[0]!=='sa')?screwCalc.total.sj:0,cap:screwGates.cap?screwCalc.total.cap:0}:null;
@@ -4413,12 +4762,13 @@ function InvPage(p){
       var nlX=lines[0].concat(exLines);lines[1](nlX);doCheck(nlX);return;
     }
     var realKey=pd.isDoor?pd.doorKey:(pd.stockKey||pd.k);
-    var pSub,pLabel=pd.l;
-    if(pd.fixedSub){pSub=pd.fixedSub;}
-    else if(pd.hasSub==='grp'){pSub=sizeObj(partSub[0]).grp;pLabel+='('+pSub.toUpperCase()+')';}
-    else if(pd.hasSub==='size'){pSub=partSub[0];pLabel+='('+pSub+')';}
     /* v14 A6: パーツ単品の製品ラインは本体明細のラインとは別に partLine で選択可能 */
     var pLine=partLine[0]||ln[0];
+    var pSub,pLabel=pd.l;
+    /* v18.33 要望⑧: 新台湾製(sa)のサイズ・グループ表記は「Sα」に統一（在庫キーpSubは従来のsml/Sのまま） */
+    if(pd.fixedSub){pSub=pd.fixedSub;}
+    else if(pd.hasSub==='grp'){pSub=sizeObj(partSub[0]).grp;pLabel+='('+(pLine==='sa'?'Sα':pSub.toUpperCase())+')';}
+    else if(pd.hasSub==='size'){pSub=partSub[0];pLabel+='('+(pLine==='sa'?'Sα':pSub)+')';}
     var pColorOpt=(LINE_COLORS[pLine]||LINE_COLORS[ln[0]]||[]);
     var pColor=pd.hasColor?(pColorOpt.find(function(c){return c.v===partColor[0];})?partColor[0]:(pColorOpt[0]&&pColorOpt[0].v)||''):'';
     var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:parseInt(partPrice[0])||0,partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
@@ -4831,7 +5181,7 @@ function InvPage(p){
             })),
             h('div',{style:{display:'flex',gap:4,marginBottom:5}},
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
-                h('select',{className:'inp',value:sz[0],onChange:function(e){sz[1](e.target.value);}},sizes.map(function(s){return h('option',{key:s,value:s},sizeObj(s).l);}))),
+                h('select',{className:'inp',value:sz[0],onChange:function(e){sz[1](e.target.value);}},sizes.map(function(s){return h('option',{key:s,value:s},sizeLabel(ln[0],s));}))),
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'タイプ'),
                 h('select',{className:'inp',value:tp[0],onChange:function(e){tp[1](e.target.value);}},TYPES.map(function(t){return h('option',{key:t.v,value:t.v},t.l);})))
             ),
@@ -4844,8 +5194,8 @@ function InvPage(p){
               h('span',{style:{fontSize:9,color:hasDoor[0]?'var(--nv)':'#8B6914'}},hasDoor[0]?'（扉・錠前を含む）':'（オープン: 扉/錠なし）')
             ),
             /* v18.32 要望⑥: jp2×XL＋扉の赤字アラート（この画面では扉を選択できない） */
-            jp2XLNoDoor?h('div',{style:{marginBottom:6,padding:'5px 8px',background:'#FEE2E2',border:'1px solid #FCA5A5',borderRadius:5,fontSize:9,fontWeight:700,color:'#DC2626',lineHeight:1.5}},
-              'XLサイズの扉は台湾製になります。パーツ単品追加よりご選択ください'):null,
+            jp2XLNoDoor?h('div',{style:{marginBottom:6,padding:'5px 8px',background:sz[0]==='SSW'?'#EFF6FF':'#FEE2E2',border:'1px solid '+(sz[0]==='SSW'?'#93C5FD':'#FCA5A5'),borderRadius:5,fontSize:9,fontWeight:700,color:sz[0]==='SSW'?'#1e3a5f':'#DC2626',lineHeight:1.5}},
+              sz[0]==='SSW'?'SSWは扉なし製品です（上下共通ボード1・SSサイド4・SSバックボード2）':'XLサイズの扉は台湾製になります。パーツ単品追加よりご選択ください'):null,
             /* Door type selector - only for jp01/jp2 and 扉あり */
             isJP&&hasDoor[0]?h('div',{style:{marginBottom:6}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'扉タイプ'),
@@ -4942,7 +5292,20 @@ function InvPage(p){
                     h('button',{className:'btn',style:{fontSize:9,padding:'2px 8px',marginTop:2},onClick:function(){
                       var idx=-1;blocks[0].forEach(function(x,i){if((parseInt(x.g)||0)===gv)idx=i;});
                       var nb=blocks[0].slice();nb.splice(idx+1,0,{c:'1',t:'1',g:gv});blocks[1](nb);
-                    }},'＋ ブロック追加'+(multiIsland?'（島'+(gi+1)+'内: 例 3列3段＋2列2段）':'（例: 2列3段＋1列2段＝8台）'))
+                    }},'＋ ブロック追加'+(multiIsland?'（島'+(gi+1)+'内: 例 3列3段＋2列2段）':'（例: 2列3段＋1列2段＝8台）')),
+                    /* v18.33 要望②: 同じ構成の島を×Nで一括入力（この島のブロック構成を複製して島を追加。値はディープコピー） */
+                    h('button',{className:'btn',style:{fontSize:9,padding:'2px 8px',marginTop:2,marginLeft:4,color:'var(--nv)',borderColor:'var(--nv)'},title:'この島と同じ構成（列×段ブロック）をN個複製して島を追加します',onClick:function(){
+                      var nStr=prompt('この島'+(multiIsland?'（島'+(gi+1)+'）':'')+'と同じ構成の島をいくつ追加しますか？（例: 3）','1');
+                      if(nStr===null)return;
+                      var n=parseInt(nStr);
+                      if(!(n>0)){p.toast('1以上の数を入力してください');return;}
+                      if(n>50){p.toast('複製は一度に50島までです');return;}
+                      var srcBlocks=blocks[0].filter(function(x){return (parseInt(x.g)||0)===gv;});
+                      var mx=0;blocks[0].forEach(function(x){mx=Math.max(mx,parseInt(x.g)||0);});
+                      var add=[];
+                      for(var k=1;k<=n;k++){srcBlocks.forEach(function(x){add.push({c:x.c,t:x.t,g:mx+k});});}
+                      blocks[1](blocks[0].concat(add));
+                    }},'⧉ この島を×N複製')
                   );
                 });
               })(),
@@ -5030,7 +5393,7 @@ function InvPage(p){
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'パーツ（部材在庫一覧の全項目）'),
                 h('select',{className:'inp',value:partType[0],onChange:function(e){partType[1](e.target.value);}},getPartAddDefs().map(function(pd){return h('option',{key:pd.k,value:pd.k},pd.l);}))),
               (PART_ADD_DEFS.find(function(d){return d.k===partType[0];})||{}).hasSub?h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
-                h('select',{className:'inp',value:partSub[0],onChange:function(e){partSub[1](e.target.value);}},(LINE_SIZES[partLine[0]]||sizes).map(function(s){return h('option',{key:s,value:s},s);}))):null
+                h('select',{className:'inp',value:partSub[0],onChange:function(e){partSub[1](e.target.value);}},(LINE_SIZES[partLine[0]]||sizes).map(function(s){return h('option',{key:s,value:s},(partLine[0]||ln[0])==='sa'?'Sα':s);}))):null
             ),
             (PART_ADD_DEFS.find(function(d){return d.k===partType[0];})||{}).hasColor?h('div',{style:{marginBottom:4}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'カラー'),
@@ -5082,7 +5445,7 @@ function InvPage(p){
             return h('div',{className:'olc',key:l.id},
               isNoDoor?h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--g200)',flexShrink:0}}):h('div',{style:{width:14,height:14,borderRadius:3,background:co?co.x:'#ccc',flexShrink:0}}),
               h('div',{style:{flex:1,fontSize:10}},
-                h('b',null,sizeObj(l.size).l+(!isNoDoor&&co&&!l.colorBreakdown?' '+co.l:'')),
+                h('b',null,sizeLabel(l.line,l.size)+(!isNoDoor&&co&&!l.colorBreakdown?' '+co.l:'')),
                 l.colorBreakdown?h('div',{style:{fontSize:8,color:'var(--pr)',fontWeight:600}},l.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join(', ')):null,
                 h('div',{style:{fontSize:8,color:'var(--g400)'}},
                   (lo?lo.mark+' ':'')+(to?to.l+' ':'')+(isNoDoor?'[扉なし] ':'')+lineSpecLabel(l)+(l.hasBase===false?' ベース無':'')+(l.shelfQty>0?' 棚板'+l.shelfQty+'枚':'')
@@ -5097,25 +5460,12 @@ function InvPage(p){
         lines[0].length>0?h('div',{className:'card'},
           h('div',{className:'chd'},h('h3',null,'見積オプション')),
           h('div',{style:{padding:10}},
+            /* v18.33 要望⑪: 件名・値引き・支払条件は見積オプションから削除（見積書作成画面で直接編集する方式へ移行。エンド納品先・備考は残置） */
             h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-              h('div',{style:{flex:2}},
-                h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'件名（空欄で自動生成）'),
-                h('input',{className:'inp',value:quoteSubject[0],onChange:function(e){quoteSubject[1](e.target.value);},placeholder:'例: MyプラECOロッカー Mサイズ 9列3段'})
-              ),
               h('div',{style:{flex:1}},
                 h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'LEC担当者（空欄でデフォルト）'),
                 h('input',{className:'inp',value:quoteSalesPerson[0],onChange:function(e){quoteSalesPerson[1](e.target.value);},placeholder:cust&&cust.salesPerson?cust.salesPerson:'齋藤 勝'})
               )
-            ),
-            h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'値引き'),h('input',{className:'inp',type:'number',value:discount[0],onChange:function(e){discount[1](e.target.value);},placeholder:'0'}))
-            ),
-            h('div',{style:{marginBottom:6}},
-              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'支払条件'),
-              h('select',{className:'inp',value:paymentTerms[0],onChange:function(e){paymentTerms[1](e.target.value);}},
-                ['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末','その他'].map(function(pt){return h('option',{key:pt,value:pt},pt);})
-              ),
-              paymentTerms[0]==='その他'?h('input',{className:'inp',value:paymentCustom[0],onChange:function(e){paymentCustom[1](e.target.value);},placeholder:'支払条件を入力',style:{marginTop:4}}):null
             ),
             h('div',{style:{marginBottom:6}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'商品に対する備考（商品名の下に表示）'),
@@ -5183,7 +5533,7 @@ function InvPage(p){
                   wr.ship?h('div',{style:{fontSize:9,color:'var(--g400)'}},'('+wr.ship.weight+'kg × ¥'+wr.ship.rate+'/kg)'):null,
                   wr.ship&&wr.ship.charter?h('div',{style:{fontSize:9,color:'#DC2626'}},'チャーター便 +¥30,000'):null,
                   /* v18.16 P3連動: 運賃表ベースの精密試算を倉庫カードに参考併記（距離解決時のみ・本番送料は不変） */
-                  (function(){var fr=cust?calcFreight({wh:wr.whId,lines:lines[0]},cust.city||'',cust.pref||''):null;return fr&&fr.ok?h('div',{style:{fontSize:9,color:'#1e3a5f',marginTop:2,fontWeight:700,borderTop:'1px dashed #cbd5e1',paddingTop:2},title:'運賃表ベースの精密試算（'+fr.weight+'kg・'+fr.distance+'km'+(fr.approxDistance?'/暫定距離':'')+'）。本番送料には自動反映しません'},'運賃表試算: ¥'+fm(fr.quoted)+(fr.approxDistance?'(暫定)':'')):null;})(),
+                  (function(){var fr=cust?calcFreight({wh:wr.whId,lines:lines[0]},cust.city||'',cust.pref||''):null;return fr&&fr.ok?h('div',{style:{fontSize:9,color:'#1e3a5f',marginTop:2,fontWeight:700,borderTop:'1px dashed #cbd5e1',paddingTop:2},title:'運賃表ベースの精密試算（'+(fr.yamato?('ヤマト'+fr.boxSize+'サイズ×'+fr.boxCount+'箱'):(fr.weight+'kg・'+fr.distance+'km'+(fr.approxDistance?'/暫定距離':'')))+'）。本番送料には自動反映しません'},'運賃表試算: ¥'+fm(fr.quoted)+(fr.approxDistance?'(暫定)':'')):null;})(),
                   !wr.check.ok?h('div',{style:{fontSize:9,color:'#B91C1C',marginTop:2}},
                     '不足: '+wr.check.items.filter(function(i){return!i.ok;}).slice(0,2).map(function(i){return i.label;}).join(', ')
                   ):null
@@ -5265,7 +5615,7 @@ function InvPage(p){
           if(ln.isFreeInput)return null;
           var bom=getBOM(ln);
           var lo2=LINES.find(function(x){return x.id===ln.line;});
-          var lname=ln.isPartOnly?ln.partLabel:((lo2?lo2.mark+' ':'')+sizeObj(ln.size).l+' '+lineSpecLabel(ln)+'（'+fm(ln.qty)+'台）');
+          var lname=ln.isPartOnly?ln.partLabel:((lo2?lo2.mark+' ':'')+sizeLabel(ln.line,ln.size)+' '+lineSpecLabel(ln)+'（'+fm(ln.qty)+'台）');
           return h('div',{key:ln.id,style:{marginBottom:10}},
             h('div',{style:{fontWeight:700,fontSize:10,color:'#1e3a5f',marginBottom:2}},'明細'+(li+1)+': '+lname),
             h('table',{className:'tbl',style:{fontSize:9}},
@@ -5287,13 +5637,99 @@ function InvPage(p){
         })
       )
     ):null,
-    showQuote[0]&&quoteOrder[0]?h(Modal,{show:true,title:'帳票プレビュー — '+quoteOrder[0].no,w:900,onClose:function(){showQuote[1](false);},
+    showQuote[0]&&quoteOrder[0]?h(Modal,{show:true,title:'見積書作成 — '+quoteOrder[0].no,w:900,onClose:function(){showQuote[1](false);},
       footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
         h('button',{className:'btn btn-ol',onClick:function(){showQuote[1](false);}},'閉じる'),
         h('button',{className:'btn btn-gn',onClick:function(){printQuote(quoteOrder[0],'quote');}},'見積書印刷'),
         h('button',{className:'btn btn-tl',onClick:function(){generateExcel(quoteOrder[0],'quote');}},'Excel DL')
       )},
-      h('div',{style:{padding:10}},h(QuotePreview,{order:quoteOrder[0],docType:'quote'}))
+      h('div',{style:{padding:10}},
+        /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有） */
+        (function(){
+          var qo=quoteOrder[0];
+          var PAY_TERMS_LIST=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末','その他'];
+          function updQ(patch){
+            if(p.isReadOnly){p.toast('読み取り専用モード中は見積の編集はできません');return;}
+            var no2=Object.assign({},qo,patch);
+            quoteOrder[1](no2);
+            var idx=ORDERS.findIndex(function(x){return x.no===qo.no;});
+            if(idx>=0){Object.assign(ORDERS[idx],patch);saveOrders();cloudSave(p.userName);}
+          }
+          var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
+          var ptKnown=PAY_TERMS_LIST.indexOf(qo.paymentTerms||'')>=0;
+          return h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
+            h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます）'),
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:4}},
+              h('div',null,h('label',{style:EL},'件名（空欄で自動生成: 商品名・サイズ・台数）'),h('input',{className:'inp',value:qo.subject||'',onChange:function(e){updQ({subject:e.target.value});}})),
+              h('div',null,h('label',{style:EL},'値引き（円）'),h('input',{className:'inp',type:'number',value:qo.discount||0,onChange:function(e){updQ({discount:parseInt(e.target.value)||0});}})),
+              h('div',null,h('label',{style:EL},'送料（円）'),h('input',{className:'inp',type:'number',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0});}}))
+            ),
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}},
+              h('div',null,h('label',{style:EL},'支払条件'),
+                h('select',{className:'inp',value:ptKnown?qo.paymentTerms:'その他',onChange:function(e){updQ({paymentTerms:e.target.value==='その他'?'':e.target.value});}},
+                  PAY_TERMS_LIST.map(function(pt){return h('option',{key:pt,value:pt},pt);})),
+                !ptKnown?h('input',{className:'inp',value:qo.paymentTerms||'',onChange:function(e){updQ({paymentTerms:e.target.value});},placeholder:'支払条件を入力',style:{marginTop:3}}):null
+              ),
+              h('div',null,h('label',{style:EL},'LEC担当者（空欄=顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
+            ),
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}},
+              h('div',null,h('label',{style:EL},'商品備考（税込合計の下に表示）'),h('textarea',{className:'inp',rows:2,value:qo.productNotes||'',onChange:function(e){updQ({productNotes:e.target.value});},style:{resize:'vertical'}})),
+              h('div',null,h('label',{style:EL},'全体備考（末尾に表示）'),h('textarea',{className:'inp',rows:2,value:qo.notes||'',onChange:function(e){updQ({notes:e.target.value});},style:{resize:'vertical'}}))
+            )
+          );
+        })(),
+        /* v18.33 要望⑱: 粗利計算表（本体/鍵類/ベース/棚板/トータル・この欄は印刷されません）＋原価表アップロード */
+        (function(){
+          var gp=calcGrossProfit(quoteOrder[0]);
+          var CATS=[['本体','body'],['鍵類','lock'],['ベース','base'],['棚板','shelf'],['トータル','total']];
+          var thS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,background:'#f5f7fa',fontWeight:700};
+          var tdS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,textAlign:'right'};
+          function onUpCost(e){
+            var f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
+            if(p.isReadOnly){p.toast('読み取り専用モード中は原価表を更新できません');return;}
+            var rd=new FileReader();
+            rd.onload=function(ev){
+              try{
+                var wb=XLSX.read(ev.target.result,{type:'array'});
+                var aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true});
+                var pr=parseCostMasterAoa(aoa);
+                if(!pr.count){p.toast('原価データを認識できませんでした（「品番」「原価」列を含むCSV/Excelをご用意ください）');return;}
+                COST_MASTER=Object.assign({},COST_MASTER,pr.map);
+                saveCostMaster();cloudSave(p.userName);
+                quoteOrder[1](Object.assign({},quoteOrder[0]));/* 再計算のための再描画 */
+                p.toast('原価マスタを取込みました: '+pr.count+'件（累計 '+Object.keys(COST_MASTER).length+'件・全端末共有）');
+              }catch(err){p.toast('原価表の読込に失敗: '+(err&&err.message||err));}
+            };
+            rd.readAsArrayBuffer(f);
+          }
+          return h('div',{style:{marginBottom:10,padding:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:4}},
+              h('div',{style:{fontSize:10,fontWeight:700,color:'#276749'}},'📊 粗利計算表（社内用・印刷されません）'),
+              h('label',{className:'btn btn-xs btn-ol',style:{cursor:'pointer',fontSize:9}},'原価表アップロード（品番,原価のCSV/Excel）',
+                h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:onUpCost})),
+              h('span',{style:{fontSize:8,color:'var(--g400)'}},'原価マスタ: '+Object.keys(COST_MASTER).length+'件登録済')
+            ),
+            h('table',{style:{borderCollapse:'collapse',width:'100%'}},
+              h('thead',null,h('tr',null,h('th',{style:thS},'区分'),h('th',{style:thS},'売価'),h('th',{style:thS},'原価'),h('th',{style:thS},'粗利'),h('th',{style:thS},'粗利率'))),
+              h('tbody',null,CATS.map(function(cc){
+                var d=gp[cc[1]];var isTot=cc[1]==='total';
+                var noCost=!gp.hasCost||d.missing>0;
+                var gpv=d.sell-d.cost;
+                return h('tr',{key:cc[1],style:isTot?{fontWeight:900,background:'#ECFDF5'}:null},
+                  h('td',{style:Object.assign({},tdS,{textAlign:'left'})},cc[0]),
+                  h('td',{style:tdS},'¥'+fm(d.sell)),
+                  h('td',{style:tdS},gp.hasCost?('¥'+fm(Math.round(d.cost))+(d.missing>0?' ※':'')):'未設定'),
+                  h('td',{style:tdS},gp.hasCost?('¥'+fm(Math.round(gpv))):'—'),
+                  h('td',{style:tdS},gp.hasCost&&d.sell>0?(Math.round(gpv/d.sell*1000)/10+'%'):'—')
+                );
+              }))
+            ),
+            gp.total.missing>0?h('div',{style:{fontSize:8,color:'#975a16',marginTop:3}},'※ 品番未紐付け・原価未登録の部材が '+gp.total.missing+' 種あり、原価に含まれていません（鍵類・上下共通ボード品番3種などは紐付けデータの連携待ち）'):null,
+            !gp.hasCost?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'原価表（品番,原価）をアップロードすると粗利が自動計算されます。品番は八木熊の品番一覧（商品コード表）と一致させてください'):null
+          );
+        })(),
+        h(QuotePreview,{order:quoteOrder[0],docType:'quote'})
+      )
     ):null
   );
 }
@@ -5363,7 +5799,8 @@ function QuotePreview(p){
   var subject=o.subject||'';
   if(!subject){
     subject=hasNonPart?productName((o.lines.find(function(l){return!l.isPartOnly;})||{}).line||'jp01')+'ロッカー':'パーツ単品';
-    if(hasNonPart){var npl=o.lines.filter(function(l){return!l.isPartOnly;});if(npl.length===1){var fl=npl[0];subject=productName(fl.line)+' '+sizeObj(fl.size).l+' '+lineSpecLabel(fl,'');}else if(npl.length>1){subject+=' '+npl.length+'仕様混在';}}
+    /* v18.33 要望⑮: 件名は「商品名・サイズ・台数」表記（例: Mサイズ 30台） */
+    if(hasNonPart){var npl=o.lines.filter(function(l){return!l.isPartOnly;});if(npl.length===1){var fl=npl[0];subject=productName(fl.line)+' '+sizeLabel(fl.line,fl.size)+' '+fm(fl.qty||lineUnits(fl))+'台';}else if(npl.length>1){subject=productName(npl[0].line)+' '+npl.map(function(fl){return sizeLabel(fl.line,fl.size)+' '+fm(fl.qty||lineUnits(fl))+'台';}).join('／');}}
   }
   var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
   var salesP2=o.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
@@ -5384,22 +5821,20 @@ function QuotePreview(p){
       h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:12}},
         h('div',{style:{width:'52%',borderLeft:'3px solid #222',padding:'8px 12px',lineHeight:1.8}},
           h('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},cust?cust.name+' 御中':''),
-          h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:9}},
-            h('span',null,cust&&cust.postal?'〒'+cust.postal:''),
-            h('span',null,'顧客コード '+(cust?cust.id:''))
-          ),
+          /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ。先方担当者（ご担当）は削除 */
+          h('div',{style:{fontSize:9}},cust&&cust.postal?'〒'+cust.postal:''),
           h('div',{style:{fontSize:10}},cust?cust.pref+(cust.city||''):''),
           h('div',{style:{display:'flex',gap:16,fontSize:9}},
             h('span',null,'電話番号 '+(cust&&cust.phone?cust.phone:'')),
             h('span',null,'FAX番号 '+(cust&&cust.fax?cust.fax:''))
           ),
-          cust&&cust.contactPerson?h('div',{style:{fontSize:9}},'ご担当: '+cust.contactPerson+' 様'):null
+          h('div',{style:{fontSize:9}},'顧客コード '+(cust?cust.id:''))
         ),
         h('div',{style:{width:'44%',textAlign:'right',fontSize:9,lineHeight:1.8}},
           h('div',{style:{fontSize:13,fontWeight:700,marginBottom:2}},'株式会社LEC'),
           h('div',null,'〒120-0005'),h('div',null,'東京都足立区綾瀬7-4-1'),
           h('div',null,'TEL. 03-5849-5563  FAX. 03-5849-5564'),
-          h('div',null,'登録番号:T4040001077220'),h('div',null,'担当者: '+salesP2)
+          h('div',null,'登録番号:T4040001077220')/* v18.33 要望⑬: 担当者は伝票コード上部の欄に統一 */
         )
       ),
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2px 16px',fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
@@ -5455,7 +5890,8 @@ function QuotePreview(p){
             return els;
           })))
         ),
-      o.productNotes?h('div',{style:{margin:'6px 0',padding:'6px 10px',border:'1px solid #E2E8F0',background:'#F8FAFC',fontSize:9,borderRadius:4,whiteSpace:'pre-wrap'}},h('b',null,'商品備考: '),o.productNotes):null,
+      /* v18.33 要望⑰: 見積書系の商品備考は税込合計の下へ移設（出荷指示書・受領書のみ従来位置） */
+      o.productNotes&&(isShipping||isReceipt)?h('div',{style:{margin:'6px 0',padding:'6px 10px',border:'1px solid #E2E8F0',background:'#F8FAFC',fontSize:9,borderRadius:4,whiteSpace:'pre-wrap'}},h('b',null,'商品備考: '),o.productNotes):null,
       isShipping?h('div',{style:{marginTop:12}},
         h('div',{style:{fontSize:11,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'部材内訳'),
         h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'4px 0'}},
@@ -5479,7 +5915,7 @@ function QuotePreview(p){
               bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
               var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
               var colorName=(ln.type==='open'||!co)?'':co.l;
-              hdrText=productName(ln.line,true)+' '+sizeObj(ln.size).l+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'');
+              hdrText=productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'');
             }
             var co3_=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===ln.color;});
             var els=[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},hdrText))];
@@ -5501,6 +5937,8 @@ function QuotePreview(p){
           h('div',{style:{padding:'2px 10px',fontSize:8,color:'#666'}},'非課税対象  \u00A50')
         )
       ):null,
+      /* v18.33 要望⑰: 商品備考は税込合計ボックスの下部罫線より下 */
+      o.productNotes&&!isShipping&&!isReceipt?h('div',{style:{margin:'8px 0 0 0',padding:'6px 10px',border:'1px solid #E2E8F0',background:'#F8FAFC',fontSize:9,borderRadius:4,whiteSpace:'pre-wrap',clear:'both'}},h('b',null,'商品備考: '),o.productNotes):null,
       h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',h('br'),h('br'),'受領日:　　　　　　受領者（署名）:　　　　　　　　　　'):null,
@@ -5781,17 +6219,18 @@ function OrdersPage(p){
           var o=detail[0];var cust=CUSTS.find(function(c){return c.id===o.cid;});
           if(!cust)return null;
           var fr=calcFreight(o,cust.city||'',cust.pref||'');
-          var tblName={r5_amago:'尼高 西濃混載',r6_sapporo:'札幌 西濃混載',misshu:'全国混載'}[fr.table]||fr.table;
+          var tblName={r5_amago:'尼高 西濃混載',r6_sapporo:'札幌 西濃混載',misshu:'全国混載',y_honsha:'本社発 ヤマト宅急便',y_kansai:'関西営業所発 ヤマト宅急便'}[fr.table]||fr.table;
           return h('div',{style:{marginBottom:10,padding:8,background:'#f5f7fa',borderRadius:6,border:'1px solid var(--g200)',fontSize:10}},
             h('div',{style:{fontWeight:700,color:'#1e3a5f',marginBottom:4}},'🚚 送料試算（参考・実データ運賃表）',
               h('span',{style:{fontWeight:400,color:'var(--g400)',marginLeft:6,fontSize:9}},'※請求には自動反映しません。実物の送料と照合用')),
             fr.ok?h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},
               h('span',null,h('b',null,'運賃表: '),tblName),
               h('span',null,h('b',null,'行先: '),(cust.pref||'')+(cust.city||'')),
-              h('span',null,h('b',null,'距離: '),fr.distance+'km'+(fr.approxDistance?'(暫定)':'')+' →'+fr.distBracket+'km区分'),
-              h('span',null,h('b',null,'課金重量: '),fr.weight+'kg →'+fr.weightBracket+'kg区分（実重'+(fr.actualWeight!=null?fr.actualWeight:'-')+'kg/容積'+(fr.volumeWeight!=null?fr.volumeWeight:'-')+'kg・'+fr.boxes+'箱）'),
-              h('span',null,h('b',null,'地別運賃: '),'¥'+fm(fr.rate)),
-              h('span',null,h('b',null,'諸経費(箱数×100): '),'¥'+fm(fr.shokei)),
+              /* v18.33 要望⑨: ヤマト（本社・関西発）は距離ではなく地域×箱サイズ×箱数 */
+              fr.yamato?h('span',null,h('b',null,'地域: '),(YAMATO_REGION_LABEL[fr.region]||fr.region)):h('span',null,h('b',null,'距離: '),fr.distance+'km'+(fr.approxDistance?'(暫定)':'')+' →'+fr.distBracket+'km区分'),
+              fr.yamato?h('span',null,h('b',null,'箱: '),fr.boxSize+'サイズ×'+fr.boxCount+'箱（計算箱数'+fr.boxes+(fr.extraBoxes?'・予備箱'+fr.extraBoxes:'')+'）'):h('span',null,h('b',null,'課金重量: '),fr.weight+'kg →'+fr.weightBracket+'kg区分（実重'+(fr.actualWeight!=null?fr.actualWeight:'-')+'kg/容積'+(fr.volumeWeight!=null?fr.volumeWeight:'-')+'kg・'+fr.boxes+'箱'+(fr.extraBoxes?'/うち予備箱'+fr.extraBoxes:'')+'）'),
+              h('span',null,h('b',null,fr.yamato?'1箱運賃: ':'地別運賃: '),'¥'+fm(fr.rate)),
+              fr.yamato?null:h('span',null,h('b',null,'諸経費((箱数+予備箱)×100): '),'¥'+fm(fr.shokei)),
               fr.surcharge?h('span',null,h('b',null,'燃料サーチャージ: '),'¥'+fm(fr.surcharge)):null,
               h('span',null,h('b',null,'運賃原価: '),'¥'+fm(fr.genka)),
               fr.chuukei?h('span',null,h('b',null,'中継料(1000kg超): '),'¥'+fm(fr.chuukei)):null,
@@ -5805,7 +6244,10 @@ function OrdersPage(p){
             /* v18.10 P3-B: 混載 vs チャーター 比較（参考） */
             (function(){
               if(!fr.ok)return null;
-              var ch=charterCost(o.wh,fr.distance,fr.weight,cust.city||'');/* v18.30: 新柏発は行先市名で全国チャーター表を引く */
+              /* v18.33 要望⑨: ヤマト（本社・関西発）は距離を持たないため、チャーター比較用に尼高表の距離を補完（関西発のみ） */
+              var chDist=fr.distance;
+              if(fr.yamato&&chDist==null&&o.wh==='kansai'){var dd2=destDistanceFor('r5_amago',cust.city||'',cust.pref||'');chDist=dd2?dd2.km:null;}
+              var ch=charterCost(o.wh,chDist,fr.weight,cust.city||'');/* v18.30: 新柏発は行先市名で全国チャーター表を引く */
               if(!ch.ok){
                 return charterTableForWarehouse(o.wh)?h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※チャーター料金表に該当行先が見つかりません（行先市名をご確認ください）'):h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※チャーター比較は尼高/関西/札幌/新柏発に対応（本社発のチャーター表は未提供）');
               }
@@ -5874,7 +6316,7 @@ function OrdersPage(p){
             var sq=parseInt(l.shelfQty)||0;if(sq>0)extras.push('棚板'+sq+'枚');
             return h('tr',{key:i},
               h('td',null,lo?lo.name:''),
-              h('td',null,sizeObj(l.size).l),
+              h('td',null,sizeLabel(l.line,l.size)),
               h('td',null,l.type==='open'?h('span',null,'-'):h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:2,background:co?co.x:'#ccc',verticalAlign:'middle',marginRight:3}}),co?co.l:'')),
               h('td',null,to?to.l:''),
               h('td',null,lineSpecLabel(l)+(extras.length?' ('+extras.join(', ')+')':'')),
@@ -6103,11 +6545,11 @@ function PartsPage(p){
         if(!hasStock(lineId,w))return;
         doorVals[w]={};
         doorSizes.forEach(function(s){
-          if(s==='SSA')return;
+          if(s==='SSA'||s==='SSW')return;
           doorVals[w][s]=gd(lineId,w,color,s,key);
         });
       });
-      editModal[1]({label:label,lineId:lineId,key:key,sub:sub,isDoor:true,color:color,doorVals:doorVals,doorSizes:doorSizes.filter(function(s){return s!=='SSA';})});
+      editModal[1]({label:label,lineId:lineId,key:key,sub:sub,isDoor:true,color:color,doorVals:doorVals,doorSizes:doorSizes.filter(function(s){return s!=='SSA'&&s!=='SSW';})});
     }else{
       var vals={};
       /* v14 Codex P1対応: 鍵類は共通プール（jp2 バケット）。編集時もjp2バケットに対して操作する */
@@ -6203,8 +6645,8 @@ function PartsPage(p){
   }
 
   var structRowsAll=[
-    {label:'トップボード(SML)',key:'top',sub:'sml',cat:'size'},
-    {label:'トップボード(SS/3S)',key:'top',sub:'ss',cat:'size'},
+    {label:'上下共通ボード(SML)',key:'top',sub:'sml',cat:'size'},
+    {label:'上下共通ボード(SS・3S)',key:'top',sub:'ss',cat:'size'},
     {label:'ベース(SML・グレー)',key:'base',sub:'sml',cat:'size',color2:'gy'},
     {label:'ベース(SML・ブラック)',key:'base_bk',sub:'sml',cat:'size',color2:'bk'},
     {label:'ベース(SS/3S/SSα・グレー)',key:'base',sub:'ss',cat:'size',color2:'gy'},
@@ -6214,16 +6656,16 @@ function PartsPage(p){
     {label:'棚板(SS/3S・グレー)',key:'shelf',sub:'ss',cat:'option',color2:'gy'},
     {label:'棚板(SS/3S・ブラック)',key:'shelf_bk',sub:'ss',cat:'option',color2:'bk'}
   ];
-  sizes.forEach(function(s){if(s!=='SSA')structRowsAll.push({label:'サイドボード('+s+')',key:'side',sub:s,cat:'size'});});
-  sizes.forEach(function(s){if(s!=='SSA')structRowsAll.push({label:'バックボード('+s+')',key:'back',sub:s,cat:'size'});});
+  sizes.forEach(function(s){if(s!=='SSA'&&s!=='SSW')structRowsAll.push({label:'サイドボード('+s+')',key:'side',sub:s,cat:'size'});});
+  sizes.forEach(function(s){if(s!=='SSA'&&s!=='SSW')structRowsAll.push({label:'バックボード('+s+')',key:'back',sub:s,cat:'size'});});
   structRowsAll=structRowsAll.concat([
     {label:'上下ジョイント(SML)',key:'vj',sub:'sml',cat:'option'},
     {label:'上下ジョイント(SS/3S)',key:'vj',sub:'ss',cat:'option'},
     {label:'サイドジョイント(SML)',key:'sj',sub:'sml',cat:'option'},
     {label:'サイドジョイント(SS/3S)',key:'sj',sub:'ss',cat:'option'},
     {label:'トッテ',key:'totte',cat:'lock'},
-    {label:'ダイヤル錠 H110',key:'dialH110',cat:'lock'},
-    {label:'ダイヤル錠 H111',key:'dialH111',cat:'lock'},
+    {label:'ダイヤル錠 H110(旧)',key:'dialH110',cat:'lock'},
+    {label:'ダイヤル錠 H111(旧)',key:'dialH111',cat:'lock'},
     {label:'ダイヤル錠 DST',key:'dialDST',cat:'lock'},
     {label:'南京錠',key:'padlock',cat:'lock'},
     {label:'コインリターン錠',key:'coinReturn',cat:'lock'},
@@ -6562,7 +7004,7 @@ function PartsPage(p){
               var snapRows=[];
               var iGetEx=function(k,s){if(!IRISU[k])return'';if(typeof IRISU[k]==='number')return IRISU[k];if(s&&IRISU[k][s])return IRISU[k][s];return'';};
               snapRows.push({item:'上下共通ボード(SML)',key:'top',sub:'sml'});
-              snapRows.push({item:'上下共通ボード(SS/3S)',key:'top',sub:'ss'});
+              snapRows.push({item:'上下共通ボード(SS・3S)',key:'top',sub:'ss'});
               snapRows.push({item:'ベースボード(SML・グレー)',key:'base',sub:'sml'});
               snapRows.push({item:'ベースボード(SML・ブラック)',key:'base_bk',sub:'sml'});
               snapRows.push({item:'ベースボード(SS/3S・グレー)',key:'base',sub:'ss'});
@@ -6594,10 +7036,10 @@ function PartsPage(p){
               snapRows.push({item:'目隠しネジ(グレー)',key:'capScrew_gy'});
               snapRows.push({item:'トッテ',key:'totte'});
               /* v14.5 C7: 画面の在庫表(uniRows)と項目を完全一致させる（鍵・シリンダー全種を網羅） */
-              snapRows.push({item:'ダイヤル錠 H110',key:'dialH110'});
-              snapRows.push({item:'ダイヤル錠 H110(新ラッチ)',key:'dialH110new'});
-              snapRows.push({item:'ダイヤル錠 H111',key:'dialH111'});
-              snapRows.push({item:'ダイヤル錠 H111(新ラッチ)',key:'dialH111new'});
+              snapRows.push({item:'ダイヤル錠 H110(旧)',key:'dialH110'});
+              snapRows.push({item:'ダイヤル錠 H110',key:'dialH110new'});
+              snapRows.push({item:'ダイヤル錠 H111(旧)',key:'dialH111'});
+              snapRows.push({item:'ダイヤル錠 H111',key:'dialH111new'});
               snapRows.push({item:'ダイヤル錠 H112(自由式)',key:'dialH112'});
               snapRows.push({item:'ダイヤル錠 DST',key:'dialDST'});
               snapRows.push({item:'南京錠',key:'padlock'});
@@ -6716,20 +7158,20 @@ function PartsPage(p){
             if(viewMode[0]==='door'){
               colors.forEach(function(c){
                 var hasAny=false;
-                sizes.forEach(function(s){if(s!=='SSA'){if(gd(selLine[0],w,c.v,s,'door')>0||gd(selLine[0],w,c.v,s,'doorH')>0)hasAny=true;}});
+                sizes.forEach(function(s){if(s!=='SSA'&&s!=='SSW'){if(gd(selLine[0],w,c.v,s,'door')>0||gd(selLine[0],w,c.v,s,'doorH')>0)hasAny=true;}});
                 if(!hasAny)return;
                 exRows.push({type:'colorHeader',label:'扉　'+c.l,color:c});
-                sizes.filter(function(s){return s!=='SSA';}).forEach(function(s){
+                sizes.filter(function(s){return s!=='SSA'&&s!=='SSW';}).forEach(function(s){
                   var stk=gd(selLine[0],w,c.v,s,'door');
                   var hld=ghd(selLine[0],w,c.v,s,'door');
                   if(stk>0||hld>0)exRows.push({type:'door',label:s,stk:stk,hld:hld,av:stk-hld,color:c,size:s,dk:'door'});
                 });
                 /* Hota doors */
                 var hasHota=false;
-                sizes.forEach(function(s){if(s!=='SSA'&&gd(selLine[0],w,c.v,s,'doorH')>0)hasHota=true;});
+                sizes.forEach(function(s){if(s!=='SSA'&&s!=='SSW'&&gd(selLine[0],w,c.v,s,'doorH')>0)hasHota=true;});
                 if(hasHota){
                   exRows.push({type:'colorHeader',label:'扉〈ホタ〉'+c.l,color:c,isHota:true});
-                  sizes.filter(function(s){return s!=='SSA';}).forEach(function(s){
+                  sizes.filter(function(s){return s!=='SSA'&&s!=='SSW';}).forEach(function(s){
                     var stk=gd(selLine[0],w,c.v,s,'doorH');
                     var hld=ghd(selLine[0],w,c.v,s,'doorH');
                     if(stk>0||hld>0)exRows.push({type:'door',label:s,stk:stk,hld:hld,av:stk-hld,color:c,size:s,dk:'doorH'});
@@ -6775,7 +7217,7 @@ function PartsPage(p){
           /* Build unified rows: アイテム | 色 | 入り数 | 各倉庫(実在庫|仮押さえ|使える数) */
           var uniRows=[];
           var iGet=function(k,s){if(!IRISU[k])return'';if(typeof IRISU[k]==='number')return IRISU[k];if(s&&IRISU[k][s])return IRISU[k][s];return'';};
-          var szList=sizes.filter(function(s){return s!=='SSA';});
+          var szList=sizes.filter(function(s){return s!=='SSA'&&s!=='SSW';});
           /* === CSV順序準拠 === */
           /* 1. 上下共通ボード */
           uniRows.push({item:'上下共通ボード',variant:'SMLXL共通グレー',key:'top',sub:'sml',irisu:iGet('top','sml'),grp:'sml'});
@@ -6834,10 +7276,10 @@ function PartsPage(p){
           /* 13. トッテ */
           uniRows.push({item:'トッテ',variant:'新',key:'totte',irisu:iGet('totte')});
           /* 14. ダイヤル錠 */
-          uniRows.push({item:'ダイヤル錠',variant:'H110',key:'dialH110',irisu:iGet('dialH110')});
-          uniRows.push({item:'',variant:'H110(新ラッチ)',key:'dialH110new',irisu:iGet('dialH110new')});
-          uniRows.push({item:'',variant:'H111',key:'dialH111',irisu:iGet('dialH111')});
-          uniRows.push({item:'',variant:'H111(新ラッチ)',key:'dialH111new',irisu:iGet('dialH111new')});
+          uniRows.push({item:'ダイヤル錠',variant:'H110(旧)',key:'dialH110',irisu:iGet('dialH110')});
+          uniRows.push({item:'',variant:'H110',key:'dialH110new',irisu:iGet('dialH110new')});
+          uniRows.push({item:'',variant:'H111(旧)',key:'dialH111',irisu:iGet('dialH111')});
+          uniRows.push({item:'',variant:'H111',key:'dialH111new',irisu:iGet('dialH111new')});
           uniRows.push({item:'',variant:'H112(自由式)',key:'dialH112',irisu:iGet('dialH112')});
           /* v14.5 C7: 実在庫を持つ旧キーを画面にも表示（Excelと項目一致） */
           uniRows.push({item:'',variant:'DST',key:'dialDST',irisu:iGet('dialDST')});
@@ -6940,7 +7382,7 @@ function PartsPage(p){
                   /* v14.2: 扉すべて - 全色×全サイズの実扉(door)＋ホタ扉(doorH)を合算 */
                   colors.forEach(function(c){
                     sizes.forEach(function(s){
-                      if(s==='SSA')return;
+                      if(s==='SSA'||s==='SSW')return;
                       stk+=gd(selLine[0],w,c.v,s,'door');
                       hld+=ghd(selLine[0],w,c.v,s,'door');
                       stk+=gd(selLine[0],w,c.v,s,'doorH');
@@ -7011,7 +7453,7 @@ function PartsPage(p){
         /* Build uniRows same as stock tab */
         var uniR=[];
         var iG=function(k,s){if(!IRISU[k])return'';if(typeof IRISU[k]==='number')return IRISU[k];if(s&&IRISU[k][s])return IRISU[k][s];return'';};
-        var szL=sizes.filter(function(s){return s!=='SSA';});
+        var szL=sizes.filter(function(s){return s!=='SSA'&&s!=='SSW';});
         uniR.push({item:'上下共通ボード',variant:'SMLXL共通グレー',key:'top',sub:'sml',irisu:iG('top','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SS・3S共通グレー',key:'top',sub:'ss',irisu:iG('top','ss'),grp:'ss'});
         uniR.push({item:'ベースボード',variant:'SMLXL共通グレー',key:'base',sub:'sml',irisu:iG('base','sml'),grp:'sml'});
@@ -7041,8 +7483,8 @@ function PartsPage(p){
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
         uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
-        uniR.push({item:'ダイヤル錠H110',variant:'',key:'dialH110',irisu:iG('dialH110')});
-        uniR.push({item:'ダイヤル錠H111',variant:'',key:'dialH111',irisu:iG('dialH111')});
+        uniR.push({item:'ダイヤル錠H110(旧)',variant:'',key:'dialH110',irisu:iG('dialH110')});
+        uniR.push({item:'ダイヤル錠H111(旧)',variant:'',key:'dialH111',irisu:iG('dialH111')});
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
         uniR.push({item:'南京錠',variant:'',key:'padlock',irisu:iG('padlock')});
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
@@ -7288,7 +7730,7 @@ function PartsPage(p){
         if(!shipped.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'出荷済みの案件はありません（'+(lineObj?lineObj.name:'')+'）');
         var uniR=[];
         var iG=function(k,s){if(!IRISU[k])return'';if(typeof IRISU[k]==='number')return IRISU[k];if(s&&IRISU[k][s])return IRISU[k][s];return'';};
-        var szL=sizes.filter(function(s){return s!=='SSA';});
+        var szL=sizes.filter(function(s){return s!=='SSA'&&s!=='SSW';});
         uniR.push({item:'上下共通ボード',variant:'SMLXL共通グレー',key:'top',sub:'sml',irisu:iG('top','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SS・3S共通グレー',key:'top',sub:'ss',irisu:iG('top','ss'),grp:'ss'});
         uniR.push({item:'ベースボード',variant:'SMLXL共通グレー',key:'base',sub:'sml',irisu:iG('base','sml'),grp:'sml'});
@@ -7318,8 +7760,8 @@ function PartsPage(p){
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
         uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
-        uniR.push({item:'ダイヤル錠H110',variant:'',key:'dialH110',irisu:iG('dialH110')});
-        uniR.push({item:'ダイヤル錠H111',variant:'',key:'dialH111',irisu:iG('dialH111')});
+        uniR.push({item:'ダイヤル錠H110(旧)',variant:'',key:'dialH110',irisu:iG('dialH110')});
+        uniR.push({item:'ダイヤル錠H111(旧)',variant:'',key:'dialH111',irisu:iG('dialH111')});
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
         uniR.push({item:'南京錠',variant:'',key:'padlock',irisu:iG('padlock')});
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
@@ -7636,13 +8078,11 @@ function PartsPage(p){
             ln.qty=Math.round(ln.qty*rate);
             if(!ln.isFreeInput&&!ln.isPartOnly){
               /* v18.31: 複数ブロック/台数直接入力の明細は unitsOverride=新台数・ベース(islands)は倍率スケール。blocksは実態と乖離するため破棄しdirect扱いへ
-                 v18.32 要望①の回帰対策: パーソナルの複数ブロック明細は islands=Σ列（ベース枚数ではない）のため、
-                 direct化する時はベース=台数へ正規化する。既にdirectの明細は islands=ベース指定枚数なので倍率スケールを維持 */
+                 v18.33 要望⑩: パーソナルもベース=列数(islands)となったため、direct化時も islands を倍率スケールで維持（台数への正規化を撤去） */
               if(parseInt(ln.unitsOverride,10)>0){
                 ln.unitsOverride=Math.max(1,ln.qty);
                 var toDirect=ln.blocks&&rate!==1;
-                if(ln.type==='personal'&&toDirect){ln.islands=Math.max(1,ln.qty);}
-                else{ln.islands=Math.max(1,Math.round(ln.islands*rate));}
+                ln.islands=Math.max(1,Math.round(ln.islands*rate));
                 ln.tiers=0;
                 if(toDirect){delete ln.blocks;ln.inputMode='direct';}
               }
@@ -7970,7 +8410,7 @@ function PartsPage(p){
             var sq=parseInt(l.shelfQty)||0;if(sq>0)extras.push('棚板'+sq+'枚');
             return h('tr',{key:i},
               h('td',null,lo?lo.name:''),
-              h('td',null,sizeObj(l.size).l),
+              h('td',null,sizeLabel(l.line,l.size)),
               h('td',null,l.type==='open'?h('span',null,'-'):h('span',null,h('span',{style:{display:'inline-block',width:12,height:12,borderRadius:3,background:co?co.x:'#ccc',verticalAlign:'middle',marginRight:4}}),co?co.l:'')),
               h('td',null,to?to.l:''),
               h('td',null,lineSpecLabel(l)+(extras.length?' ('+extras.join(', ')+')':'')),
@@ -8005,7 +8445,7 @@ function PartsPage(p){
                 var c=CUSTS.find(function(x){return x.id===o.cid;});
                 var summary=o.lines.filter(function(l){return l.line===lnObj.id;}).map(function(l){
                   if(l.isPartOnly)return (l.partLabel||'パーツ')+'×'+l.qty;
-                  return sizeObj(l.size).l+' '+lineSpecLabel(l,'')+'×'+l.qty;
+                  return sizeLabel(l.line,l.size)+' '+lineSpecLabel(l,'')+'×'+l.qty;
                 }).join(' / ');
                 lineData.push([o.no,c?c.name:'',o.date,o.status,WH_MAP[o.wh]?WH_MAP[o.wh].n:'',summary]);
               });
@@ -8113,7 +8553,7 @@ function PartsPage(p){
           conf.forEach(function(o){
             o.lines.forEach(function(l){
               if(l.isFreeInput)return;/* Exclude free input from inventory usage summary */
-              var key=l.isPartOnly?(l.partLabel||l.partKey):sizeObj(l.size).l;
+              var key=l.isPartOnly?(l.partLabel||l.partKey):sizeLabel(l.line,l.size);
               if(!usageSummary[key])usageSummary[key]={label:key,qty:0};
               usageSummary[key].qty+=l.qty;
             });
@@ -8134,7 +8574,7 @@ function PartsPage(p){
                 var summary=o.lines.map(function(l){
                   if(l.isPartOnly){return (l.partLabel||'パーツ')+'×'+l.qty;}
                   var co=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===l.color;});
-                  return sizeObj(l.size).l+(co?' '+co.l:'')+' '+lineSpecLabel(l,'')+' ×'+l.qty;
+                  return sizeLabel(l.line,l.size)+(co?' '+co.l:'')+' '+lineSpecLabel(l,'')+' ×'+l.qty;
                 }).join(', ');
                 return h('tr',{key:o.no},h('td',null,h('b',null,o.no)),h('td',null,c?c.name:''),h('td',null,o.date),
                   h('td',null,h('span',{className:'bg '+STATUS_CLS[o.status]},o.status)),
@@ -8586,7 +9026,7 @@ function PartsPage(p){
               ['door','doorH'].forEach(function(dk){
                 var dCols=(LINE_COLORS[lineObj2.id]||[]).filter(function(c){return !c.und;});
                 (LINE_SIZES[lineObj2.id]||[]).forEach(function(s){
-                  if(s==='SSA')return;
+                  if(s==='SSA'||s==='SSW')return;
                   var dq=0;
                   dCols.forEach(function(c){
                     lineWhs.forEach(function(w){dq+=(STK[lineObj2.id]&&STK[lineObj2.id][w]&&STK[lineObj2.id][w][dk]&&STK[lineObj2.id][w][dk][c.v]&&STK[lineObj2.id][w][dk][c.v][s])||0;});
@@ -8642,7 +9082,7 @@ function PartsPage(p){
             /* v14.5 C9: 扉(door/doorH)行をマトリクスにも追加（サイズ別・色は合算） */
             ['door','doorH'].forEach(function(dk){
               var allSizes={};
-              LINES.forEach(function(lnObj){(LINE_SIZES[lnObj.id]||[]).forEach(function(s){if(s!=='SSA')allSizes[s]=true;});});
+              LINES.forEach(function(lnObj){(LINE_SIZES[lnObj.id]||[]).forEach(function(s){if(s!=='SSA'&&s!=='SSW')allSizes[s]=true;});});
               Object.keys(allSizes).forEach(function(s){
                 var dcost=(UNIT_COST[dk]&&UNIT_COST[dk][s])||0;
                 var dRow=[(dk==='door'?'扉':'扉(ホタ)')+'('+s+')',dcost];
