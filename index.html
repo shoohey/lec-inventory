@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.33（7/23MTG 20項目: ベース枚数=列数/ネジ計算サイズ別/送料ヤマト・追加箱数/SSα部材/SSW追加/上下共通ボード・パステル表記統一/島複製/見積書直接編集・粗利計算/顧客CSV取込・属性）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.34（7/29顧客回答15件反映: 送料を見積書に既定反映(×1.1千円切上げ)/中継料原価算入/第一第二倉庫ヤマト/SSWネジ=SSα式/XL・SSαパーソナルネジ不要/件名MY正式名称/属性一覧選択/キャップ・諸経費・見積編集保持ほかバグ修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -489,9 +489,10 @@ function getPartAddDefs(){
   return PART_ADD_DEFS.concat(extra);
 }
 function productName(lineId,showVer){
-  if(lineId==='tw'||lineId==='sa')return 'Myプラロッカー';
-  if(showVer){return lineId==='jp01'?'MyプラECOロッカー(Ver.1)':'MyプラECOロッカー(Ver.2)';}
-  return 'MyプラECOロッカー';
+  /* v18.34 顧客回答B-8: 正式名称=日本製「MYプラECOロッカー」/台湾製「MYプラロッカー」（MY大文字） */
+  if(lineId==='tw'||lineId==='sa')return 'MYプラロッカー';
+  if(showVer){return lineId==='jp01'?'MYプラECOロッカー(Ver.1)':'MYプラECOロッカー(Ver.2)';}
+  return 'MYプラECOロッカー';
 }
 function baseLabel(baseColor,hasCap){var c=baseColor==='bk'?'ブラック':'グレー';return productName('jp01')+'ベースボード('+c+')'+(hasCap!==false?' アンカー穴キャップ付':'');};
 
@@ -881,8 +882,8 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   var isXLParts=isXL&&(opts.line==='tw'||opts.line==='jp2');
   /* Boards always included */
   /* v14.3: パーソナルは上下共通ボード(=top)を上下2枚使うため n*2 枚。常設は1台×1枚 */
-  var topQty=isPersonal?n*2:n;
-  var topReason=isPersonal?(n+'台×2（上下2枚使用）'):(n+'台×1');
+  var topQty=(isPersonal&&!so.ssw)?n*2:n;/* v18.34 ⑤追随: SSWは仕様「上下共通ボード1」固定（タイプ選択に依らずn×1） */
+  var topReason=(isPersonal&&!so.ssw)?(n+'台×2（上下2枚使用）'):(n+'台×1');
   /* v18.33 要望⑥⑧: 「トップボード」表記を「上下共通ボード（サイズ）」に統一（在庫キーtopは不変）。saはSα表記 */
   bom.push({key:'top',sub:grp,qty:topQty,label:'上下共通ボード('+(opts.line==='sa'?'Sα':(grp==='ss'?'SS・3S':grp.toUpperCase()))+')',reason:topReason});
   if(so.ssw){
@@ -960,7 +961,7 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   if(opts.hasCap===true&&opts.hasBase!==false&&opts.line!=='tw'&&opts.line!=='sa'){
     var capColor=opts.baseColor||'gy';
     var capColorLabel=capColor==='bk'?'ブラック':'グレー';
-    var capQty=isPersonal?((opts.inputMode==='direct'&&islands>0)?islands:n):islands;/* v18.32 要望①: ベースと同数を維持 */
+    var capQty=isPersonal?(islands>0?islands:n):islands;/* v18.34 ⑩追随: ベース(baseQty)と同式に統一（列×段入力で台数に化けて過剰引当になるバグを修正） */
     bom.push({key:'anchorCap',sub:capColor,qty:capQty,label:'アンカー穴キャップ('+capColorLabel+')',reason:'ベースと同数('+capQty+')',capColor:capColor});
   }
   /* v14 A3/A4: ジョイントネジ・目隠しネジは自動加算を廃止。完全に手動入力(opts.jointScrewQty/opts.capScrewQty)に。
@@ -997,9 +998,11 @@ function calcBOM(size,islands,tiers,lock,type,opts){
    - パーソナル(サイドなし): ジョイント=(列-1)×段×2−欠損個×2 / 目隠し=段×6×2
    - 常設: ジョイント=(列-1)×段×4−欠損個×4 / 目隠し=(段×6+3)×2 */
 /* v18.33 要望①: ネジ計算表(2026-07-23版)のサイズ別シートに準拠。size→計算表シート群の対応 */
-function screwSizeGrp(size){return size==='XL'?'xl':(size==='SSA'?'ssa':(sizeObj(size).grp==='ss'?'ss':'sml'));}
+function screwSizeGrp(size){return size==='XL'?'xl':(size==='SSA'||size==='SSW'?'ssa':(sizeObj(size).grp==='ss'?'ss':'sml'));}/* v18.34 顧客回答A-2④: SSWはSSαと同計算（サイド4・バック2の同構造） */
 function calcScrewNeeds(blocks,type,hasSide,sizeGrp){
   sizeGrp=sizeGrp||'sml';
+  /* v18.34 顧客回答B-3: XL・SSαのパーソナル受注は無い→ネジ計算不要（自動計上0・SMLフォールバック廃止） */
+  if(type==='personal'&&(sizeGrp==='xl'||sizeGrp==='ssa'))return {islands:[],total:{joint:0,sj:0,cap:0},na:true};
   /* サイズ群別係数（顧客ネジ計算表の各シート数式）
      常設ジョイント: SML=(列-1)×段×4 / SS・3S=×2 / XL=×8 / SSα=×4
      常設目隠し:     SML=(段×6+3)×2 / SS・3S=(段×2+2)×2 / XL=((段×6)×2+3)×2 / SSα=(段×4+2)×2
@@ -2000,8 +2003,9 @@ function freightLookup(tableKey,distanceKm,weightKg){
 function shipTableForWarehouse(whId){
   if(whId==='amago')return 'r5_amago';
   if(whId==='sapporo')return 'r6_sapporo';
-  /* v18.33 要望⑨: 本社・関西営業所発はヤマト宅急便（1箱単位料金）。送料計算表の説明B（シート1・2）準拠 */
-  if(whId==='honsha')return 'y_honsha';
+  /* v18.33 要望⑨: 本社・関西営業所発はヤマト宅急便（1箱単位料金）。送料計算表の説明B（シート1・2）準拠
+     v18.34 顧客回答B-5: 第一倉庫・第二倉庫発も本社と同じヤマト計算（本社運賃表を適用） */
+  if(whId==='honsha'||whId==='dai1'||whId==='dai2')return 'y_honsha';
   if(whId==='kansai')return 'y_kansai';
   return 'misshu';
 }
@@ -2094,12 +2098,14 @@ var FREIGHT_OVR={};
   /* v18.31: r6_sapporoの表構成変更(50km列+10-60kg行追加)に伴い、旧構成のwi/diインデックスで保存されたセル上書きは誤適用になるため破棄（書込UIは現存せず通常は空） */
   try{if(FREIGHT_OVR.rates&&FREIGHT_OVR.rates.r6_sapporo){delete FREIGHT_OVR.rates.r6_sapporo;localStorage.setItem('lec_freight_override',JSON.stringify(FREIGHT_OVR));}}catch(e){}})();
 function freightDefShokei(tableKey){return (tableKey==='r5_amago'||tableKey==='r6_sapporo')?363:325;}
-/* v18.33 要望⑨: ×1.1の浮動小数点誤差対策（5290×1.1=5819.000000000001→切上5820の1円ズレを防止）。
-   0.01円単位に丸めてから切上げ（Excelの L34=L32*1.1 表示値と一致） */
-function markupCeil(genka){return Math.ceil(Math.round(genka*110)/100);}
-/* v18.30 要望④/v18.33 要望⑨: 諸経費の正式ルール=(箱数+追加箱数)×100円
-   （2026-07-23版送料計算表の実式 K31=(K26追加箱数+K28箱数)×100。箱数K28は追加箱数込みのため、追加箱数は2回算入される）。
-   呼出側で boxes=箱数+追加箱数 を渡す。管理者が運賃編集で固定値を上書きしている場合はそちらを優先（従来互換）。箱数不明時は旧固定値へフォールバック。 */
+/* v18.34 顧客回答A-1: 見積記載運賃＝運賃原価×1.1を千円未満切上げ（顧客例: 35,800→39,380→40,000）。
+   ※回答文言は「百円単位まで切り上げ」だが例が千円切上げのため例に準拠（7/30定例で最終確認）。
+   ×1.1は0.01円単位に丸めてから切上げ（浮動小数点誤差対策・v18.33からの継承） */
+function markupCeil(genka){return Math.ceil(Math.round(genka*110)/100/1000)*1000;}
+/* v18.30 要望④/v18.34 ⑨-1修正: 諸経費=箱数(予備箱込み)×100円を1回のみ算入。
+   原典 送料計算表.xlsx の式チェーン: K22=L20(部材箱数計)+K20(追加箱数) → K25=K22×100。
+   予備箱はK22の中で1回だけ算入されるため、呼出側は calcShipWeight の boxes(予備箱込み)をそのまま渡す（再加算しない）。
+   管理者が運賃編集で固定値を上書きしている場合はそちらを優先（従来互換）。箱数不明時は旧固定値へフォールバック。 */
 function freightShokei(tableKey,boxes){
   var g=(tableKey==='r5_amago'||tableKey==='r6_sapporo')?'seino':'misshu';
   if(FREIGHT_OVR.shokei&&FREIGHT_OVR.shokei[g]!=null)return FREIGHT_OVR.shokei[g];
@@ -2122,15 +2128,16 @@ function recordFreightHistory(who,field,oldV,newV){
 }
 function getFreightHistory(){try{return JSON.parse(localStorage.getItem('lec_freight_history')||'[]');}catch(e){return [];}}
 /* v18.30 要望④: 運賃原価=地別運賃+諸経費(箱数×100)+燃料サーチャージ(西濃のみ)。見積運賃=切上げ(原価×1.1)。
-   中継料: 課金重量1000kg超は着点チャーター3万円を見積に加算（計算表注記。実費扱いでマークアップなし）。 */
+   v18.34 顧客回答B-4①: 中継料(課金重量1000kg超の着点チャーター3万円)は運賃原価に算入し、見積側へも原価×1.1で反映
+   （従来の「見積のみ実費加算」から変更）。 */
 function freightCost(tableKey,distanceKm,weightKg,boxes){
   var lk=freightLookup(tableKey,distanceKm,weightKg);if(!lk)return null;
   if(lk.over)return {over:true,maxWeight:lk.maxWeight,distBracket:lk.distBracket};
   var shokei=freightShokei(tableKey,boxes);
   var surcharge=(tableKey==='r5_amago'||tableKey==='r6_sapporo')?seinoSurcharge(distanceKm,weightKg):0;
   var chuukei=weightKg>1000?30000:0;
-  var genka=lk.rate+shokei+surcharge;
-  return {rate:lk.rate,shokei:shokei,surcharge:surcharge,chuukei:chuukei,genka:genka,quoted:markupCeil(genka)+chuukei,weightBracket:lk.weightBracket,distBracket:lk.distBracket,over:false};
+  var genka=lk.rate+shokei+surcharge+chuukei;
+  return {rate:lk.rate,shokei:shokei,surcharge:surcharge,chuukei:chuukei,genka:genka,quoted:markupCeil(genka),weightBracket:lk.weightBracket,distBracket:lk.distBracket,over:false};
 }
 /* v18.30 要望④: 請求重量を送料計算表の実式に一致。箱数=配送枚数÷入数(端数のまま・切上げしない)、
    実重量=Σ箱数×実重(佐川用)、容積重量=Σ箱数×容積(第一貨物/西濃用)、課金重量=大きい方(かさ物のロッカーは容積が基準)。
@@ -2156,6 +2163,13 @@ var PREF_KM={'北海道':1100,'青森県':710,'岩手県':540,'宮城県':360,'�
 function destDistanceFor(tableKey,destCity,destPref){
   var d=destCity?destFindDistance(tableKey,destCity):null;
   if(d!=null)return {km:d,approx:false};
+  /* v18.34 ⑨-7: 尼高/札幌表でも市名が引けない場合、都道府県名を運賃表の地名トークン（都内/埼玉/群馬 等）に
+     読み替えて再検索する（各表の実データで解決するため距離の推定値は使わない）。それでも不明なら従来どおり判定不可 */
+  if((tableKey==='r5_amago'||tableKey==='r6_sapporo')&&destPref){
+    var tok={'東京都':'東京２３区','大阪府':'大阪','京都府':'京都','北海道':'札幌'}[destPref]||String(destPref).replace(/[都道府県]$/,'');/* 東京は尼高表の実表記に合わせる */
+    var d2=destFindDistance(tableKey,tok);
+    if(d2!=null)return {km:d2,approx:true};
+  }
   if(tableKey==='misshu'){
     var km=destPref?effPrefKm(destPref):undefined;
     if(km===null)return null;/* 沖縄等 */
@@ -2176,16 +2190,16 @@ function calcFreight(order,destCity,destPref){
   }
   var dd=destDistanceFor(table,destCity,destPref);
   if(dd==null)return {ok:false,reason:'distance_unknown',table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes};
-  /* v18.33 要望⑨: 諸経費=(箱数+追加箱数)×100（K31式）。boxesは追加箱数込みのため追加分をもう一度加える */
-  var fc=freightCost(table,dd.km,cw,bw.boxes+(bw.extraBoxes||0));
+  /* v18.34 ⑨-1修正: boxesは既に予備箱込み（calcShipWeightでextra加算済み）。再加算すると諸経費が予備箱×100円ぶん過大になる */
+  var fc=freightCost(table,dd.km,cw,bw.boxes);
   if(!fc)return {ok:false,reason:'no_rate',table:table,weight:cw};
   if(fc.over)return {ok:false,reason:'over_weight_charter',table:table,weight:cw,distance:dd.km};
   return {ok:true,table:table,distance:dd.km,approxDistance:dd.approx,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,extraBoxes:bw.extraBoxes,rate:fc.rate,shokei:fc.shokei,surcharge:fc.surcharge,chuukei:fc.chuukei,genka:fc.genka,quoted:fc.quoted,weightBracket:fc.weightBracket,distBracket:fc.distBracket};
 }
-/* v18.18 P3連動: FREIGHT_OVR.officialMode が ON のとき、距離解決できる単一倉庫見積は運賃表エンジンの見積運賃(quoted)を正式送料に採用。
-   OFF(既定)または距離解決不可なら従来の簡易送料(fallback)を返す＝既定では完全に従来挙動（無回帰）。 */
+/* v18.34 顧客回答A-1: 運賃表エンジンの見積運賃(原価×1.1・千円未満切上げ)を既定で見積書の送料欄に採用。
+   管理者が運賃編集で明示的にOFFにした場合(officialMode===false)のみ従来の簡易送料へ。距離解決不可時もfallback。 */
 function officialShipping(lines,wh,cust,fallback){
-  if(FREIGHT_OVR&&FREIGHT_OVR.officialMode&&cust&&lines&&lines.length){
+  if(!(FREIGHT_OVR&&FREIGHT_OVR.officialMode===false)&&cust&&lines&&lines.length){
     try{var fr=calcFreight({wh:wh,lines:lines},cust.city||'',cust.pref||'');if(fr&&fr.ok&&fr.quoted!=null)return fr.quoted;}catch(e){}
   }
   return fallback;
@@ -2195,7 +2209,10 @@ function officialShipping(lines,wh,cust,fallback){
 /* v18.30 要望④: チャーター料金を最新化。kansai=尼高2026.10改定(原価+見積記載quote)、
    sapporo=同表の札幌ブロック(従来同値)、shinkashiwa=新柏全国チャーター2025.4(行先ベース・旧mojibake表の正名復元)。 */
 var CHARTER_TABLES={"kansai": {"dep": "amago","dist": [25,50,100,150,200,250,300,350,400,450,500,550,600,650,700,750,800],"2t": [23000,26000,28000,35000,37000,43000,null,null,null,null,null,null,null,null,null,null,null],"4t": [26000,30000,35000,38000,42000,48000,53000,60000,67000,73000,77000,85000,90000,91000,97000,100000,110000],"10t": [35000,38000,40000,45000,52000,61000,66000,73000,78000,83000,88000,95000,105000,110000,115000,120000,133000],"quote": {"2t": [48000,51000,53000,61000,63000,70000,null,null,null,null,null,null,null,null,null,null,null],"4t": [67000,72000,77000,81000,85000,92000,97000,105000,113000,119000,124000,132000,137500,139000,146000,149000,160000],"10t": [35000,38000,40000,45000,52000,61000,66000,73000,78000,83000,88000,95000,105000,110000,115000,120000,133000]},"note": "尼高チャーター2026.10改定（2t/4t/10t=原価、quote=関西見積記載）"},"sapporo": {"dep": "sapporo","dist": [25,50,100,150,200,250,300,350,400],"2t": [null,30000,42000,44000,48000,54000,75000,null,null],"4t": [null,35000,49000,50000,62500,69000,88000,100000,110000],"note": "札幌チャーター（2026.10表の札幌ブロック・従来と同値）"},"shinkashiwa": {"dep": "kashiwa","type": "dest","entries": [{"region": "北海道","dest": "函館","p4t": 240000,"p2t": null},{"region": "北海道","dest": "札幌","p4t": 250000,"p2t": null},{"region": "北海道","dest": "苫小牧","p4t": 250000,"p2t": null},{"region": "北海道","dest": "旭川","p4t": 320000,"p2t": null},{"region": "北海道","dest": "富良野","p4t": 320000,"p2t": null},{"region": "北海道","dest": "釧路","p4t": 320000,"p2t": null},{"region": "北海道","dest": "網走","p4t": 340000,"p2t": null},{"region": "東北","dest": "郡山","p4t": 56000,"p2t": null},{"region": "東北","dest": "いわき","p4t": 56000,"p2t": null},{"region": "東北","dest": "仙台","p4t": 66000,"p2t": null},{"region": "東北","dest": "塩釜","p4t": 66000,"p2t": null},{"region": "東北","dest": "山形","p4t": 66000,"p2t": null},{"region": "東北","dest": "米沢","p4t": 66000,"p2t": null},{"region": "東北","dest": "盛岡","p4t": 86000,"p2t": null},{"region": "東北","dest": "花巻","p4t": 86000,"p2t": null},{"region": "東北","dest": "秋田","p4t": 99000,"p2t": null},{"region": "東北","dest": "宮古","p4t": 99000,"p2t": null},{"region": "東北","dest": "青森","p4t": 120000,"p2t": null},{"region": "東北","dest": "弘前","p4t": 120000,"p2t": null},{"region": "東北","dest": "むつ","p4t": 120000,"p2t": null},{"region": "甲信越","dest": "甲府","p4t": 59000,"p2t": null},{"region": "甲信越","dest": "長野","p4t": 65000,"p2t": null},{"region": "甲信越","dest": "松本","p4t": 65000,"p2t": null},{"region": "甲信越","dest": "新潟","p4t": 69000,"p2t": null},{"region": "甲信越","dest": "新発田","p4t": 69000,"p2t": null},{"region": "甲信越","dest": "上越","p4t": 69000,"p2t": null},{"region": "甲信越","dest": "飯田","p4t": 69000,"p2t": null},{"region": "北陸","dest": "富山","p4t": 90000,"p2t": null},{"region": "北陸","dest": "金沢","p4t": 90000,"p2t": null},{"region": "北陸","dest": "福井","p4t": 95000,"p2t": null},{"region": "北陸","dest": "輪島","p4t": 95000,"p2t": null},{"region": "東海","dest": "沼津","p4t": 56000,"p2t": null},{"region": "東海","dest": "富士","p4t": 56000,"p2t": null},{"region": "東海","dest": "清水","p4t": 56000,"p2t": null},{"region": "東海","dest": "静岡","p4t": 56000,"p2t": null},{"region": "東海","dest": "浜松","p4t": 66000,"p2t": null},{"region": "東海","dest": "名古屋","p4t": 66000,"p2t": null},{"region": "東海","dest": "刈谷","p4t": 66000,"p2t": null},{"region": "東海","dest": "岐阜","p4t": 66000,"p2t": null},{"region": "東海","dest": "四日市","p4t": 66000,"p2t": null},{"region": "関東","dest": "都内","p4t": 38000,"p2t": 33000},{"region": "関東","dest": "土浦","p4t": 38000,"p2t": 33000},{"region": "関東","dest": "埼玉","p4t": 38000,"p2t": 33000},{"region": "関東","dest": "水戸","p4t": 38000,"p2t": 33000},{"region": "関東","dest": "横浜","p4t": 38000,"p2t": 33000},{"region": "関東","dest": "都下","p4t": 38000,"p2t": 33000},{"region": "関東","dest": "日立","p4t": 42000,"p2t": 34000},{"region": "関東","dest": "群馬","p4t": 42000,"p2t": 34000},{"region": "関東","dest": "小田原","p4t": 44000,"p2t": 41000},{"region": "近畿","dest": "長浜","p4t": 76000,"p2t": null},{"region": "近畿","dest": "彦根","p4t": 76000,"p2t": null},{"region": "近畿","dest": "京都","p4t": 81000,"p2t": null},{"region": "近畿","dest": "大阪","p4t": 81000,"p2t": null},{"region": "近畿","dest": "奈良","p4t": 81000,"p2t": null},{"region": "近畿","dest": "神戸","p4t": 86000,"p2t": null},{"region": "近畿","dest": "和歌山","p4t": 91000,"p2t": null},{"region": "近畿","dest": "福知山","p4t": 91000,"p2t": null},{"region": "近畿","dest": "姫路","p4t": 91000,"p2t": null},{"region": "中国","dest": "岡山","p4t": 102000,"p2t": null},{"region": "中国","dest": "備前","p4t": 102000,"p2t": null},{"region": "中国","dest": "倉敷","p4t": 102000,"p2t": null},{"region": "中国","dest": "福山","p4t": 105000,"p2t": null},{"region": "中国","dest": "津山","p4t": 105000,"p2t": null},{"region": "中国","dest": "三原","p4t": 105000,"p2t": null},{"region": "中国","dest": "広島","p4t": 115000,"p2t": null},{"region": "中国","dest": "呉","p4t": 115000,"p2t": null},{"region": "中国","dest": "三次","p4t": 115000,"p2t": null},{"region": "中国","dest": "岩国","p4t": 140000,"p2t": null},{"region": "中国","dest": "徳山","p4t": 140000,"p2t": null},{"region": "中国","dest": "萩","p4t": 140000,"p2t": null},{"region": "中国","dest": "長門","p4t": 140000,"p2t": null},{"region": "中国","dest": "下関","p4t": 140000,"p2t": null},{"region": "山陰","dest": "鳥取","p4t": 120000,"p2t": null},{"region": "山陰","dest": "倉吉","p4t": 120000,"p2t": null},{"region": "山陰","dest": "米子","p4t": 120000,"p2t": null},{"region": "山陰","dest": "松江","p4t": 130000,"p2t": null},{"region": "山陰","dest": "出雲","p4t": 130000,"p2t": null},{"region": "山陰","dest": "浜田","p4t": 130000,"p2t": null},{"region": "山陰","dest": "益田","p4t": 130000,"p2t": null},{"region": "四国","dest": "高松","p4t": 110000,"p2t": null},{"region": "四国","dest": "徳島","p4t": 110000,"p2t": null},{"region": "四国","dest": "松山","p4t": 150000,"p2t": null},{"region": "四国","dest": "高知","p4t": 150000,"p2t": null},{"region": "四国","dest": "宇和島","p4t": 150000,"p2t": null},{"region": "九州","dest": "福岡","p4t": 170000,"p2t": null},{"region": "九州","dest": "北九州","p4t": 170000,"p2t": null},{"region": "九州","dest": "佐賀","p4t": 180000,"p2t": null},{"region": "九州","dest": "唐津","p4t": 180000,"p2t": null},{"region": "九州","dest": "長崎","p4t": 185000,"p2t": null},{"region": "九州","dest": "佐世保","p4t": 185000,"p2t": null},{"region": "九州","dest": "大分","p4t": 195000,"p2t": null},{"region": "九州","dest": "熊本","p4t": 195000,"p2t": null},{"region": "九州","dest": "鹿児島","p4t": 230000,"p2t": null},{"region": "九州","dest": "宮崎","p4t": 230000,"p2t": null},{"region": "九州","dest": "指宿","p4t": 230000,"p2t": null}],"note": "新柏全国チャーター 2025.4/7訂正（行先ベース・4t/一部2t。旧RATE_TABLES.charter(文字化けPDF p4)と同価格を正名で復元）"}};
-var CHARTER_CAP={'2t':2000,'4t':2500,'10t':13000};
+/* v18.34 ⑨-5: 車格制限を2026-07-23版送料計算表の表2に一致（2t=実重1500kg/容積3000kg、4t=実重2500kg/容積6500kg）。
+   実重量・容積重量の二系統で判定（片方でも超えたら上位車格へ）。10tの容積上限は表に記載なし＝実質無制限 */
+var CHARTER_CAP={'2t':{w:1500,v:3000},'4t':{w:2500,v:6500},'10t':{w:13000,v:Infinity}};
+function charterFits(sk,aw,vw){var c=CHARTER_CAP[sk];return !!c&&aw<=c.w&&vw<=c.v;}
 /* 発倉庫→チャーター表。尼高/関西発=kansai、札幌発=sapporo、v18.30: 新柏発=shinkashiwa(行先ベース)。他=null(本社発チャーター表は未提供)。 */
 function charterTableForWarehouse(whId){
   if(whId==='amago'||whId==='kansai')return 'kansai';
@@ -2212,7 +2229,8 @@ function charterRate(tableKey,distanceKm,sharkaku){
   return {price:row[di],quote:q,distBracket:t.dist[di]};
 }
 /* v18.30 要望④: 行先ベースのチャーター表(新柏全国チャーター)を行先市名の部分一致で引く */
-function charterCostDest(tableKey,destCity,weightKg){
+function charterCostDest(tableKey,destCity,weightKg,awD,vwD){
+  awD=(awD!=null?awD:weightKg)||0;vwD=(vwD!=null?vwD:weightKg)||0;/* v18.34 ⑨-5: 二系統判定 */
   var t=effCT(tableKey);if(!t||!t.entries)return {ok:false};
   var dcRaw=String(destCity||'').trim();
   var dc=dcRaw.replace(/[市区町村郡]/g,'').trim();if(!dc)return {ok:false};
@@ -2229,19 +2247,19 @@ function charterCostDest(tableKey,destCity,weightKg){
   var prices={};
   if(hit.p2t)prices['2t']={price:hit.p2t};
   if(hit.p4t)prices['4t']={price:hit.p4t};
-  var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&weightKg<=CHARTER_CAP[sk])suggest=sk;});
+  var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&charterFits(sk,awD,vwD))suggest=sk;});
   if(!suggest){var ks=Object.keys(prices);suggest=ks.length?ks[ks.length-1]:null;}
   return {ok:!!Object.keys(prices).length,table:tableKey,dest:hit.dest,region:hit.region,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
 }
-/* 請求重量→推奨車格(積載量基準・参考)。容積で要判断のため全車格価格も返す。v18.30: destCity追加(行先ベース表用) */
-function charterCost(whId,distanceKm,weightKg,destCity){
+/* 請求重量→推奨車格(参考)。v18.34 ⑨-5: 実重量aw・容積重量vwの二系統で車格制限を判定（未指定時はweightKgを両方に適用） */
+function charterCost(whId,distanceKm,weightKg,destCity,aw,vw){
   var tableKey=charterTableForWarehouse(whId);if(!tableKey)return {ok:false};
   var t=effCT(tableKey);
-  if(t&&t.type==='dest')return charterCostDest(tableKey,destCity,weightKg);
+  var aw2=(aw!=null?aw:weightKg)||0,vw2=(vw!=null?vw:weightKg)||0;
+  if(t&&t.type==='dest')return charterCostDest(tableKey,destCity,weightKg,aw2,vw2);
   if(distanceKm==null)return {ok:false};
   var prices={};['2t','4t','10t'].forEach(function(sk){if(t[sk]){var r=charterRate(tableKey,distanceKm,sk);if(r&&r.price!=null)prices[sk]={price:r.price,quote:r.quote,distBracket:r.distBracket};}});
-  /* 推奨車格(積載量基準・参考) */
-  var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&weightKg<=CHARTER_CAP[sk])suggest=sk;});
+  var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&charterFits(sk,aw2,vw2))suggest=sk;});
   if(!suggest){var keys=Object.keys(prices);suggest=keys.length?keys[keys.length-1]:null;}
   return {ok:Object.keys(prices).length>0,table:tableKey,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
 }
@@ -3335,7 +3353,7 @@ function generateQuoteHTML(order,docType){
     if(ln.colorBreakdown&&ln.colorBreakdown.length>0){
       colorDesc=' '+ln.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join('/');
     }
-    var itemName=pn+' '+sz.l+colorDesc;
+    var itemName=pn+' '+(ln.line==='sa'?'Sα':sz.l)+colorDesc;/* v18.34 ⑧追随: saラインはSα表記（sizeLabel準拠） */
     /* Lock name - use short format for documents */
     var lockObj=LOCK_TYPES.find(function(lt){return lt.v===ln.lock;});
     if(lockObj&&ln.lock!=='none')itemName+='　'+(lockObj.s||lockObj.l);
@@ -3578,12 +3596,14 @@ function generateExcel(order,docType){
   wsData.push([cfg.title]);
   wsData.push([]);
   wsData.push(['顧客名',cust?cust.name+' 御中':'','','株式会社LEC']);
-  wsData.push(['〒',cust&&cust.postal?cust.postal:'','顧客コード',cust?cust.id:'','','〒120-0005 東京都足立区綾瀬7-4-1']);
+  wsData.push(['〒',cust&&cust.postal?cust.postal:'','','','','〒120-0005 東京都足立区綾瀬7-4-1']);
   wsData.push(['住所',cust?cust.pref+(cust.city||''):'','','','','TEL. 03-5849-5563  FAX. 03-5849-5564']);
   var exSalesP=order.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
   var exPayTerms=order.paymentTerms||'前払い（銀行振り込み）';
   /* v18.33 要望⑬⑯: Excel出力も見積書HTMLと同様、担当者は伝票コード上部の欄に統一・先方担当者（ご担当）行は削除 */
   wsData.push(['電話番号',cust&&cust.phone?cust.phone:'','FAX番号',cust&&cust.fax?cust.fax:'','','登録番号:T4040001077220']);
+  /* v18.34 ⑭追随: HTML版と同様、顧客コードは電話番号の下の行へ（従来は〒行に同居） */
+  wsData.push(['顧客コード',cust?cust.id:'']);
   wsData.push([]);
   /* v18.33 要望⑮: 出荷指示書Excelには件名を出さない（HTMLと同挙動） */
   if(docType!=='shipping')wsData.push(['件名',q.subject,'','担当者',exSalesP]);
@@ -4435,7 +4455,9 @@ function CustPage(p){
   var editCust=us(null);/* 編集中顧客 */
   var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:''});
   /* v18.33 追B: 顧客属性フィルタの選択肢（登録済み属性のユニーク値） */
-  var attrs=[];CUSTS.forEach(function(c){if(c.attr&&attrs.indexOf(c.attr)<0)attrs.push(c.attr);});
+  /* v18.34 顧客回答B-9: 属性の基本選択肢（学校/プール/温浴施設/代理店/その他）＋登録済み属性が自動で一覧に加わる（随時追加） */
+  var ATTR_BASE=['学校','プール','温浴施設','代理店','その他'];
+  var attrs=ATTR_BASE.slice();CUSTS.forEach(function(c){if(c.attr&&attrs.indexOf(c.attr)<0)attrs.push(c.attr);});
   var fl=CUSTS.filter(function(c){
     if(pf[0]!=='all'&&c.pref!==pf[0])return false;
     if(af[0]!=='all'&&(c.attr||'')!==af[0])return false;/* v18.33 追B: 顧客属性フィルタ */
@@ -4511,6 +4533,7 @@ function CustPage(p){
           h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:importCustFile})),
         /* v18.33 追B: 顧客属性フィルタ（例: 学校・プール・温浴施設。属性は顧客編集で入力） */
         h('select',{className:'inp',value:af[0],onChange:function(e){af[1](e.target.value);},style:{width:110}},h('option',{value:'all'},'全属性'),attrs.map(function(a){return h('option',{key:a,value:a},a);})),
+        h('datalist',{id:'lecAttrOpts'},attrs.map(function(a){return h('option',{key:a,value:a});})),/* v18.34 B-9: 属性入力欄の選択肢 */
         h('select',{className:'inp',value:pf[0],onChange:function(e){pf[1](e.target.value);},style:{width:100}},h('option',{value:'all'},'全都道府県'),PREFS_ALL.map(function(pr){return h('option',{key:pr,value:pr},pr);})),
         h('input',{className:'inp',placeholder:'名前・ID・地域で検索…',value:sr[0],onChange:function(e){sr[1](e.target.value);},style:{width:180}})
       )
@@ -4548,8 +4571,8 @@ function CustPage(p){
           h('div',{style:{flex:1}},h('label',{style:FL},'電話番号'),h('input',{className:'inp',value:editCust[0].phone||'',onChange:function(e){ufEdit('phone',e.target.value);}})),
           h('div',{style:{flex:1}},h('label',{style:FL},'FAX番号'),h('input',{className:'inp',value:editCust[0].fax||'',onChange:function(e){ufEdit('fax',e.target.value);}}))
         ),
-        /* v18.33 追B: 顧客属性（取込後に手入力。フィルタに使用） */
-        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（例: 学校・プール・温浴施設）'),h('input',{className:'inp',value:editCust[0].attr||'',onChange:function(e){ufEdit('attr',e.target.value);},placeholder:'例: 学校'}))),
+        /* v18.34 顧客回答B-9: 一覧から選択＋イレギュラーは自由入力（datalist方式。基本5択＋登録済み属性が自動で選択肢に加わる） */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（一覧から選択 or 自由入力）'),h('input',{className:'inp',list:'lecAttrOpts',value:editCust[0].attr||'',onChange:function(e){ufEdit('attr',e.target.value);},placeholder:'学校/プール/温浴施設/代理店/その他'}))),
         /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:editCust[0].contactPerson||'',onChange:function(e){ufEdit('contactPerson',e.target.value);}})),
@@ -4572,8 +4595,8 @@ function CustPage(p){
           h('div',{style:{flex:1}},h('label',{style:FL},'電話番号'),h('input',{className:'inp',value:nf[0].phone,onChange:function(e){uf('phone',e.target.value);},placeholder:'例: 03-1234-5678'})),
           h('div',{style:{flex:1}},h('label',{style:FL},'FAX番号'),h('input',{className:'inp',value:nf[0].fax,onChange:function(e){uf('fax',e.target.value);},placeholder:'例: 03-1234-5679'}))
         ),
-        /* v18.33 追B: 顧客属性 */
-        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（例: 学校・プール・温浴施設）'),h('input',{className:'inp',value:nf[0].attr||'',onChange:function(e){uf('attr',e.target.value);},placeholder:'例: 学校'}))),
+        /* v18.34 顧客回答B-9: 一覧から選択＋自由入力（datalist方式） */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（一覧から選択 or 自由入力）'),h('input',{className:'inp',list:'lecAttrOpts',value:nf[0].attr||'',onChange:function(e){uf('attr',e.target.value);},placeholder:'学校/プール/温浴施設/代理店/その他'}))),
         /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:nf[0].contactPerson,onChange:function(e){uf('contactPerson',e.target.value);},placeholder:'例: 田中 太郎'})),
@@ -5096,6 +5119,14 @@ function InvPage(p){
     var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id;
     var no=isUpdate?existing.no:'QT-2026-'+String(nextON++).padStart(3,'0');
     var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:officialShipping(lines[0],wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    if(isUpdate){
+      /* v18.34 ⑪バグ修正: 見積書作成画面(モーダル)で直接編集した値を再作成で消さない。
+         既存値優先は「左ペインに入力UIが無い3項目」（件名・値引き・支払条件＝v18.33でUI削除済み、状態は常に初期値）に限定。
+         備考・商品備考・LEC担当者は左ペインに入力UIが残っているため従来どおり左ペイン値を採用（編集破棄の回帰を防ぐ） */
+      order.subject=existing.subject||order.subject;
+      order.discount=(existing.discount!=null&&existing.discount!==0)?existing.discount:order.discount;
+      order.paymentTerms=existing.paymentTerms||order.paymentTerms;
+    }
     if(isUpdate){
       var idx=ORDERS.findIndex(function(o){return o.no===no;});
       if(idx>=0)ORDERS[idx]=order;else ORDERS.push(order);
@@ -5702,7 +5733,7 @@ function InvPage(p){
             };
             rd.readAsArrayBuffer(f);
           }
-          return h('div',{style:{marginBottom:10,padding:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6}},
+          return h('div',{className:'no-print',style:{marginBottom:10,padding:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6}},/* v18.34 ⑱追随: @media printで非表示 */
             h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:4}},
               h('div',{style:{fontSize:10,fontWeight:700,color:'#276749'}},'📊 粗利計算表（社内用・印刷されません）'),
               h('label',{className:'btn btn-xs btn-ol',style:{cursor:'pointer',fontSize:9}},'原価表アップロード（品番,原価のCSV/Excel）',
@@ -5767,7 +5798,7 @@ function QuotePreview(p){
     if(ln.colorBreakdown&&ln.colorBreakdown.length>0){
       colorDesc2=' '+ln.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join('/');
     }
-    var itemName=pn+' '+sz.l+colorDesc2;
+    var itemName=pn+' '+(ln.line==='sa'?'Sα':sz.l)+colorDesc2;/* v18.34 ⑧追随: saラインはSα表記 */
     var lockObj2=LOCK_TYPES.find(function(lt){return lt.v===ln.lock;});
     if(lockObj2&&ln.lock!=='none')itemName+='　'+(lockObj2.s||lockObj2.l);
     if(isPersonal&&(!lockObj2||ln.lock==='none'))itemName+='・トッテ';
@@ -5805,10 +5836,10 @@ function QuotePreview(p){
   var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
   var salesP2=o.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
   var slipCode=(dt==='quote'?'見積':dt==='invoice'?'請求':dt==='shipping'?'出荷':'納品')+'-'+o.no;
-  var cs={border:'1px solid #999',padding:'3px 6px',fontSize:9};
+  var cs={border:'1px solid #999',padding:'3px 6px',fontSize:9.5};/* v18.34 ⑫追随: 印刷版(9.5px)と一致 */
   var tabStyle=function(k){return{padding:'4px 12px',fontSize:10,fontWeight:dt===k?700:400,cursor:'pointer',border:'1px solid #ccc',borderBottom:dt===k?'2px solid var(--nv)':'1px solid #ccc',background:dt===k?'#fff':'#f5f5f5',color:dt===k?'var(--nv)':'#666',borderRadius:'4px 4px 0 0',marginRight:2};};
 
-  return h('div',{style:{fontSize:10,lineHeight:1.6}},
+  return h('div',{style:{fontSize:10.5,lineHeight:1.65}},/* v18.34 ⑫追随: 印刷版(10.5px/1.65)と一致 */
     h('div',{style:{display:'flex',marginBottom:12,borderBottom:'1px solid #ccc'}},
       h('button',{style:tabStyle('quote'),onClick:function(){docType[1]('quote');}},'御見積書'),
       h('button',{style:tabStyle('shipping'),onClick:function(){docType[1]('shipping');}},'出荷指示書')
@@ -6221,8 +6252,8 @@ function OrdersPage(p){
           var fr=calcFreight(o,cust.city||'',cust.pref||'');
           var tblName={r5_amago:'尼高 西濃混載',r6_sapporo:'札幌 西濃混載',misshu:'全国混載',y_honsha:'本社発 ヤマト宅急便',y_kansai:'関西営業所発 ヤマト宅急便'}[fr.table]||fr.table;
           return h('div',{style:{marginBottom:10,padding:8,background:'#f5f7fa',borderRadius:6,border:'1px solid var(--g200)',fontSize:10}},
-            h('div',{style:{fontWeight:700,color:'#1e3a5f',marginBottom:4}},'🚚 送料試算（参考・実データ運賃表）',
-              h('span',{style:{fontWeight:400,color:'var(--g400)',marginLeft:6,fontSize:9}},'※請求には自動反映しません。実物の送料と照合用')),
+            h('div',{style:{fontWeight:700,color:'#1e3a5f',marginBottom:4}},'🚚 送料試算（実データ運賃表）',
+              h('span',{style:{fontWeight:400,color:'var(--g400)',marginLeft:6,fontSize:9}},FREIGHT_OVR.officialMode!==false?'※新規見積の送料欄に自動反映されます（原価×1.1・千円未満切上げ）。既存案件は再作成時のみ更新':'※簡易送料モード中のため請求には自動反映しません（照合用）')),
             fr.ok?h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},
               h('span',null,h('b',null,'運賃表: '),tblName),
               h('span',null,h('b',null,'行先: '),(cust.pref||'')+(cust.city||'')),
@@ -6230,10 +6261,10 @@ function OrdersPage(p){
               fr.yamato?h('span',null,h('b',null,'地域: '),(YAMATO_REGION_LABEL[fr.region]||fr.region)):h('span',null,h('b',null,'距離: '),fr.distance+'km'+(fr.approxDistance?'(暫定)':'')+' →'+fr.distBracket+'km区分'),
               fr.yamato?h('span',null,h('b',null,'箱: '),fr.boxSize+'サイズ×'+fr.boxCount+'箱（計算箱数'+fr.boxes+(fr.extraBoxes?'・予備箱'+fr.extraBoxes:'')+'）'):h('span',null,h('b',null,'課金重量: '),fr.weight+'kg →'+fr.weightBracket+'kg区分（実重'+(fr.actualWeight!=null?fr.actualWeight:'-')+'kg/容積'+(fr.volumeWeight!=null?fr.volumeWeight:'-')+'kg・'+fr.boxes+'箱'+(fr.extraBoxes?'/うち予備箱'+fr.extraBoxes:'')+'）'),
               h('span',null,h('b',null,fr.yamato?'1箱運賃: ':'地別運賃: '),'¥'+fm(fr.rate)),
-              fr.yamato?null:h('span',null,h('b',null,'諸経費((箱数+予備箱)×100): '),'¥'+fm(fr.shokei)),
+              fr.yamato?null:h('span',null,h('b',null,'諸経費(箱数×100・予備箱込み): '),'¥'+fm(fr.shokei)),
               fr.surcharge?h('span',null,h('b',null,'燃料サーチャージ: '),'¥'+fm(fr.surcharge)):null,
               h('span',null,h('b',null,'運賃原価: '),'¥'+fm(fr.genka)),
-              fr.chuukei?h('span',null,h('b',null,'中継料(1000kg超): '),'¥'+fm(fr.chuukei)):null,
+              fr.chuukei?h('span',null,h('b',null,'中継料(1000kg超・原価に含む): '),'¥'+fm(fr.chuukei)):null,
               h('span',{style:{fontWeight:700,color:'#276749'}},h('b',null,'見積運賃(×1.1): '),'¥'+fm(fr.quoted))
             ):h('div',{style:{color:'#975a16'}},
               fr.reason==='distance_unknown'?'行先の距離が判定できません（沖縄/離島 or 都道府県未設定）→ チャーター便をご検討ください':
@@ -6247,7 +6278,7 @@ function OrdersPage(p){
               /* v18.33 要望⑨: ヤマト（本社・関西発）は距離を持たないため、チャーター比較用に尼高表の距離を補完（関西発のみ） */
               var chDist=fr.distance;
               if(fr.yamato&&chDist==null&&o.wh==='kansai'){var dd2=destDistanceFor('r5_amago',cust.city||'',cust.pref||'');chDist=dd2?dd2.km:null;}
-              var ch=charterCost(o.wh,chDist,fr.weight,cust.city||'');/* v18.30: 新柏発は行先市名で全国チャーター表を引く */
+              var ch=charterCost(o.wh,chDist,fr.weight,cust.city||'',fr.actualWeight,fr.volumeWeight);/* v18.34 ⑨-5: 実重・容積の二系統で車格判定 */
               if(!ch.ok){
                 return charterTableForWarehouse(o.wh)?h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※チャーター料金表に該当行先が見つかりません（行先市名をご確認ください）'):h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※チャーター比較は尼高/関西/札幌/新柏発に対応（本社発のチャーター表は未提供）');
               }
@@ -6684,8 +6715,9 @@ function PartsPage(p){
     {label:'シリンダー錠(カム短C)',key:'cylinderShortC',cat:'lock'},
     {label:'内筒交換錠',key:'cylinderExchange',cat:'lock'},
     {label:'内筒交換用予備',key:'cylinderExchangeSpare',cat:'lock'},
-    {label:'ダイヤル錠 H110(新)',key:'dialH110new',cat:'lock'},
-    {label:'ダイヤル錠 H111(新)',key:'dialH111new',cat:'lock'},
+    /* v18.34 追A追随: 表示から「(新)」を削除し型番のみに（在庫キーは不変。業者取込の旧表記マッチはaliasで互換維持） */
+    {label:'ダイヤル錠 H110',key:'dialH110new',cat:'lock',alias:['ダイヤル錠 H110(新)']},
+    {label:'ダイヤル錠 H111',key:'dialH111new',cat:'lock',alias:['ダイヤル錠 H111(新)']},
     {label:'ダイヤル錠 H112',key:'dialH112',cat:'lock'},
     {label:'SMLXL共通サイドレール',key:'railSideSML',cat:'option'},
     {label:'SMLXL共通バックレール',key:'railBackSML',cat:'option'},
@@ -6783,12 +6815,12 @@ function PartsPage(p){
                 !isAdm?h('div',{style:{padding:10,background:'#FEE2E2',color:'#991B1B',borderRadius:6,fontSize:11}},'※管理者のみ編集できます'):
                 h('div',null,
                   h('div',{style:{padding:8,background:'#FEF3C7',borderRadius:6,fontSize:10,color:'#7C2D12',marginBottom:10}},'⚠️ 変更は即時に送料試算へ反映され、全端末で共有されます（localStorage）。変更履歴を記録します。'),
-                  /* v18.18 P3連動: 運賃表エンジンを正式送料に採用するオプトイン（既定OFF） */
+                  /* v18.34 顧客回答A-1: 既定ON（明示的にOFFへ倒したときのみ簡易送料） */
                   h('div',{style:{marginBottom:12,padding:8,background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6}},
                     h('label',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',display:'flex',alignItems:'center',gap:6,cursor:'pointer'}},
-                      h('input',{type:'checkbox',defaultChecked:!!FREIGHT_OVR.officialMode,onChange:function(e){FREIGHT_OVR.officialMode=e.target.checked;saveFreightOverride();freightEditBump[1](freightEditBump[0]+1);p.toast(e.target.checked?'運賃表エンジンを正式送料に採用（距離解決できる単一倉庫見積のみ）':'簡易送料に戻しました（既定）');}}),
-                      '運賃表エンジンを正式な見積送料に採用する（オプトイン）'),
-                    h('div',{style:{fontSize:9,color:'var(--g600)',marginTop:4}},'ONにすると、距離が解決できる単一倉庫の新規見積は運賃表ベースの精密送料を正式採用します（解決できない宛先・複数倉庫は従来の簡易送料）。OFF(既定)は従来どおり全件簡易送料。既存見積は再作成時のみ更新。')
+                      h('input',{type:'checkbox',defaultChecked:FREIGHT_OVR.officialMode!==false,onChange:function(e){FREIGHT_OVR.officialMode=e.target.checked;saveFreightOverride();freightEditBump[1](freightEditBump[0]+1);p.toast(e.target.checked?'運賃表エンジンを正式送料に採用中（既定）':'簡易送料に切替えました（運賃表は参考表示のみ）');}}),
+                      '運賃表エンジンを正式な見積送料に採用する（既定ON）'),
+                    h('div',{style:{fontSize:9,color:'var(--g600)',marginTop:4}},'ON（既定）: 距離が解決できる単一倉庫の新規見積は、運賃原価×1.1を千円未満切上げした額を見積書の送料欄へ自動反映します（解決できない宛先・複数倉庫は従来の簡易送料）。OFFにすると全件簡易送料。既存見積は再作成時のみ更新。')
                   ),
                   /* v18.30 要望④: 送料計算表・運賃表の取込（送料改定時にExcelをアップロード→全端末共有） */
                   h('div',{style:{marginBottom:12,padding:8,background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:6}},
@@ -8017,7 +8049,7 @@ function PartsPage(p){
                 var co=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===l.color;});
                 var sz=sizeObj(l.size);
                 var lockObj=LOCK_TYPES.find(function(lt){return lt.v===l.lock;});
-                return (ln2?ln2.mark:'')+' '+sz.l+(co&&l.type!=='open'?' '+co.l:'')+(l.type==='open'?' オープン':'')+' '+lineSpecLabel(l,'')+(lockObj&&l.lock!=='none'?' '+lockObj.s:'')+'×'+l.qty;
+                return (ln2?ln2.mark:'')+' '+(l.line==='sa'?'Sα':sz.l)+(co&&l.type!=='open'?' '+co.l:'')+(l.type==='open'?' オープン':'')+' '+lineSpecLabel(l,'')+(lockObj&&l.lock!=='none'?' '+lockObj.s:'')+'×'+l.qty;/* v18.34 ⑧追随: saはSα表記 */
               });
               var summary=detailLines.join(' / ');
               /* 部材集計（押さえている主要パーツを表示・日本語ラベル） v14.2 */
@@ -8793,7 +8825,7 @@ function PartsPage(p){
                 try{
                   var wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
                   var norm=function(s){return String(s||'').replace(/[\s　]/g,'').replace(/（/g,'(').replace(/）/g,')').replace(/[Ａ-Ｚａ-ｚ０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-0xFEE0);}).toLowerCase();};
-                  var lut={};structRowsAll.forEach(function(sr){lut[norm(sr.label)]=sr;});
+                  var lut={};structRowsAll.forEach(function(sr){lut[norm(sr.label)]=sr;(sr.alias||[]).forEach(function(al){lut[norm(al)]=sr;});});/* v18.34 追A: 旧表記「(新)」の取込ファイルも互換マッチ */
                   var added=0,skipped=[];
                   (wb.SheetNames||[]).forEach(function(nm){
                     var aoa;try{aoa=XLSX.utils.sheet_to_json(wb.Sheets[nm],{header:1,raw:true});}catch(e2){return;}
