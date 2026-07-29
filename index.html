@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.34（7/29顧客回答15件反映: 送料を見積書に既定反映(×1.1千円切上げ)/中継料原価算入/第一第二倉庫ヤマト/SSWネジ=SSα式/XL・SSαパーソナルネジ不要/件名MY正式名称/属性一覧選択/キャップ・諸経費・見積編集保持ほかバグ修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.35（7/29修正依頼2件: ログイン画面タイトル変更/新規顧客属性「その他」選択時の詳細入力欄追加）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -4174,7 +4174,7 @@ function App(){
     return h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'linear-gradient(135deg,#142A45,#1E3A5F,#2A4F7A)'}},
       h('div',{style:{background:'#fff',borderRadius:16,padding:32,width:400,boxShadow:'0 20px 60px rgba(0,0,0,.3)'}},
         h('div',{style:{textAlign:'center',marginBottom:20}},
-          h('div',{style:{fontSize:20,fontWeight:900,color:'var(--nv)',marginBottom:4}},'LEC 在庫管理システム v18'),
+          h('div',{style:{fontSize:20,fontWeight:900,color:'var(--nv)',marginBottom:4}},'LECロッカー業務システム'),
           h('div',{style:{fontSize:10,color:'var(--g400)'}},'登録済みユーザーのみログインできます（氏名＋パスワード）')
         ),
         /* v18.32 要望⑧: 入力項目を「権限 → 氏名 → 拠点 → パスワード」の順に */
@@ -4453,7 +4453,7 @@ function importCustsAoa(aoa){
 function CustPage(p){
   var sr=us(''),pf=us('all'),af=us('all'),showAdd=us(false),bump=us(0);
   var editCust=us(null);/* 編集中顧客 */
-  var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:''});
+  var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:''});
   /* v18.33 追B: 顧客属性フィルタの選択肢（登録済み属性のユニーク値） */
   /* v18.34 顧客回答B-9: 属性の基本選択肢（学校/プール/温浴施設/代理店/その他）＋登録済み属性が自動で一覧に加わる（随時追加） */
   var ATTR_BASE=['学校','プール','温浴施設','代理店','その他'];
@@ -4495,9 +4495,10 @@ function CustPage(p){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){alert('読み取り専用モード中は顧客追加できません');return;}
     var f=nf[0];if(!f.name)return;
-    var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:f.attr||''};
+    var attrFinal=(f.attr==='その他'&&f.attrOther&&f.attrOther.trim())?f.attrOther.trim():(f.attr||'');
+    var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal};
     CUSTS.unshift(nc);
-    nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:''});
+    nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:''});
     showAdd[1](false);bump[1](bump[0]+1);saveCusts();
     p.selectCust(nc);
   }
@@ -4595,8 +4596,14 @@ function CustPage(p){
           h('div',{style:{flex:1}},h('label',{style:FL},'電話番号'),h('input',{className:'inp',value:nf[0].phone,onChange:function(e){uf('phone',e.target.value);},placeholder:'例: 03-1234-5678'})),
           h('div',{style:{flex:1}},h('label',{style:FL},'FAX番号'),h('input',{className:'inp',value:nf[0].fax,onChange:function(e){uf('fax',e.target.value);},placeholder:'例: 03-1234-5679'}))
         ),
-        /* v18.34 顧客回答B-9: 一覧から選択＋自由入力（datalist方式） */
-        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（一覧から選択 or 自由入力）'),h('input',{className:'inp',list:'lecAttrOpts',value:nf[0].attr||'',onChange:function(e){uf('attr',e.target.value);},placeholder:'学校/プール/温浴施設/代理店/その他'}))),
+        /* v18.35 修正依頼: 顧客属性は一覧から選択し、「その他」選択時のみ詳細入力欄を表示（直接入力） */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性'),
+          h('select',{className:'inp',value:nf[0].attr||'',onChange:function(e){uf('attr',e.target.value);if(e.target.value!=='その他')uf('attrOther','');}},
+            h('option',{value:''},'-- 選択してください --'),
+            attrs.map(function(a){return h('option',{key:a,value:a},a);})
+          )
+        )),
+        nf[0].attr==='その他'?h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'その他の詳細'),h('input',{className:'inp',value:nf[0].attrOther||'',onChange:function(e){uf('attrOther',e.target.value);},placeholder:'例: 介護施設'}))):null,
         /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:nf[0].contactPerson,onChange:function(e){uf('contactPerson',e.target.value);},placeholder:'例: 田中 太郎'})),
