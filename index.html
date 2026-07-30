@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.38（修正箇所3: 営業の顧客追加・編集権限/営業見積の案件管理保存/パーソナルはキャップOFF・ベース黒が既定/送付方法（混載・チャーター）選択で送料切替/仮押さえ解除の日時・解除者を表示）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.39（バグ修正: 追加した顧客・作成した見積がクラウド保存されず他端末に共有されない／再ログインで消える問題を修正。営業はロック中でも顧客追加・編集・見積作成が可能に）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -4394,7 +4394,8 @@ function App(){
     /* v18.38 修正箇所3①: 営業ロールにも顧客の新規追加・情報編集を許可するため、
        後発ログインによるロック(lockReadOnly)と営業ロール込みの読み取り専用(isReadOnly)を分けて渡す。
        削除・顧客一括取込は従来どおり isReadOnly（＝営業は不可）で制限。 */
-    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO,lockReadOnly:isReadOnly[0]}),
+    /* v18.39: 顧客の追加・編集をクラウド保存するため userName を渡す（保存者の記録に使用） */
+    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,userName:userName[0]}),
     h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);}}),
     h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:effRO,setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);}}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:effRO}),
@@ -4633,25 +4634,31 @@ function CustPage(p){
   }
   function addCust(){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止
-       v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ */
-    if(p.lockReadOnly){alert('読み取り専用モード中は顧客追加できません');return;}
+       v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ
+       v18.39: 営業は仮押さえ権限を持たず在庫の競合が起きないため、後発ログインのロック中でも顧客追加を許可する */
+    if(p.lockReadOnly&&!p.salesView){alert('読み取り専用モード中は顧客追加できません');return;}
     var f=nf[0];if(!f.name)return;
     var attrFinal=(f.attr==='その他'&&f.attrOther&&f.attrOther.trim())?f.attrOther.trim():(f.attr||'');
     var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal};
     CUSTS.unshift(nc);
     nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:''});
     showAdd[1](false);bump[1](bump[0]+1);saveCusts();
+    /* v18.39 バグ修正: 従来は localStorage(saveCusts) にしか保存しておらず、追加した顧客が
+       他端末に共有されず、再ログイン時のクラウド取込で消えていた。クラウドへも保存する。 */
+    cloudSave(p.userName||'');
     p.selectCust(nc);
   }
   function uf(k,v){var o=Object.assign({},nf[0]);o[k]=v;nf[1](o);}
   function ufEdit(k,v){var o=Object.assign({},editCust[0]);o[k]=v;editCust[1](o);}
   function saveEditCust(){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止
-       v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ */
-    if(p.lockReadOnly){alert('読み取り専用モード中は顧客編集できません');return;}
+       v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ
+       v18.39: 営業は仮押さえ権限を持たないため、後発ログインのロック中でも顧客編集を許可する */
+    if(p.lockReadOnly&&!p.salesView){alert('読み取り専用モード中は顧客編集できません');return;}
     var ec=editCust[0];if(!ec||!ec.name){return;}
     var idx=CUSTS.findIndex(function(c){return c.id===ec.id;});
-    if(idx>=0){CUSTS[idx]=Object.assign({},ec);saveCusts();bump[1](bump[0]+1);editCust[1](null);}
+    /* v18.39 バグ修正: 編集内容もクラウドへ保存（従来は localStorage のみで他端末に反映されなかった） */
+    if(idx>=0){CUSTS[idx]=Object.assign({},ec);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);editCust[1](null);}
   }
   function deleteCust(c){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
@@ -4662,7 +4669,8 @@ function CustPage(p){
       if(!confirm('この顧客は'+usedIn.length+'件の案件で使用されています。削除すると案件側で「顧客不明」になります。本当に削除しますか？'))return;
     }
     var idx=CUSTS.findIndex(function(x){return x.id===c.id;});
-    if(idx>=0){CUSTS.splice(idx,1);saveCusts();bump[1](bump[0]+1);}
+    /* v18.39 バグ修正: 削除もクラウドへ反映（従来は localStorage のみで他端末に残り続けた） */
+    if(idx>=0){CUSTS.splice(idx,1);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);}
   }
   var FS={display:'flex',gap:6,marginBottom:8};
   var FL={fontSize:9,fontWeight:600,color:'var(--g500)',marginBottom:2,display:'block'};
@@ -5257,8 +5265,9 @@ function InvPage(p){
     if(!lines[0].length)return;
     /* v18 P2(要望3/4): 後発ログインは見積「確認」のみ。ORDERSへ保存せず採番もしない（プレビュー表示だけ）
        v18.38 修正箇所3②: 営業ロールが作成した見積は案件管理一覧に保存する（従来はプレビューのみ）。
-       仮押さえ・在庫引当は引き続き事務のみ（doReserveOnly/doHoldAndQuote は salesView で非表示のまま）。 */
-    if(p.lockReadOnly){
+       仮押さえ・在庫引当は引き続き事務のみ（doReserveOnly/doHoldAndQuote は salesView で非表示のまま）。
+       v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも見積作成を許可する。 */
+    if(p.lockReadOnly&&!p.salesView){
       var whP=selWH[0]||'honsha';
       var shipInfoP=cust?calcShipping(lines[0],whP,cust.pref):null;
       var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
@@ -5301,6 +5310,10 @@ function InvPage(p){
     }
     quoteOrder[1](order);showQuote[1](true);
     p.bump();saveAll();
+    /* v18.39 バグ修正: 「見積書のみ作成」は saveAll(localStorage)だけで、クラウド保存も他端末通知も
+       行っていなかったため、作成した見積が別アカウントの案件管理に現れず、再ログインで消えていた。
+       仮押さえ系(doReserveOnly/doHoldAndQuote)は broadcastOrderUpdate 経由で保存されていたため表面化していなかった。 */
+    broadcastOrderUpdate(p.userName||'',no+(isUpdate?' 見積更新':' 見積作成'));
   }
 
   /* 仮押さえのみ（見積書作成なし）: 在庫だけ押さえて案件登録、見積プレビューは開かない */
@@ -5859,8 +5872,9 @@ function InvPage(p){
           var qo=quoteOrder[0];
           var PAY_TERMS_LIST=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末','その他'];
           function updQ(patch){
-            /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため、直接編集も営業に開放（制限は後発ロック時のみ） */
-            if(p.lockReadOnly){p.toast('読み取り専用モード中は見積の編集はできません');return;}
+            /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため、直接編集も営業に開放
+               v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも編集を許可する */
+            if(p.lockReadOnly&&!p.salesView){p.toast('読み取り専用モード中は見積の編集はできません');return;}
             var no2=Object.assign({},qo,patch);
             quoteOrder[1](no2);
             var idx=ORDERS.findIndex(function(x){return x.no===qo.no;});
