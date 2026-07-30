@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.36（7/29修正依頼3件: 送料上限超過時のチャーター内訳表示/尼高運賃・燃料サーチャージ表更新/ヤマト箱数の予備箱二重計上修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.37（修正箇所2: SSWにSSコネクター/見積オプション整理/納期・受渡地・有効期限の選択式/明細各行の備考/レンタル品マイナス記載/全体備考の箇条書き/見積書下部の支払条件・有効期限・振込先削除）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -178,6 +178,7 @@ function buildCloudDoc(){
     freightTables:(typeof FREIGHT_TABLES_OVR!=='undefined'?FREIGHT_TABLES_OVR:{}),/* v18.30: 運賃表アップロードの全端末共有 */
     vendorCodes:(typeof VENDOR_CODES!=='undefined'?VENDOR_CODES:{}),/* v18.30: 業者コード紐づけの全端末共有 */
     costMaster:(typeof COST_MASTER!=='undefined'?COST_MASTER:{}),/* v18.33 要望⑱: 原価マスタの全端末共有 */
+    quoteOpts:(typeof QUOTE_OPTS!=='undefined'?QUOTE_OPTS:null),/* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタを全端末共有 */
     deletedNos:DELETED_ORDER_NOS.slice(-500),
     stkSnapshot:STK_SNAPSHOT_DATE,
     _ts:Date.now()
@@ -259,6 +260,10 @@ function applyCloudDoc(doc,opts){
     /* v18.33 要望⑱: 原価マスタ（品番→原価）の全端末共有 */
     if(doc.costMaster&&typeof doc.costMaster==='object'&&typeof COST_MASTER!=='undefined'){
       try{COST_MASTER=doc.costMaster;saveCostMaster();}catch(e){}
+    }
+    /* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタ（後勝ち置換・localStorageにも保持） */
+    if(doc.quoteOpts&&typeof doc.quoteOpts==='object'&&typeof QUOTE_OPTS!=='undefined'){
+      try{QUOTE_OPT_KEYS.forEach(function(k){if(Array.isArray(doc.quoteOpts[k]))QUOTE_OPTS[k]=doc.quoteOpts[k].slice();});saveQuoteOpts();}catch(e){}
     }
     if(doc.customIrisu&&typeof doc.customIrisu==='object'){
       try{
@@ -398,6 +403,104 @@ var LOCK_TYPES=[
 var BASE_COLORS=[{v:'gy',l:'グレー'},{v:'bk',l:'ブラック'}];
 var SHELF_COLORS=[{v:'gy',l:'グレー'},{v:'bk',l:'ブラック'}];
 var SHELF_PRICE=2000;
+/* v18.37 修正箇所2⑤: 上下ジョイントの単価（レンタル品明細のプラス／マイナス行に使用） */
+var VJ_PRICE=220;
+var BASE_PRICE=4000;
+
+/* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタ。
+   画面から追加・削除でき、localStorage＋クラウド(quoteOpts)で全端末共有する。 */
+var QUOTE_OPT_KEYS=['delivery','place','expiry'];
+var QUOTE_OPT_DEFAULTS={
+  delivery:['お打ち合わせの上','受注後中3日程度','受注後30日程度','受注後60日程度'],
+  place:[],
+  expiry:['御見積後1ヶ月','御見積後3ヶ月','お打ち合わせの上']
+};
+var QUOTE_OPTS={delivery:QUOTE_OPT_DEFAULTS.delivery.slice(),place:[],expiry:QUOTE_OPT_DEFAULTS.expiry.slice()};
+try{
+  var _qOpt=JSON.parse(localStorage.getItem('lec_quote_opts')||'null');
+  if(_qOpt&&typeof _qOpt==='object')QUOTE_OPT_KEYS.forEach(function(k){if(Array.isArray(_qOpt[k]))QUOTE_OPTS[k]=_qOpt[k].slice();});
+}catch(e){}
+function saveQuoteOpts(){try{localStorage.setItem('lec_quote_opts',JSON.stringify(QUOTE_OPTS));}catch(e){}}
+
+/* v18.37 修正箇所2③: 受渡地の既定値は顧客住所の市区町村まで（例: 東京都足立区綾瀬7-4-1 → 東京都足立区）。
+   「四日市市」等、自治体名そのものに市区町村の字を含むケースは例外表で先に確定させる。 */
+var CITY_EXCEPTIONS=['四日市市','廿日市市','市川市','市原市','野々市市','町田市','大町市','十日町市','村上市','村山市','田村市','大村市','東村山市','武蔵村山市','羽村市'];
+function cityOnly(s){
+  if(!s)return '';
+  s=String(s).trim();
+  for(var i=0;i<CITY_EXCEPTIONS.length;i++){
+    var p=s.indexOf(CITY_EXCEPTIONS[i]);
+    if(p>=0)return s.slice(0,p+CITY_EXCEPTIONS[i].length);
+  }
+  /* 郡＋町村 → 政令市＋行政区 → 市区町村 の順で最短一致 */
+  var m=s.match(/^(.+?郡.+?[町村]|.+?市.+?区|.+?[市区町村])/);
+  return m?m[1]:s;
+}
+/* 受渡地: 手入力があればそれを、無ければ顧客住所から市区町村までを既定表記にする */
+function deliveryPlaceOf(order,cust){
+  if(order&&order.deliveryPlace)return order.deliveryPlace;
+  return cust?cityOnly(cust.pref+(cust.city||'')):'';
+}
+function deliveryTermOf(order){
+  if(order&&order.deliveryTerm)return order.deliveryTerm;
+  return QUOTE_OPTS.delivery[0]||'';
+}
+function validUntilOf(order){
+  if(order&&order.validUntil)return order.validUntil;
+  return QUOTE_OPTS.expiry[0]||'';
+}
+
+/* v18.37 修正箇所2④: 明細の備考欄（税欄の右）は行ごとに手入力する。
+   行キー(rkey)で order.rowRemarks に保持し、未入力の行は空欄のまま。 */
+function rowRemark(order,rkey,fallback){
+  var rr=(order&&order.rowRemarks)||{};
+  if(Object.prototype.hasOwnProperty.call(rr,rkey))return rr[rkey]||'';
+  return fallback||'';
+}
+/* v18.37 修正箇所2⑤: パーソナル受注のベースボード・上下ジョイントは購入ではなく無償レンタル。
+   明細にプラス行とマイナス行を並べ、差引0円であることを見積書上で明示する。 */
+var RENTAL_NOTE='レンタル品（無償貸与）';
+function isRentalQuote(order){
+  if(!order||!order.rentalOffset)return false;
+  return (order.lines||[]).some(function(l){return !l.isPartOnly&&l.type==='personal';});
+}
+function rentalVjQty(order){
+  var q=0;
+  (order&&order.lines||[]).forEach(function(l){
+    if(l.isPartOnly)return;
+    calcBOM(l.size,l.islands,l.tiers,l.lock,l.type,l).forEach(function(b){if(b.key==='vj')q+=b.qty;});
+  });
+  return q;
+}
+/* レンタル対象（ベースボード／上下ジョイント）のプラス・マイナス行を rows へ追記し、増減後の subtotal を返す。
+   印刷HTMLとプレビューで同一の明細になるよう共通化している。 */
+function pushRentalRows(order,rows,startNo,subtotal,baseLine,baseRowTotal){
+  var no=startNo;
+  if(baseRowTotal>0){
+    var bRow=rows[rows.length-1];
+    subtotal-=baseRowTotal;
+    rows.push({no:no++,rkey:'BASE_R',code:bRow.code,name:bRow.name,qty:bRow.qty,unit:bRow.unit,price:-BASE_PRICE,amount:-baseRowTotal,tax:'',remark:rowRemark(order,'BASE_R',RENTAL_NOTE)});
+  }
+  var vq=rentalVjQty(order);
+  if(vq>0){
+    var vName=productName((baseLine||{}).line||'jp01')+'上下ジョイント';
+    var vt=vq*VJ_PRICE;
+    subtotal+=vt;
+    rows.push({no:no++,rkey:'VJ',code:'',name:vName,qty:vq,unit:'個',price:VJ_PRICE,amount:vt,tax:'10%(外)',remark:rowRemark(order,'VJ',RENTAL_NOTE)});
+    subtotal-=vt;
+    rows.push({no:no++,rkey:'VJ_R',code:'',name:vName,qty:vq,unit:'個',price:-VJ_PRICE,amount:-vt,tax:'',remark:rowRemark(order,'VJ_R',RENTAL_NOTE)});
+  }
+  return {no:no,subtotal:subtotal};
+}
+/* v18.37 修正箇所2⑥: 全体備考は入力内容と連動して改行のまま箇条書き表示する（「備 考」欄付きの枠） */
+function notesBoxHTML(notes){
+  if(!notes)return '';
+  var lines=String(notes).split('\n');
+  var body=lines.map(function(t){return '<div style="min-height:1.6em">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';}).join('');
+  return '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:9px"><tr>'+
+    '<td style="border:1px solid #999;width:70px;text-align:center;vertical-align:middle;padding:6px 4px;letter-spacing:4px">備考</td>'+
+    '<td style="border:1px solid #999;padding:6px 10px;line-height:1.7">'+body+'</td></tr></table>';
+}
 var PART_DEFS=[
   {k:'top',l:'上下共通ボード',hasSub:'grp'},{k:'side',l:'サイドボード',hasSub:'size'},
   {k:'back',l:'バックボード',hasSub:'size'},{k:'door',l:'扉（同色）',hasSub:'size',hasColor:true,isDoor:true,doorKey:'door'},
@@ -951,8 +1054,9 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     bom.push({key:'hanger',qty:n,label:'ハンガーパイプ',reason:n+'台×1'});
   }
   /* v18.32 要望⑤: 日本製Ver.2(jp2)のSSα(SSA)はコネクター(SS)必須（SS×2連結構造）。
-     SSAはLINE_SIZES上jp2専用だが、isXLPartsと同様にライン明示条件で安全側に */
-  if(size==='SSA'&&opts.line==='jp2'){
+     SSAはLINE_SIZES上jp2専用だが、isXLPartsと同様にライン明示条件で安全側に
+     v18.37 修正箇所2①: SSWもSS連結構造のためSSコネクター1台×1個が必須（SSAと同条件） */
+  if((size==='SSA'||size==='SSW')&&opts.line==='jp2'){
     bom.push({key:'connector',sub:'SS',qty:n,label:'SSコネクター',reason:n+'台×1'});
   }
   /* Anchor cap (アンカー穴キャップ): opts.hasCap=true かつベース有の場合のみ。
@@ -3348,7 +3452,7 @@ function generateQuoteHTML(order,docType){
       var pName2=ln.isFreeInput?ln.name:(productName(ln.line)+' '+ln.partLabel);
       var pUnit2=ln.isFreeInput?(ln.unit||'個'):'個';
       var pRmk2=ln.isFreeInput?(ln.remark||''):'';
-      rows.push({no:rowNo++,code:'',name:pName2,qty:ln.qty,unit:pUnit2,price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':'',remark:pRmk2});
+      rows.push({no:rowNo++,rkey:'L'+ln.id,code:'',name:pName2,qty:ln.qty,unit:pUnit2,price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':'',remark:rowRemark(order,'L'+ln.id,pRmk2)});
       return;
     }
     var sz=sizeObj(ln.size);var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
@@ -3371,24 +3475,31 @@ function generateQuoteHTML(order,docType){
     var amt2=ln.qty*sz.p;
     if(sq>0)amt2+=sq*SHELF_PRICE;
     subtotal+=amt2;
-    var dimNote=sz.dim?'外寸:'+sz.dim:'';
-    rows.push({no:rowNo++,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:dimNote});
+    /* v18.37 修正箇所2④: 備考欄は空欄スタート（外寸は直接編集のプルダウンから選択して挿入する） */
+    rows.push({no:rowNo++,rkey:'L'+ln.id,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(order,'L'+ln.id,'')});
   });
   /* Base - aggregate from lines that have base */
   var baseLines=order.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
   /* v14.3: ベースはパーソナルでn(1台×1枚)、常設はislandsに戻す（上下共通ボードはtop側でn*2化） */
   var ti=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0);/* v18.32 要望①: ベース枚数はlineBaseCountで一元解決（directパーソナルのベース個別指定に追従。calcBOMのベース行と常に一致） */
+  var baseRowTotal=0;
   if(ti>0){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
     var bName=productName(fl0.line||'jp01')+'ベースボード('+bColorName+')'+(bCap?' アンカー穴キャップ付':'');
-    var bt=ti*4000;subtotal+=bt;
-    rows.push({no:rowNo++,code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:4000,amount:bt,tax:'10%(外)'});
+    var bt=ti*BASE_PRICE;subtotal+=bt;
+    rows.push({no:rowNo++,rkey:'BASE',code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:BASE_PRICE,amount:bt,tax:'10%(外)',remark:rowRemark(order,'BASE',isRentalQuote(order)?RENTAL_NOTE:'')});
+    baseRowTotal=bt;
+  }
+  /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載 */
+  if(isRentalQuote(order)){
+    var rr=pushRentalRows(order,rows,rowNo,subtotal,baseLines[0],baseRowTotal);
+    rowNo=rr.no;subtotal=rr.subtotal;
   }
   var ship=order.shipping||0;
-  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)'});}
+  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,rkey:'SHIP',code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP','')});}
   var disc=order.discount||0;
-  if(disc>0){subtotal-=disc;rows.push({no:rowNo++,code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:''});}
+  if(disc>0){subtotal-=disc;rows.push({no:rowNo++,rkey:'DISC',code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:'',remark:rowRemark(order,'DISC','')});}
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
   var hasNonPart=order.lines.some(function(l){return!l.isPartOnly;});
   var subject=order.subject||'';
@@ -3432,12 +3543,14 @@ function generateQuoteHTML(order,docType){
   if(!isShipping)html+='<div><b>件名:</b> '+subject+'</div>';
   html+='<div><b>担当者:</b> '+salesP+'</div>';
   html+='<div><b>'+cfg.dateLabel+':</b> '+tdSlash()+'</div><div><b>伝票コード:</b> '+slipCode+'</div>';
-  if(docType==='quote'){html+='<div><b>納期:</b> 別途相談</div><div><b>有効期限:</b> 御見積後1ヶ月</div>';}
+  /* v18.37 修正箇所2③: 納期・有効期限は選択肢マスタ＋自由入力の保存値を反映 */
+  if(docType==='quote'){html+='<div><b>納期:</b> '+deliveryTermOf(order)+'</div><div><b>有効期限:</b> '+validUntilOf(order)+'</div>';}
   if(isShipping){
     if(order.shipNo)html+='<div><b>出荷№:</b> '+order.shipNo+'</div>';
     html+='<div><b>出荷元倉庫:</b> '+((WH_MAP[order.wh]||{}).n||'')+(order.wh2?' + '+((WH_MAP[order.wh2]||{}).n||''):'')+'</div>';
   }
-  html+='<div><b>受渡地:</b> '+(cust?cust.pref+(cust.city||''):'')+'</div>';
+  /* v18.37 修正箇所2③: 受渡地は自由入力優先。未入力なら顧客住所の市区町村まで */
+  html+='<div><b>受渡地:</b> '+deliveryPlaceOf(order,cust)+'</div>';
   if(order.endUser&&(order.endUser.name||order.endUser.address)){html+='<div style="grid-column:1/3"><b>エンド納品先:</b> '+(order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')+'</div>';}
   if(docType==='quote'||docType==='invoice'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
   if(isShipping){
@@ -3469,10 +3582,7 @@ function generateQuoteHTML(order,docType){
     for(var i=0;i<Math.max(0,6-rows.length);i++)html+='<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
   }
   html+='</tbody></table>';
-  /* v18.33 要望⑰: 見積書系は商品備考を税込合計ボックスの下部罫線より下へ移設（出荷指示書・受領書は従来位置） */
-  var pnHtml='';
-  if(order.productNotes){var pnText=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');pnHtml='<div style="margin:8px 0 0 0;padding:6px 10px;border:1px solid #E2E8F0;background:#F8FAFC;font-size:9.5px;border-radius:4px"><b>商品備考:</b> '+pnText.replace(/\n/g,'<br>')+'</div>';}
-  if(pnHtml&&(isShipping||isReceipt))html+=pnHtml;
+  /* v18.37 修正箇所2: 商品備考は全帳票から廃止（明細各行の備考欄へ移行） */
   if(isShipping){
     /* BOM detail table for shipping instruction
        v14.3 Codex P1対応: _partialReleases を BOM 数量から差し引いて表示する */
@@ -3552,7 +3662,6 @@ function generateQuoteHTML(order,docType){
     html+='<div class="trow sub"><span>10%対象&emsp;&yen;'+fm(subtotal)+'</span><span>(税)&emsp;&yen;'+fm(tax10)+'</span></div>';
     html+='<div class="trow sub"><span>8%軽減対&emsp;&yen;0</span><span>(税)&emsp;&yen;0</span></div>';
     html+='<div class="trow sub"><span>非課税対象&emsp;&yen;0</span></div></div>';
-    if(pnHtml)html+=pnHtml;/* v18.33 要望⑰: 商品備考は税込合計の下 */
   }
   html+='<div style="margin-top:16px;font-size:9px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
@@ -3574,9 +3683,9 @@ function generateQuoteHTML(order,docType){
     }
     html+='</div>';
   }
-  else if(docType==='quote'){html+='<b>支払条件:</b> '+payTerms+'<br><b>有効期限:</b> 御見積後1ヶ月<br><b>振込先:</b> 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
+  /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
-  if(order.notes){html+='<div style="margin-top:8px;padding:6px 8px;border:1px solid #ccc;background:#f9f9f9;font-size:9px"><b>備考:</b> '+order.notes.replace(/\n/g,'<br>')+'</div>';}
+  html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（記載場所は従来と同一） */
   html+='</div></body></html>';
   return{html:html,subtotal:subtotal,tax:tax10,total:total,rows:rows,subject:subject,slipCode:slipCode};
 }
@@ -3614,10 +3723,11 @@ function generateExcel(order,docType){
   if(docType!=='shipping')wsData.push(['件名',q.subject,'','担当者',exSalesP]);
   else wsData.push(['','','','担当者',exSalesP]);
   wsData.push([cfg.dateLabel,tdSlash(),'','伝票コード',q.slipCode]);
+  /* v18.37 修正箇所2③: 納期・有効期限・受渡地はHTML版と同じ保存値／既定値を使う */
   if(docType==='quote'){
-    wsData.push(['納期','別途相談','','有効期限','御見積後1ヶ月']);
+    wsData.push(['納期',deliveryTermOf(order),'','有効期限',validUntilOf(order)]);
   }
-  wsData.push(['受渡地',cust?cust.pref+(cust.city||''):'','','支払条件',exPayTerms]);
+  wsData.push(['受渡地',deliveryPlaceOf(order,cust),'','支払条件',exPayTerms]);
   /* v17.1 要望25: エンド納品先（代理店経由） */
   if(order.endUser&&(order.endUser.name||order.endUser.address)){
     wsData.push(['エンド納品先',(order.endUser.name||'')+(order.endUser.postal?'（〒'+order.endUser.postal+'）':'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')]);
@@ -3646,7 +3756,7 @@ function generateExcel(order,docType){
     wsData.push(['商品コード','商品名称','数量','単位','単価','金額','税','備考']);
     q.rows.forEach(function(r){
       if(r.configNote){wsData.push(['',r.configNote,'','','','','','']);}
-      wsData.push([r.code,r.name,r.qty,r.unit,r.price===''?'':r.price,r.amount,r.tax||'','']);
+      wsData.push([r.code,r.name,r.qty,r.unit,r.price===''?'':r.price,r.amount,r.tax||'',r.remark||'']);/* v18.37 修正箇所2④: 明細各行の備考をExcelにも出力 */
     });
   }
   wsData.push([]);
@@ -3659,19 +3769,15 @@ function generateExcel(order,docType){
     wsData.push(['','','','','8%軽減対',0,'(税)',0]);
     wsData.push(['','','','','非課税対象',0]);
   }
-  /* v18.33 要望⑰: Excel出力も税込合計の直後に商品備考（HTMLと同順） */
-  if(order.productNotes&&!isReceipt){var pn=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');wsData.push([]);wsData.push(['商品備考: '+pn]);}
+  /* v18.37 修正箇所2: 商品備考は廃止（明細各行の備考欄へ移行） */
   wsData.push([]);
   if(docType==='invoice'){
     wsData.push(['お振込手数料はお客様にてご負担ください。']);
     wsData.push(['振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック']);
-  }else if(docType==='quote'){
-    wsData.push(['支払条件: '+exPayTerms]);
-    wsData.push(['有効期限: 御見積後1ヶ月']);
-    wsData.push(['振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック']);
   }
-  if(order.notes){wsData.push([]);wsData.push(['備考: '+order.notes]);}
-  if(order.productNotes&&isReceipt){var pn2=typeof order.productNotes==='string'?order.productNotes:String(order.productNotes||'');wsData.push([]);wsData.push(['商品備考: '+pn2]);}
+  /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除 */
+  /* v18.37 修正箇所2⑥: 全体備考は改行ごとに1行として出力（入力内容と連動） */
+  if(order.notes){wsData.push([]);wsData.push(['備考']);String(order.notes).split('\n').forEach(function(t){wsData.push(['',t]);});}
   var ws=XLSX.utils.aoa_to_sheet(wsData);
   ws['!cols']=[{wch:14},{wch:42},{wch:8},{wch:8},{wch:12},{wch:14},{wch:8},{wch:20}];
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
@@ -4644,8 +4750,10 @@ function InvPage(p){
   var multiWH=us([]),selMulti=us(null);
   var showPartWh=us(false),partWhSel=us({});/* v18.30 要望③: 部材別倉庫指定の仮押さえ（例: 本体=新柏、鍵=本社） */
   var showQuote=us(false),quoteOrder=us(null);
+  var optTick=us(0);/* v18.37 修正箇所2③: 選択肢マスタ(QUOTE_OPTS)は非state管理のため、追加/削除後の再描画用カウンタ */
   var discount=us(0);
-  var quoteSubject=us(''),paymentTerms=us('前払い（銀行振り込み）'),paymentCustom=us(''),quoteNotes=us(''),productNotes=us(['']);
+  /* v18.37 修正箇所2②: 商品備考は廃止（明細各行の備考欄へ移行）のため productNotes の状態は削除 */
+  var quoteSubject=us(''),paymentTerms=us('前払い（銀行振り込み）'),paymentCustom=us(''),quoteNotes=us('');
   var quoteSalesPerson=us('');/* Override sales person per quote */
   var endUser=us({name:'',postal:'',address:'',phone:''});/* v17.1 要望25: 代理店経由のエンド納品先（任意） */
   var baseColor=us('gy'),hasBase=us(true),hasCap=us(true);
@@ -4704,7 +4812,6 @@ function InvPage(p){
     quoteSubject[1](ro.subject||'');
     if(ro.paymentTerms)paymentTerms[1](ro.paymentTerms);
     quoteNotes[1](ro.notes||'');
-    productNotes[1](ro.productNotes?String(ro.productNotes).split('\n'):['']);
     discount[1](ro.discount||0);
     quoteSalesPerson[1](ro.salesPersonOverride||'');
     endUser[1](ro.endUser?Object.assign({name:'',postal:'',address:'',phone:''},ro.endUser):{name:'',postal:'',address:'',phone:''});
@@ -4982,7 +5089,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var pt=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -5011,7 +5118,7 @@ function InvPage(p){
     var totalShip=(shipA?shipA.shipping:0)+(shipB?shipB.shipping:0);
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var pt2=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了（2倉庫）: '+no);
@@ -5102,7 +5209,7 @@ function InvPage(p){
     var totalShip=(shipA?shipA.shipping:0)+(second&&shipB?shipB.shipping:0);
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var ptA=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:main,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:main,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     if(second)order.wh2=second;
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);showPartWh[1](false);
@@ -5118,7 +5225,7 @@ function InvPage(p){
     if(p.salesView||p.lockReadOnly){
       var whP=selWH[0]||'honsha';
       var shipInfoP=cust?calcShipping(lines[0],whP,cust.pref):null;
-      var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+      var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
       quoteOrder[1](previewOrder);showQuote[1](true);
       p.toast(p.salesView?'見積プレビュー（営業は確認のみ・保存/仮押さえは事務へ）':'読み取り専用：見積プレビューのみ（保存不可）');
       return;
@@ -5130,14 +5237,22 @@ function InvPage(p){
     var existing=quoteOrder[0];
     var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id;
     var no=isUpdate?existing.no:'QT-2026-'+String(nextON++).padStart(3,'0');
-    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:officialShipping(lines[0],wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:officialShipping(lines[0],wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     if(isUpdate){
       /* v18.34 ⑪バグ修正: 見積書作成画面(モーダル)で直接編集した値を再作成で消さない。
-         既存値優先は「左ペインに入力UIが無い3項目」（件名・値引き・支払条件＝v18.33でUI削除済み、状態は常に初期値）に限定。
-         備考・商品備考・LEC担当者は左ペインに入力UIが残っているため従来どおり左ペイン値を採用（編集破棄の回帰を防ぐ） */
+         既存値優先は「左ペインに入力UIが無い項目」に限定する。
+         v18.37 修正箇所2②: 全体備考(notes)・LEC担当者(salesPersonOverride)も見積オプションからUI削除したため対象に追加。
+         あわせて直接編集のみで持つ項目（納期・受渡地・有効期限・行備考・レンタル記載）も引き継ぐ */
       order.subject=existing.subject||order.subject;
       order.discount=(existing.discount!=null&&existing.discount!==0)?existing.discount:order.discount;
       order.paymentTerms=existing.paymentTerms||order.paymentTerms;
+      order.notes=existing.notes||order.notes;
+      order.salesPersonOverride=existing.salesPersonOverride||order.salesPersonOverride;
+      order.deliveryTerm=existing.deliveryTerm||'';
+      order.deliveryPlace=existing.deliveryPlace||'';
+      order.validUntil=existing.validUntil||'';
+      order.rowRemarks=existing.rowRemarks||{};
+      order.rentalOffset=!!existing.rentalOffset;
     }
     if(isUpdate){
       var idx=ORDERS.findIndex(function(o){return o.no===no;});
@@ -5184,7 +5299,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='RS-2026-'+String(nextON++).padStart(3,'0');
     var ptR=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',productNotes:(Array.isArray(productNotes[0])?productNotes[0].filter(function(x){return x.trim();}).join('\n'):productNotes[0])||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);
     p.toast('仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -5503,28 +5618,9 @@ function InvPage(p){
         lines[0].length>0?h('div',{className:'card'},
           h('div',{className:'chd'},h('h3',null,'見積オプション')),
           h('div',{style:{padding:10}},
-            /* v18.33 要望⑪: 件名・値引き・支払条件は見積オプションから削除（見積書作成画面で直接編集する方式へ移行。エンド納品先・備考は残置） */
-            h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-              h('div',{style:{flex:1}},
-                h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'LEC担当者（空欄でデフォルト）'),
-                h('input',{className:'inp',value:quoteSalesPerson[0],onChange:function(e){quoteSalesPerson[1](e.target.value);},placeholder:cust&&cust.salesPerson?cust.salesPerson:'齋藤 勝'})
-              )
-            ),
-            h('div',{style:{marginBottom:6}},
-              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'商品に対する備考（商品名の下に表示）'),
-              productNotes[0].map(function(pn,pi){
-                return h('div',{key:pi,style:{display:'flex',gap:4,marginBottom:3,alignItems:'center'}},
-                  h('span',{style:{fontSize:8,color:'var(--g400)',minWidth:16}},pi+1+'.'),
-                  h('input',{className:'inp',value:pn,onChange:function(e){var arr=productNotes[0].slice();arr[pi]=e.target.value;productNotes[1](arr);},placeholder:'備考を入力',style:{flex:1}}),
-                  productNotes[0].length>1?h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626',padding:'2px 6px'},onClick:function(){var arr=productNotes[0].slice();arr.splice(pi,1);productNotes[1](arr);}},'×'):null
-                );
-              }),
-              h('button',{className:'btn btn-xs btn-ol',style:{marginTop:2},onClick:function(){productNotes[1](productNotes[0].concat(['']));}},'＋ 備考行を追加')
-            ),
-            h('div',{style:{marginBottom:4}},
-              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'全体備考（見積書末尾に表示）'),
-              h('textarea',{className:'inp',value:quoteNotes[0],onChange:function(e){quoteNotes[1](e.target.value);},placeholder:'例: 納品場所は1F搬入口、設置工事は別途見積',rows:2,style:{resize:'vertical'}})
-            ),
+            /* v18.33 要望⑪: 件名・値引き・支払条件は見積オプションから削除（見積書作成画面で直接編集する方式へ移行）
+               v18.37 修正箇所2②: LEC担当者・商品備考・全体備考も削除し、エンド納品先以下のみ残置。
+               LEC担当者・全体備考は見積書作成画面の「直接編集」へ集約。商品備考は明細各行の備考欄へ移行のため廃止。 */
             /* v17.1 要望25: エンド納品先（代理店経由の場合のみ・任意） */
             h('div',{style:{marginBottom:4,padding:'6px 8px',background:'#f5f7fa',borderRadius:4,border:'1px solid var(--g200)'}},
               h('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap'}},
@@ -5700,6 +5796,52 @@ function InvPage(p){
           }
           var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
           var ptKnown=PAY_TERMS_LIST.indexOf(qo.paymentTerms||'')>=0;
+          /* v18.37 修正箇所2③: 納期・受渡地・有効期限は選択肢マスタ＋自由入力。
+             マスタは全端末共有のため、追加・削除の都度 localStorage とクラウドへ保存する。 */
+          function bumpOpts(){saveQuoteOpts();cloudSave(p.userName);optTick[1](optTick[0]+1);}
+          function addOpt(kind,val){
+            val=(val||'').trim();
+            if(!val||(QUOTE_OPTS[kind]||[]).indexOf(val)>=0)return;
+            QUOTE_OPTS[kind]=(QUOTE_OPTS[kind]||[]).concat([val]);bumpOpts();
+            p.toast('選択肢に追加しました: '+val);
+          }
+          function delOpt(kind,val){
+            QUOTE_OPTS[kind]=(QUOTE_OPTS[kind]||[]).filter(function(x){return x!==val;});bumpOpts();
+            p.toast('選択肢から削除しました: '+val);
+          }
+          /* プルダウン＋自由入力欄＋選択肢の追加/削除ボタンを1組で描画する */
+          function optField(label,kind,field,effVal,placeholder){
+            var list=QUOTE_OPTS[kind]||[];
+            var cur=qo[field]||effVal||'';
+            var known=list.indexOf(cur)>=0;
+            function setV(v){var pt={};pt[field]=v;updQ(pt);}
+            return h('div',null,
+              h('label',{style:EL},label),
+              h('select',{className:'inp',value:known?cur:'__free',onChange:function(e){setV(e.target.value==='__free'?'':e.target.value);}},
+                list.map(function(x){return h('option',{key:x,value:x},x);}),
+                h('option',{value:'__free'},'（自由入力）')
+              ),
+              !known?h('input',{className:'inp',value:qo[field]||'',onChange:function(e){setV(e.target.value);},placeholder:placeholder||'直接入力',style:{marginTop:3}}):null,
+              h('div',{style:{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}},
+                (cur&&!known)?h('button',{className:'btn btn-xs btn-ol',onClick:function(){addOpt(kind,cur);}},'＋ 選択肢に追加'):null,
+                (cur&&known)?h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626'},onClick:function(){delOpt(kind,cur);}},'－ 選択肢から削除'):null
+              )
+            );
+          }
+          /* v18.37 修正箇所2④: 明細の備考欄は行ごとに入力。行の並び・行キーは帳票生成と同一ロジックから取得する */
+          var qRows=[];
+          try{qRows=(generateQuoteHTML(qo,'quote')||{}).rows||[];}catch(e){qRows=[];}
+          var dimMap={};
+          (qo.lines||[]).forEach(function(l){
+            if(l.isPartOnly)return;
+            var so2=sizeObj(l.size);
+            if(so2&&so2.dim)dimMap['L'+l.id]='外寸:'+so2.dim;
+          });
+          function updRemark(rkey,val){
+            var rr3=Object.assign({},qo.rowRemarks||{});
+            rr3[rkey]=val;updQ({rowRemarks:rr3});
+          }
+          var hasPersonal=(qo.lines||[]).some(function(l){return !l.isPartOnly&&l.type==='personal';});
           return h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
             h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます）'),
             h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:4}},
@@ -5715,9 +5857,40 @@ function InvPage(p){
               ),
               h('div',null,h('label',{style:EL},'LEC担当者（空欄=顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
             ),
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}},
-              h('div',null,h('label',{style:EL},'商品備考（税込合計の下に表示）'),h('textarea',{className:'inp',rows:2,value:qo.productNotes||'',onChange:function(e){updQ({productNotes:e.target.value});},style:{resize:'vertical'}})),
-              h('div',null,h('label',{style:EL},'全体備考（末尾に表示）'),h('textarea',{className:'inp',rows:2,value:qo.notes||'',onChange:function(e){updQ({notes:e.target.value});},style:{resize:'vertical'}}))
+            /* v18.37 修正箇所2③: 納期・受渡地・有効期限（プルダウン＋自由入力・選択肢は追加/削除可） */
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}},
+              optField('納期','delivery','deliveryTerm',deliveryTermOf(qo),'納期を入力'),
+              optField('受渡地（空欄=顧客住所の市区町村まで）','place','deliveryPlace','',deliveryPlaceOf(qo,CUSTS.find(function(c){return c.id===qo.cid;}))||'受渡地を入力'),
+              optField('有効期限','expiry','validUntil',validUntilOf(qo),'有効期限を入力')
+            ),
+            /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載。パーソナルタイプ選択時のみ */
+            hasPersonal?h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+              h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:9,fontWeight:600,cursor:'pointer'}},
+                h('input',{type:'checkbox',checked:!!qo.rentalOffset,onChange:function(e){updQ({rentalOffset:e.target.checked});}}),
+                'ベースボード・上下ジョイントをレンタル品（無償貸与）として記載する'
+              ),
+              h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'明細にプラス行とマイナス行を並べて計上し、差引0円で表示します（上下ジョイント単価 ¥'+fm(VJ_PRICE)+'）')
+            ):null,
+            /* v18.37 修正箇所2④: 明細各行の備考（税欄の右）。外寸はプルダウンから挿入でき、手入力も可 */
+            qRows.length?h('div',{style:{marginBottom:4}},
+              h('label',{style:EL},'明細の備考（各行ごとに入力・税欄の右に表示）'),
+              h('div',{style:{maxHeight:150,overflowY:'auto',background:'#fff',border:'1px solid var(--g200)',borderRadius:4,padding:4}},
+                qRows.map(function(r){
+                  var rk=r.rkey||('N'+r.no);
+                  return h('div',{key:rk,style:{display:'flex',gap:4,alignItems:'center',marginBottom:3}},
+                    h('span',{style:{fontSize:8,color:'var(--g500)',width:150,flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:r.name},r.name),
+                    dimMap[rk]?h('select',{className:'inp',style:{width:88,fontSize:8,flexShrink:0},value:'',onChange:function(e){if(e.target.value)updRemark(rk,e.target.value);}},
+                      h('option',{value:''},'外寸を挿入…'),
+                      h('option',{value:dimMap[rk]},dimMap[rk])
+                    ):null,
+                    h('input',{className:'inp',style:{flex:1,fontSize:9},value:(qo.rowRemarks||{})[rk]!==undefined?(qo.rowRemarks||{})[rk]:(r.remark||''),onChange:function(e){updRemark(rk,e.target.value);},placeholder:'備考を入力'})
+                  );
+                })
+              )
+            ):null,
+            h('div',null,
+              h('label',{style:EL},'全体備考（見積書末尾に表示・改行するとそのまま改行されます）'),
+              h('textarea',{className:'inp',rows:3,value:qo.notes||'',onChange:function(e){updQ({notes:e.target.value});},placeholder:'例:\n・○○まで継続購入お願いします。\n・ご契約終了時にはレンタル品は全てご返却をお願いします。',style:{resize:'vertical'}})
             )
           );
         })(),
@@ -5800,7 +5973,7 @@ function QuotePreview(p){
       var pName3=ln.isFreeInput?ln.name:(productName(ln.line)+' '+ln.partLabel);
       var pUnit3=ln.isFreeInput?(ln.unit||'個'):'個';
       var pRmk3=ln.isFreeInput?(ln.remark||''):'';
-      rows.push({no:rowNo++,code:'',name:pName3,qty:ln.qty,unit:pUnit3,price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':'',remark:pRmk3});
+      rows.push({no:rowNo++,rkey:'L'+ln.id,code:'',name:pName3,qty:ln.qty,unit:pUnit3,price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':'',remark:rowRemark(o,'L'+ln.id,pRmk3)});
       return;
     }
     var sz=sizeObj(ln.size);var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
@@ -5820,23 +5993,30 @@ function QuotePreview(p){
     var amt2=ln.qty*sz.p;
     if(sq>0)amt2+=sq*SHELF_PRICE;
     subtotal+=amt2;
-    var dimNote2=sz.dim?'外寸:'+sz.dim:'';
-    rows.push({no:rowNo++,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:dimNote2});
+    /* v18.37 修正箇所2④: 備考欄は空欄スタート（外寸は直接編集のプルダウンから選択して挿入する） */
+    rows.push({no:rowNo++,rkey:'L'+ln.id,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(o,'L'+ln.id,'')});
   });
   var baseLines=o.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
   /* v14.3: ベースはパーソナルでn(1台×1枚)、常設はislands。上下共通ボードはtop側でn*2化 */
   var ti=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0);/* v18.32 要望①: ベース枚数はlineBaseCountで一元解決（directパーソナルのベース個別指定に追従。calcBOMのベース行と常に一致） */
+  var baseRowTotal=0;
   if(ti>0){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
     var bName=productName(fl0.line||'jp01')+'ベースボード('+bColorName+')'+(bCap?' アンカー穴キャップ付':'');
-    var bt=ti*4000;subtotal+=bt;
-    rows.push({no:rowNo++,code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:4000,amount:bt,tax:'10%(外)'});
+    var bt=ti*BASE_PRICE;subtotal+=bt;
+    rows.push({no:rowNo++,rkey:'BASE',code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:BASE_PRICE,amount:bt,tax:'10%(外)',remark:rowRemark(o,'BASE',isRentalQuote(o)?RENTAL_NOTE:'')});
+    baseRowTotal=bt;
+  }
+  /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載 */
+  if(isRentalQuote(o)){
+    var rr2=pushRentalRows(o,rows,rowNo,subtotal,baseLines[0],baseRowTotal);
+    rowNo=rr2.no;subtotal=rr2.subtotal;
   }
   var ship=o.shipping||0;
-  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)'});}
+  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,rkey:'SHIP',code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(o,'SHIP','')});}
   var disc=o.discount||0;
-  if(disc>0){subtotal-=disc;rows.push({no:rowNo++,code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:''});}
+  if(disc>0){subtotal-=disc;rows.push({no:rowNo++,rkey:'DISC',code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:'',remark:rowRemark(o,'DISC','')});}
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
   var hasNonPart=o.lines.some(function(l){return!l.isPartOnly;});
   var subject=o.subject||'';
@@ -5885,11 +6065,12 @@ function QuotePreview(p){
         h('div',null,h('b',null,'担当者: '),salesP2),
         h('div',null,h('b',null,cfg.dateLabel+': '),tdSlash()),
         h('div',null,h('b',null,'伝票コード: '),slipCode),
-        dt==='quote'?h('div',null,h('b',null,'納期: '),'別途相談'):null,
-        dt==='quote'?h('div',null,h('b',null,'有効期限: '),'御見積後1ヶ月'):null,
+        /* v18.37 修正箇所2③: 納期・有効期限は選択肢マスタ＋自由入力の保存値を反映 */
+        dt==='quote'?h('div',null,h('b',null,'納期: '),deliveryTermOf(o)):null,
+        dt==='quote'?h('div',null,h('b',null,'有効期限: '),validUntilOf(o)):null,
         isShipping&&o.shipNo?h('div',null,h('b',null,'出荷№: '),o.shipNo):null,
         isShipping?h('div',null,h('b',null,'出荷元倉庫: '),((WH_MAP[o.wh]||{}).n||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).n||''):'')):null,
-        h('div',null,h('b',null,'受渡地: '),cust?cust.pref+(cust.city||''):''),
+        h('div',null,h('b',null,'受渡地: '),deliveryPlaceOf(o,cust)),/* v18.37 修正箇所2③: 自由入力優先・未入力は市区町村まで */
         o.endUser&&(o.endUser.name||o.endUser.address)?h('div',{style:{gridColumn:'1/3'}},h('b',null,'エンド納品先: '),(o.endUser.name||'')+(o.endUser.postal?' 〒'+o.endUser.postal:'')+' '+(o.endUser.address||'')+(o.endUser.phone?' TEL.'+o.endUser.phone:'')):null,
         dt==='quote'||dt==='invoice'?h('div',null,h('b',null,'支払条件: '),payTerms2):null,
         isShipping?h('div',null,h('b',null,'配送先: '),(o.shipTo&&o.shipTo.name)||(cust?cust.pref+(cust.city||''):'')):null,
@@ -5933,8 +6114,7 @@ function QuotePreview(p){
             return els;
           })))
         ),
-      /* v18.33 要望⑰: 見積書系の商品備考は税込合計の下へ移設（出荷指示書・受領書のみ従来位置） */
-      o.productNotes&&(isShipping||isReceipt)?h('div',{style:{margin:'6px 0',padding:'6px 10px',border:'1px solid #E2E8F0',background:'#F8FAFC',fontSize:9,borderRadius:4,whiteSpace:'pre-wrap'}},h('b',null,'商品備考: '),o.productNotes):null,
+      /* v18.37 修正箇所2: 商品備考は全帳票から廃止（明細各行の備考欄へ移行） */
       isShipping?h('div',{style:{marginTop:12}},
         h('div',{style:{fontSize:11,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'部材内訳'),
         h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'4px 0'}},
@@ -5980,8 +6160,6 @@ function QuotePreview(p){
           h('div',{style:{padding:'2px 10px',fontSize:8,color:'#666'}},'非課税対象  \u00A50')
         )
       ):null,
-      /* v18.33 要望⑰: 商品備考は税込合計ボックスの下部罫線より下 */
-      o.productNotes&&!isShipping&&!isReceipt?h('div',{style:{margin:'8px 0 0 0',padding:'6px 10px',border:'1px solid #E2E8F0',background:'#F8FAFC',fontSize:9,borderRadius:4,whiteSpace:'pre-wrap',clear:'both'}},h('b',null,'商品備考: '),o.productNotes):null,
       h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',h('br'),h('br'),'受領日:　　　　　　受領者（署名）:　　　　　　　　　　'):null,
@@ -5995,9 +6173,16 @@ function QuotePreview(p){
             );})
           )
         ):null,
-        dt==='quote'?h('div',null,h('b',null,'支払条件:'),' '+payTerms2,h('br'),h('b',null,'有効期限:'),' 御見積後1ヶ月',h('br'),h('b',null,'振込先:'),' 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
+        /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（上部の欄には残る） */
         dt==='delivery'?h('div',null,'上記の通り納品致しましたのでご査収ください。'):null,
-        o.notes?h('div',{style:{marginTop:8,padding:'6px 8px',border:'1px solid #ccc',background:'#f9f9f9'}},h('b',null,'備考: '),o.notes):null
+        /* v18.37 修正箇所2⑥: 全体備考は入力内容と連動し、改行のまま箇条書き表示（記載場所は従来と同一） */
+        o.notes?h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:8,fontSize:9}},
+          h('tbody',null,h('tr',null,
+            h('td',{style:{border:'1px solid #999',width:70,textAlign:'center',verticalAlign:'middle',padding:'6px 4px',letterSpacing:4}},'備考'),
+            h('td',{style:{border:'1px solid #999',padding:'6px 10px',lineHeight:1.7}},
+              String(o.notes).split('\n').map(function(t,ti2){return h('div',{key:ti2,style:{minHeight:'1.6em'}},t);}))
+          ))
+        ):null
       )
     )
   );
