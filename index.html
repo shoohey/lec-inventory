@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.37（修正箇所2: SSWにSSコネクター/見積オプション整理/納期・受渡地・有効期限の選択式/明細各行の備考/レンタル品マイナス記載/全体備考の箇条書き/見積書下部の支払条件・有効期限・振込先削除）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.38（修正箇所3: 営業の顧客追加・編集権限/営業見積の案件管理保存/パーソナルはキャップOFF・ベース黒が既定/送付方法（混載・チャーター）選択で送料切替/仮押さえ解除の日時・解除者を表示）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2313,6 +2313,32 @@ function officialShipping(lines,wh,cust,fallback){
   }
   return fallback;
 }
+/* v18.38 修正箇所3⑤: チャーター便を選択した場合の見積送料。
+   推奨車格（実重量・容積重量から自動判定）の見積記載価格を採用し、見積記載価格が表に無ければ
+   混載と同じ考え方で原価×1.1・千円未満切上げ(markupCeil)を使う。該当行先が無い場合は null。 */
+function charterQuotedFor(lines,wh,cust){
+  if(!cust||!lines||!lines.length)return null;
+  try{
+    var fr=calcFreight({wh:wh,lines:lines},cust.city||'',cust.pref||'');
+    if(!fr)return null;
+    var chDist=fr.distance;
+    /* ヤマト系(本社・関西発)は距離を持たないため、関西発のみ尼高表の距離で補完（案件詳細の比較表示と同じ扱い） */
+    if(fr.yamato&&chDist==null&&wh==='kansai'){var dd=destDistanceFor('r5_amago',cust.city||'',cust.pref||'');chDist=dd?dd.km:null;}
+    var ch=charterCost(wh,chDist,fr.weight,cust.city||'',fr.actualWeight,fr.volumeWeight);
+    if(!ch||!ch.ok||!ch.suggest||!ch.prices[ch.suggest])return null;
+    var pick=ch.prices[ch.suggest];
+    return pick.quote!=null?pick.quote:markupCeil(pick.price);
+  }catch(e){return null;}
+}
+/* 送付方法(''=未選択/'mix'=混載/'charter'=チャーター)に応じた見積送料。
+   未選択と混載は従来どおり officialShipping。チャーターは表に該当が無ければ混載へフォールバックする。 */
+function shippingByMethod(lines,wh,cust,fallback,method){
+  if(method==='charter'){
+    var cq=charterQuotedFor(lines,wh,cust);
+    if(cq!=null)return cq;
+  }
+  return officialShipping(lines,wh,cust,fallback);
+}
 /* v18.10 P3-B: チャーター料金表（PDFページ5・尼高運輸/関西・札幌発）。距離km×車格(2t/4t/10t)→円。参考比較用。
    車格=2t(積載2000kg)/4t(~2500kg)/10t(13000kg)・容積/重量変動あり。本社発のチャーター表は未提供。 */
 /* v18.30 要望④: チャーター料金を最新化。kansai=尼高2026.10改定(原価+見積記載quote)、
@@ -4365,7 +4391,10 @@ function App(){
       ),
       h('div',{className:'ver'},'v14.7')
     ),
-    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO}),
+    /* v18.38 修正箇所3①: 営業ロールにも顧客の新規追加・情報編集を許可するため、
+       後発ログインによるロック(lockReadOnly)と営業ロール込みの読み取り専用(isReadOnly)を分けて渡す。
+       削除・顧客一括取込は従来どおり isReadOnly（＝営業は不可）で制限。 */
+    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO,lockReadOnly:isReadOnly[0]}),
     h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);}}),
     h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:effRO,setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);}}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:effRO}),
@@ -4603,8 +4632,9 @@ function CustPage(p){
     rd.readAsArrayBuffer(f);
   }
   function addCust(){
-    /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
-    if(p.isReadOnly){alert('読み取り専用モード中は顧客追加できません');return;}
+    /* v14 Codex P2対応: 読み取り専用モードでは禁止
+       v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ */
+    if(p.lockReadOnly){alert('読み取り専用モード中は顧客追加できません');return;}
     var f=nf[0];if(!f.name)return;
     var attrFinal=(f.attr==='その他'&&f.attrOther&&f.attrOther.trim())?f.attrOther.trim():(f.attr||'');
     var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal};
@@ -4616,8 +4646,9 @@ function CustPage(p){
   function uf(k,v){var o=Object.assign({},nf[0]);o[k]=v;nf[1](o);}
   function ufEdit(k,v){var o=Object.assign({},editCust[0]);o[k]=v;editCust[1](o);}
   function saveEditCust(){
-    /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
-    if(p.isReadOnly){alert('読み取り専用モード中は顧客編集できません');return;}
+    /* v14 Codex P2対応: 読み取り専用モードでは禁止
+       v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ */
+    if(p.lockReadOnly){alert('読み取り専用モード中は顧客編集できません');return;}
     var ec=editCust[0];if(!ec||!ec.name){return;}
     var idx=CUSTS.findIndex(function(c){return c.id===ec.id;});
     if(idx>=0){CUSTS[idx]=Object.assign({},ec);saveCusts();bump[1](bump[0]+1);editCust[1](null);}
@@ -4748,6 +4779,9 @@ function InvPage(p){
   var extraJointScrew=us(0),extraCapScrew=us(0);/* 手動追加のジョイントネジ・目隠しネジ */
   var lines=us([]),whResults=us([]),selWH=us(null);
   var multiWH=us([]),selMulti=us(null);
+  /* v18.38 修正箇所3⑤: 送付方法の選択（''=未選択で現行どおり / 'mix'=混載 / 'charter'=チャーター）。
+     選択すると倉庫カードの送料表記と、見積書に載る送料の両方が切り替わる。 */
+  var shipMethod=us('');
   var showPartWh=us(false),partWhSel=us({});/* v18.30 要望③: 部材別倉庫指定の仮押さえ（例: 本体=新柏、鍵=本社） */
   var showQuote=us(false),quoteOrder=us(null);
   var optTick=us(0);/* v18.37 修正箇所2③: 選択肢マスタ(QUOTE_OPTS)は非state管理のため、追加/削除後の再描画用カウンタ */
@@ -5089,7 +5123,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var pt=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -5118,7 +5152,7 @@ function InvPage(p){
     var totalShip=(shipA?shipA.shipping:0)+(shipB?shipB.shipping:0);
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var pt2=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了（2倉庫）: '+no);
@@ -5209,7 +5243,7 @@ function InvPage(p){
     var totalShip=(shipA?shipA.shipping:0)+(second&&shipB?shipB.shipping:0);
     var no='QT-2026-'+String(nextON++).padStart(3,'0');
     var ptA=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:main,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:main,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     if(second)order.wh2=second;
     ORDERS.push(order);
     quoteOrder[1](order);showQuote[1](true);showPartWh[1](false);
@@ -5221,13 +5255,15 @@ function InvPage(p){
 
   function doQuoteOnly(){
     if(!lines[0].length)return;
-    /* v18 P2(要望3/4): 営業ロール・後発ログインは見積「確認」のみ。ORDERSへ保存せず採番もしない（プレビュー表示だけ） */
-    if(p.salesView||p.lockReadOnly){
+    /* v18 P2(要望3/4): 後発ログインは見積「確認」のみ。ORDERSへ保存せず採番もしない（プレビュー表示だけ）
+       v18.38 修正箇所3②: 営業ロールが作成した見積は案件管理一覧に保存する（従来はプレビューのみ）。
+       仮押さえ・在庫引当は引き続き事務のみ（doReserveOnly/doHoldAndQuote は salesView で非表示のまま）。 */
+    if(p.lockReadOnly){
       var whP=selWH[0]||'honsha';
       var shipInfoP=cust?calcShipping(lines[0],whP,cust.pref):null;
-      var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+      var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
       quoteOrder[1](previewOrder);showQuote[1](true);
-      p.toast(p.salesView?'見積プレビュー（営業は確認のみ・保存/仮押さえは事務へ）':'読み取り専用：見積プレビューのみ（保存不可）');
+      p.toast('読み取り専用：見積プレビューのみ（保存不可）');
       return;
     }
     var wh=selWH[0]||'honsha';
@@ -5237,7 +5273,7 @@ function InvPage(p){
     var existing=quoteOrder[0];
     var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id;
     var no=isUpdate?existing.no:'QT-2026-'+String(nextON++).padStart(3,'0');
-    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:officialShipping(lines[0],wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shippingByMethod(lines[0],wh,cust,shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     if(isUpdate){
       /* v18.34 ⑪バグ修正: 見積書作成画面(モーダル)で直接編集した値を再作成で消さない。
          既存値優先は「左ペインに入力UIが無い項目」に限定する。
@@ -5253,6 +5289,7 @@ function InvPage(p){
       order.validUntil=existing.validUntil||'';
       order.rowRemarks=existing.rowRemarks||{};
       order.rentalOffset=!!existing.rentalOffset;
+      order.createdBy=existing.createdBy||order.createdBy;/* v18.38 修正箇所3②: 起票者は初回作成者を維持 */
     }
     if(isUpdate){
       var idx=ORDERS.findIndex(function(o){return o.no===no;});
@@ -5299,7 +5336,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='RS-2026-'+String(nextON++).padStart(3,'0');
     var ptR=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:officialShipping(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0),discount:parseInt(discount[0])||0,subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
     ORDERS.push(order);
     quoteOrder[1](order);
     p.toast('仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -5341,7 +5378,14 @@ function InvPage(p){
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
                 h('select',{className:'inp',value:sz[0],onChange:function(e){sz[1](e.target.value);}},sizes.map(function(s){return h('option',{key:s,value:s},sizeLabel(ln[0],s));}))),
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'タイプ'),
-                h('select',{className:'inp',value:tp[0],onChange:function(e){tp[1](e.target.value);}},TYPES.map(function(t){return h('option',{key:t.v,value:t.v},t.l);})))
+                h('select',{className:'inp',value:tp[0],onChange:function(e){
+                  var nv=e.target.value;
+                  /* v18.38 修正箇所3③④: パーソナルへ切り替えた時のみ、キャップ=OFF・ベース色=ブラックを既定として適用する。
+                     effectではなくここで適用するのは、リピート発注で保存済み設定を読み込んだ場合に上書きしないため。
+                     適用後にユーザーが付け直した設定はそのまま維持される。 */
+                  if(nv==='personal'&&tp[0]!=='personal'){hasCap[1](false);baseColor[1]('bk');}
+                  tp[1](nv);
+                }},TYPES.map(function(t){return h('option',{key:t.v,value:t.v},t.l);})))
             ),
             /* 扉の有無チェック (オープンタイプ廃止の代替) */
             h('div',{style:{marginBottom:jp2XLNoDoor?2:6,padding:'5px 8px',background:hasDoor[0]?'var(--bp)':'var(--yp)',borderRadius:5,display:'flex',alignItems:'center',gap:8}},
@@ -5655,7 +5699,21 @@ function InvPage(p){
         whResults[0].length>0?h('div',{className:'fi'},
           /* Warehouse comparison */
           h('div',{className:'card',style:{marginBottom:8}},
-            h('div',{className:'chd',style:{position:'sticky',top:0,background:'#fff',zIndex:5}},h('h3',null,'倉庫別在庫・送料比較'),h('span',{style:{fontSize:8,color:'var(--g400)'}},lines[0].length+'明細')),
+            h('div',{className:'chd',style:{position:'sticky',top:0,background:'#fff',zIndex:5,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+              h('h3',null,'倉庫別在庫・送料比較'),
+              h('span',{style:{fontSize:8,color:'var(--g400)'}},lines[0].length+'明細'),
+              /* v18.38 修正箇所3⑤: 送付方法の選択。混載・チャーターは排他（同じ方を再度クリックで未選択に戻る）。
+                 未選択のときは従来どおりの送料表記・見積送料。 */
+              h('div',{style:{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}},
+                h('span',{style:{fontSize:8,fontWeight:700,color:'var(--g500)'}},'送付方法'),
+                [['mix','混載'],['charter','チャーター']].map(function(m){
+                  return h('label',{key:m[0],style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3}},
+                    h('input',{type:'checkbox',checked:shipMethod[0]===m[0],onChange:function(){shipMethod[1](shipMethod[0]===m[0]?'':m[0]);}}),
+                    m[1]
+                  );
+                })
+              )
+            ),
             h('div',{style:{padding:10,display:'flex',gap:6,flexWrap:'wrap'}},
               whResults[0].filter(function(wr){return !wr.noLine;}).map(function(wr,idx){
                 var isSel=selWH[0]===wr.whId;
@@ -5668,9 +5726,21 @@ function InvPage(p){
                   idx===0&&wr.check.ok?h('span',{className:'rec-badge',style:{position:'absolute',top:4,right:4}},'おすすめ'):null,
                   h('div',{style:{fontSize:10,fontWeight:700,marginBottom:2}},wr.whName),
                   h('div',{style:{fontSize:20,fontWeight:900,color:wr.check.ok?'var(--gn)':'#DC2626'}},wr.check.ok?'OK':'NG'),
-                  wr.ship?h('div',{style:{fontSize:11,color:'var(--g600)',marginTop:2}},'送料: ¥'+fm(wr.ship.shipping)):null,
-                  wr.ship?h('div',{style:{fontSize:9,color:'var(--g400)'}},'('+wr.ship.weight+'kg × ¥'+wr.ship.rate+'/kg)'):null,
-                  wr.ship&&wr.ship.charter?h('div',{style:{fontSize:9,color:'#DC2626'}},'チャーター便 +¥30,000'):null,
+                  /* v18.38 修正箇所3⑤: 送付方法を選択している場合は、その方法の見積送料に表記を差し替える。
+                     未選択時は従来どおり簡易送料（重量×単価）を表示する。 */
+                  (function(){
+                    if(!shipMethod[0]||!cust)return null;
+                    var q=shippingByMethod(lines[0],wr.whId,cust,wr.ship?wr.ship.shipping:0,shipMethod[0]);
+                    var isCh=shipMethod[0]==='charter';
+                    var chOk=isCh?(charterQuotedFor(lines[0],wr.whId,cust)!=null):true;
+                    return h('div',{style:{marginTop:2}},
+                      h('div',{style:{fontSize:11,fontWeight:700,color:isCh?'#c53030':'#276749'}},(isCh?'チャーター': '混載')+'送料: ¥'+fm(q)),
+                      isCh&&!chOk?h('div',{style:{fontSize:8,color:'#975a16'}},'※チャーター表に該当行先なし → 混載の見積運賃を表示'):null
+                    );
+                  })(),
+                  wr.ship&&!shipMethod[0]?h('div',{style:{fontSize:11,color:'var(--g600)',marginTop:2}},'送料: ¥'+fm(wr.ship.shipping)):null,
+                  wr.ship&&!shipMethod[0]?h('div',{style:{fontSize:9,color:'var(--g400)'}},'('+wr.ship.weight+'kg × ¥'+wr.ship.rate+'/kg)'):null,
+                  wr.ship&&wr.ship.charter&&!shipMethod[0]?h('div',{style:{fontSize:9,color:'#DC2626'}},'チャーター便 +¥30,000'):null,
                   /* v18.16 P3連動: 運賃表ベースの精密試算を倉庫カードに参考併記（距離解決時のみ・本番送料は不変） */
                   (function(){var fr=cust?calcFreight({wh:wr.whId,lines:lines[0]},cust.city||'',cust.pref||''):null;return fr&&fr.ok?h('div',{style:{fontSize:9,color:'#1e3a5f',marginTop:2,fontWeight:700,borderTop:'1px dashed #cbd5e1',paddingTop:2},title:'運賃表ベースの精密試算（'+(fr.yamato?('ヤマト'+fr.boxSize+'サイズ×'+fr.boxCount+'箱'):(fr.weight+'kg・'+fr.distance+'km'+(fr.approxDistance?'/暫定距離':'')))+'）。本番送料には自動反映しません'},'運賃表試算: ¥'+fm(fr.quoted)+(fr.approxDistance?'(暫定)':'')):null;})(),
                   !wr.check.ok?h('div',{style:{fontSize:9,color:'#B91C1C',marginTop:2}},
@@ -5702,12 +5772,13 @@ function InvPage(p){
           ):null,
           /* Action buttons */
           h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
-            h('button',{className:'btn btn-nv',onClick:doQuoteOnly},p.salesView?'見積を確認（プレビュー）':'見積書のみ作成'),
+            /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため文言を統一 */
+            h('button',{className:'btn btn-nv',onClick:doQuoteOnly},'見積書のみ作成'),
             p.salesView?null:h('button',{className:'btn btn-or',style:{fontSize:12,padding:'8px 14px'},onClick:doReserveOnly,disabled:!selWH[0]},'仮押さえのみ（見積無）'),
             p.salesView?null:h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px'},onClick:doHoldAndQuote,disabled:!selWH[0]},'仮押さえ＆見積書作成'),
             /* v18.30 要望③: 部材ごとに倉庫を選んで仮押さえ（単一倉庫で足りる場合でも意図的に分割できる） */
             p.salesView?null:h('button',{className:'btn btn-tl',style:{fontSize:12,padding:'8px 14px'},onClick:openPartWh,disabled:!lines[0].length,title:'例: 本体は新柏倉庫、鍵は本社で仮押さえ（倉庫は2つまで）'},'🔀 部材別倉庫で仮押さえ'),
-            p.salesView?h('span',{style:{fontSize:9,color:'#975a16',alignSelf:'center'}},'営業ロール：仮押さえ・保存は事務へ依頼してください'):null,
+            p.salesView?h('span',{style:{fontSize:9,color:'#975a16',alignSelf:'center'}},'営業ロール：見積の作成・保存は可能です（仮押さえ・在庫引当は事務へ依頼してください）'):null,
             quoteOrder[0]&&!showQuote[0]?h('button',{className:'btn btn-tl',onClick:function(){showQuote[1](true);}},'📄 直近の見積を開く: '+quoteOrder[0].no):null
           ),
           /* Multi-warehouse options */
@@ -5788,7 +5859,8 @@ function InvPage(p){
           var qo=quoteOrder[0];
           var PAY_TERMS_LIST=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末','その他'];
           function updQ(patch){
-            if(p.isReadOnly){p.toast('読み取り専用モード中は見積の編集はできません');return;}
+            /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため、直接編集も営業に開放（制限は後発ロック時のみ） */
+            if(p.lockReadOnly){p.toast('読み取り専用モード中は見積の編集はできません');return;}
             var no2=Object.assign({},qo,patch);
             quoteOrder[1](no2);
             var idx=ORDERS.findIndex(function(x){return x.no===qo.no;});
@@ -6216,6 +6288,8 @@ function OrdersPage(p){
       return;
     }
     order.status=ns;
+    /* v18.38 修正箇所3⑥: 再度仮押さえ以降へ進めた案件は、過去の仮押さえ解除の記録を消す（現状と食い違う表示を残さない） */
+    if(ns!=='見積作成'){delete order.holdReleasedAt;delete order.holdReleasedBy;}
     p.toast('ステータス変更: '+order.no+' → '+ns);
     /* v14 D30: 他セッションへ同期 */
     broadcastOrderUpdate(p.userName||'',order.no+' ステータス→'+ns);
@@ -6292,15 +6366,23 @@ function OrdersPage(p){
           var totalQty=o.lines.reduce(function(s,l){return l.isFreeInput?s:s+l.qty;},0);
           var hasFree=o.lines.some(function(l){return l.isFreeInput;});
           return h('tr',{key:o.no},
-            h('td',null,h('b',null,o.no)),h('td',null,o.date),h('td',null,c?c.name:''),
+            /* v18.38 修正箇所3②: 起票者（営業/事務）を案件番号の下に表示 */
+            h('td',null,h('b',null,o.no),o.createdBy?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},'起票: '+o.createdBy):null),
+            h('td',null,o.date),h('td',null,c?c.name:''),
             h('td',null,o.lines.length+'件'),
             h('td',{style:{fontWeight:700}},totalQty>0?fm(totalQty)+'台':'',hasFree?' +他':''),
             h('td',null,((WH_MAP[o.wh]||{}).s||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).s||''):'')),
-            h('td',{style:{fontSize:9}},o.shipping?'¥'+fm(o.shipping):'-'),
+            /* v18.38 修正箇所3⑤: 送付方法を明示して見積した案件は、どちらで算出した送料か分かるように併記 */
+            h('td',{style:{fontSize:9}},o.shipping?'¥'+fm(o.shipping):'-',
+              o.shipMethod?h('div',{style:{fontSize:8,color:o.shipMethod==='charter'?'#c53030':'#276749'}},o.shipMethod==='charter'?'チャーター':'混載'):null),
             h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},o.status),
               (function(){var rd=orderReadiness(o);if(!rd.has)return null;return rd.ready
                 ?h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#065F46',background:'#ECFDF5',border:'1px solid #A7F3D0',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'発注待ちパーツが入庫で揃いました。出荷へ進めます'},'🟢 入庫済・出荷可')
-                :h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#9A3412',background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'発注待ち（未入庫）のパーツが残っています'},'🟠 発注待ち '+rd.shortCount+'/'+rd.total+'件');})()
+                :h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#9A3412',background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'発注待ち（未入庫）のパーツが残っています'},'🟠 発注待ち '+rd.shortCount+'/'+rd.total+'件');})(),
+              /* v18.38 修正箇所3⑥: 仮押さえを解除した案件は、解除日時と解除者をステータス欄に表示する */
+              o.holdReleasedAt?h('div',{style:{marginTop:2,fontSize:8,color:'#975a16',lineHeight:1.4},title:'仮押さえ解除の記録'},
+                '仮押さえ解除 '+o.holdReleasedAt+(o.holdReleasedBy?'（'+o.holdReleasedBy+'）':'')
+              ):null
             ),
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){detail[1](o);}},'詳細'),
@@ -6392,7 +6474,10 @@ function OrdersPage(p){
             if(od.wh2){releaseLine(ln,od.wh);releaseLine(ln,od.wh2);}
             else{releaseLine(ln,od.wh);}
           });
-          od.status='見積作成';p.toast('仮押さえ解除: '+od.no);detail[1](null);saveAll();
+          od.status='見積作成';
+          /* v18.38 修正箇所3⑥: 仮押さえ解除の日時と解除者を記録し、案件管理一覧のステータス欄に表示する */
+          od.holdReleasedAt=new Date().toLocaleString('ja-JP');od.holdReleasedBy=p.userName||'';
+          p.toast('仮押さえ解除: '+od.no);detail[1](null);saveAll();
           /* v14.2: 仮押さえ解除を他ユーザーに通知 */
           broadcastOrderUpdate(p.userName||'',od.no+' 仮押さえ解除');
         }},'仮押さえ解除'):null,
@@ -8424,7 +8509,10 @@ function PartsPage(p){
             if(od.wh2){releaseLine(ln,od.wh);releaseLine(ln,od.wh2);}
             else{releaseLine(ln,od.wh);}
           });
-          od.status='見積作成';p.toast('仮押さえ解除: '+od.no);heldDetail[1](null);bump[1](bump[0]+1);saveAll();
+          od.status='見積作成';
+          /* v18.38 修正箇所3⑥: 仮押さえ解除の日時と解除者を記録（案件管理一覧のステータス欄に表示） */
+          od.holdReleasedAt=new Date().toLocaleString('ja-JP');od.holdReleasedBy=p.userName||'';
+          p.toast('仮押さえ解除: '+od.no);heldDetail[1](null);bump[1](bump[0]+1);saveAll();
         }},'仮押さえ解除'):null,
         h('button',{className:'btn btn-gn',onClick:function(){var q=generateQuoteHTML(heldDetail[0],'quote');if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');}},'見積書'),
         h('button',{className:'btn btn-ol',onClick:function(){heldDetail[1](null);}},'閉じる')
