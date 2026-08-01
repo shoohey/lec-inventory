@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.40（修正１: 代理店のエンド納品先を複数登録・見積/案件/仮押さえ一覧に反映／案件管理・部材在庫一覧に検索ボックス追加／旧型ダイヤル錠H110・H111を在庫表から削除／仮押さえと部材在庫一覧の連動不具合を修正／在庫不足時の不足数量を赤字表示）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.41（バグ修正: 新規顧客登録で「顧客属性」を選択しても「選択してください」に戻る不具合を修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -4779,7 +4779,12 @@ function CustPage(p){
         ),
         /* v18.35 修正依頼: 顧客属性は一覧から選択し、「その他」選択時のみ詳細入力欄を表示（直接入力） */
         h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性'),
-          h('select',{className:'inp',value:nf[0].attr||'',onChange:function(e){uf('attr',e.target.value);if(e.target.value!=='その他')uf('attrOther','');}},
+          h('select',{className:'inp',value:nf[0].attr||'',onChange:function(e){
+            /* v18.41 バグ修正: uf()を続けて2回呼ぶと、2回目がnf[0]の更新前の値から計算されるため
+               1回目の属性変更(attr)が2回目(attrOther)で上書きされ「選択してください」に戻っていた。
+               1回のnf[1]呼び出しにまとめて修正。 */
+            var v=e.target.value;var o=Object.assign({},nf[0]);o.attr=v;if(v!=='その他')o.attrOther='';nf[1](o);
+          }},
             h('option',{value:''},'-- 選択してください --'),
             attrs.map(function(a){return h('option',{key:a,value:a},a);})
           )
