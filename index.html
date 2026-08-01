@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.39（バグ修正: 追加した顧客・作成した見積がクラウド保存されず他端末に共有されない／再ログインで消える問題を修正。営業はロック中でも顧客追加・編集・見積作成が可能に）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.40（修正１: 代理店のエンド納品先を複数登録・見積/案件/仮押さえ一覧に反映／案件管理・部材在庫一覧に検索ボックス追加／旧型ダイヤル錠H110・H111を在庫表から削除／仮押さえと部材在庫一覧の連動不具合を修正／在庫不足時の不足数量を赤字表示）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1424,7 +1424,7 @@ function rebuildHeldFromOrders(){
       fresh[ln.id]={};
       WH_IDS.forEach(function(w){fresh[ln.id][w]={door:{},doorH:{}};});
     });
-    var legacy=false;
+    var legacyOrders=[];
     ORDERS.forEach(function(o){
       if(o.status!=='仮押さえ'&&o.status!=='受注確定')return;
       (o.lines||[]).forEach(function(ln){
@@ -1433,7 +1433,9 @@ function rebuildHeldFromOrders(){
           /* legacy=v13以前の旧形式（台帳フィールド自体が存在しない）のみ。releaseOrderHeld後の空配列(_actualHeld=[])は
              「何も押さえていない」ことが確定しているため対象外（差戻し→前進で status のみ仮押さえに戻した案件で
              再構成が永久停止する誤発動を防ぐ）。isPartOnly行(lineUnits=0)は ln.qty で数量判定 */
-          if(ln._actualHeld===undefined&&!ln._hadActualHeld&&(lineUnits(ln)>0||(parseInt(ln.qty)||0)>0))legacy=true;
+          if(ln._actualHeld===undefined&&!ln._hadActualHeld&&(lineUnits(ln)>0||(parseInt(ln.qty)||0)>0)){
+            if(legacyOrders.indexOf(o.no)<0)legacyOrders.push(o.no);
+          }
           return;
         }
         ln._actualHeld.forEach(function(b){
@@ -1457,7 +1459,12 @@ function rebuildHeldFromOrders(){
         });
       });
     });
-    if(legacy){console.warn('[rebuildHeldFromOrders] 旧形式(押さえ台帳なし)の明細が現役案件に混在するため再構成をスキップしました');return false;}
+    /* v18.40 修正１⑦: 従来は台帳(_actualHeld)を持たない旧形式の明細が1件でも混在すると再構成を全面スキップしており、
+       その結果、他端末で解除・削除された仮押さえがいつまでも部材在庫一覧に残る「孤児仮押さえ」を一切清掃できず、
+       案件管理のステータスと部材在庫一覧の表示が食い違う不具合の主因になっていた。
+       台帳がある案件は必ず正確に反映しつつ常に再構成を適用し、台帳の無い旧形式案件（現存すれば極めて稀）のみ
+       ログに残して可視化する（このrebuildは孤児清掃が目的のため、丸ごとスキップするより適用する方が安全）。 */
+    if(legacyOrders.length)console.warn('[rebuildHeldFromOrders] 旧形式(押さえ台帳なし)の案件が見つかりました。仮押さえ数量は反映されません: '+legacyOrders.join(', '));
     HELD=fresh;
     return true;
   }catch(e){console.warn('rebuildHeldFromOrders failed',e);return false;}
@@ -4594,7 +4601,7 @@ function importCustsAoa(aoa){
 function CustPage(p){
   var sr=us(''),pf=us('all'),af=us('all'),showAdd=us(false),bump=us(0);
   var editCust=us(null);/* 編集中顧客 */
-  var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:''});
+  var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
   /* v18.33 追B: 顧客属性フィルタの選択肢（登録済み属性のユニーク値） */
   /* v18.34 顧客回答B-9: 属性の基本選択肢（学校/プール/温浴施設/代理店/その他）＋登録済み属性が自動で一覧に加わる（随時追加） */
   var ATTR_BASE=['学校','プール','温浴施設','代理店','その他'];
@@ -4639,9 +4646,10 @@ function CustPage(p){
     if(p.lockReadOnly&&!p.salesView){alert('読み取り専用モード中は顧客追加できません');return;}
     var f=nf[0];if(!f.name)return;
     var attrFinal=(f.attr==='その他'&&f.attrOther&&f.attrOther.trim())?f.attrOther.trim():(f.attr||'');
-    var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal};
+    /* v18.40 修正１①: 代理店属性の顧客はエンド納品先（複数）を保持できる */
+    var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal,endUsers:f.endUsers||[]};
     CUSTS.unshift(nc);
-    nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:''});
+    nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
     showAdd[1](false);bump[1](bump[0]+1);saveCusts();
     /* v18.39 バグ修正: 従来は localStorage(saveCusts) にしか保存しておらず、追加した顧客が
        他端末に共有されず、再ログイン時のクラウド取込で消えていた。クラウドへも保存する。 */
@@ -4674,6 +4682,27 @@ function CustPage(p){
   }
   var FS={display:'flex',gap:6,marginBottom:8};
   var FL={fontSize:9,fontWeight:600,color:'var(--g500)',marginBottom:2,display:'block'};
+
+  /* v18.40 修正１①②: 代理店属性の顧客が複数保持できるエンド納品先（納品先名・郵便番号・住所・電話番号）の編集UI。
+     editCust編集モーダル・新規顧客追加モーダルの両方から呼ぶ共通部品。 */
+  function EndUserListEditor(list,onChange){
+    var arr=list||[];
+    return h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#f5f7fa',borderRadius:4,border:'1px solid var(--g200)'}},
+      h('div',{style:{fontSize:9,fontWeight:700,color:'#1e3a5f',marginBottom:4}},'エンド納品先（代理店経由の納品先。複数登録可）'),
+      arr.length===0?h('div',{style:{fontSize:9,color:'var(--g400)',marginBottom:4}},'未登録です。「＋ エンド納品先を追加」から登録してください。'):null,
+      arr.map(function(eu,i){
+        function upd(k,v){var a2=arr.slice();a2[i]=Object.assign({},a2[i],{});a2[i][k]=v;onChange(a2);}
+        return h('div',{key:eu.id||i,style:{display:'flex',gap:4,marginBottom:4,alignItems:'center',flexWrap:'wrap'}},
+          h('input',{className:'inp',style:{flex:'2 1 120px'},value:eu.name||'',placeholder:'納品先名',onChange:function(e){upd('name',e.target.value);}}),
+          h('input',{className:'inp',style:{flex:'1 1 80px'},value:eu.postal||'',placeholder:'〒',onChange:function(e){upd('postal',e.target.value);}}),
+          h('input',{className:'inp',style:{flex:'2 1 150px'},value:eu.address||'',placeholder:'住所',onChange:function(e){upd('address',e.target.value);}}),
+          h('input',{className:'inp',style:{flex:'1 1 100px'},value:eu.phone||'',placeholder:'電話番号',onChange:function(e){upd('phone',e.target.value);}}),
+          h('button',{className:'btn btn-xs btn-rd',onClick:function(){var a2=arr.slice();a2.splice(i,1);onChange(a2);}},'✕')
+        );
+      }),
+      h('button',{className:'btn btn-xs btn-tl',onClick:function(){var a2=arr.slice();a2.push({id:'EU'+Date.now()+Math.floor(Math.random()*1000),name:'',postal:'',address:'',phone:''});onChange(a2);}},'＋ エンド納品先を追加')
+    );
+  }
 
   return h('div',{className:'page'+(p.tab==='cust'?' show':'')},h('div',{className:'card'},
     h('div',{className:'chd'},h('h3',null,'顧客DB（'+CUSTS.length+'件）'),
@@ -4724,6 +4753,8 @@ function CustPage(p){
         ),
         /* v18.34 顧客回答B-9: 一覧から選択＋イレギュラーは自由入力（datalist方式。基本5択＋登録済み属性が自動で選択肢に加わる） */
         h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客属性（一覧から選択 or 自由入力）'),h('input',{className:'inp',list:'lecAttrOpts',value:editCust[0].attr||'',onChange:function(e){ufEdit('attr',e.target.value);},placeholder:'学校/プール/温浴施設/代理店/その他'}))),
+        /* v18.40 修正１①: 顧客属性が代理店の場合、エンド納品先（複数）を編集できるようにする */
+        editCust[0].attr==='代理店'?EndUserListEditor(editCust[0].endUsers,function(a){ufEdit('endUsers',a);}):null,
         /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:editCust[0].contactPerson||'',onChange:function(e){ufEdit('contactPerson',e.target.value);}})),
@@ -4754,6 +4785,8 @@ function CustPage(p){
           )
         )),
         nf[0].attr==='その他'?h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'その他の詳細'),h('input',{className:'inp',value:nf[0].attrOther||'',onChange:function(e){uf('attrOther',e.target.value);},placeholder:'例: 介護施設'}))):null,
+        /* v18.40 修正１①: 顧客属性が代理店の場合、エンド納品先（複数）を登録できるようにする */
+        nf[0].attr==='代理店'?EndUserListEditor(nf[0].endUsers,function(a){uf('endUsers',a);}):null,
         /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:nf[0].contactPerson,onChange:function(e){uf('contactPerson',e.target.value);},placeholder:'例: 田中 太郎'})),
@@ -5682,14 +5715,15 @@ function InvPage(p){
             h('div',{style:{marginBottom:4,padding:'6px 8px',background:'#f5f7fa',borderRadius:4,border:'1px solid var(--g200)'}},
               h('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap'}},
                 h('label',{style:{fontSize:9,fontWeight:700,color:'#1e3a5f'}},'エンド納品先（代理店経由の場合・任意）'),
-                h('select',{className:'inp',style:{fontSize:8,width:150,padding:'2px 4px'},value:'',onChange:function(e){
+                /* v18.40 修正１②: 選択中の顧客（代理店）に登録済みのエンド納品先から選ぶ。顧客編集画面で登録した内容が反映される */
+                (cust&&(cust.endUsers||[]).length>0)?h('select',{className:'inp',style:{fontSize:8,width:170,padding:'2px 4px'},value:'',onChange:function(e){
                   if(!e.target.value)return;
-                  var dl=DEALERS.find(function(d){return d.id===e.target.value;});
-                  if(dl)endUser[1]({name:dl.name,postal:dl.postal||'',address:dl.address||'',phone:dl.phone||''});
+                  var eu=(cust.endUsers||[]).find(function(d){return d.id===e.target.value;});
+                  if(eu)endUser[1]({name:eu.name||'',postal:eu.postal||'',address:eu.address||'',phone:eu.phone||''});
                 }},
-                  h('option',{value:''},'代理店マスタから選択…'),
-                  DEALERS.map(function(dl){return h('option',{key:dl.id,value:dl.id},dl.name);})
-                ),
+                  h('option',{value:''},'エンド納品先を選択…'),
+                  (cust.endUsers||[]).map(function(eu){return h('option',{key:eu.id,value:eu.id},eu.name||'(名称未設定)');})
+                ):null,
                 (endUser[0].name||endUser[0].address)?h('button',{className:'btn btn-xs btn-ol',style:{padding:'2px 6px',color:'#DC2626'},onClick:function(){endUser[1]({name:'',postal:'',address:'',phone:''});}},'クリア'):null
               ),
               h('div',{style:{display:'flex',gap:4,marginBottom:4}},
@@ -6280,7 +6314,19 @@ function OrdersPage(p){
   var shipModal=us(null);/* order to show shipping modal for */
   var shipEditModal=us(null);/* v18.28: 出荷指示書(様式)の手入力修正モーダル {order,autoHv,name,phone,postal,address,delivery,rows:[{ri,iri,name,auto,label,qty}]} */
   var shipForm=us({shipToName:'',shipToPostal:'',shipToAddress:'',shipToPhone:'',shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:'',shipNo:''});
-  var fl=ORDERS.filter(function(o){return filter[0]==='all'||o.status===filter[0];}).sort(function(a,b){return b.no>a.no?1:-1;});
+  /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
+  var kw=us('');
+  function orderMatchesKw(o,q){
+    if(!q)return true;
+    q=q.toLowerCase();
+    var c=CUSTS.find(function(x){return x.id===o.cid;});
+    var hay=[o.no,c?c.name:'',o.endUser&&o.endUser.name?o.endUser.name:'',o.subject||''];
+    (o.lines||[]).forEach(function(l){
+      hay.push(l.isFreeInput?(l.name||''):(productName(l.line)+' '+(l.partLabel||'')));
+    });
+    return hay.join(' ').toLowerCase().indexOf(q)>=0;
+  }
+  var fl=ORDERS.filter(function(o){return (filter[0]==='all'||o.status===filter[0])&&orderMatchesKw(o,kw[0]);}).sort(function(a,b){return b.no>a.no?1:-1;});
 
   function changeStatus(order,ns){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
@@ -6366,8 +6412,9 @@ function OrdersPage(p){
       '💡 ヒント: 各案件行の「📄 出荷指示書」ボタンから出荷指示書を新規ウィンドウで出力できます。'
     ),
     h('div',{className:'card'},
-      h('div',{className:'chd'},h('h3',null,'案件管理（'+ORDERS.length+'件）'),
-        h('div',{style:{display:'flex',gap:3}},
+      h('div',{className:'chd'},h('h3',null,'案件管理（'+fl.length+'/'+ORDERS.length+'件）'),
+        h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
+          h('input',{className:'inp',style:{width:180},value:kw[0],onChange:function(e){kw[1](e.target.value);},placeholder:'🔍 案件番号・顧客・アイテムで検索…'}),
           h('button',{className:'btn btn-xs '+(filter[0]==='all'?'btn-nv':'btn-ol'),onClick:function(){filter[1]('all');}},'全て'),
           STATUS_FLOW.map(function(s){return h('button',{key:s,className:'btn btn-xs '+(filter[0]===s?'btn-nv':'btn-ol'),onClick:function(){filter[1](s);}},s);})
         )
@@ -6382,7 +6429,9 @@ function OrdersPage(p){
           return h('tr',{key:o.no},
             /* v18.38 修正箇所3②: 起票者（営業/事務）を案件番号の下に表示 */
             h('td',null,h('b',null,o.no),o.createdBy?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},'起票: '+o.createdBy):null),
-            h('td',null,o.date),h('td',null,c?c.name:''),
+            h('td',null,o.date),
+            /* v18.40 修正１③: 代理店経由でエンド納品先が設定されている場合、顧客名に（エンド納品先名）を併記 */
+            h('td',null,(c?c.name:'')+(o.endUser&&o.endUser.name?'（'+o.endUser.name+'）':'')),
             h('td',null,o.lines.length+'件'),
             h('td',{style:{fontWeight:700}},totalQty>0?fm(totalQty)+'台':'',hasFree?' +他':''),
             h('td',null,((WH_MAP[o.wh]||{}).s||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).s||''):'')),
@@ -6390,9 +6439,12 @@ function OrdersPage(p){
             h('td',{style:{fontSize:9}},o.shipping?'¥'+fm(o.shipping):'-',
               o.shipMethod?h('div',{style:{fontSize:8,color:o.shipMethod==='charter'?'#c53030':'#276749'}},o.shipMethod==='charter'?'チャーター':'混載'):null),
             h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},o.status),
-              (function(){var rd=orderReadiness(o);if(!rd.has)return null;return rd.ready
+              (function(){var rd=orderReadiness(o);if(!rd.has)return null;
+                /* v18.40 修正１⑧: 在庫不足で仮押さえしきれなかった分は、その不足数量を赤字で明示する */
+                var shortQty=(o.unsecuredParts||[]).reduce(function(s,it){return s+(parseInt(it.qty)||0);},0);
+                return rd.ready
                 ?h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#065F46',background:'#ECFDF5',border:'1px solid #A7F3D0',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'発注待ちパーツが入庫で揃いました。出荷へ進めます'},'🟢 入庫済・出荷可')
-                :h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#9A3412',background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'発注待ち（未入庫）のパーツが残っています'},'🟠 発注待ち '+rd.shortCount+'/'+rd.total+'件');})(),
+                :h('div',{style:{marginTop:2,fontSize:8,fontWeight:700,color:'#C53030',background:'#FEF2F2',border:'1px solid #FCA5A5',borderRadius:3,padding:'1px 4px',display:'inline-block'},title:'在庫不足のため一部未確保（発注待ち・未入庫）です'},'⚠ 在庫不足 '+rd.shortCount+'/'+rd.total+'件（不足'+fm(shortQty)+'点）');})(),
               /* v18.38 修正箇所3⑥: 仮押さえを解除した案件は、解除日時と解除者をステータス欄に表示する */
               o.holdReleasedAt?h('div',{style:{marginTop:2,fontSize:8,color:'#975a16',lineHeight:1.4},title:'仮押さえ解除の記録'},
                 '仮押さえ解除 '+o.holdReleasedAt+(o.holdReleasedBy?'（'+o.holdReleasedBy+'）':'')
@@ -6842,6 +6894,7 @@ function PartsPage(p){
   var partFilter=us('all'); /* all, size, lock, option */
   var sizeFilter=us('all'); /* all, 3S, SS, S, M, L, XL */
   var selWH=us('all'); /* 'all' or specific warehouse id */
+  var itemSearch=us(''); /* v18.40 修正１⑤: アイテム名の自由検索（一致したアイテムは色・サイズを全表示） */
   var showIncoming=us(false),showAddIncoming=us(false),editIncId=us(null);
   var incForm=us({expectedDate:'',wh:'honsha',note:'',items:[{lineId:'jp01',key:'side',sub:'M',color:'',qty:0,label:'サイドボード(M)',cat:'size'}]});
   /* v18.30 要望②: 業者コード紐づけ＋入庫データ取込（八木熊・新柏・尼高の商品コード→在庫アイテム） */
@@ -6999,8 +7052,7 @@ function PartsPage(p){
     {label:'サイドジョイント(SML)',key:'sj',sub:'sml',cat:'option'},
     {label:'サイドジョイント(SS/3S)',key:'sj',sub:'ss',cat:'option'},
     {label:'トッテ',key:'totte',cat:'lock'},
-    {label:'ダイヤル錠 H110(旧)',key:'dialH110',cat:'lock'},
-    {label:'ダイヤル錠 H111(旧)',key:'dialH111',cat:'lock'},
+    /* v18.40 修正１⑥: 廃番の旧型ダイヤル錠H110/H111は部材在庫一覧の在庫表から削除（在庫データ自体は保持、他画面には影響しない） */
     {label:'ダイヤル錠 DST',key:'dialDST',cat:'lock'},
     {label:'南京錠',key:'padlock',cat:'lock'},
     {label:'コインリターン錠',key:'coinReturn',cat:'lock'},
@@ -7073,11 +7125,18 @@ function PartsPage(p){
       return false;
     });
   }
+  /* v18.40 修正１⑤: アイテム名の自由検索。一致した行は同じアイテムの色・サイズ違いを全て残す
+     （structRowsAllの各行ラベルは「アイテム名(サイズ)」の形式のため部分一致でサイズ違いも自然に全表示される） */
+  if(itemSearch[0].trim()){
+    var _isq=itemSearch[0].trim().toLowerCase();
+    structRows=structRows.filter(function(r){return r.label.toLowerCase().indexOf(_isq)>=0;});
+  }
 
   return h('div',{className:'page'+(p.tab==='parts'?' show':'')},
     h('div',{className:'card'},
       h('div',{className:'chd'},h('h3',null,'部材在庫一覧'),
-        h('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
+        h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
+          h('input',{className:'inp',style:{width:170},value:itemSearch[0],onChange:function(e){itemSearch[1](e.target.value);},placeholder:'🔍 アイテム名で検索…'}),
           LINES.map(function(l){return h('button',{key:l.id,className:'btn btn-xs '+(selLine[0]===l.id?'btn-nv':'btn-ol'),onClick:function(){selLine[1](l.id);}},l.mark+' '+l.name);}),
           h('span',{style:{margin:'0 4px',color:'var(--g300)'}},'|'),
           h('button',{className:'btn btn-xs '+(viewMode[0]==='struct'?'btn-nv':'btn-ol'),onClick:function(){viewMode[1]('struct');}},'構造部材'),
@@ -7463,7 +7522,8 @@ function PartsPage(p){
         h('button',{className:'btn btn-xs '+(selWH[0]==='all'?'btn-nv':'btn-ol'),onClick:function(){selWH[1]('all');}},'全倉庫一覧'),
         whs.map(function(w){return h('button',{key:w,className:'btn btn-xs '+(selWH[0]===w?'btn-nv':'btn-ol'),onClick:function(){selWH[1](w);}},WH_MAP[w].n);})
       ):null,
-      subTab[0]==='stock'?h('div',{className:'scy',style:{maxHeight:'72vh'}},
+      /* v18.40 修正１④: 横に長い在庫表を確実に横スクロールできるようoverflow-xを明示指定 */
+      subTab[0]==='stock'?h('div',{className:'scy',style:{maxHeight:'72vh',overflow:'auto'}},
         selWH[0]!=='all'?(function(){
           /* ===== Excel-like single warehouse view ===== */
           var w=selWH[0];
@@ -7474,6 +7534,10 @@ function PartsPage(p){
           if(sizeFilter[0]!=='all'){
             var sf2=sizeFilter[0];var sfGrp2=(sf2==='3S'||sf2==='SS')?'ss':'sml';
             filteredRows=filteredRows.filter(function(r){if(!r.sub)return true;if(r.sub===sf2)return true;if(r.sub===sfGrp2)return true;return false;});
+          }
+          if(itemSearch[0].trim()){
+            var _isq2=itemSearch[0].trim().toLowerCase();
+            filteredRows=filteredRows.filter(function(r){return r.label.toLowerCase().indexOf(_isq2)>=0;});
           }
           if(viewMode[0]==='struct'||viewMode[0]==='door'){
             /* Structure parts */
@@ -7612,9 +7676,8 @@ function PartsPage(p){
           /* 13. トッテ */
           uniRows.push({item:'トッテ',variant:'新',key:'totte',irisu:iGet('totte')});
           /* 14. ダイヤル錠 */
-          uniRows.push({item:'ダイヤル錠',variant:'H110(旧)',key:'dialH110',irisu:iGet('dialH110')});
-          uniRows.push({item:'',variant:'H110',key:'dialH110new',irisu:iGet('dialH110new')});
-          uniRows.push({item:'',variant:'H111(旧)',key:'dialH111',irisu:iGet('dialH111')});
+          /* v18.40 修正１⑥: 廃番の旧型H110/H111(旧)は在庫表から削除 */
+          uniRows.push({item:'ダイヤル錠',variant:'H110',key:'dialH110new',irisu:iGet('dialH110new')});
           uniRows.push({item:'',variant:'H111',key:'dialH111new',irisu:iGet('dialH111new')});
           uniRows.push({item:'',variant:'H112(自由式)',key:'dialH112',irisu:iGet('dialH112')});
           /* v14.5 C7: 実在庫を持つ旧キーを画面にも表示（Excelと項目一致） */
@@ -7674,6 +7737,15 @@ function PartsPage(p){
               uniRows.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});
             });
           }catch(e){}
+          /* v18.40 修正１⑤: アイテム名検索用に、空欄('')になっている継続行にも直前のアイテム名を引き継がせてタグ付け。
+             これによりグループ単位（＝同じアイテムの色・サイズ違い全体）でヒット判定でき、一致した行は色・サイズを全表示できる */
+          (function(){
+            var lastItem='';
+            uniRows.forEach(function(r){
+              if(r.item)lastItem=r.item;
+              r._grpItem=lastItem;
+            });
+          })();
           /* Apply size filter */
           if(sizeFilter[0]!=='all'){
             var sf3=sizeFilter[0];var sfG3=(sf3==='3S'||sf3==='SS')?'ss':'sml';
@@ -7684,6 +7756,11 @@ function PartsPage(p){
               if(r.grp===sfG3)return true;
               return false;
             });
+          }
+          /* v18.40 修正１⑤: アイテム名検索（グループ単位一致・色/サイズは全表示） */
+          if(itemSearch[0].trim()){
+            var _isq3=itemSearch[0].trim().toLowerCase();
+            uniRows=uniRows.filter(function(r){return (r._grpItem||'').toLowerCase().indexOf(_isq3)>=0;});
           }
           return h('table',{className:'tbl',style:{fontSize:12}},
             h('thead',null,
@@ -7780,11 +7857,14 @@ function PartsPage(p){
       ),
       h('div',{className:'scy',style:{maxHeight:'68vh',overflow:'auto'}},
       (function(){
-        /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示 */
+        /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示
+           v18.40 修正１④: 仮押さえされた順（案件番号の連番）に左から並べる。件数が多い時は上部のscyラップ(overflow:auto)で横スクロールして全件確認できる */
         var held=ORDERS.filter(function(o){
           if(o.status!=='仮押さえ')return false;
           return o.lines.some(function(l){return l.line===selLine[0]||l.isFreeInput;});
         });
+        function _heldSeq(o){var m=/(\d+)\s*$/.exec(o.no||'');return m?parseInt(m[1],10):0;}
+        held=held.slice().sort(function(a,b){return _heldSeq(a)-_heldSeq(b);});
         if(!held.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'仮押さえ中の案件はありません（'+(lineObj?lineObj.name:'')+'）');
         /* Build uniRows same as stock tab */
         var uniR=[];
@@ -8021,7 +8101,8 @@ function PartsPage(p){
               h('th',{style:{textAlign:'center',minWidth:40,position:'sticky',top:0,background:'var(--g50)',zIndex:4},rowSpan:2},'入り数'),
               orderParts.map(function(op){return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:100,fontSize:10,cursor:'pointer',color:'var(--nv)',textDecoration:'underline',position:'sticky',top:0,background:'var(--g50)',zIndex:4},onClick:function(){heldDetail[1](op.order);},title:'クリックで案件詳細を表示'},
                 h('div',{style:{fontWeight:700}},op.order.no),
-                h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,marginTop:2}},op.cust?op.cust.name:''),
+                /* v18.40 修正１③: 部材在庫一覧の仮押さえ一覧にもエンド納品先名を併記 */
+                h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,marginTop:2}},(op.cust?op.cust.name:'')+(op.order.endUser&&op.order.endUser.name?'（'+op.order.endUser.name+'）':'')),
                 h('div',{style:{fontSize:8,color:'#D97706',fontWeight:600,marginTop:2}},'📦 '+(WH_MAP[op.order.wh]?WH_MAP[op.order.wh].s:'')+(op.order.wh2?' + '+(WH_MAP[op.order.wh2]?WH_MAP[op.order.wh2].s:''):''))
               );})
             ),
