@@ -1,0 +1,38 @@
+name: Deploy to GitHub Pages
+
+# main への push を GitHub Pages へ確実に配信する公式方式。
+# 旧方式（ブランチからの自動ビルド）は v18.41 / v18.42 のように
+# コミットを黙って取りこぼすことがあったため、こちらへ移行した。
+# 手動で再実行したい場合は Actions タブ →「Deploy to GitHub Pages」→ Run workflow。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 連続 push でも後発ジョブをキャンセルせず順番に流し、取りこぼしを防ぐ
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      # path: '.' はリポジトリ直下をそのまま配信する指定。
+      # 旧方式でも同じく直下が丸ごと配信されていたため、公開範囲は変わらない。
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
