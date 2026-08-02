@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.41（バグ修正: 新規顧客登録で「顧客属性」を選択しても「選択してください」に戻る不具合を修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.42（バグ修正: 部材在庫一覧の仮押さえ一覧に、実際に在庫を押さえている案件が全て出てこない不具合を修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6908,6 +6908,8 @@ function PartsPage(p){
   var showVendorImport=us(false),vendorImport=us(null);
   /* v14.4 hotfix: 直近に編集したセル（仮押さえ一覧サブタブ）。{orderNo, partKey, ts} */
   var lastEdited=us(null);
+  /* v18.42: 仮押さえ一覧サブタブを「全ライン横断」で表示するか（既定は従来どおり選択中ラインのみ） */
+  var heldAllLines=us(false);
   var showCostMaster=us(false),showAssetCalc=us(false);
   /* v14.1 C26: 期間指定の在庫表Excel出力 */
   var showPeriodExcel=us(false);
@@ -6928,6 +6930,31 @@ function PartsPage(p){
   var colors=(LINE_COLORS[selLine[0]]||[]).filter(function(c){return !c.und;});/* v18.31: 扉色未定は在庫行を持たない */
   var sizes=LINE_SIZES[selLine[0]]||[];
   ue(function(){selWH[1]('all');},[selLine[0]]);/* Reset warehouse filter when product line changes */
+
+  /* ===== v18.42: 仮押さえ一覧サブタブに出す案件の抽出 =====
+     従来は status==='仮押さえ' かつ「選択中ラインの明細を持つ」案件だけを列にしていたため、
+     実際には在庫を押さえているのに一覧に出てこない案件が2種類あった:
+       (a) 受注確定に進めた案件 … rebuildHeldFromOrders と同じく受注確定もHELDを保持し続ける
+           （8478行の確認ダイアログのとおり「仮押さえ在庫はそのまま維持されます」）ため、
+           在庫表の「仮押さえ数」には乗るのに一覧の列が消えて数が合わなくなっていた
+       (b) 選択中ラインの明細を持たないが、そのラインの在庫を押さえている案件 …
+           鍵類(COMMON_STOCK_KEYS)は normalizeStockLine で jp2 に押さえが記録されるため、
+           明細のラインと押さえ先ラインが一致しない
+     (a)は無条件で対象に含め、(b)は押さえ台帳(_actualHeld)の heldLine からも判定する。
+     さらに他ラインの案件も一度に確認できるよう「全ライン表示」トグルを用意する。 */
+  var heldOrdersAll=ORDERS.filter(function(o){return o.status==='仮押さえ'||o.status==='受注確定';});
+  var heldHitsLine=function(o,lineId){
+    return (o.lines||[]).some(function(l){
+      if(l.line===lineId)return true;
+      if(l.isFreeInput)return true;
+      return (l._actualHeld||[]).some(function(b){
+        return (parseInt(b.qty)||0)>0&&(b.heldLine||normalizeStockLine(l.line,b.key))===lineId;
+      });
+    });
+  };
+  var heldOrdersLine=heldOrdersAll.filter(function(o){return heldHitsLine(o,selLine[0]);});
+  var heldOrdersShown=heldAllLines[0]?heldOrdersAll:heldOrdersLine;
+  var heldHiddenCount=heldOrdersAll.length-heldOrdersLine.length;
 
   function startEdit(label,lineId,key,sub,isDoor,color){
     if(isDoor){
@@ -7860,17 +7887,25 @@ function PartsPage(p){
           '編集後は ',h('span',{style:{padding:'1px 6px',background:'#FEF08A',border:'1px solid #F59E0B',borderRadius:3,fontWeight:700}},'黄色'),' で 4秒間ハイライト。'
         )
       ),
+      /* v18.42: 表示件数と絞り込み状況を明示。他ラインの案件が隠れている場合はワンクリックで全件表示に切替 */
+      h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'6px 10px',marginBottom:8,background:'var(--g50)',border:'1px solid var(--g200)',borderRadius:8,fontSize:11,color:'var(--g700)'}},
+        h('b',null,'表示中 '+heldOrdersShown.length+' 件'),
+        h('span',{style:{color:'var(--g500)'}},'／ 在庫を押さえている案件 全 '+heldOrdersAll.length+' 件（仮押さえ＋受注確定・全ライン）'),
+        h('label',{style:{display:'flex',alignItems:'center',gap:4,cursor:'pointer',fontWeight:700,color:'var(--nv)'}},
+          h('input',{type:'checkbox',checked:heldAllLines[0],onChange:function(e){heldAllLines[1](e.target.checked);}}),
+          '全ラインの案件を表示'
+        ),
+        (!heldAllLines[0]&&heldHiddenCount>0)?h('span',{style:{padding:'2px 8px',background:'#FEF3C7',border:'1px solid #F59E0B',borderRadius:4,color:'#78350F',fontWeight:700}},'⚠ 他ラインの案件 '+heldHiddenCount+' 件が非表示です'):null
+      ),
       h('div',{className:'scy',style:{maxHeight:'68vh',overflow:'auto'}},
       (function(){
         /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示
-           v18.40 修正１④: 仮押さえされた順（案件番号の連番）に左から並べる。件数が多い時は上部のscyラップ(overflow:auto)で横スクロールして全件確認できる */
-        var held=ORDERS.filter(function(o){
-          if(o.status!=='仮押さえ')return false;
-          return o.lines.some(function(l){return l.line===selLine[0]||l.isFreeInput;});
-        });
+           v18.40 修正１④: 仮押さえされた順（案件番号の連番）に左から並べる。件数が多い時は上部のscyラップ(overflow:auto)で横スクロールして全件確認できる
+           v18.42: 抽出条件はコンポーネント上部の heldOrdersShown に集約（受注確定案件・押さえ先ライン違いの取りこぼしを解消） */
+        var held=heldOrdersShown;
         function _heldSeq(o){var m=/(\d+)\s*$/.exec(o.no||'');return m?parseInt(m[1],10):0;}
         held=held.slice().sort(function(a,b){return _heldSeq(a)-_heldSeq(b);});
-        if(!held.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'仮押さえ中の案件はありません（'+(lineObj?lineObj.name:'')+'）');
+        if(!held.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'仮押さえ中の案件はありません（'+(heldAllLines[0]?'全ライン':(lineObj?lineObj.name:''))+'）');
         /* Build uniRows same as stock tab */
         var uniR=[];
         var iG=function(k,s){if(!IRISU[k])return'';if(typeof IRISU[k]==='number')return IRISU[k];if(s&&IRISU[k][s])return IRISU[k][s];return'';};
@@ -7941,6 +7976,14 @@ function PartsPage(p){
         var changeQtyInList=function(order,uniRow,currentQty){
           if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
           var label=(uniRow.item||uniRow.variant||uniRow.key)+(uniRow.isDoor&&uniRow.doorSub?' '+uniRow.doorSub:(uniRow.variant&&uniRow.item?' '+uniRow.variant:''));
+          /* v18.42: 新規押さえを載せる製品ライン。従来は常に選択中ライン(selLine)だったが、全ライン表示で
+             他ラインの案件も列に出るようになったため、その案件が選択中ラインを持たない場合は案件側のラインを使う
+             （選択中ラインを持つ案件では従来と同じ selLine[0] になる） */
+          var baseLineQ=(function(){
+            var ls=(order.lines||[]).filter(function(l){return !l.isFreeInput&&l.line;});
+            if(ls.some(function(l){return l.line===selLine[0];}))return selLine[0];
+            return ls.length?ls[0].line:selLine[0];
+          })();
           var refs=[];
           order.lines.forEach(function(ln){
             if(!ln._actualHeld)return;
@@ -7962,10 +8005,10 @@ function PartsPage(p){
             if(newQtyStrZ===null||newQtyStrZ==='')return;
             var newQtyZ=parseInt(newQtyStrZ);
             if(isNaN(newQtyZ)||newQtyZ<=0){p.toast('1以上の数量を入力してください');return;}
-            var holdLineZ=isCommonStockKey(uniRow.isDoor?uniRow.dk:uniRow.key)?'jp2':selLine[0];
+            var holdLineZ=isCommonStockKey(uniRow.isDoor?uniRow.dk:uniRow.key)?'jp2':baseLineQ;
             var whZ=order.wh;
             var availZ;
-            if(uniRow.isDoor){availZ=availD(selLine[0],whZ,uniRow.color,uniRow.doorSub,uniRow.dk);}
+            if(uniRow.isDoor){availZ=availD(baseLineQ,whZ,uniRow.color,uniRow.doorSub,uniRow.dk);}
             else if(uniRow.sub!==undefined){availZ=avail(holdLineZ,whZ,uniRow.key,uniRow.sub);}
             else{availZ=avail(holdLineZ,whZ,uniRow.key);}
             var actualAddZ=Math.min(Math.max(0,availZ),newQtyZ);
@@ -7973,7 +8016,7 @@ function PartsPage(p){
             /* 新規 isPartOnly line として追加 */
             var newLine={
               id:Date.now()+Math.random(),
-              line:selLine[0],
+              line:baseLineQ,
               isPartOnly:true,
               partKey:uniRow.isDoor?uniRow.dk:uniRow.key,
               partSub:uniRow.isDoor?uniRow.doorSub:uniRow.sub,
@@ -7989,11 +8032,12 @@ function PartsPage(p){
             };
             if(actualAddZ>0){
               if(uniRow.isDoor){
-                if(!HELD[selLine[0]])HELD[selLine[0]]={};
-                if(!HELD[selLine[0]][whZ])HELD[selLine[0]][whZ]={door:{},doorH:{}};
-                if(!HELD[selLine[0]][whZ][uniRow.dk])HELD[selLine[0]][whZ][uniRow.dk]={};
-                if(!HELD[selLine[0]][whZ][uniRow.dk][uniRow.color])HELD[selLine[0]][whZ][uniRow.dk][uniRow.color]={};
-                HELD[selLine[0]][whZ][uniRow.dk][uniRow.color][uniRow.doorSub]=(HELD[selLine[0]][whZ][uniRow.dk][uniRow.color][uniRow.doorSub]||0)+actualAddZ;
+                /* v18.42: 扉は共通在庫キーではないため holdLineZ===baseLineQ。台帳(heldLine)と同じラインに積む */
+                if(!HELD[baseLineQ])HELD[baseLineQ]={};
+                if(!HELD[baseLineQ][whZ])HELD[baseLineQ][whZ]={door:{},doorH:{}};
+                if(!HELD[baseLineQ][whZ][uniRow.dk])HELD[baseLineQ][whZ][uniRow.dk]={};
+                if(!HELD[baseLineQ][whZ][uniRow.dk][uniRow.color])HELD[baseLineQ][whZ][uniRow.dk][uniRow.color]={};
+                HELD[baseLineQ][whZ][uniRow.dk][uniRow.color][uniRow.doorSub]=(HELD[baseLineQ][whZ][uniRow.dk][uniRow.color][uniRow.doorSub]||0)+actualAddZ;
               }else if(uniRow.sub!==undefined){
                 if(!HELD[holdLineZ])HELD[holdLineZ]={};
                 if(!HELD[holdLineZ][whZ])HELD[holdLineZ][whZ]={door:{},doorH:{}};
@@ -8012,7 +8056,7 @@ function PartsPage(p){
             }
             if(shortAddZ>0){
               if(!order.unsecuredParts)order.unsecuredParts=[];
-              order.unsecuredParts.push({line:selLine[0],wh:whZ,key:uniRow.isDoor?uniRow.dk:uniRow.key,sub:uniRow.sub,color:uniRow.color,size:uniRow.doorSub,qty:shortAddZ,label:label,isDoor:!!uniRow.isDoor});
+              order.unsecuredParts.push({line:baseLineQ,wh:whZ,key:uniRow.isDoor?uniRow.dk:uniRow.key,sub:uniRow.sub,color:uniRow.color,size:uniRow.doorSub,qty:shortAddZ,label:label,isDoor:!!uniRow.isDoor});
             }
             order.lines.push(newLine);
             p.toast(order.no+' / '+label+' を新規に '+actualAddZ+' 押さえました'+(shortAddZ>0?'（不足 '+shortAddZ+' は発注待ち）':''));
@@ -8105,10 +8149,22 @@ function PartsPage(p){
               h('th',{style:{minWidth:80,width:80,position:'sticky',left:120,top:0,background:'var(--g50)',zIndex:6,borderRight:'2px solid var(--g300)'},rowSpan:2},'色/サイズ'),
               h('th',{style:{textAlign:'center',minWidth:40,position:'sticky',top:0,background:'var(--g50)',zIndex:4},rowSpan:2},'入り数'),
               orderParts.map(function(op){return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:100,fontSize:10,cursor:'pointer',color:'var(--nv)',textDecoration:'underline',position:'sticky',top:0,background:'var(--g50)',zIndex:4},onClick:function(){heldDetail[1](op.order);},title:'クリックで案件詳細を表示'},
-                h('div',{style:{fontWeight:700}},op.order.no),
+                /* v18.42: 受注確定も在庫を押さえたままのため一覧に含める。どちらの状態かを案件Noの右にバッジで併記
+                   （ヘッダー2行目の sticky top:38 を崩さないよう行数は増やさない） */
+                h('div',{style:{fontWeight:700}},op.order.no,
+                  h('span',{style:{marginLeft:3,padding:'0 3px',borderRadius:3,fontSize:8,fontWeight:700,textDecoration:'none',color:'#fff',background:op.order.status==='受注確定'?'#7C3AED':'#D97706'}},op.order.status)
+                ),
                 /* v18.40 修正１③: 部材在庫一覧の仮押さえ一覧にもエンド納品先名を併記 */
                 h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,marginTop:2}},(op.cust?op.cust.name:'')+(op.order.endUser&&op.order.endUser.name?'（'+op.order.endUser.name+'）':'')),
-                h('div',{style:{fontSize:8,color:'#D97706',fontWeight:600,marginTop:2}},'📦 '+(WH_MAP[op.order.wh]?WH_MAP[op.order.wh].s:'')+(op.order.wh2?' + '+(WH_MAP[op.order.wh2]?WH_MAP[op.order.wh2].s:''):''))
+                /* v18.42: 全ライン表示中はどの製品ラインの案件かが分かるようマークを倉庫表示に併記 */
+                h('div',{style:{fontSize:8,color:'#D97706',fontWeight:600,marginTop:2}},'📦 '+(WH_MAP[op.order.wh]?WH_MAP[op.order.wh].s:'')+(op.order.wh2?' + '+(WH_MAP[op.order.wh2]?WH_MAP[op.order.wh2].s:''):'')+(heldAllLines[0]?(function(){
+                  var ms=[];
+                  (op.order.lines||[]).forEach(function(l){
+                    var lo=LINES.find(function(x){return x.id===l.line;});
+                    if(lo&&ms.indexOf(lo.mark)<0)ms.push(lo.mark);
+                  });
+                  return ms.length?'　'+ms.join(''):'';
+                })():''))
               );})
             ),
             h('tr',null,
