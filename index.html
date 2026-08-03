@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.42（バグ修正: 部材在庫一覧の仮押さえ一覧に、実際に在庫を押さえている案件が全て出てこない不具合を修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.43（修正２: 仮押さえ一覧・出荷済み一覧でアイテム検索が効かない不具合を修正／廃番の旧型ダイヤル錠H110・H111を両一覧からも削除）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6956,6 +6956,30 @@ function PartsPage(p){
   var heldOrdersShown=heldAllLines[0]?heldOrdersAll:heldOrdersLine;
   var heldHiddenCount=heldOrdersAll.length-heldOrdersLine.length;
 
+  /* ===== v18.43 修正２: 仮押さえ一覧・出荷済み一覧のアイテム行(uniR)への共通後処理 =====
+     ① 検索ボックス(itemSearch)は在庫表にしか効いておらず、仮押さえ一覧／出荷済み一覧タブでは
+        入力しても絞り込まれなかった。在庫表(全倉庫一覧)と同じ _grpItem 方式で、
+        グループ単位（＝同じアイテムの色・サイズ違い全体）にヒット判定して絞り込む。
+     ② 廃番の旧型ダイヤル錠H110/H111は在庫表からは v18.40 修正１⑥ で削除済みだが、
+        仮押さえ一覧・出荷済み一覧の行は消し漏れていたので同様に除去する。
+        ただし表示中の案件にその部材の数量が入っている場合だけは行を残す。
+        （実データがあるのに行ごと消すと、画面の数量と在庫表の仮押さえ数が食い違い、
+          修正１④で報告された「数が合わない」問題を作り直してしまうため） */
+  var DISCONTINUED_UNIROW_KEYS=['dialH110','dialH111'];
+  var finishUniRows=function(rows,orderPartsList){
+    /* 継続行(item:'')にも直前のアイテム名を引き継ぎ、グループ単位で判定できるようにする */
+    var lastItem='';
+    rows.forEach(function(r){if(r.item)lastItem=r.item;r._grpItem=lastItem;});
+    rows=rows.filter(function(r){
+      if(r.isDoor||DISCONTINUED_UNIROW_KEYS.indexOf(r.key)<0)return true;
+      var pk=uniRowPartKey(r);
+      return (orderPartsList||[]).some(function(op){return (op.parts[pk]||0)>0;});
+    });
+    var q=itemSearch[0].trim().toLowerCase();
+    if(q)rows=rows.filter(function(r){return (r._grpItem||'').toLowerCase().indexOf(q)>=0;});
+    return rows;
+  };
+
   function startEdit(label,lineId,key,sub,isDoor,color){
     if(isDoor){
       /* Door edit: load ALL sizes for this color+doorKey across warehouses */
@@ -7971,6 +7995,9 @@ function PartsPage(p){
         try{var cpH=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpH.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
         var orderParts=held.map(function(o){return{order:o,parts:computeOrderParts(o),cust:CUSTS.find(function(x){return x.id===o.cid;})};});
+        /* v18.43 修正２①②: アイテム名検索を効かせ、廃番の旧型ダイヤル錠H110/H111の行を除去 */
+        uniR=finishUniRows(uniR,orderParts);
+        if(!uniR.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'「'+itemSearch[0]+'」に一致するアイテムはありません');
         /* v14.4 hotfix: 仮押さえ一覧テーブルから直接、案件×パーツのセルをクリックして数量変更
            対象セルの (案件, uniRow) から該当する _actualHeld エントリ群を引き、changePartQty 相当の処理を実施 */
         var changeQtyInList=function(order,uniRow,currentQty){
@@ -8270,6 +8297,9 @@ function PartsPage(p){
         try{var cpS=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpS.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
         var orderParts=shipped.map(function(o){return{order:o,parts:computeOrderParts(o),cust:CUSTS.find(function(x){return x.id===o.cid;}),allReturned:o.lines.every(function(l){return l._returned||l.isFreeInput;})};});
+        /* v18.43 修正２①②: アイテム名検索を効かせ、廃番の旧型ダイヤル錠H110/H111の行を除去 */
+        uniR=finishUniRows(uniR,orderParts);
+        if(!uniR.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'「'+itemSearch[0]+'」に一致するアイテムはありません');
         /* Return stock function for entire order */
         function returnOrderStock(op){
           op.order.lines.forEach(function(ln){
