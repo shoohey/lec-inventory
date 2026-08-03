@@ -1,0 +1,54 @@
+name: Deploy GitHub Pages
+
+# main への push を GitHub Pages へ確実に配信する公式方式。
+#
+# 【リポジトリ構成の調査結果（2026-08-03）】
+#   - ビルド不要の静的サイト。package.json / lockファイル / バンドラ設定は存在しない
+#   - 公開対象は index.html（約1万行の1ファイル完結SPA。React・Supabase はCDN読み込み）
+#   - dist / build / out などの出力ディレクトリは無いため、リポジトリ直下をそのまま公開する
+#   - Jekyll 変換を避けるための .nojekyll をリポジトリ直下に配置済み
+#   → ビルドコマンドは不要。artifact 直下に index.html が来るよう path: '.' を指定する
+#
+# 【経緯】
+#   旧方式（ブランチからの自動ビルド）は v18.41 / v18.42 のようにコミットを
+#   黙って取りこぼすことがあり、main と配信内容がずれる事故が起きたため公式方式へ移行した。
+#
+# 手動で再実行したい場合は Actions タブ →「Deploy GitHub Pages」→ Run workflow。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 連続 push でも後発ジョブをキャンセルせず順番に流し、取りこぼしを防ぐ
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # 公開に必要な index.html はリポジトリ直下にあるため、直下をそのままアップロードする。
+      # 旧方式でも同じく直下が丸ごと配信されていたため、公開範囲は従来から変わらない。
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
