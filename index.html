@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.44（修正３: 仮押さえ一覧の現行H110/H111表示・入庫予定の扉対応・バージョン別表示・納品予定日・新柏主倉庫・シリンダー錠整理）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.45（修正３⑥追: シリンダー錠全種・内筒交換錠・コインリターン錠を受注発注扱いに拡大。在庫がある分は従来どおり押さえる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -398,8 +398,8 @@ var LOCK_TYPES=[
   {v:'cylinderShortF',l:'シリンダー錠(2本キー)カム短Fマスター',s:'シリンダー錠'},
   {v:'cylinderShortB',l:'シリンダー錠(2本キー)カム短Bマスター',s:'シリンダー錠'},
   {v:'cylinderShortC',l:'シリンダー錠(2本キー)カム短Cマスター',s:'シリンダー錠'},
-  {v:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター【受注発注】',s:'シリンダー錠'},
-  {v:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター【受注発注】',s:'シリンダー錠'},
+  {v:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター',s:'シリンダー錠'},
+  {v:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター',s:'シリンダー錠'},
   {v:'cylinderExchange',l:'内筒交換錠',s:'シリンダー錠'},
   {v:'cylinderExchangeSpare',l:'内筒交換用予備',s:'シリンダー錠'},
   {v:'coinReturn',l:'コインリターン錠',s:'コインリターン錠'},
@@ -577,8 +577,8 @@ var PART_ADD_DEFS=[
   {k:'cylinderShortC',l:'シリンダー錠(2本キー)カム短Cマスター'},
   {k:'cylinderExchange',l:'内筒交換錠'},
   {k:'cylinderExchangeSpare',l:'内筒交換用予備'},
-  {k:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター【受注発注】'},
-  {k:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター【受注発注】'},
+  {k:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター'},
+  {k:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター'},
   {k:'coinReturn',l:'コインリターン錠'},
   {k:'dialKeyH110',l:'ダイヤル錠検索キー H110'},
   {k:'dialKeyH111',l:'ダイヤル錠検索キー H111'},
@@ -876,8 +876,10 @@ var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock',
 function isCommonStockKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0;}
 /* v18.44 修正３⑥: 受注発注部材（原則在庫なし・見積時のみ使用。最終的に入庫された段階で出荷する）。
    在庫確認で不足でも案件全体をNGにせず「受発注」バッジ表示にし、他部材の仮押さえを妨げない。
-   仮押さえ時は在庫があればその分だけ押さえ、無い分は従来どおり発注待ち（未確保）に登録される。 */
-var ORDER_ONLY_KEYS=['cylinderDMaster','cylinderLMaster'];
+   仮押さえ時は在庫があればその分だけ押さえ、無い分は従来どおり発注待ち（未確保）に登録される。
+   v18.45 修正３⑥追: 顧客指示によりシリンダー錠全種・内筒交換錠（＋予備）・コインリターン錠へ拡大。
+   在庫が足りている場合は通常どおり在庫数を表示して押さえ、不足時のみ受発注扱い（NGにしない）。 */
+var ORDER_ONLY_KEYS=['cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderDMaster','cylinderLMaster','cylinderExchange','cylinderExchangeSpare','coinReturn'];
 function isOrderOnlyKey(key){return ORDER_ONLY_KEYS.indexOf(key)>=0;}
 function gs(line,wh,key,sub){
   if(isCommonStockKey(key)){
@@ -1196,9 +1198,13 @@ function checkWH(line,wh,bom,color,size){
   var orderCol=isOrderColor(line,color);
   bom.forEach(function(b){
     var stock,held,free;
-    /* v18.44 修正３⑥: 受注発注部材は在庫不足でもNGにしない（受発注扱い） */
+    /* v18.44 修正３⑥ / v18.45 追: 受注発注部材は在庫不足でもNGにしない。
+       在庫が足りていれば通常どおり在庫数表示（在庫を押さえる運用）、不足時のみ受発注バッジ */
     if(!b.isDoor&&isOrderOnlyKey(b.key)){
-      items.push({label:b.label,need:b.qty,stock:0,held:0,free:0,ok:true,orderItem:true,shortage:0});
+      var stockO=b.sub!==undefined?gs(line,wh,b.key,b.sub):gs(line,wh,b.key);
+      var heldO=b.sub!==undefined?gh(line,wh,b.key,b.sub):gh(line,wh,b.key);
+      var freeO=stockO-heldO;
+      items.push({label:b.label,need:b.qty,stock:stockO,held:heldO,free:freeO,ok:true,orderItem:freeO<b.qty,shortage:0});
       return;
     }
     if(b.isDoor){
@@ -3157,9 +3163,13 @@ function checkAllLinesWH(lines,wh){
   if(allItems._commonAgg){
     Object.keys(allItems._commonAgg).forEach(function(k){
       var a=allItems._commonAgg[k];
-      /* v18.44 修正３⑥: 受注発注部材は在庫不足でも案件全体をNGにしない（受発注バッジ表示） */
+      /* v18.44 修正３⑥ / v18.45 追: 受注発注部材は在庫不足でも案件全体をNGにしない。
+         在庫が足りていれば通常どおり在庫数表示（在庫を押さえる運用）、不足時のみ受発注バッジ */
       if(isOrderOnlyKey(a.key)){
-        allItems.push({label:a.label,need:a.qty,stock:0,held:0,free:0,ok:true,orderItem:true,shortage:0});
+        var stockO=gs('jp2',wh,a.key);
+        var heldO=gh('jp2',wh,a.key);
+        var freeO=stockO-heldO;
+        allItems.push({label:a.label,need:a.qty,stock:stockO,held:heldO,free:freeO,ok:true,orderItem:freeO<a.qty,shortage:0});
         return;
       }
       /* gs(jp2,wh,key) は鍵類で全ライン合算プール値を返す */
@@ -5131,9 +5141,14 @@ function InvPage(p){
           var pairOk=true;
           var pairItems=[];
           aggBOM.forEach(function(ab){
-            /* v18.44 修正３⑥: 受注発注部材は在庫不足でも2倉庫組合せの成立可否に影響させない */
+            /* v18.44 修正３⑥ / v18.45 追: 受注発注部材は在庫不足でも2倉庫組合せの成立可否に影響させない。
+               在庫がある分は実数を表示（在庫を押さえる運用）、不足でも ok:true でNGにしない */
             if(!ab.isDoor&&ab.key&&isOrderOnlyKey(ab.key)){
-              pairItems.push({label:ab.label,need:ab.qty,stockA:0,stockB:0,freeA:0,freeB:0,combined:0,ok:true,shortage:0});
+              var sOA=0,hOA=0,sOB=0,hOB=0;
+              if(hasStock(ab.lineId,wA)){sOA=gs(ab.lineId,wA,ab.key);hOA=gh(ab.lineId,wA,ab.key);}
+              if(hasStock(ab.lineId,wB)){sOB=gs(ab.lineId,wB,ab.key);hOB=gh(ab.lineId,wB,ab.key);}
+              var fOA=sOA-hOA,fOB=sOB-hOB;
+              pairItems.push({label:ab.label,need:ab.qty,stockA:sOA,stockB:sOB,freeA:fOA,freeB:fOB,combined:fOA+fOB,ok:true,shortage:0,orderItem:true});
               return;
             }
             var stockA=0,heldA=0,stockB=0,heldB=0;
