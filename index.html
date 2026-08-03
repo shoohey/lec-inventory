@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.43（修正２: 仮押さえ一覧・出荷済み一覧でアイテム検索が効かない不具合を修正／廃番の旧型ダイヤル錠H110・H111を両一覧からも削除）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.44（修正３: 仮押さえ一覧の現行H110/H111表示・入庫予定の扉対応・バージョン別表示・納品予定日・新柏主倉庫・シリンダー錠整理）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -387,14 +387,19 @@ var LOCK_TYPES=[
   {v:'dialDST',l:'ダイヤル錠 DST',s:'ダイヤル錠（DST）'},
   {v:'padlock',l:'南京錠',s:'南京錠'},
   {v:'totte',l:'トッテ',s:'トッテ'},
-  {v:'cylinder',l:'シリンダー錠',s:'シリンダー錠'},
-  {v:'cylinderLongStd',l:'シリンダー錠(カム長Std)',s:'シリンダー錠'},
-  {v:'cylinderLongF',l:'シリンダー錠(カム長F)',s:'シリンダー錠'},
-  {v:'cylinderLongB',l:'シリンダー錠(カム長B)',s:'シリンダー錠'},
-  {v:'cylinderShortStd',l:'シリンダー錠(カム短Std)',s:'シリンダー錠'},
-  {v:'cylinderShortF',l:'シリンダー錠(カム短F)',s:'シリンダー錠'},
-  {v:'cylinderShortB',l:'シリンダー錠(カム短B)',s:'シリンダー錠'},
-  {v:'cylinderShortC',l:'シリンダー錠(カム短C)',s:'シリンダー錠'},
+  /* v18.44 修正３⑥: 汎用「シリンダー錠」はプルダウンから削除（在庫キーが無い項目。既存案件の表示互換のため hidden で定義は残す）。
+     シリンダー錠の名称は在庫表（部材在庫一覧）の記載と同一に統一し、
+     受注発注のカム短Dマスター/カム短Lマスター（見積時のみ使用・原則在庫なし）を追加 */
+  {v:'cylinder',l:'シリンダー錠',s:'シリンダー錠',hidden:true},
+  {v:'cylinderLongStd',l:'シリンダー錠(2本キー)カム長スタンダード',s:'シリンダー錠'},
+  {v:'cylinderLongF',l:'シリンダー錠(2本キー)カム長Fマスター',s:'シリンダー錠'},
+  {v:'cylinderLongB',l:'シリンダー錠(2本キー)カム長Bマスター',s:'シリンダー錠'},
+  {v:'cylinderShortStd',l:'シリンダー錠(2本キー)カム短スタンダード',s:'シリンダー錠'},
+  {v:'cylinderShortF',l:'シリンダー錠(2本キー)カム短Fマスター',s:'シリンダー錠'},
+  {v:'cylinderShortB',l:'シリンダー錠(2本キー)カム短Bマスター',s:'シリンダー錠'},
+  {v:'cylinderShortC',l:'シリンダー錠(2本キー)カム短Cマスター',s:'シリンダー錠'},
+  {v:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター【受注発注】',s:'シリンダー錠'},
+  {v:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター【受注発注】',s:'シリンダー錠'},
   {v:'cylinderExchange',l:'内筒交換錠',s:'シリンダー錠'},
   {v:'cylinderExchangeSpare',l:'内筒交換用予備',s:'シリンダー錠'},
   {v:'coinReturn',l:'コインリターン錠',s:'コインリターン錠'},
@@ -448,6 +453,14 @@ function deliveryTermOf(order){
 function validUntilOf(order){
   if(order&&order.validUntil)return order.validUntil;
   return QUOTE_OPTS.expiry[0]||'';
+}
+/* v18.44 修正３④: 案件の「納品予定日」。優先順位:
+   1) order.deliveryDate（出荷指示の納品希望日／仮押さえのみ登録時の入力）
+   2) order.deliveryTerm（見積書の納期欄に手入力・選択された内容）
+   未設定の場合は空文字（既定文言「お打ち合わせの上」等のプレースホルダは表示しない） */
+function deliveryPlanOf(order){
+  if(!order)return '';
+  return order.deliveryDate||order.deliveryTerm||'';
 }
 
 /* v18.37 修正箇所2④: 明細の備考欄（税欄の右）は行ごとに手入力する。
@@ -554,17 +567,18 @@ var PART_ADD_DEFS=[
   {k:'padlockGreen',l:'3桁ダイヤル南京錠 グリーン'},
   {k:'padlockBlack',l:'3桁ダイヤル南京錠 ブラック'},
   {k:'padlockRed',l:'3桁ダイヤル南京錠 レッド'},
-  {k:'cylinderLongStd',l:'シリンダー錠(カム長Std)'},
-  {k:'cylinderLongF',l:'シリンダー錠(カム長F)'},
-  {k:'cylinderLongB',l:'シリンダー錠(カム長B)'},
-  {k:'cylinderShortStd',l:'シリンダー錠(カム短Std)'},
-  {k:'cylinderShortF',l:'シリンダー錠(カム短F)'},
-  {k:'cylinderShortB',l:'シリンダー錠(カム短B)'},
-  {k:'cylinderShortC',l:'シリンダー錠(カム短C)'},
+  /* v18.44 修正３⑥: シリンダー錠の名称を在庫表（部材在庫一覧）の記載と同一に統一（キーは不変） */
+  {k:'cylinderLongStd',l:'シリンダー錠(2本キー)カム長スタンダード'},
+  {k:'cylinderLongF',l:'シリンダー錠(2本キー)カム長Fマスター'},
+  {k:'cylinderLongB',l:'シリンダー錠(2本キー)カム長Bマスター'},
+  {k:'cylinderShortStd',l:'シリンダー錠(2本キー)カム短スタンダード'},
+  {k:'cylinderShortF',l:'シリンダー錠(2本キー)カム短Fマスター'},
+  {k:'cylinderShortB',l:'シリンダー錠(2本キー)カム短Bマスター'},
+  {k:'cylinderShortC',l:'シリンダー錠(2本キー)カム短Cマスター'},
   {k:'cylinderExchange',l:'内筒交換錠'},
   {k:'cylinderExchangeSpare',l:'内筒交換用予備'},
-  {k:'cylinderDMaster',l:'シリンダー Dマスター'},
-  {k:'cylinderLMaster',l:'シリンダー Lマスター'},
+  {k:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター【受注発注】'},
+  {k:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター【受注発注】'},
   {k:'coinReturn',l:'コインリターン錠'},
   {k:'dialKeyH110',l:'ダイヤル錠検索キー H110'},
   {k:'dialKeyH111',l:'ダイヤル錠検索キー H111'},
@@ -612,8 +626,9 @@ var PART_LABELS={
   dialH112:'ダイヤル錠 H112(自由式)',dialImon:'ダイヤル錠 井門',dialDST:'ダイヤル錠 DST',
   totte:'トッテ',handle:'トッテ(旧ハンドル)',
   padlock:'南京錠',cylinder:'シリンダー錠',cylinderMaster:'シリンダー錠（マスター組）',
-  cylinderLongStd:'シリンダー錠(カム長Std)',cylinderLongF:'シリンダー錠(カム長F)',cylinderLongB:'シリンダー錠(カム長B)',
-  cylinderShortStd:'シリンダー錠(カム短Std)',cylinderShortF:'シリンダー錠(カム短F)',cylinderShortB:'シリンダー錠(カム短B)',cylinderShortC:'シリンダー錠(カム短C)',
+  /* v18.44 修正３⑥: シリンダー錠の名称を在庫表の記載と同一に統一 */
+  cylinderLongStd:'シリンダー錠(2本キー)カム長スタンダード',cylinderLongF:'シリンダー錠(2本キー)カム長Fマスター',cylinderLongB:'シリンダー錠(2本キー)カム長Bマスター',
+  cylinderShortStd:'シリンダー錠(2本キー)カム短スタンダード',cylinderShortF:'シリンダー錠(2本キー)カム短Fマスター',cylinderShortB:'シリンダー錠(2本キー)カム短Bマスター',cylinderShortC:'シリンダー錠(2本キー)カム短Cマスター',
   cylinderExchange:'内筒交換錠',cylinderExchangeSpare:'内筒交換用予備',
   coinReturn:'コインリターン錠',railSideSML:'SMLXL共通サイドレール',railBackSML:'SMLXL共通バックレール',railSideSS:'SS・3S共通サイドレール',railBackSS:'SS・3S共通バックレール',
   jointScrew:'ジョイントネジ',jointScrew_sml_bk:'ジョイントネジ(SMLXL・ブラック)',jointScrew_ss_bk:'ジョイントネジ(SS・3S・ブラック)',jointScrew_ss_gy:'ジョイントネジ(SS・3S・グレー)',
@@ -626,7 +641,7 @@ var PART_LABELS={
   /* v14 C21 / v14.2: 新規21項目 */
   dialOpnus:'ダイヤル錠(オプナス)',
   cylinderFMaster:'シリンダー Fマスター',cylinderBMaster:'シリンダー Bマスター',
-  cylinderCMaster:'シリンダー Cマスター',cylinderDMaster:'シリンダー Dマスター',cylinderLMaster:'シリンダー Lマスター',
+  cylinderCMaster:'シリンダー Cマスター',cylinderDMaster:'シリンダー錠(2本キー)カム短Dマスター',cylinderLMaster:'シリンダー錠(2本キー)カム短Lマスター',/* v18.44 修正３⑥: D/Lは在庫表表記に統一 */
   dialKeyH110:'ダイヤル錠検索キー H110',dialKeyH111:'ダイヤル錠検索キー H111',
   dialKeyD003:'ダイヤル錠検索キー D003',dialKeyD018:'ダイヤル錠検索キー D018',
   hingeCoverSML:'ヒンジカバー SML共通',hingeCoverSS:'ヒンジカバー SS',
@@ -859,6 +874,11 @@ var HELD={};
 /* v14: 鍵類は全製品ライン共通プール（A1）。物理在庫はラインを問わず合算 */
 var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock','cylinder','cylinderMaster','cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderExchange','cylinderExchangeSpare','coinReturn','dialH110new','dialH111new','dialH112','dialImon','searchKey','masterKey','dialOpnus','cylinderFMaster','cylinderBMaster','cylinderCMaster','cylinderDMaster','cylinderLMaster','dialKeyH110','dialKeyH111','dialKeyD003','dialKeyD018','padlockGreen','padlockBlack','padlockRed'];
 function isCommonStockKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0;}
+/* v18.44 修正３⑥: 受注発注部材（原則在庫なし・見積時のみ使用。最終的に入庫された段階で出荷する）。
+   在庫確認で不足でも案件全体をNGにせず「受発注」バッジ表示にし、他部材の仮押さえを妨げない。
+   仮押さえ時は在庫があればその分だけ押さえ、無い分は従来どおり発注待ち（未確保）に登録される。 */
+var ORDER_ONLY_KEYS=['cylinderDMaster','cylinderLMaster'];
+function isOrderOnlyKey(key){return ORDER_ONLY_KEYS.indexOf(key)>=0;}
 function gs(line,wh,key,sub){
   if(isCommonStockKey(key)){
     /* 鍵類は全製品ライン合算 */
@@ -1176,6 +1196,11 @@ function checkWH(line,wh,bom,color,size){
   var orderCol=isOrderColor(line,color);
   bom.forEach(function(b){
     var stock,held,free;
+    /* v18.44 修正３⑥: 受注発注部材は在庫不足でもNGにしない（受発注扱い） */
+    if(!b.isDoor&&isOrderOnlyKey(b.key)){
+      items.push({label:b.label,need:b.qty,stock:0,held:0,free:0,ok:true,orderItem:true,shortage:0});
+      return;
+    }
     if(b.isDoor){
       if(orderCol){
         items.push({label:b.label,need:b.qty,stock:0,held:0,free:0,ok:true,orderItem:true,shortage:0});
@@ -3132,6 +3157,11 @@ function checkAllLinesWH(lines,wh){
   if(allItems._commonAgg){
     Object.keys(allItems._commonAgg).forEach(function(k){
       var a=allItems._commonAgg[k];
+      /* v18.44 修正３⑥: 受注発注部材は在庫不足でも案件全体をNGにしない（受発注バッジ表示） */
+      if(isOrderOnlyKey(a.key)){
+        allItems.push({label:a.label,need:a.qty,stock:0,held:0,free:0,ok:true,orderItem:true,shortage:0});
+        return;
+      }
       /* gs(jp2,wh,key) は鍵類で全ライン合算プール値を返す */
       var stock=gs('jp2',wh,a.key);
       var held=gh('jp2',wh,a.key);
@@ -5094,9 +5124,18 @@ function InvPage(p){
       for(var i=0;i<WH_IDS.length;i++){
         for(var j=i+1;j<WH_IDS.length;j++){
           var wA=WH_IDS[i],wB=WH_IDS[j];
+          /* v18.44 修正３⑤: 複数倉庫押さえの主倉庫は新柏。組合せに新柏が含まれる場合は
+             whA(先に在庫を押さえる側)を新柏に固定し、不足分をもう一方の倉庫から押さえる
+             （従来はWH_IDSの並び順で本社が常にwhAとなり、本社優先で押さえられていた） */
+          if(wB==='kashiwa'){wB=wA;wA='kashiwa';}
           var pairOk=true;
           var pairItems=[];
           aggBOM.forEach(function(ab){
+            /* v18.44 修正３⑥: 受注発注部材は在庫不足でも2倉庫組合せの成立可否に影響させない */
+            if(!ab.isDoor&&ab.key&&isOrderOnlyKey(ab.key)){
+              pairItems.push({label:ab.label,need:ab.qty,stockA:0,stockB:0,freeA:0,freeB:0,combined:0,ok:true,shortage:0});
+              return;
+            }
             var stockA=0,heldA=0,stockB=0,heldB=0;
             if(ab.isDoor){
               if(hasStock(ab.lineId,wA)){stockA=gd(ab.lineId,wA,ab.color,ab.size,ab.doorKey);heldA=ghd(ab.lineId,wA,ab.color,ab.size,ab.doorKey);}
@@ -5244,6 +5283,9 @@ function InvPage(p){
     if(!whList.length){p.toast('倉庫を選択してください');return;}
     if(whList.length>2){p.toast('倉庫は2つまでにしてください（現在'+whList.length+'倉庫）');return;}
     whList.sort(function(a,b){return used[b]-used[a];});
+    /* v18.44 修正３⑤: 部材別倉庫指定でも、新柏が含まれる場合は主倉庫(order.wh)を新柏にする */
+    var kIx=whList.indexOf('kashiwa');
+    if(kIx>0){whList.splice(kIx,1);whList.unshift('kashiwa');}
     var main=whList[0],second=whList[1]||null;
     /* 空き不足の事前確認（不足分は未確保=発注待ちで登録） */
     var shortMsg=[];
@@ -5376,6 +5418,10 @@ function InvPage(p){
       msg+='\n\n仮押さえを続行しますか？';
       if(!confirm(msg))return;
     }
+    /* v18.44 修正３④: 仮押さえのみは見積書が無く納品予定日の記載先が無いため、登録時に入力してもらう（空欄可・後から出荷指示等でも設定可能） */
+    var dlvIn=prompt('納品予定日を入力してください（例: 2026-08-20）\n※未定の場合は空欄のまま「OK」で登録できます','');
+    if(dlvIn===null)dlvIn='';
+    dlvIn=String(dlvIn).trim();
     /* v14 Codex P1対応: clonedLines にして共有参照を防ぐ */
     var clonedLines=lines[0].map(function(ln){return Object.assign({},ln);});
     var unsecuredParts=[];
@@ -5387,7 +5433,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,cust.pref):null;
     var no='RS-2026-'+String(nextON++).padStart(3,'0');
     var ptR=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,cust,shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts,deliveryDate:dlvIn};
     ORDERS.push(order);
     quoteOrder[1](order);
     p.toast('仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -5585,7 +5631,7 @@ function InvPage(p){
             ),
             hasDoor[0]?h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'錠前'+(tp[0]==='personal'?' （必須）':'')),
               h('select',{className:'inp',value:lk[0],onChange:function(e){lk[1](e.target.value);}},
-                LOCK_TYPES.filter(function(lt){return tp[0]==='personal'?lt.v!=='none':true;}).map(function(lt){return h('option',{key:lt.v,value:lt.v},lt.l);}))
+                LOCK_TYPES.filter(function(lt){if(lt.hidden)return false;/* v18.44 修正３⑥: 汎用シリンダー錠は選択肢から除外 */return tp[0]==='personal'?lt.v!=='none':true;}).map(function(lt){return h('option',{key:lt.v,value:lt.v},lt.l);}))
             ):null,
             /* Base options */
             h('div',{style:{display:'flex',gap:4,marginBottom:4,alignItems:'center'}},
@@ -6348,7 +6394,7 @@ function OrdersPage(p){
       var c=CUSTS.find(function(x){return x.id===order.cid;});
       /* v17.1 要望25: エンド納品先があれば配送先に優先セット（無ければ顧客情報） */
       var eu=order.endUser&&(order.endUser.name||order.endUser.address)?order.endUser:null;
-      shipForm[1]({shipToName:eu?eu.name:(c?c.name:''),shipToPostal:eu&&eu.postal?eu.postal:(c&&c.postal?c.postal:''),shipToAddress:eu&&eu.address?eu.address:(c?c.pref+(c.city||''):''),shipToPhone:eu&&eu.phone?eu.phone:(c&&c.phone?c.phone:''),shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:order.shippingNotes||'',shipNo:order.shipNo||''});
+      shipForm[1]({shipToName:eu?eu.name:(c?c.name:''),shipToPostal:eu&&eu.postal?eu.postal:(c&&c.postal?c.postal:''),shipToAddress:eu&&eu.address?eu.address:(c?c.pref+(c.city||''):''),shipToPhone:eu&&eu.phone?eu.phone:(c&&c.phone?c.phone:''),shipper:'株式会社LEC',shipperCustom:'',deliveryDate:order.deliveryDate||'',shippingNotes:order.shippingNotes||'',shipNo:order.shipNo||''});/* v18.44 修正３④: 仮押さえのみ登録時に入力した納品予定日を初期表示（従来は常に空欄で上書きされていた） */
       shipModal[1](order);
       return;
     }
@@ -6434,7 +6480,8 @@ function OrdersPage(p){
           return h('tr',{key:o.no},
             /* v18.38 修正箇所3②: 起票者（営業/事務）を案件番号の下に表示 */
             h('td',null,h('b',null,o.no),o.createdBy?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},'起票: '+o.createdBy):null),
-            h('td',null,o.date),
+            /* v18.44 修正３④: 日付の下部に納品予定日（見積の納期欄／仮押さえのみ登録時の入力／出荷指示の納品希望日）を表示 */
+            h('td',null,o.date,(function(){var dp=deliveryPlanOf(o);return dp?h('div',{style:{fontSize:8,color:'#0E7490',fontWeight:700,marginTop:2},title:'納品予定日'},'納品予定: '+dp):null;})()),
             /* v18.40 修正１③: 代理店経由でエンド納品先が設定されている場合、顧客名に（エンド納品先名）を併記 */
             h('td',null,(c?c.name:'')+(o.endUser&&o.endUser.name?'（'+o.endUser.name+'）':'')),
             h('td',null,o.lines.length+'件'),
@@ -6842,12 +6889,24 @@ function OrdersPage(p){
 }
 
 /* Compute per-part quantities for an order (for held/shipped grids) */
-function computeOrderParts(order){
+/* v18.44 修正３③: filterLine(製品ライン)指定時は、そのラインの明細の部材だけを集計する。
+   同一案件内でVer.1(扉のみ等)とVer.2の明細が混在する場合、仮押さえ一覧でバージョンを
+   切り替えた際に該当バージョンの部材だけが表示されるようにする（例: RS-2026-093）。
+   ただし鍵類等の共通在庫キー(COMMON_STOCK_KEYS)は在庫表と同じく全ライン共通プールのため
+   絞り込まず常に集計する（絞ると在庫表の仮押さえ数と一覧の数が食い違うため）。
+   filterLine省略時は従来どおり全明細を集計（Excel出力等の既存呼び出しは無影響）。 */
+function computeOrderParts(order,filterLine){
   var parts={};
+  var lineOk=function(ln,key,isDoor){
+    if(!filterLine)return true;
+    if(!isDoor&&isCommonStockKey(key))return true;
+    return ln.line===filterLine;
+  };
   order.lines.forEach(function(ln){
     if(ln.isFreeInput)return;
     if(ln._returned)return;/* v14.5 C12: 返品済みラインは部材集計に含めない（納品/確定Excelの過大計上を防ぐ） */
     if(ln.isPartOnly){
+      if(!lineOk(ln,ln.partKey,ln.isDoor))return;
       var pk;
       if(ln.isDoor){pk=ln.partKey+':'+ln.color+':'+ln.partSub;}
       else if(ln.partSub!==undefined){pk=ln.partKey+':'+ln.partSub;}
@@ -6857,6 +6916,7 @@ function computeOrderParts(order){
     }
     var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
     bom.forEach(function(b){
+      if(!lineOk(ln,b.key,b.isDoor))return;/* v18.44 修正３③: ライン絞り込み（共通在庫キーは常に通す） */
       if(b.isDoor){
         var colors2=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
         colors2.forEach(function(dc){
@@ -6874,6 +6934,8 @@ function computeOrderParts(order){
   /* v14.2 Codex P2対応: 部分解放を差し引く（押さえ数の正確な現値を返す） */
   if(order._partialReleases&&order._partialReleases.length){
     order._partialReleases.forEach(function(r){
+      /* v18.44 修正３③: ライン絞り込み中は、他ライン明細の部分解放を差し引かない（rにライン記録が無い旧データは従来どおり差し引く） */
+      if(filterLine&&r.line&&!(!r.isDoor&&isCommonStockKey(r.key))&&r.line!==filterLine)return;
       var pk;
       if(r.isDoor)pk=r.key+':'+(r.color||'')+':'+(r.doorSub||'');
       else if(r.sub)pk=r.key+':'+r.sub;
@@ -7118,13 +7180,14 @@ function PartsPage(p){
     {label:'アンカー穴キャップ(ブラック)',key:'anchorCap',sub:'bk',cat:'option',color2:'bk'},
     {label:'アンカー穴キャップ(グレー)',key:'anchorCap',sub:'gy',cat:'option',color2:'gy'},
     {label:'トップジョイント',key:'topJoint',cat:'option'},
-    {label:'シリンダー錠(カム長Std)',key:'cylinderLongStd',cat:'lock'},
-    {label:'シリンダー錠(カム長F)',key:'cylinderLongF',cat:'lock'},
-    {label:'シリンダー錠(カム長B)',key:'cylinderLongB',cat:'lock'},
-    {label:'シリンダー錠(カム短Std)',key:'cylinderShortStd',cat:'lock'},
-    {label:'シリンダー錠(カム短F)',key:'cylinderShortF',cat:'lock'},
-    {label:'シリンダー錠(カム短B)',key:'cylinderShortB',cat:'lock'},
-    {label:'シリンダー錠(カム短C)',key:'cylinderShortC',cat:'lock'},
+    /* v18.44 修正３⑥: シリンダー錠の名称を在庫表の記載と同一に統一（業者取込の旧表記マッチはaliasで互換維持） */
+    {label:'シリンダー錠(2本キー)カム長スタンダード',key:'cylinderLongStd',cat:'lock',alias:['シリンダー錠(カム長Std)']},
+    {label:'シリンダー錠(2本キー)カム長Fマスター',key:'cylinderLongF',cat:'lock',alias:['シリンダー錠(カム長F)']},
+    {label:'シリンダー錠(2本キー)カム長Bマスター',key:'cylinderLongB',cat:'lock',alias:['シリンダー錠(カム長B)']},
+    {label:'シリンダー錠(2本キー)カム短スタンダード',key:'cylinderShortStd',cat:'lock',alias:['シリンダー錠(カム短Std)']},
+    {label:'シリンダー錠(2本キー)カム短Fマスター',key:'cylinderShortF',cat:'lock',alias:['シリンダー錠(カム短F)']},
+    {label:'シリンダー錠(2本キー)カム短Bマスター',key:'cylinderShortB',cat:'lock',alias:['シリンダー錠(カム短B)']},
+    {label:'シリンダー錠(2本キー)カム短Cマスター',key:'cylinderShortC',cat:'lock',alias:['シリンダー錠(カム短C)']},
     {label:'内筒交換錠',key:'cylinderExchange',cat:'lock'},
     {label:'内筒交換用予備',key:'cylinderExchangeSpare',cat:'lock'},
     /* v18.34 追A追随: 表示から「(新)」を削除し型番のみに（在庫キーは不変。業者取込の旧表記マッチはaliasで互換維持） */
@@ -7143,8 +7206,8 @@ function PartsPage(p){
     {label:'ドアポケット',key:'doorPocket',cat:'option'},
     /* v14 C21: 新規部材21種類 */
     {label:'ダイヤル錠（オプナス）',key:'dialOpnus',cat:'lock'},
-    {label:'シリンダー Dマスター',key:'cylinderDMaster',cat:'lock'},
-    {label:'シリンダー Lマスター',key:'cylinderLMaster',cat:'lock'},
+    {label:'シリンダー錠(2本キー)カム短Dマスター',key:'cylinderDMaster',cat:'lock',alias:['シリンダー Dマスター']},
+    {label:'シリンダー錠(2本キー)カム短Lマスター',key:'cylinderLMaster',cat:'lock',alias:['シリンダー Lマスター']},
     {label:'ダイヤル錠検索キー H110',key:'dialKeyH110',cat:'lock'},
     {label:'ダイヤル錠検索キー H111',key:'dialKeyH111',cat:'lock'},
     {label:'ダイヤル錠検索キー D003',key:'dialKeyD003',cat:'lock'},
@@ -7748,6 +7811,10 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'(2本キー)カム短Fマスター',key:'cylinderShortF',irisu:iGet('cylinderShortF')});
           uniRows.push({item:'',variant:'(2本キー)カム短Bマスター',key:'cylinderShortB',irisu:iGet('cylinderShortB')});
           uniRows.push({item:'',variant:'(2本キー)カム短Cマスター',key:'cylinderShortC',irisu:iGet('cylinderShortC')});
+          /* v18.44 修正３⑥: 受注発注のカム短Dマスター/カム短Lマスターをシリンダー錠グループへ追加
+             （在庫キーは既存の cylinderDMaster/cylinderLMaster を継続使用。下部にあった単独行「シリンダー Dマスター/Lマスター」はここへ統合） */
+          uniRows.push({item:'',variant:'(2本キー)カム短Dマスター',key:'cylinderDMaster',irisu:iGet('cylinderDMaster')});
+          uniRows.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
           uniRows.push({item:'',variant:'内筒交換錠',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
           uniRows.push({item:'',variant:'内筒交換用予備',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
           /* v14.5 C7: 実在庫を持つ旧キー（無印・マスター組）を画面にも表示（Excelと項目一致） */
@@ -7769,8 +7836,7 @@ function PartsPage(p){
           /* v14.8 #4: 「扉すべて」合算行を廃止（個別の色別扉行は上部に表示済み） */
           /* v14.2: 26-30. シリンダーマスター（5種） v14.5 C7: 入数をIRISUから取得しExcelと統一 */
           uniRows.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iGet('dialOpnus')});
-          uniRows.push({item:'シリンダー Dマスター',variant:'',key:'cylinderDMaster',irisu:iGet('cylinderDMaster')});
-          uniRows.push({item:'シリンダー Lマスター',variant:'',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
+          /* v18.44 修正３⑥: シリンダー Dマスター/Lマスターの単独行は上のシリンダー錠グループ（(2本キー)カム短D/Lマスター）へ統合済み */
           /* v14.2: 31-34. ダイヤル錠検索キー（4種） */
           uniRows.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iGet('dialKeyH110')});
           uniRows.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iGet('dialKeyH111')});
@@ -7963,6 +8029,11 @@ function PartsPage(p){
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
         uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
+        /* v18.44 修正３①: 現行のダイヤル錠H110/H111(キー dialH110new/dialH111new)の行がこの一覧に無く、
+           現行ダイヤル錠の仮押さえ/出荷実績が表示されなかった（v18.43で旧型(旧)行を非表示化した結果、H110/H111が全く出なくなった）。
+           現行行を追加（旧型(旧)行は従来どおり、数量が入っている案件がある場合のみ表示） */
+        uniR.push({item:'ダイヤル錠H110',variant:'',key:'dialH110new',irisu:iG('dialH110new')});
+        uniR.push({item:'ダイヤル錠H111',variant:'',key:'dialH111new',irisu:iG('dialH111new')});
         uniR.push({item:'ダイヤル錠H110(旧)',variant:'',key:'dialH110',irisu:iG('dialH110')});
         uniR.push({item:'ダイヤル錠H111(旧)',variant:'',key:'dialH111',irisu:iG('dialH111')});
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
@@ -7975,8 +8046,9 @@ function PartsPage(p){
         uniR.push({item:'SS・3S共通バックレール',variant:'',key:'railBackSS',irisu:iG('railBackSS')});
         /* v14.4: 顧客フィードバック反映 - 22項目を仮押さえ一覧画面にも追加 */
         uniR.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iG('dialOpnus')});
-        uniR.push({item:'シリンダー Dマスター',variant:'',key:'cylinderDMaster',irisu:iG('cylinderDMaster')});
-        uniR.push({item:'シリンダー Lマスター',variant:'',key:'cylinderLMaster',irisu:iG('cylinderLMaster')});
+        /* v18.44 修正３⑥: 名称を在庫表と統一（シリンダー錠グループの(2本キー)カム短D/Lマスター表記に） */
+        uniR.push({item:'シリンダー錠',variant:'(2本キー)カム短Dマスター',key:'cylinderDMaster',irisu:iG('cylinderDMaster')});
+        uniR.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iG('cylinderLMaster')});
         uniR.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iG('dialKeyH110')});
         uniR.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iG('dialKeyH111')});
         uniR.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:iG('dialKeyD003')});
@@ -7994,7 +8066,8 @@ function PartsPage(p){
         /* カスタム部材も含める */
         try{var cpH=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpH.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
-        var orderParts=held.map(function(o){return{order:o,parts:computeOrderParts(o),cust:CUSTS.find(function(x){return x.id===o.cid;})};});
+        /* v18.44 修正３③: 選択中バージョン(製品ライン)の部材だけを集計（「全ラインの案件を表示」ON時は従来どおり全量） */
+        var orderParts=held.map(function(o){return{order:o,parts:computeOrderParts(o,heldAllLines[0]?null:selLine[0]),cust:CUSTS.find(function(x){return x.id===o.cid;})};});
         /* v18.43 修正２①②: アイテム名検索を効かせ、廃番の旧型ダイヤル錠H110/H111の行を除去 */
         uniR=finishUniRows(uniR,orderParts);
         if(!uniR.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'「'+itemSearch[0]+'」に一致するアイテムはありません');
@@ -8012,8 +8085,13 @@ function PartsPage(p){
             return ls.length?ls[0].line:selLine[0];
           })();
           var refs=[];
+          /* v18.44 修正３③: バージョン絞り込み表示中は、表示中の数量と同じ範囲（選択中ラインの明細のみ。
+             鍵類等の共通在庫キーは全ライン）だけを編集対象にする。全ライン表示中は従来どおり全明細 */
+          var rowKeyQ=uniRow.isDoor?uniRow.dk:uniRow.key;
+          var lineFilterQ=(!heldAllLines[0]&&!(!uniRow.isDoor&&isCommonStockKey(rowKeyQ)))?selLine[0]:null;
           order.lines.forEach(function(ln){
             if(!ln._actualHeld)return;
+            if(lineFilterQ&&ln.line!==lineFilterQ)return;
             ln._actualHeld.forEach(function(ah){
               var match=false;
               if(uniRow.isDoor){
@@ -8183,6 +8261,8 @@ function PartsPage(p){
                 ),
                 /* v18.40 修正１③: 部材在庫一覧の仮押さえ一覧にもエンド納品先名を併記 */
                 h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,marginTop:2}},(op.cust?op.cust.name:'')+(op.order.endUser&&op.order.endUser.name?'（'+op.order.endUser.name+'）':'')),
+                /* v18.44 修正３④: 顧客名とセットで納品予定日も表示 */
+                (function(){var dp=deliveryPlanOf(op.order);return dp?h('div',{style:{fontSize:8,color:'#0E7490',fontWeight:700,marginTop:2,textDecoration:'none'}},'納品予定: '+dp):null;})(),
                 /* v18.42: 全ライン表示中はどの製品ラインの案件かが分かるようマークを倉庫表示に併記 */
                 h('div',{style:{fontSize:8,color:'#D97706',fontWeight:600,marginTop:2}},'📦 '+(WH_MAP[op.order.wh]?WH_MAP[op.order.wh].s:'')+(op.order.wh2?' + '+(WH_MAP[op.order.wh2]?WH_MAP[op.order.wh2].s:''):'')+(heldAllLines[0]?(function(){
                   var ms=[];
@@ -8265,6 +8345,11 @@ function PartsPage(p){
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
         uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
+        /* v18.44 修正３①: 現行のダイヤル錠H110/H111(キー dialH110new/dialH111new)の行がこの一覧に無く、
+           現行ダイヤル錠の仮押さえ/出荷実績が表示されなかった（v18.43で旧型(旧)行を非表示化した結果、H110/H111が全く出なくなった）。
+           現行行を追加（旧型(旧)行は従来どおり、数量が入っている案件がある場合のみ表示） */
+        uniR.push({item:'ダイヤル錠H110',variant:'',key:'dialH110new',irisu:iG('dialH110new')});
+        uniR.push({item:'ダイヤル錠H111',variant:'',key:'dialH111new',irisu:iG('dialH111new')});
         uniR.push({item:'ダイヤル錠H110(旧)',variant:'',key:'dialH110',irisu:iG('dialH110')});
         uniR.push({item:'ダイヤル錠H111(旧)',variant:'',key:'dialH111',irisu:iG('dialH111')});
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
@@ -8277,8 +8362,9 @@ function PartsPage(p){
         uniR.push({item:'SS・3S共通バックレール',variant:'',key:'railBackSS',irisu:iG('railBackSS')});
         /* v14.4: 顧客フィードバック反映 - 22項目を出荷済み一覧画面にも追加 */
         uniR.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iG('dialOpnus')});
-        uniR.push({item:'シリンダー Dマスター',variant:'',key:'cylinderDMaster',irisu:iG('cylinderDMaster')});
-        uniR.push({item:'シリンダー Lマスター',variant:'',key:'cylinderLMaster',irisu:iG('cylinderLMaster')});
+        /* v18.44 修正３⑥: 名称を在庫表と統一（シリンダー錠グループの(2本キー)カム短D/Lマスター表記に） */
+        uniR.push({item:'シリンダー錠',variant:'(2本キー)カム短Dマスター',key:'cylinderDMaster',irisu:iG('cylinderDMaster')});
+        uniR.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iG('cylinderLMaster')});
         uniR.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iG('dialKeyH110')});
         uniR.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iG('dialKeyH111')});
         uniR.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:iG('dialKeyD003')});
@@ -8296,7 +8382,8 @@ function PartsPage(p){
         /* カスタム部材も含める */
         try{var cpS=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpS.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
-        var orderParts=shipped.map(function(o){return{order:o,parts:computeOrderParts(o),cust:CUSTS.find(function(x){return x.id===o.cid;}),allReturned:o.lines.every(function(l){return l._returned||l.isFreeInput;})};});
+        /* v18.44 修正３③: 出荷済み一覧も選択中バージョン(製品ライン)の部材だけを集計 */
+        var orderParts=shipped.map(function(o){return{order:o,parts:computeOrderParts(o,selLine[0]),cust:CUSTS.find(function(x){return x.id===o.cid;}),allReturned:o.lines.every(function(l){return l._returned||l.isFreeInput;})};});
         /* v18.43 修正２①②: アイテム名検索を効かせ、廃番の旧型ダイヤル錠H110/H111の行を除去 */
         uniR=finishUniRows(uniR,orderParts);
         if(!uniR.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'「'+itemSearch[0]+'」に一致するアイテムはありません');
@@ -8345,7 +8432,9 @@ function PartsPage(p){
                 return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:90,fontSize:10,position:'sticky',top:0,background:'var(--g50)',zIndex:4}},
                   h('div',null,op.order.no),
                   h('div',{style:{fontSize:9,color:'var(--g500)'}},c?c.name:''),
-                  h('div',{style:{fontSize:9,color:'var(--g500)'}},op.order.date)
+                  h('div',{style:{fontSize:9,color:'var(--g500)'}},op.order.date),
+                  /* v18.44 修正３④: 出荷済み一覧にも納品予定日を表示 */
+                  (function(){var dp=deliveryPlanOf(op.order);return dp?h('div',{style:{fontSize:8,color:'#0E7490',fontWeight:700}},'納品予定: '+dp):null;})()
                 );
               })
             ),
@@ -9435,21 +9524,61 @@ function PartsPage(p){
           incForm[0].items.map(function(item,idx){
             var curCat=item.cat||(structRowsAll.find(function(r){return r.key===item.key&&r.sub===item.sub;})||{}).cat||'size';
             var catRows=structRowsAll.filter(function(r){return r.cat===curCat;});
+            /* v18.44 修正３②: 扉カテゴリ用のヘルパー（ライン別の全色・全サイズを選択可能に） */
+            var doorLine=item.lineId&&LINE_COLORS[item.lineId]?item.lineId:selLine[0];
+            var doorColors=(LINE_COLORS[doorLine]||[]).filter(function(c){return !c.und&&!c.order;});
+            var doorSizes=(LINE_SIZES[doorLine]||[]).filter(function(s){return s!=='SSA'&&s!=='SSW';});
+            var mkDoorLabel=function(li,dk,cv,sz){
+              var lnObj=LINES.find(function(x){return x.id===li;})||{name:li};
+              var cObj=(LINE_COLORS[li]||[]).find(function(x){return x.v===cv;})||{l:cv};
+              return '扉'+(dk==='doorH'?'〈ホタ〉':'')+' '+cObj.l+' '+sz+'（'+lnObj.name+'）';
+            };
+            var updDoor=function(patch){
+              var f=Object.assign({},incForm[0]);f.items=f.items.slice();
+              var ni=Object.assign({},f.items[idx],patch);
+              /* ライン変更時は色・サイズをそのラインの先頭値に補正 */
+              var cs=(LINE_COLORS[ni.lineId]||[]).filter(function(c){return !c.und&&!c.order;});
+              var ss=(LINE_SIZES[ni.lineId]||[]).filter(function(s){return s!=='SSA'&&s!=='SSW';});
+              if(!cs.some(function(c){return c.v===ni.color;}))ni.color=cs.length?cs[0].v:'';
+              if(ss.indexOf(ni.sub)<0)ni.sub=ss.length?ss[0]:'';
+              ni.label=mkDoorLabel(ni.lineId,ni.key,ni.color,ni.sub);
+              f.items[idx]=ni;incForm[1](f);
+            };
             return h('div',{key:idx,style:{display:'flex',gap:4,marginBottom:4,alignItems:'center'}},
               /* カテゴリ選択（1段目） */
               h('select',{className:'inp',value:curCat,onChange:function(e){
                 var f=Object.assign({},incForm[0]);f.items=f.items.slice();
                 var nc=e.target.value;
-                var firstRow=structRowsAll.find(function(r){return r.cat===nc;});
-                f.items[idx]=Object.assign({},f.items[idx],{cat:nc,key:firstRow.key,sub:firstRow.sub,label:firstRow.label});
+                if(nc==='door'){
+                  /* v18.44 修正３②: 扉は在庫キー(door/doorH×色×サイズ)を直接指定する */
+                  var dl=selLine[0];
+                  var cs0=(LINE_COLORS[dl]||[]).filter(function(c){return !c.und&&!c.order;});
+                  var ss0=(LINE_SIZES[dl]||[]).filter(function(s){return s!=='SSA'&&s!=='SSW';});
+                  var c0=cs0.length?cs0[0].v:'';var s0=ss0.length?ss0[0]:'S';
+                  f.items[idx]=Object.assign({},f.items[idx],{cat:'door',lineId:dl,key:'door',color:c0,sub:s0,label:mkDoorLabel(dl,'door',c0,s0)});
+                }else{
+                  var firstRow=structRowsAll.find(function(r){return r.cat===nc;});
+                  f.items[idx]=Object.assign({},f.items[idx],{cat:nc,key:firstRow.key,sub:firstRow.sub,color:'',label:firstRow.label});
+                }
                 incForm[1](f);
               },style:{flex:1,fontSize:10}},
                 h('option',{value:'size'},'サイズ別部材'),
                 h('option',{value:'option'},'オプション・ジョイント・ネジ'),
-                h('option',{value:'lock'},'鍵・錠類')
+                h('option',{value:'lock'},'鍵・錠類'),
+                h('option',{value:'door'},'扉（全色・全サイズ）')
               ),
-              /* アイテム選択（2段目） */
-              h('select',{className:'inp',value:item.key+(item.sub?'|'+item.sub:''),onChange:function(e){
+              /* アイテム選択（2段目） v18.44 修正３②: 扉はライン・扉種・色・サイズの4選択 */
+              curCat==='door'?h('div',{style:{flex:2,display:'flex',gap:3}},
+                h('select',{className:'inp',value:doorLine,onChange:function(e){updDoor({lineId:e.target.value});},style:{flex:1.2,fontSize:10}},
+                  LINES.map(function(l){return h('option',{key:l.id,value:l.id},l.name);})),
+                h('select',{className:'inp',value:item.key==='doorH'?'doorH':'door',onChange:function(e){updDoor({key:e.target.value,lineId:doorLine});},style:{flex:0.9,fontSize:10}},
+                  h('option',{value:'door'},'扉(同色)'),
+                  h('option',{value:'doorH'},'扉〈ホタ〉')),
+                h('select',{className:'inp',value:item.color||'',onChange:function(e){updDoor({color:e.target.value,lineId:doorLine});},style:{flex:1.2,fontSize:10}},
+                  doorColors.map(function(c){return h('option',{key:c.v,value:c.v},c.l);})),
+                h('select',{className:'inp',value:item.sub||'',onChange:function(e){updDoor({sub:e.target.value,lineId:doorLine});},style:{flex:0.7,fontSize:10}},
+                  doorSizes.map(function(s){return h('option',{key:s,value:s},s);}))
+              ):h('select',{className:'inp',value:item.key+(item.sub?'|'+item.sub:''),onChange:function(e){
                 var f=Object.assign({},incForm[0]);f.items=f.items.slice();
                 var parts=e.target.value.split('|');
                 f.items[idx]=Object.assign({},f.items[idx],{key:parts[0],sub:parts[1]||undefined,label:e.target.options[e.target.selectedIndex].text});
