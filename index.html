@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.46（修正４6件・修正５11件: 入庫予定のライン選択・扉在庫表示・案件一覧の並び替え/複数選択・納品予定日順・案件修正・倉庫別一覧・送付先別送料など）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.47（修正４・修正５の追加修正: 受発注色に在庫数併記・納品予定日なしは古い順・見積の税区分消し漏れ・顧客ID重複と削除が反映されない不具合）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -3163,8 +3163,16 @@ function checkAllLinesWH(lines,wh){
     Object.keys(doorAgg).forEach(function(k){
       var a=doorAgg[k];
       if(a.isOrder){
-        /* v18.31: 扉色未定(und)は受発注インフラに乗せつつ表示だけ「色未定」に分ける */
-        allItems.push({label:a.label,need:a.qty,stock:0,held:0,free:0,ok:true,orderItem:true,und:isUndColor(a.color),shortage:0});
+        /* v18.31: 扉色未定(und)は受発注インフラに乗せつつ表示だけ「色未定」に分ける
+           v18.47 修正４⑤追: 受発注色の扉（アイボリー・グレー・ブラック）も実在庫を持つことがあるのに
+           一律0で積んでいたため、部材内訳に「受発注」としか出ず在庫数が分からなかった。
+           実際の在庫数・仮押さえ数・空きを引いて渡す（受発注扱いのため ok:true / shortage:0 は従来どおり維持し、
+           在庫が足りなくても案件全体をNGにしない）。
+           扉色未定(und)は在庫行そのものが存在しないため従来どおり0のまま。 */
+        var isUndA=isUndColor(a.color);
+        var stockA=isUndA?0:gd(lineId,wh,a.color,a.size,a.doorKey);
+        var heldA=isUndA?0:ghd(lineId,wh,a.color,a.size,a.doorKey);
+        allItems.push({label:a.label,need:a.qty,stock:stockA,held:heldA,free:stockA-heldA,ok:true,orderItem:true,und:isUndA,shortage:0});
         return;
       }
       var stock=gd(lineId,wh,a.color,a.size,a.doorKey);
@@ -3224,6 +3232,35 @@ var DEMO_PREFS=[['北海道',['札幌市','旭川市']],['宮城県',['仙台市
 var LN=['田中','佐藤','鈴木','高橋','伊藤','渡辺','山本','中村','小林','加藤'],FN=['太郎','花子','一郎','美咲','健太'],STP=['小学校','中学校','高等学校'];
 var CUSTS=[];
 (function(){var id=1;DEMO_PREFS.forEach(function(p){p[1].forEach(function(c){CUSTS.push({id:'D'+String(id).padStart(5,'0'),name:c+'立第'+((id-1)%5+1)+STP[(id-1)%3],pref:p[0],city:c,contact:LN[id%10]+' '+FN[id%5],postal:'',phone:'',fax:'',contactPerson:'',salesPerson:''});id++;});});})();
+
+/* v18.47 追加修正: 顧客IDの採番。
+   従来は 'D'+(CUSTS.length+1) で採番していたため、顧客や案件を削除して件数が減ると
+   同じIDが再発行され、IDが重複していた（報告の ID01366 が複数発生する事象の原因）。
+   重複すると findIndex(id) が先に見つかった別の行を指すため、削除・編集が
+   「クリックした行と違う行」に効き、画面上は消えていないように見える二次症状も起きていた。
+   → 既存IDの最大採番＋1から、実際に未使用のIDになるまで進めて返す。 */
+function nextCustId(){
+  var mx=0,used={};
+  CUSTS.forEach(function(c){
+    var cid=String(c&&c.id||'');
+    used[cid]=true;
+    var m=/^D(\d+)$/.exec(cid);
+    if(m){var n=parseInt(m[1],10);if(!isNaN(n)&&n>mx)mx=n;}
+  });
+  var n2=mx+1,id='D'+String(n2).padStart(5,'0');
+  while(used[id]){n2++;id='D'+String(n2).padStart(5,'0');}
+  return id;
+}
+/* v18.47 追加修正: 重複しているIDの一覧（画面で警告表示するために使う） */
+function duplicateCustIds(){
+  var seen={},dup={};
+  CUSTS.forEach(function(c){
+    var cid=String(c&&c.id||'');
+    if(seen[cid])dup[cid]=true;
+    seen[cid]=true;
+  });
+  return dup;
+}
 
 /* ========== DEALER/AGENT MASTER (代理店マスタ) ========== */
 var DEALERS=[
@@ -4674,12 +4711,17 @@ function importCustsAoa(aoa){
 /* ========== CUSTOMER PAGE ========== */
 function CustPage(p){
   var sr=us(''),pf=us('all'),af=us('all'),showAdd=us(false),bump=us(0);
-  var editCust=us(null);/* 編集中顧客 */
+  var editCust=us(null);/* 編集中顧客（編集用のコピー） */
+  /* v18.47 追加修正: 編集対象の実体への参照。IDが重複していても正しい行へ保存するために使う */
+  var editCustRef=us(null);
   var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
   /* v18.33 追B: 顧客属性フィルタの選択肢（登録済み属性のユニーク値） */
   /* v18.34 顧客回答B-9: 属性の基本選択肢（学校/プール/温浴施設/代理店/その他）＋登録済み属性が自動で一覧に加わる（随時追加） */
   var ATTR_BASE=['学校','プール','温浴施設','代理店','その他'];
   var attrs=ATTR_BASE.slice();CUSTS.forEach(function(c){if(c.attr&&attrs.indexOf(c.attr)<0)attrs.push(c.attr);});
+  /* v18.47 追加修正: 重複IDの検出（一覧で警告表示する。bump に依存して再計算される） */
+  var dupIds=duplicateCustIds();
+  var dupIdCount=Object.keys(dupIds).length;
   var fl=CUSTS.filter(function(c){
     if(pf[0]!=='all'&&c.pref!==pf[0])return false;
     if(af[0]!=='all'&&(c.attr||'')!==af[0])return false;/* v18.33 追B: 顧客属性フィルタ */
@@ -4721,7 +4763,8 @@ function CustPage(p){
     var f=nf[0];if(!f.name)return;
     var attrFinal=(f.attr==='その他'&&f.attrOther&&f.attrOther.trim())?f.attrOther.trim():(f.attr||'');
     /* v18.40 修正１①: 代理店属性の顧客はエンド納品先（複数）を保持できる */
-    var nc={id:'D'+String(CUSTS.length+1).padStart(5,'0'),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal,endUsers:f.endUsers||[]};
+    /* v18.47 追加修正: 件数ベースの採番は削除で重複するため、未使用IDを採番する nextCustId() を使う */
+    var nc={id:nextCustId(),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal,endUsers:f.endUsers||[]};
     CUSTS.unshift(nc);
     nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
     showAdd[1](false);bump[1](bump[0]+1);saveCusts();
@@ -4738,9 +4781,13 @@ function CustPage(p){
        v18.39: 営業は仮押さえ権限を持たないため、後発ログインのロック中でも顧客編集を許可する */
     if(p.lockReadOnly&&!p.salesView){alert('読み取り専用モード中は顧客編集できません');return;}
     var ec=editCust[0];if(!ec||!ec.name){return;}
-    var idx=CUSTS.findIndex(function(c){return c.id===ec.id;});
+    /* v18.47 追加修正: IDが重複していると findIndex(id) が別の行を指し、editした内容が
+       クリックした行と違う顧客へ保存されてしまう。編集開始時に控えた実体(editCustRef)を優先して特定する。 */
+    var ref=editCustRef[0];
+    var idx=ref?CUSTS.indexOf(ref):-1;
+    if(idx<0)idx=CUSTS.findIndex(function(c){return c.id===ec.id;});
     /* v18.39 バグ修正: 編集内容もクラウドへ保存（従来は localStorage のみで他端末に反映されなかった） */
-    if(idx>=0){CUSTS[idx]=Object.assign({},ec);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);editCust[1](null);}
+    if(idx>=0){CUSTS[idx]=Object.assign({},ec);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);editCust[1](null);editCustRef[1](null);}
   }
   function deleteCust(c){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
@@ -4750,7 +4797,12 @@ function CustPage(p){
     if(usedIn.length>0){
       if(!confirm('この顧客は'+usedIn.length+'件の案件で使用されています。削除すると案件側で「顧客不明」になります。本当に削除しますか？'))return;
     }
-    var idx=CUSTS.findIndex(function(x){return x.id===c.id;});
+    /* v18.47 追加修正: IDが重複していると findIndex(id) が先に見つかった別の行を消してしまい、
+       クリックした行はそのまま残るため「削除しても反映されない」ように見えていた
+       （リロード後に本当に消えた行が反映されて“更新すると削除される”症状になっていた）。
+       クリックされた実体そのものを indexOf で特定して削除する。 */
+    var idx=CUSTS.indexOf(c);
+    if(idx<0)idx=CUSTS.findIndex(function(x){return x.id===c.id;});
     /* v18.39 バグ修正: 削除もクラウドへ反映（従来は localStorage のみで他端末に残り続けた） */
     if(idx>=0){CUSTS.splice(idx,1);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);}
   }
@@ -4792,11 +4844,23 @@ function CustPage(p){
         h('input',{className:'inp',placeholder:'名前・ID・地域で検索…',value:sr[0],onChange:function(e){sr[1](e.target.value);},style:{width:180}})
       )
     ),
+    /* v18.47 追加修正: 過去の採番不具合で既に重複しているIDがある場合に注意喚起する。
+       既存IDは案件(order.cid)と紐づいているため自動では振り直さない（どちらの顧客の案件か判別できないため）。 */
+    dupIdCount>0?h('div',{style:{padding:'6px 12px',margin:'0 0 6px',background:'#FEF2F2',border:'1.5px solid #FCA5A5',borderRadius:8,fontSize:11,color:'#991B1B'}},
+      '⚠ 重複している顧客IDが '+dupIdCount+' 件あります（'+Object.keys(dupIds).slice(0,5).join('・')+(dupIdCount>5?' ほか':'')+'）。'+
+      '該当行には「重複」バッジを表示しています。案件との紐づけを確認のうえ、不要な方を削除してください。'+
+      '（新規登録分は未使用のIDを採番するため、今後は重複しません）'
+    ):null,
     h('div',{className:'scy',style:{maxHeight:'74vh'}},h('table',{className:'tbl'},
       /* v18.33 要望⑲: 「担当者」列を削除（先方担当・弊社担当の2つに統一）。追B: 顧客属性列を追加 */
       h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'法人名'),h('th',null,'属性'),h('th',null,'都道府県'),h('th',null,'市区町村'),h('th',null,'〒'),h('th',null,'TEL'),h('th',null,'先方担当'),h('th',null,'弊社担当'),h('th',{style:{minWidth:160}},'操作'))),
-      h('tbody',null,fl.map(function(c){return h('tr',{key:c.id},
-        h('td',null,h('b',null,c.id)),h('td',null,c.name),
+      /* v18.47 追加修正: key を c.id だけにしていたため、IDが重複すると同じkeyの行が並び、
+         Reactの差分更新で行が正しく消えない（削除しても残って見える）原因になっていた。indexを併用して一意にする。 */
+      h('tbody',null,fl.map(function(c,ci){return h('tr',{key:c.id+'#'+ci},
+        h('td',null,h('b',null,c.id),
+          /* v18.47 追加修正: 既に重複しているIDは警告を出す（既存データのIDは案件(cid)と紐づくため自動で振り直さない） */
+          dupIds[c.id]?h('span',{className:'bg bg-r',style:{marginLeft:4,fontSize:8},title:'このIDは他の顧客と重複しています。案件との紐づけを確認のうえ、不要な方を削除してください'},'重複'):null
+        ),h('td',null,c.name),
         h('td',{style:{fontSize:9}},c.attr||''),
         h('td',null,c.pref),h('td',null,c.city||''),
         h('td',{style:{fontSize:9}},c.postal||''),h('td',{style:{fontSize:9}},c.phone||''),
@@ -4804,15 +4868,15 @@ function CustPage(p){
         h('td',null,c.salesPerson||''),
         h('td',{style:{whiteSpace:'nowrap'}},
           h('button',{className:'btn btn-xs btn-nv',onClick:function(){p.selectCust(c);}},'選択 →'),
-          h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){editCust[1](Object.assign({},c));}},'編集'),
+          h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){editCust[1](Object.assign({},c));editCustRef[1](c);}},'編集'),
           h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2},onClick:function(){deleteCust(c);}},'🗑')
         )
       );}))
     )),
     /* 顧客編集モーダル */
-    editCust[0]?h(Modal,{show:true,title:'顧客編集 — '+editCust[0].id,w:480,onClose:function(){editCust[1](null);},
+    editCust[0]?h(Modal,{show:true,title:'顧客編集 — '+editCust[0].id,w:480,onClose:function(){editCust[1](null);editCustRef[1](null);},
       footer:h('div',{style:{display:'flex',gap:6}},
-        h('button',{className:'btn btn-ol',onClick:function(){editCust[1](null);}},'キャンセル'),
+        h('button',{className:'btn btn-ol',onClick:function(){editCust[1](null);editCustRef[1](null);}},'キャンセル'),
         h('button',{className:'btn btn-gn',onClick:saveEditCust},'保存'))},
       h('div',null,
         h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'法人名（必須）'),h('input',{className:'inp',value:editCust[0].name||'',onChange:function(e){ufEdit('name',e.target.value);}}))),
@@ -5991,9 +6055,14 @@ function InvPage(p){
                   return h('tr',{key:i,style:{background:it.ok?'':'#FEF2F2'}},
                     h('td',null,it.label),
                     h('td',{style:{textAlign:'right',fontWeight:700}},fm(it.need)),
-                    h('td',{style:{textAlign:'right'}},it.orderItem?h('span',{className:'bg bg-p'},it.und?'色未定':'受発注'):fm(it.stock)),
+                    /* v18.47 修正４⑤追: 受発注部材は「受発注」バッジだけで在庫数が見えなかったため、
+                       在庫数（無ければ0）＋受発注バッジを併記する。色未定は在庫行が無いのでバッジのみ。 */
+                    h('td',{style:{textAlign:'right'}},it.orderItem
+                      ?(it.und?h('span',{className:'bg bg-p'},'色未定')
+                             :h('span',null,fm(it.stock),h('span',{className:'bg bg-p',style:{marginLeft:4}},'受発注')))
+                      :fm(it.stock)),
                     h('td',{style:{textAlign:'right',color:'#D97706'}},it.held>0?fm(it.held):'-'),
-                    h('td',{style:{textAlign:'right',fontWeight:700,color:it.ok?'#065F46':'#DC2626'}},it.orderItem?'-':fm(it.free)),
+                    h('td',{style:{textAlign:'right',fontWeight:700,color:it.orderItem?(it.free>0?'#065F46':'#975a16'):(it.ok?'#065F46':'#DC2626')}},(it.orderItem&&it.und)?'-':fm(it.free)),
                     h('td',{style:{textAlign:'center'}},it.orderItem?h('span',{className:'bg bg-p'},it.und?'要色確定':'発注依頼'):h('span',{className:'bg '+(it.ok?'bg-g':'bg-r')},it.ok?'OK':'不足 '+fm(it.shortage)))
                   );
                 });
@@ -6469,9 +6538,9 @@ function QuotePreview(p){
           h('div',{style:{display:'flex',justifyContent:'space-between',padding:'3px 10px',borderBottom:'1px solid #ddd'}},h('span',null,'税抜合計'),h('span',null,'\u00A5'+fm(subtotal))),
           h('div',{style:{display:'flex',justifyContent:'space-between',padding:'3px 10px',borderBottom:'1px solid #ddd'}},h('span',null,'消費税額'),h('span',null,'\u00A5'+fm(tax10))),
           h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 10px',fontSize:13,fontWeight:900,background:'#f8f8f8',borderBottom:'2px solid #333'}},h('span',null,'税込合計'),h('span',null,'\u00A5'+fm(total))),
-          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'2px 10px',fontSize:8,color:'#666'}},h('span',null,'10%対象  \u00A5'+fm(subtotal)),h('span',null,'(税)  \u00A5'+fm(tax10))),
-          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'2px 10px',fontSize:8,color:'#666'}},h('span',null,'8%軽減対  \u00A50'),h('span',null,'(税)  \u00A50')),
-          h('div',{style:{padding:'2px 10px',fontSize:8,color:'#666'}},'非課税対象  \u00A50')
+          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'2px 10px',fontSize:8,color:'#666'}},h('span',null,'10%対象  \u00A5'+fm(subtotal)),h('span',null,'(税)  \u00A5'+fm(tax10)))
+          /* v18.47 修正５⑪の消し漏れ対応: 画面プレビュー側にも「8%軽減対」「非課税対象」が残っていたため削除。
+             v18.46 では印刷用HTML(generateQuoteHTML)とExcel出力の2箇所しか消せておらず、見積書作成画面のプレビューには表示されたままだった。 */
         )
       ):null,
       h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
@@ -6534,10 +6603,14 @@ function OrdersPage(p){
     if(sortKey[0]==='no')return b.no>a.no?1:-1;
     if(sortKey[0]==='created')return (b.date||'')>(a.date||'')?1:((b.date||'')<(a.date||'')?-1:(b.no>a.no?1:-1));
     var da=deliveryPlanMs(a),db=deliveryPlanMs(b);
-    if(da!==null&&db!==null)return da-db||(b.no>a.no?1:-1);
+    if(da!==null&&db!==null)return da-db||(a.no>b.no?1:-1);
     if(da!==null)return -1;
     if(db!==null)return 1;
-    return b.no>a.no?1:-1;
+    /* v18.47 修正５③の追加指示: 納品予定日が無い案件は「案件作成日の古い順」に並べる
+       （v18.46 では新しい順にしていた）。作成日が同じ場合は案件番号の若い順。 */
+    var ca=a.date||'',cb2=b.date||'';
+    if(ca!==cb2)return ca>cb2?1:-1;
+    return a.no>b.no?1:-1;
   }
   var fl=ORDERS.filter(function(o){
     /* v18.46 修正４④: 空配列＝全て。複数選択時はいずれかに一致すれば表示 */
