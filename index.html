@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.48（修正６: SSα扉の在庫表示・案件管理の担当者検索/表示・顧客DBの担当者フィルタ・エンド宛の受渡地・送料欄に送付方法/送付先・一覧ヘッダー固定）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.49（修正６①〜⑩: SSα扉の在庫表示・担当者検索/フィルタ・エンド宛の受渡地・送料欄の送付方法/送付先・ヘッダー固定・出荷済み一覧に倉庫/納品日/出荷日・横スクロールバー常時表示・納品完了のロック・営業を編集権限の順番待ちから除外）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -30,7 +30,17 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:15px;border:1px solid var(--g200)}.tbl th{background:var(--g50);padding:8px 10px;text-align:left;font-weight:700;font-size:13px;color:var(--g700);border:1px solid var(--g200);white-space:nowrap;position:sticky;top:0;z-index:3}.tbl thead tr:nth-child(2) th{top:38px;z-index:3}.tbl td{padding:8px 10px;border:1px solid var(--g200);font-size:15px}.tbl tbody tr:hover{background:var(--g50)}
 .tbl-lg{font-size:16px}.tbl-lg th{font-size:14px;padding:10px 12px}.tbl-lg td{padding:10px 12px;font-size:16px}
 .page{padding:14px 20px;display:none}.page.show{display:block}
-.scy{overflow-y:auto}
+/* v18.49 修正６⑧: 横スクロールバーを常に表示する。
+   Windows/Chrome の既定は「スクロール中だけ細く出る」オーバーレイ表示のため、
+   一覧が横に伸びていることに気づけず、右側の列（案件・倉庫など）を見落としていた。
+   overflow-x:scroll でバーの領域を常に確保し、あわせて掴みやすい太さ・色に固定する。 */
+.scy{overflow-y:auto;overflow-x:scroll}
+.scy::-webkit-scrollbar{height:14px;width:12px}
+.scy::-webkit-scrollbar-track{background:var(--g100);border-radius:7px}
+.scy::-webkit-scrollbar-thumb{background:var(--g400);border-radius:7px;border:3px solid var(--g100)}
+.scy::-webkit-scrollbar-thumb:hover{background:var(--g500)}
+.scy::-webkit-scrollbar-corner{background:var(--g100)}
+.scy{scrollbar-width:auto;scrollbar-color:var(--g400) var(--g100)}
 .cd{width:20px;height:20px;border-radius:3px;border:2px solid var(--g200);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:.1s;position:relative}.cd:hover{border-color:var(--g400)}.cd.sel{border-color:var(--nv);box-shadow:0 0 0 2px rgba(30,58,95,.25)}.cd.sel::after{content:'\2713';color:#fff;font-size:8px;font-weight:900;text-shadow:0 1px 1px rgba(0,0,0,.4)}
 .cbar{background:linear-gradient(135deg,var(--nvd),var(--nv));color:#fff;border-radius:8px;padding:8px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px;font-size:11px}
 .olc{background:var(--g50);border:1px solid var(--g200);border-radius:6px;padding:6px 10px;margin-bottom:4px;display:flex;align-items:center;gap:6px}
@@ -734,6 +744,10 @@ var WH_MAP={
   kansai:{n:'関西営業所',s:'関西',pref:'大阪府',region:'kansai'}
 };
 var STATUS_FLOW=['見積作成','仮押さえ','受注確定','出荷指示','出荷完了','納品完了'];
+/* v18.49 修正６⑨: 「納品完了」の案件は完了記録として確定させ、ステータス変更（差し戻し）以外の
+   編集・削除をできなくする。誤操作で完了済みの実績が書き換わる/消えるのを防ぐ。
+   内容を直す必要が出たときは、まずステータスを差し戻してから編集する運用。 */
+function isOrderLocked(o){return !!o&&o.status==='納品完了';}
 var STATUS_CLS={'見積作成':'bg-b','仮押さえ':'bg-o','受注確定':'bg-p','出荷指示':'bg-tl','出荷完了':'bg-y','納品完了':'bg-g'};
 
 /* ========== REGIONS & SHIPPING ========== */
@@ -3346,9 +3360,21 @@ function lockEditorName(users){try{var pk=(typeof SYSTEM_LOCK!=='undefined'&&SYS
 /* v14 D32: システム全体ロック判定（先勝ち） */
 var SYSTEM_LOCK={primary:null,/* presenceKey of primary user */ acquiredAt:null, overrideName:null/* v18.17 要望5: 管理者が指定した編集権限ユーザー名(null=先勝ち自動) */};
 /* v18.17 要望5: 編集権限保持者(primary)を決定。overrideName指定時はその名のユーザー(最古参加)を優先、無ければ先勝ち(最古参加)。純粋関数=vm検証可。 */
+/* v18.49 修正６⑩: 営業(role='sales')はそもそも書込不可（roleReadOnly）なので、編集権限の順番待ちに入れない。
+   従来は入った順だけで決めていたため「営業・営業・事務」の順にログインすると、
+   営業2人が抜けるまで事務が編集できなかった。営業を候補から外し、事務・管理者だけで順番が回るようにする。 */
+function canHoldEditRight(name){return roleOf(name)!=='sales';}
 function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
   var sorted=(allKeys||[]).slice().sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
-  var onlineKeys=sorted.map(function(k){return k.key;});
+  /* v18.49 修正６⑩: presenceKey → 名前 の対応から営業ロールを除外した「編集権限を持てる人」だけの一覧を作る */
+  var nameByKey={};
+  (users||[]).forEach(function(u){if(u&&u.presenceKey)nameByKey[u.presenceKey]=u.name;});
+  var eligible=sorted.filter(function(k){
+    var nm=nameByKey[k.key];
+    /* 名前が取れない（presence情報が欠けている）場合は従来どおり候補に残す＝誰も編集できない事故を防ぐ */
+    return nm===undefined?true:canHoldEditRight(nm);
+  });
+  var eligibleKeys=eligible.map(function(k){return k.key;});
   var primaryKey=null;
   /* 1) 管理者が手動で編集者を指定(override)した場合のみ最優先（自動ではなく明示操作） */
   if(overrideName){
@@ -3356,10 +3382,11 @@ function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
     if(cand.length)primaryKey=cand[0].presenceKey;
   }
   /* 2) v18.25 要望⑤: 入った順(先勝ち)を最優先で維持。現在の編集者がオンラインのままなら、
-     後から参加した人（最高権限の吉野さんのログイン含む）に編集権限を自動で奪われない（操作途中の保護）。 */
-  if(!primaryKey&&currentPrimary&&onlineKeys.indexOf(currentPrimary)>=0)primaryKey=currentPrimary;
+     後から参加した人（最高権限の吉野さんのログイン含む）に編集権限を自動で奪われない（操作途中の保護）。
+     v18.49 修正６⑩: 判定は「編集権限を持てる人」の中でのオンライン判定に変更。 */
+  if(!primaryKey&&currentPrimary&&eligibleKeys.indexOf(currentPrimary)>=0)primaryKey=currentPrimary;
   /* 3) 現在の編集者が居ない（離脱）時のみ、最古参加=先頭が新しい編集者になる。 */
-  if(!primaryKey)primaryKey=sorted.length?sorted[0].key:null;
+  if(!primaryKey)primaryKey=eligible.length?eligible[0].key:null;
   return {primaryKey:primaryKey,amIPrimary:!!(primaryKey&&primaryKey===myKey)};
 }
 
@@ -4177,8 +4204,9 @@ function App(){
   /* v18.30 要望①: 編集権限保持者が自ら権限を「渡す」(放棄)。次点=自分以外の最古参加ユーザーへ移譲。
      ルール: ログイン順で権限を取得→保持者がオンラインの間は自動移転しない(v18.25 sticky)→放棄 or ログアウト(切替/タブ終了)で次点へ。 */
   function releaseEditRight(){
-    var others=(onlineUsers[0]||[]).filter(function(u){return u.presenceKey!==myPresenceKey.current;});
-    if(!others.length){showToast('他にオンラインのユーザーがいないため、権限を渡す相手がいません');return;}
+    /* v18.49 修正６⑩: 営業ロールは編集権限を持たないため、渡す相手の候補からも除外する */
+    var others=(onlineUsers[0]||[]).filter(function(u){return u.presenceKey!==myPresenceKey.current&&canHoldEditRight(u.name);});
+    if(!others.length){showToast('編集権限を渡せるユーザー（事務・管理者）が他にオンラインにいません');return;}
     var next=others.slice().sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);})[0];
     if(!confirm('編集権限を「'+next.name+'」に渡します。よろしいですか？\n（あなたは読み取り専用になりますが、入力中の内容は保持されます）'))return;
     /* 管理者overrideが自分名義なら解除してから移譲（overrideは移譲より優先されるため） */
@@ -4562,7 +4590,8 @@ function App(){
           '⏳ 接続中…',
           roleReadOnly?h('span',{style:{color:'#975a16',marginLeft:6,fontSize:10}},'🔒 営業（閲覧専用）'):(isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'+(lockEditorName(onlineUsers[0])?'（編集中: '+lockEditorName(onlineUsers[0])+'）':'')):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},'✓ 編集権限',
             /* v18.30 要望①: 保持者本人が権限を任意に渡せる(放棄)。ログイン順取得→放棄/ログアウトまで保持がルール */
-            onlineUsers[0].length>=2?h('button',{className:'btn btn-xs btn-ol',style:{marginLeft:6,padding:'1px 6px',fontSize:9},title:'編集権限を次のユーザー（自分の次に古くからログイン中の人）に渡します',onClick:releaseEditRight},'渡す'):null))
+            /* v18.49 修正６⑩: 渡せる相手（営業を除く事務・管理者）がいる時だけボタンを出す */
+            onlineUsers[0].filter(function(u){return u.name!==userName[0]&&canHoldEditRight(u.name);}).length>0?h('button',{className:'btn btn-xs btn-ol',style:{marginLeft:6,padding:'1px 6px',fontSize:9},title:'編集権限を次のユーザー（自分の次に古くからログイン中の事務・管理者）に渡します',onClick:releaseEditRight},'渡す'):null))
         ),
         onlineUsers[0].length>0?h('div',{className:'pf-users'},onlineUsers[0].map(function(u){
           var me=u.name===userName[0];
@@ -6679,6 +6708,13 @@ function OrdersPage(p){
         return;
       }
     }
+    /* v18.49 修正６⑦: 「出荷完了」へ進めるときに出荷日を入力できるようにする（部材在庫一覧の出荷済み一覧に表示される）。
+       既に入力済みならその値を初期表示、未入力なら本日。キャンセル(×)ならステータス変更自体を中止する。 */
+    if(ns==='出荷完了'){
+      var sd=prompt('出荷日を入力してください（YYYY-MM-DD。空欄のままでも進めます）',order.shippedDate||order.shipSentDate||td2());
+      if(sd===null)return;
+      order.shippedDate=String(sd||'').trim();
+    }
     if(ns==='出荷指示'){
       /* Show shipping modal instead of immediately processing */
       var c=CUSTS.find(function(x){return x.id===order.cid;});
@@ -6890,7 +6926,10 @@ function OrdersPage(p){
                 }catch(err){p.toast('出力エラー: '+err.message);}
               }},'📋 出荷指示書(様式)'),
               /* v18.28 顧客要望: 出荷指示書(様式)を手入力で修正（納品先・納品日・品名書換・数量）。案件に保存され様式/出荷Excel両方に反映 */
-              h('button',{className:'btn btn-xs btn-ol',style:{marginLeft:2,fontWeight:700},title:'出荷指示書(様式)の内容を手入力で修正。保存すると「📋 出荷指示書(様式)」と「📊 出荷Excel」の様式シートに反映されます',onClick:function(){
+              h('button',{className:'btn btn-xs btn-ol',style:Object.assign({marginLeft:2,fontWeight:700},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
+                title:isOrderLocked(o)?'納品完了の案件は編集できません（ステータスを差し戻してから操作してください）':'出荷指示書(様式)の内容を手入力で修正。保存すると「📋 出荷指示書(様式)」と「📊 出荷Excel」の様式シートに反映されます',onClick:function(){
+                /* v18.49 修正６⑨: 納品完了の案件は内容を編集できない */
+                if(isOrderLocked(o)){p.toast('納品完了の案件は編集できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
                 var tk=shipTemplateKey(o);var tpl=SHIP_TEMPLATES[tk];
                 if(!tpl){p.toast('出荷指示書テンプレートが見つかりません（製品ライン未判定）');return;}
                 var agg;try{agg=aggregateOrderBOM(o);}catch(err){agg={};}
@@ -6908,9 +6947,12 @@ function OrdersPage(p){
               }},'✎ 様式手修正'),
               h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){generateExcel(o,'quote');}},'見積Excel'),
               /* 一覧から直接削除 */
-              h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,background:'#991B1B'},onClick:function(){
+              h('button',{className:'btn btn-xs btn-rd',style:Object.assign({marginLeft:2,background:'#991B1B'},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
+                title:isOrderLocked(o)?'納品完了の案件は削除できません（ステータスを差し戻してから操作してください）':'この案件を削除します',onClick:function(){
                 /* v14 Codex P1対応: 読み取り専用モードでは削除禁止 */
                 if(p.isReadOnly){p.toast('読み取り専用モード中は削除できません');return;}
+                /* v18.49 修正６⑨: 納品完了の案件は削除禁止 */
+                if(isOrderLocked(o)){p.toast('納品完了の案件は削除できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
                 if(!confirm('案件 '+o.no+' を削除します。\n仮押さえは自動解除されます。\nよろしいですか？'))return;
                 /* v14 Codex P2対応: 仮押さえ・受注確定とも HELDが残っているため解放（出荷指示以降はSTK消費済みのため不要） */
                 if(o.status==='仮押さえ'||o.status==='受注確定'){
@@ -6951,9 +6993,12 @@ function OrdersPage(p){
           /* v14.2: 仮押さえ解除を他ユーザーに通知 */
           broadcastOrderUpdate(p.userName||'',od.no+' 仮押さえ解除');
         }},'仮押さえ解除'):null,
-        /* 案件の編集（件名/備考/担当者/値引き/倉庫のみ変更可能） v14 Codex P2対応: 読み取り専用チェック */
-        h('button',{className:'btn btn-tl',onClick:function(){
+        /* 案件の編集（件名/備考/担当者/値引き/倉庫のみ変更可能） v14 Codex P2対応: 読み取り専用チェック
+           v18.49 修正６⑨: 納品完了の案件は編集不可 */
+        h('button',{className:'btn btn-tl',style:isOrderLocked(detail[0])?{opacity:.35,cursor:'not-allowed'}:null,
+          title:isOrderLocked(detail[0])?'納品完了の案件は編集できません（下のステータス遷移で差し戻してから編集してください）':'',onClick:function(){
           if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+          if(isOrderLocked(detail[0])){p.toast('納品完了の案件は編集できません。ステータスを差し戻してから編集してください');return;}
           var od=detail[0];
           var newSubject=prompt('件名を編集',od.subject||'');
           if(newSubject===null)return;
@@ -6966,9 +7011,12 @@ function OrdersPage(p){
           detail[1](Object.assign({},od));/* force rerender */
           saveAll();
         }},'編集'),
-        /* 案件の削除（仮押さえ解除も同時に実施） v14 Codex P2対応: 読み取り専用チェック */
-        h('button',{className:'btn btn-rd',onClick:function(){
+        /* 案件の削除（仮押さえ解除も同時に実施） v14 Codex P2対応: 読み取り専用チェック
+           v18.49 修正６⑨: 納品完了の案件は削除不可 */
+        h('button',{className:'btn btn-rd',style:isOrderLocked(detail[0])?{opacity:.35,cursor:'not-allowed'}:null,
+          title:isOrderLocked(detail[0])?'納品完了の案件は削除できません（下のステータス遷移で差し戻してから操作してください）':'',onClick:function(){
           if(p.isReadOnly){p.toast('読み取り専用モード中は削除できません');return;}
+          if(isOrderLocked(detail[0])){p.toast('納品完了の案件は削除できません。ステータスを差し戻してから操作してください');return;}
           var od=detail[0];
           if(!confirm('案件 '+od.no+' を削除します。\n仮押さえは自動解除されます。\n本当によろしいですか？'))return;
           /* v14 Codex P2対応: 仮押さえ・受注確定で残るHELDも解放（出荷指示以降は実在庫消費済みでHELD無し） */
@@ -6991,6 +7039,10 @@ function OrdersPage(p){
         h('button',{className:'btn btn-ol',onClick:function(){detail[1](null);}},'閉じる')
       )},
       h('div',null,
+        /* v18.49 修正６⑨: 納品完了はロック中であることを画面上でも明示する */
+        isOrderLocked(detail[0])?h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#F0FDF4',border:'1.5px solid #86EFAC',borderRadius:8,fontSize:11,color:'#065F46',fontWeight:700}},
+          '🔒 納品完了の案件です。内容の編集・削除はできません（下の「ステータス遷移」で差し戻すと編集できるようになります）。'
+        ):null,
         h('div',{style:{marginBottom:10,display:'flex',gap:10,flexWrap:'wrap',fontSize:11}},
           h('div',null,h('b',null,'日付: '),detail[0].date),
           h('div',null,h('b',null,'顧客: '),(CUSTS.find(function(c){return c.id===detail[0].cid;})||{}).name||''),
@@ -8052,7 +8104,7 @@ function PartsPage(p){
         (subTab[0]!=='stock'&&selWH[0]!=='all')?h('span',{style:{fontSize:9,color:'var(--g500)',lineHeight:'24px',marginLeft:6}},'※'+WH_MAP[selWH[0]].n+'で押さえている案件のみ表示中'):null
       ),
       /* v18.40 修正１④: 横に長い在庫表を確実に横スクロールできるようoverflow-xを明示指定 */
-      subTab[0]==='stock'?h('div',{className:'scy',style:{maxHeight:'72vh',overflow:'auto'}},
+      subTab[0]==='stock'?h('div',{className:'scy',style:{maxHeight:'72vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
         selWH[0]!=='all'?(function(){
           /* ===== Excel-like single warehouse view ===== */
           var w=selWH[0];
@@ -8438,7 +8490,7 @@ function PartsPage(p){
         /* v18.46 修正５⑥: 倉庫タブで絞り込んでいる場合はその旨と非表示件数を出す */
         (selWH[0]!=='all')?h('span',{style:{padding:'2px 8px',background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:4,color:'#1e3a5f',fontWeight:700}},'倉庫: '+WH_MAP[selWH[0]].n+(heldWhHiddenCount>0?'（他倉庫 '+heldWhHiddenCount+' 件が非表示）':'')):null
       ),
-      h('div',{className:'scy',style:{maxHeight:'68vh',overflow:'auto'}},
+      h('div',{className:'scy',style:{maxHeight:'68vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
       (function(){
         /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示
            v18.40 修正１④: 仮押さえされた順（案件番号の連番）に左から並べる。件数が多い時は上部のscyラップ(overflow:auto)で横スクロールして全件確認できる
@@ -8782,7 +8834,7 @@ function PartsPage(p){
       )/* /scy div */
     ):null,
     /* ===== Sub-tab: 出荷済み一覧 ===== */
-    subTab[0]==='shipped'?h('div',{className:'scy',style:{maxHeight:'72vh',overflow:'auto'}},
+    subTab[0]==='shipped'?h('div',{className:'scy',style:{maxHeight:'72vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
       (function(){
         /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示 */
         var shipped=ORDERS.filter(function(o){
@@ -8912,24 +8964,40 @@ function PartsPage(p){
               orderParts.map(function(op){
                 var c=op.cust;
                 return h('th',{key:op.order.no,style:{textAlign:'center',borderLeft:'2px solid var(--g200)',minWidth:90,fontSize:10,position:'sticky',top:0,background:'var(--g50)',zIndex:4}},
-                  h('div',null,op.order.no),
-                  h('div',{style:{fontSize:9,color:'var(--g500)'}},c?c.name:''),
+                  h('div',{style:{fontWeight:700}},op.order.no),
+                  /* v18.40 修正１③に合わせ、代理店経由の案件はエンド納品先名も併記 */
+                  h('div',{style:{fontSize:9,color:'var(--g500)'}},(c?c.name:'')+(op.order.endUser&&op.order.endUser.name?'（'+op.order.endUser.name+'）':'')),
                   h('div',{style:{fontSize:9,color:'var(--g500)'}},op.order.date),
                   /* v18.44 修正３④: 出荷済み一覧にも納品予定日を表示 */
-                  (function(){var dp=deliveryPlanOf(op.order);return dp?h('div',{style:{fontSize:8,color:'#0E7490',fontWeight:700}},'納品予定: '+dp):null;})()
+                  (function(){var dp=deliveryPlanOf(op.order);return dp?h('div',{style:{fontSize:8,color:'#0E7490',fontWeight:700}},'納品予定: '+dp):null;})(),
+                  /* v18.49 修正６⑦: 出荷済み一覧にも案件ごとの倉庫名を表示する（仮押さえ一覧と同じ📦表記） */
+                  h('div',{style:{fontSize:8,color:'#D97706',fontWeight:600,marginTop:2}},'📦 '+((WH_MAP[op.order.wh]?WH_MAP[op.order.wh].n:'')+(op.order.wh2?' + '+(WH_MAP[op.order.wh2]?WH_MAP[op.order.wh2].n:''):'')||'—'))
                 );
               })
             ),
-            /* v14 B15: 出荷済み一覧の「在庫へ戻す」ボタンは廃止（出荷後は戻さない仕様） */
-            /* v14 B16: 出荷指示書作成日・送付日の入力欄を追加 */
+            /* v14 B15: 出荷済み一覧の「在庫へ戻す」ボタンは廃止（出荷後は戻さない仕様）
+               v18.49 修正６⑦: 「出荷指示書作成日」は不要になったため削除。代わりに
+                 ・納品日 … 出荷指示書作成時に入力した納品予定日(order.deliveryDate)を反映（参照のみ）
+                 ・出荷日 … ステータスを「出荷完了」にするときに入力した日付(order.shippedDate)。ここでも修正できる
+               を表示する。旧「送付日」(shipSentDate)は出荷日が未入力の場合のフォールバックとして読み、
+               過去データが画面から消えないようにしている。 */
             h('tr',null,
               /* v18.48 修正６⑥: top は1行目の実測高さ（従来は38px固定で1行目に重なっていた） */
-              orderParts.map(function(op){return h('th',{key:op.order.no+'-s',style:{textAlign:'center',borderLeft:'2px solid var(--g200)',fontSize:9,position:'sticky',top:subHdrH[0],background:'var(--g50)',zIndex:4}},
+              orderParts.map(function(op){
+                var locked=isOrderLocked(op.order);/* v18.49 修正６⑨: 納品完了の案件はここからも編集させない */
+                var shipVal=op.order.shippedDate||op.order.shipSentDate||'';
+                return h('th',{key:op.order.no+'-s',style:{textAlign:'center',borderLeft:'2px solid var(--g200)',fontSize:9,position:'sticky',top:subHdrH[0],background:'var(--g50)',zIndex:4}},
                 h('div',{style:{display:'flex',flexDirection:'column',gap:2}},
-                  h('label',{style:{fontSize:8,color:'#475569'}},'指示書作成日'),
-                  h('input',{className:'inp',type:'date',disabled:p.isReadOnly,value:op.order.shipPrintedDate||'',onChange:function(e){if(p.isReadOnly){p.toast('読み取り専用モード中は指示書作成日を変更できません');return;}op.order.shipPrintedDate=e.target.value;saveAll();bump[1](bump[0]+1);},style:{fontSize:9,padding:'2px 4px'}}),
-                  h('label',{style:{fontSize:8,color:'#475569',marginTop:2}},'送付日'),
-                  h('input',{className:'inp',type:'date',disabled:p.isReadOnly,value:op.order.shipSentDate||'',onChange:function(e){if(p.isReadOnly){p.toast('読み取り専用モード中は送付日を変更できません');return;}op.order.shipSentDate=e.target.value;saveAll();bump[1](bump[0]+1);},style:{fontSize:9,padding:'2px 4px'}})
+                  h('label',{style:{fontSize:8,color:'#475569'}},'納品日'),
+                  h('div',{style:{fontSize:10,fontWeight:700,color:op.order.deliveryDate?'#0E7490':'var(--g300)',padding:'2px 4px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4},title:'出荷指示書の作成時に入力した納品予定日です。変更は案件の出荷指示から行ってください'},op.order.deliveryDate||'—'),
+                  h('label',{style:{fontSize:8,color:'#475569',marginTop:2}},'出荷日'),
+                  h('input',{className:'inp',type:'date',disabled:p.isReadOnly||locked,value:shipVal,
+                    title:locked?'納品完了の案件は編集できません':'ステータスを「出荷完了」にしたときに入力した出荷日です',
+                    onChange:function(e){
+                      if(p.isReadOnly){p.toast('読み取り専用モード中は出荷日を変更できません');return;}
+                      if(locked){p.toast('納品完了の案件は編集できません');return;}
+                      op.order.shippedDate=e.target.value;saveAll();bump[1](bump[0]+1);
+                    },style:{fontSize:9,padding:'2px 4px'}})
                 )
               );})
             )
