@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.49（修正６①〜⑩: SSα扉の在庫表示・担当者検索/フィルタ・エンド宛の受渡地・送料欄の送付方法/送付先・ヘッダー固定・出荷済み一覧に倉庫/納品日/出荷日・横スクロールバー常時表示・納品完了のロック・営業を編集権限の順番待ちから除外）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.50（修正６⑧の再修正: 一覧を画面内に収めて横スクロールバーへ常に手が届くように／①〜⑩対応済み）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -123,6 +123,34 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 <script>
 "use strict";
 var h=React.createElement,us=React.useState,ue=React.useEffect,ur=React.useRef;
+/* v18.50 修正６⑧(再修正): 一覧ボックスの高さを「画面に収まる高さ」へ自動調整するフック。
+   v18.49 で .scy に overflow-x:scroll を入れて横スクロールバー自体は常に出るようにしたが、
+   バーはボックスの下端に付くため、ボックスの高さが 68〜74vh 固定で画面の下へはみ出していると
+   ページを一番下までスクロールしないとバーに届かなかった（報告どおりの症状）。
+   ボックスの上端位置から「画面の残り高さ」を計算して maxHeight にすることで、
+   ページを縦スクロールしなくても下端＝横スクロールバーが常に見える状態にする。
+   戻り値の ref を対象の div に付け、maxHeight をそのまま style に渡す。 */
+function useFitHeight(minPx){
+  var ref=ur(null);
+  var mh=us(null);/* null=未計測。計測できるまでは呼び出し側の既定値を使う */
+  ue(function(){
+    function calc(){
+      var el=ref.current;if(!el)return;
+      /* 非表示のタブ(.page は display:none)では位置が取れず 0 になるため計算しない。
+         タブを切り替えると再レンダリングされ、この効果が再実行されて正しい高さが入る。 */
+      if(!el.offsetParent)return;
+      /* ページのスクロール量に影響されないよう、ドキュメント基準の上端位置で計算する */
+      var docTop=el.getBoundingClientRect().top+(window.scrollY||window.pageYOffset||0);
+      var avail=Math.round((window.innerHeight||800)-docTop-16);/* 16px=下端の余白 */
+      var v=Math.max(minPx||240,avail)+'px';
+      if(v!==mh[0])mh[1](v);
+    }
+    calc();
+    window.addEventListener('resize',calc);
+    return function(){window.removeEventListener('resize',calc);};
+  });
+  return {ref:ref,maxHeight:mh[0]};
+}
 
 /* ========== SUPABASE REALTIME ========== */
 var SUPA_URL='https://uslqaiymvxnrdgxynhuo.supabase.co';
@@ -4769,6 +4797,8 @@ function CustPage(p){
   var sr=us(''),pf=us('all'),af=us('all'),showAdd=us(false),bump=us(0);
   /* v18.48 修正６③: 「弊社担当者」での絞り込み（'all'=全担当者 / '__none__'=未設定） */
   var spf=us('all');
+  /* v18.50 修正６⑧(再修正): 一覧ボックスを画面内に収める（下端の横スクロールバーに常に手が届くように） */
+  var fitList=useFitHeight(260);
   var editCust=us(null);/* 編集中顧客（編集用のコピー） */
   /* v18.47 追加修正: 編集対象の実体への参照。IDが重複していても正しい行へ保存するために使う */
   var editCustRef=us(null);
@@ -4925,7 +4955,8 @@ function CustPage(p){
       '該当行には「重複」バッジを表示しています。案件との紐づけを確認のうえ、不要な方を削除してください。'+
       '（新規登録分は未使用のIDを採番するため、今後は重複しません）'
     ):null,
-    h('div',{className:'scy',style:{maxHeight:'74vh'}},h('table',{className:'tbl'},
+    /* v18.50 修正６⑧(再修正): 顧客一覧も画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
+    h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'74vh'}},h('table',{className:'tbl'},
       /* v18.33 要望⑲: 「担当者」列を削除（先方担当・弊社担当の2つに統一）。追B: 顧客属性列を追加 */
       h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'法人名'),h('th',null,'属性'),h('th',null,'都道府県'),h('th',null,'市区町村'),h('th',null,'〒'),h('th',null,'TEL'),h('th',null,'先方担当'),h('th',null,'弊社担当'),h('th',{style:{minWidth:160}},'操作'))),
       /* v18.47 追加修正: key を c.id だけにしていたため、IDが重複すると同じkeyの行が並び、
@@ -6664,6 +6695,8 @@ function OrdersPage(p){
   var shipForm=us({shipToName:'',shipToPostal:'',shipToAddress:'',shipToPhone:'',shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:'',shipNo:''});
   /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
   var kw=us('');
+  /* v18.50 修正６⑧(再修正): 案件一覧も画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
+  var fitList=useFitHeight(260);
   function orderMatchesKw(o,q){
     if(!q)return true;
     q=q.toLowerCase();
@@ -6812,7 +6845,8 @@ function OrdersPage(p){
         )
       ),
       ORDERS.length===0?h('div',{style:{padding:30,textAlign:'center',color:'var(--g400)'}},'案件がありません。'):
-      h('div',{className:'scy',style:{maxHeight:'72vh'}},h('table',{className:'tbl'},
+      /* v18.50 修正６⑧(再修正): 一覧ボックスを画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
+      h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'72vh'}},h('table',{className:'tbl'},
         h('thead',null,h('tr',null,h('th',null,'No.'),h('th',null,'日付'),h('th',null,'顧客'),h('th',null,'明細'),h('th',null,'台数'),h('th',null,'倉庫'),h('th',null,'送料'),h('th',null,'ステータス'),h('th',null,'操作'))),
         h('tbody',null,fl.map(function(o){
           var c=CUSTS.find(function(x){return x.id===o.cid;});
@@ -7432,6 +7466,9 @@ function PartsPage(p){
      （在庫表タブは1行目が倉庫名だけの1行固定なので従来どおり38pxのまま） */
   var subHdrRef=ur(null);
   var subHdrH=us(38);
+  /* v18.50 修正６⑧(再修正): 一覧ボックスを画面内に収め、下端の横スクロールバーへ常に手が届くようにする。
+     在庫表・仮押さえ一覧・出荷済み一覧は同時に描画されないため ref は1つで足りる。 */
+  var fitList=useFitHeight(260);
   ue(function(){
     var el=subHdrRef.current;
     if(!el)return;
@@ -8104,7 +8141,7 @@ function PartsPage(p){
         (subTab[0]!=='stock'&&selWH[0]!=='all')?h('span',{style:{fontSize:9,color:'var(--g500)',lineHeight:'24px',marginLeft:6}},'※'+WH_MAP[selWH[0]].n+'で押さえている案件のみ表示中'):null
       ),
       /* v18.40 修正１④: 横に長い在庫表を確実に横スクロールできるようoverflow-xを明示指定 */
-      subTab[0]==='stock'?h('div',{className:'scy',style:{maxHeight:'72vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
+      subTab[0]==='stock'?h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'72vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
         selWH[0]!=='all'?(function(){
           /* ===== Excel-like single warehouse view ===== */
           var w=selWH[0];
@@ -8490,7 +8527,7 @@ function PartsPage(p){
         /* v18.46 修正５⑥: 倉庫タブで絞り込んでいる場合はその旨と非表示件数を出す */
         (selWH[0]!=='all')?h('span',{style:{padding:'2px 8px',background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:4,color:'#1e3a5f',fontWeight:700}},'倉庫: '+WH_MAP[selWH[0]].n+(heldWhHiddenCount>0?'（他倉庫 '+heldWhHiddenCount+' 件が非表示）':'')):null
       ),
-      h('div',{className:'scy',style:{maxHeight:'68vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
+      h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'68vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
       (function(){
         /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示
            v18.40 修正１④: 仮押さえされた順（案件番号の連番）に左から並べる。件数が多い時は上部のscyラップ(overflow:auto)で横スクロールして全件確認できる
@@ -8834,7 +8871,7 @@ function PartsPage(p){
       )/* /scy div */
     ):null,
     /* ===== Sub-tab: 出荷済み一覧 ===== */
-    subTab[0]==='shipped'?h('div',{className:'scy',style:{maxHeight:'72vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
+    subTab[0]==='shipped'?h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'72vh',overflowX:'scroll',overflowY:'auto'}/* v18.49 修正６⑧: 横スクロールバーを常時表示 */},
       (function(){
         /* v14 B17: selLineに該当するラインの明細を持つ案件のみ表示 */
         var shipped=ORDERS.filter(function(o){
