@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.50（修正６⑧の再修正: 一覧を画面内に収めて横スクロールバーへ常に手が届くように／①〜⑩対応済み）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.51（画面右上のバージョン表示が古いまま更新されない不具合を修正／修正６①〜⑩対応済み）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -123,6 +123,17 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 <script>
 "use strict";
 var h=React.createElement,us=React.useState,ue=React.useEffect,ur=React.useRef;
+/* v18.51: アプリのバージョン表記。
+   画面右上のバージョン表示が 'v14.7' のハードコードのまま放置され、<title> だけを更新していたため、
+   実体は v18.50 なのに画面には v14.7 と出続けていた（利用者からは更新されたか分からない状態）。
+   二重管理をやめ、<title> に書かれたバージョンを唯一の出所にする。
+   ★バージョンを上げるときは <title> の1か所だけを直せばよい。ここに数字を書き足さないこと。 */
+var APP_VERSION=(function(){
+  try{
+    var m=/\bv(\d+\.\d+)/i.exec(document.title||'');
+    return m?('v'+m[1]):'v?';
+  }catch(e){return 'v?';}
+})();
 /* v18.50 修正６⑧(再修正): 一覧ボックスの高さを「画面に収まる高さ」へ自動調整するフック。
    v18.49 で .scy に overflow-x:scroll を入れて横スクロールバー自体は常に出るようにしたが、
    バーはボックスの下端に付くため、ボックスの高さが 68〜74vh 固定で画面の下へはみ出していると
@@ -4590,7 +4601,9 @@ function App(){
           loggedIn[1](false);userName[1]('');
         }},'切替')
       ),
-      h('div',{className:'ver'},'v14.7')
+      /* v18.51: 画面右上のバージョン表示。APP_VERSION は <title> から取り出しているので、
+         バージョンを上げるときは <title> の1か所を直すだけでここも自動で追従する（v14.7 の固定表示に戻さないこと）。 */
+      h('div',{className:'ver',title:document.title},APP_VERSION)
     ),
     /* v18.38 修正箇所3①: 営業ロールにも顧客の新規追加・情報編集を許可するため、
        後発ログインによるロック(lockReadOnly)と営業ロール込みの読み取り専用(isReadOnly)を分けて渡す。
