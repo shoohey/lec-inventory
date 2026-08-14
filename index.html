@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.51（画面右上のバージョン表示が古いまま更新されない不具合を修正／修正６①〜⑩対応済み）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.52（修正７①〜⑧ 顧客編集の敬称/担当営業/フリガナ・フリガナ検索・ID昇順・台数カウント・都道府県の自動判定・エンド納品先の持ち越し修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -228,6 +228,7 @@ function buildCloudDoc(){
     vendorCodes:(typeof VENDOR_CODES!=='undefined'?VENDOR_CODES:{}),/* v18.30: 業者コード紐づけの全端末共有 */
     costMaster:(typeof COST_MASTER!=='undefined'?COST_MASTER:{}),/* v18.33 要望⑱: 原価マスタの全端末共有 */
     quoteOpts:(typeof QUOTE_OPTS!=='undefined'?QUOTE_OPTS:null),/* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタを全端末共有 */
+    honorifics:(typeof HONORIFICS!=='undefined'?HONORIFICS:null),/* v18.52 修正７①: 先方担当者の敬称マスタを全端末共有 */
     deletedNos:DELETED_ORDER_NOS.slice(-500),
     stkSnapshot:STK_SNAPSHOT_DATE,
     _ts:Date.now()
@@ -314,6 +315,10 @@ function applyCloudDoc(doc,opts){
     if(doc.quoteOpts&&typeof doc.quoteOpts==='object'&&typeof QUOTE_OPTS!=='undefined'){
       /* v18.46 修正５④: クラウド側で規定文言が欠けていても復元してから保存する */
       try{QUOTE_OPT_KEYS.forEach(function(k){if(Array.isArray(doc.quoteOpts[k]))QUOTE_OPTS[k]=doc.quoteOpts[k].slice();});ensureQuoteOptDefaults();saveQuoteOpts();}catch(e){}
+    }
+    /* v18.52 修正７①: 先方担当者の敬称マスタ（規定4件は欠けていても復元してから保存する） */
+    if(Array.isArray(doc.honorifics)&&typeof HONORIFICS!=='undefined'){
+      try{HONORIFICS=doc.honorifics.slice();ensureHonorificDefaults();saveHonorifics();}catch(e){}
     }
     if(doc.customIrisu&&typeof doc.customIrisu==='object'){
       try{
@@ -500,6 +505,133 @@ function ensureQuoteOptDefaults(){
   });
 }
 ensureQuoteOptDefaults();
+
+/* ========== v18.52 修正７①: 先方担当者の敬称マスタ ==========
+   顧客編集の「先方担当者」の右に置く敬称プルダウンの選択肢。
+   規定4件（様/先生/事務長/校長）は削除不可。「その他（自由入力）」で追加した分だけ削除できる。
+   QUOTE_OPTS と同じ方式で localStorage＋クラウド(honorifics)により全端末で共有する。 */
+var HONORIFIC_DEFAULTS=['様','先生','事務長','校長'];
+var HONORIFICS=HONORIFIC_DEFAULTS.slice();
+try{
+  var _hon=JSON.parse(localStorage.getItem('lec_honorifics')||'null');
+  if(Array.isArray(_hon))HONORIFICS=_hon.slice();
+}catch(e){}
+function saveHonorifics(){try{localStorage.setItem('lec_honorifics',JSON.stringify(HONORIFICS));}catch(e){}}
+function isDefaultHonorific(v){return HONORIFIC_DEFAULTS.indexOf(v)>=0;}
+function ensureHonorificDefaults(){
+  if(!Array.isArray(HONORIFICS))HONORIFICS=[];
+  var missing=HONORIFIC_DEFAULTS.filter(function(v){return HONORIFICS.indexOf(v)<0;});
+  if(missing.length)HONORIFICS=missing.concat(HONORIFICS);
+}
+ensureHonorificDefaults();
+
+/* ========== v18.52 修正７①②: 顧客DBの氏名系ユーティリティ ==========
+   ・弊社営業担当のプルダウンは「ユーザー管理で発行済みのアカウント」から自動生成する。
+     アカウント名は「事務/岩上」のように 役割/氏名 で登録されているため、氏名だけを取り出す。
+   ・依頼どおり 岩上・高山・片岡 は営業担当の選択肢から除外する（ユーザーを増やせば自動で選択肢に入る）。 */
+var SALES_PERSON_EXCLUDE=['岩上','高山','片岡'];
+function userDisplayName(nm){
+  nm=String(nm||'').trim();
+  var i=nm.lastIndexOf('/');
+  return i>=0?nm.slice(i+1).trim():nm;
+}
+function salesPersonOptions(){
+  var out=[];
+  (typeof USERS!=='undefined'?USERS:[]).forEach(function(u){
+    var n=userDisplayName(u&&u.name);
+    if(!n)return;
+    if(SALES_PERSON_EXCLUDE.indexOf(n)>=0)return;
+    if(out.indexOf(n)<0)out.push(n);
+  });
+  out.sort(function(a,b){return a.localeCompare(b,'ja');});
+  return out;
+}
+/* v18.52 修正７①④: フリガナ検索用の正規化。ひらがな→カタカナ、半角カナ・全角英数を揃え、
+   区切り記号を落として「えいすう」でも「ｴｲｽｳ」でも同じ文字列にヒットさせる。 */
+function kanaNorm(s){
+  s=String(s||'');
+  try{if(String.prototype.normalize)s=s.normalize('NFKC');}catch(e){}
+  s=s.replace(/[ぁ-ゖ]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)+0x60);});
+  return s.replace(/[\s・･,、.。\-ー―–—]/g,'').toUpperCase();
+}
+
+/* ========== v18.52 修正７⑤: 住所から都道府県を判定する ==========
+   顧客CSVの「住所1」に都道府県が入っていない行（例:「岡山市北区半田町8-3」）を、
+   従来は一律で「東京都」にフォールバックしていたため、岡山県の顧客が東京都として登録されていた。
+   市区町村名から都道府県を引けるようにし、引けない場合は空欄（未設定）にする。
+   ※ 政令指定都市・県庁所在地・主要市を収録。ここに無い市町村は空欄になり、
+     顧客編集の都道府県プルダウンから手で選べる。 */
+var PREF_BY_CITY=(function(){
+  var m={},add=function(pref,cities){cities.forEach(function(c){m[c]=pref;});};
+  add('北海道',['札幌','函館','旭川','釧路','帯広','北見','小樽','室蘭','苫小牧','江別','千歳','石狩','恵庭','北広島']);
+  add('青森県',['青森','弘前','八戸','十和田','むつ']);
+  add('岩手県',['盛岡','一関','奥州','花巻','北上','宮古']);
+  add('宮城県',['仙台','石巻','大崎','名取','登米','栗原','多賀城','塩竈']);
+  add('秋田県',['秋田','横手','大仙','由利本荘','大館']);
+  add('山形県',['山形','鶴岡','酒田','米沢','天童']);
+  add('福島県',['福島','郡山','いわき','会津若松','須賀川']);
+  add('茨城県',['水戸','つくば','日立','ひたちなか','土浦','古河','取手','筑西']);
+  add('栃木県',['宇都宮','小山','足利','栃木','佐野','那須塩原']);
+  add('群馬県',['前橋','高崎','太田','伊勢崎','桐生']);
+  add('埼玉県',['さいたま','川口','川越','所沢','越谷','草加','春日部','上尾','熊谷','新座','狭山','入間','朝霞','戸田','和光','三郷','八潮','深谷','行田','鴻巣','富士見','ふじみ野','志木','蕨']);
+  add('千葉県',['千葉','船橋','松戸','市川','柏','市原','八千代','流山','佐倉','習志野','浦安','野田','木更津','成田','我孫子','鎌ケ谷','印西','君津','茂原']);
+  /* 東京23区のうち、他府県の政令市にも同名の区がある「中央・港・北」は判定不能のため入れない
+     （例:「北区…」だけでは東京都か大阪市かを決められないため。市名が頭に付いていれば市名側で判定される） */
+  add('東京都',['八王子','立川','武蔵野','三鷹','青梅','府中','昭島','調布','町田','小金井','小平','日野','東村山','国分寺','国立','福生','狛江','東大和','清瀬','東久留米','武蔵村山','多摩','稲城','羽村','あきる野','西東京',
+    '千代田','新宿','文京','台東','墨田','江東','品川','目黒','大田','世田谷','渋谷','中野','杉並','豊島','荒川','板橋','練馬','足立','葛飾','江戸川']);
+  add('神奈川県',['横浜','川崎','相模原','藤沢','横須賀','平塚','茅ヶ崎','大和','厚木','小田原','鎌倉','秦野','海老名','座間','伊勢原','綾瀬','逗子','三浦','南足柄']);
+  add('新潟県',['新潟','長岡','上越','三条','新発田','柏崎','燕','糸魚川']);
+  add('富山県',['富山','高岡','射水','南砺','氷見']);
+  add('石川県',['金沢','白山','小松','加賀','七尾','野々市']);
+  add('福井県',['福井','坂井','越前','鯖江','敦賀']);
+  add('山梨県',['甲府','甲斐','南アルプス','富士吉田','笛吹']);
+  add('長野県',['長野','松本','上田','飯田','佐久','安曇野','塩尻','伊那','諏訪']);
+  add('岐阜県',['岐阜','大垣','各務原','多治見','可児','高山','関']);
+  add('静岡県',['静岡','浜松','沼津','富士','磐田','藤枝','焼津','三島','掛川','袋井','富士宮']);
+  add('愛知県',['名古屋','豊田','岡崎','一宮','豊橋','春日井','安城','豊川','西尾','刈谷','小牧','稲沢','瀬戸','半田','東海','日進','大府','江南','あま','北名古屋','尾張旭','知多','碧南','蒲郡','犬山','常滑','津島','高浜','岩倉','清須','みよし','長久手']);
+  add('三重県',['津','四日市','鈴鹿','松阪','桑名','伊勢','名張','亀山','伊賀']);
+  add('滋賀県',['大津','草津','長浜','東近江','彦根','守山','栗東','近江八幡']);
+  add('京都府',['京都','宇治','亀岡','長岡京','城陽','向日','福知山','舞鶴','木津川','京田辺','八幡']);
+  add('大阪府',['大阪','堺','東大阪','枚方','豊中','吹田','高槻','茨木','八尾','寝屋川','岸和田','和泉','守口','門真','大東','箕面','松原','富田林','羽曳野','池田','河内長野','泉佐野','貝塚','摂津','高石','藤井寺','泉大津','柏原','交野','四條畷','大阪狭山','阪南','泉南','熊取']);
+  add('兵庫県',['神戸','姫路','西宮','尼崎','明石','加古川','宝塚','伊丹','川西','三田','高砂','芦屋','たつの','丹波','豊岡','赤穂','小野','三木']);
+  add('奈良県',['奈良','橿原','生駒','大和郡山','大和高田','香芝','天理','桜井']);
+  add('和歌山県',['和歌山','田辺','橋本','紀の川','海南','新宮','岩出']);
+  add('鳥取県',['鳥取','米子','倉吉','境港']);
+  add('島根県',['松江','出雲','浜田','益田']);
+  add('岡山県',['岡山','倉敷','津山','総社','玉野','笠岡','井原']);
+  add('広島県',['広島','福山','呉','東広島','尾道','廿日市','三原','府中町','三次']);
+  add('山口県',['下関','山口','宇部','周南','岩国','防府','山陽小野田','萩']);
+  add('徳島県',['徳島','阿南','鳴門']);
+  add('香川県',['高松','丸亀','坂出','観音寺','三豊']);
+  add('愛媛県',['松山','今治','新居浜','西条','四国中央','宇和島']);
+  add('高知県',['高知','南国','四万十']);
+  add('福岡県',['福岡','北九州','久留米','飯塚','大牟田','春日','筑紫野','糸島','大野城','宗像','太宰府','古賀','行橋','八女','柳川','小郡','福津','那珂川','直方','田川']);
+  add('佐賀県',['佐賀','唐津','鳥栖','伊万里','武雄']);
+  add('長崎県',['長崎','佐世保','諫早','大村','島原']);
+  add('熊本県',['熊本','八代','天草','玉名','荒尾','宇城','合志','菊池']);
+  add('大分県',['大分','別府','中津','佐伯','日田']);
+  add('宮崎県',['宮崎','都城','延岡','日向']);
+  add('鹿児島県',['鹿児島','霧島','鹿屋','薩摩川内','姶良','出水','日置']);
+  add('沖縄県',['那覇','沖縄','浦添','うるま','宜野湾','糸満','豊見城','名護','宮古島','石垣']);
+  return m;
+})();
+var PREFS_LONGEST_FIRST=null;
+/* 住所文字列（都道府県が付いていない場合もある）から都道府県名を推定する。判定できなければ '' を返す。 */
+function inferPrefFromAddress(addr){
+  var s=String(addr||'').replace(/[\s　]/g,'');
+  if(!s)return '';
+  if(!PREFS_LONGEST_FIRST){
+    PREFS_LONGEST_FIRST=(typeof PREFS_ALL!=='undefined'?PREFS_ALL.slice():[]);
+    PREFS_LONGEST_FIRST.sort(function(a,b){return b.length-a.length;});
+  }
+  for(var i=0;i<PREFS_LONGEST_FIRST.length;i++){
+    if(s.indexOf(PREFS_LONGEST_FIRST[i])===0)return PREFS_LONGEST_FIRST[i];
+  }
+  /* 「◯◯市/区/郡」の頭を取り出して市区町村名から引く（例: 岡山市北区… → 岡山県） */
+  var m=s.match(/^(.+?)(市|区|郡|町|村)/);
+  if(m&&PREF_BY_CITY[m[1]])return PREF_BY_CITY[m[1]];
+  return '';
+}
 
 /* v18.37 修正箇所2③: 受渡地の既定値は顧客住所の市区町村まで（例: 東京都足立区綾瀬7-4-1 → 東京都足立区）。
    「四日市市」等、自治体名そのものに市区町村の字を含むケースは例外表で先に確定させる。 */
@@ -4751,6 +4883,9 @@ function App(){
 /* ========== v18.33 追B: 顧客CSV取込（Access出力16列） ========== */
 /* 列: 顧客コード,顧客名称,顧客フリガナ,顧客敬称,担当者名称,担当者名称フリガナ,担当者敬称,郵便番号,住所1,住所2,電話番号,FAX番号,携帯電話番号,Email1,Email2,備考
    住所1から都道府県を分離して既存構造(pref/city)へマッピング。顧客コードでupsert（既存は属性(attr)・弊社担当を保持）。 */
+/* v18.52 修正７②: 引用符はフィールドの先頭にあるときだけ「囲み」として扱う（RFC4180準拠）。
+   従来はフィールドの途中に裸の " が1つあるだけで囲みが始まり、そこから次の " までのカンマを
+   すべて飲み込んで複数の列が1列にくっつき、以降の列が丸ごとずれていた。 */
 function parseCsvText(txt){
   var rows=[],row=[],cur='',q=false;
   for(var i=0;i<txt.length;i++){
@@ -4759,7 +4894,8 @@ function parseCsvText(txt){
       if(ch==='"'){if(txt[i+1]==='"'){cur+='"';i++;}else q=false;}
       else cur+=ch;
     }else{
-      if(ch==='"')q=true;
+      if(ch==='"'&&cur==='')q=true;
+      else if(ch==='"')cur+=ch;
       else if(ch===','){row.push(cur);cur='';}
       else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&txt[i+1]==='\n')i++;row.push(cur);rows.push(row);row=[];cur='';}
       else cur+=ch;
@@ -4768,33 +4904,48 @@ function parseCsvText(txt){
   if(cur!==''||row.length){row.push(cur);rows.push(row);}
   return rows;
 }
+/* v18.52 修正７⑤: 住所1に都道府県が書かれていない行を一律「東京都」にしていたため、
+   岡山市・福岡市などの顧客が東京都として登録されていた（報告のD00194・D00686はこれが原因）。
+   都道府県が書かれていなければ市区町村名から判定し、それでも分からなければ空欄（未設定）にする。 */
 function splitPrefAddr(a1,a2){
   var s=String(a1||'').trim();
   var m=s.match(/^(北海道|東京都|京都府|大阪府|..県|...県)/);
   var pref=m?m[1]:'';
   var city=(m?s.slice(m[1].length):s)+String(a2||'').trim();
-  return {pref:pref||'東京都',city:city};
+  if(!pref)pref=inferPrefFromAddress(city);
+  return {pref:pref,city:city};
+}
+/* v18.52 修正７②: 顧客コードとして妥当か（Access側のコードは D00843 / 88 のような半角英数）。
+   全角カナ・漢字・電話番号のような値が入っている行は、CSVの行崩れで別の列がずれ込んだものなので取り込まない。 */
+function isValidCustId(v){
+  v=String(v||'').trim();
+  return !!v&&/^[0-9A-Za-z]+$/.test(v);
 }
 function importCustsAoa(aoa){
   var hdr=-1,ci={};
-  var COLS={id:/顧客コード/,name:/顧客名称/,kana:/顧客フリガナ/,tantou:/^担当者名称$/,postal:/郵便番号/,a1:/住所1/,a2:/住所2/,phone:/電話番号/,fax:/FAX番号/,mobile:/携帯電話番号/,e1:/Email1/i,e2:/Email2/i,note:/備考/};
+  /* v18.52 修正７①: 「担当者敬称」列も取り込む（顧客編集の敬称プルダウンの初期値になる） */
+  var COLS={id:/顧客コード/,name:/顧客名称/,kana:/顧客フリガナ/,tantou:/^担当者名称$/,keisho:/^担当者敬称$/,postal:/郵便番号/,a1:/住所1/,a2:/住所2/,phone:/電話番号/,fax:/FAX番号/,mobile:/携帯電話番号/,e1:/Email1/i,e2:/Email2/i,note:/備考/};
   for(var r=0;r<Math.min(aoa.length,5);r++){
     var row=aoa[r]||[];var found={};
     row.forEach(function(x,i){var s=String(x||'');Object.keys(COLS).forEach(function(k){if(COLS[k].test(s)&&found[k]==null)found[k]=i;});});
     if(found.id!=null&&found.name!=null){hdr=r;ci=found;break;}
   }
   if(hdr<0)return {added:0,updated:0,skipped:0,error:'ヘッダ行（顧客コード・顧客名称）を認識できません'};
-  var added=0,updated=0,skipped=0;
+  var added=0,updated=0,skipped=0,invalid=[];
   for(var rr=hdr+1;rr<aoa.length;rr++){
     var rw=aoa[rr]||[];
     var id=String(rw[ci.id]||'').trim(),name=String(rw[ci.name]||'').trim();
     if(!id||!name){skipped++;continue;}
+    /* v18.52 修正７②: 顧客コード欄に顧客フリガナ・電話番号などが入っている行は、
+       元CSVの行が途中で切れて列がずれた断片。取り込むと「顧客名がおかしい顧客」が増えるため弾く。 */
+    if(!isValidCustId(id)){if(invalid.length<20)invalid.push(id);skipped++;continue;}
     var pa=splitPrefAddr(ci.a1!=null?rw[ci.a1]:'',ci.a2!=null?rw[ci.a2]:'');
     var rec={id:id,name:name,pref:pa.pref,city:pa.city,
       postal:String((ci.postal!=null?rw[ci.postal]:'')||'').trim(),
       phone:String((ci.phone!=null?rw[ci.phone]:'')||'').trim(),
       fax:String((ci.fax!=null?rw[ci.fax]:'')||'').trim(),
       contactPerson:String((ci.tantou!=null?rw[ci.tantou]:'')||'').trim(),
+      honorific:String((ci.keisho!=null?rw[ci.keisho]:'')||'').trim(),/* v18.52 修正７①: 先方担当者の敬称 */
       kana:String((ci.kana!=null?rw[ci.kana]:'')||'').trim(),
       mobile:String((ci.mobile!=null?rw[ci.mobile]:'')||'').trim(),
       email:String((ci.e1!=null?rw[ci.e1]:'')||'').trim(),
@@ -4803,7 +4954,7 @@ function importCustsAoa(aoa){
     if(ex){Object.assign(ex,rec);updated++;}/* attr(顧客属性)・salesPersonはrecに無いため保持される */
     else{rec.contact='';rec.salesPerson='';rec.attr='';CUSTS.unshift(rec);added++;}
   }
-  return {added:added,updated:updated,skipped:skipped};
+  return {added:added,updated:updated,skipped:skipped,invalid:invalid};
 }
 /* ========== CUSTOMER PAGE ========== */
 function CustPage(p){
@@ -4815,7 +4966,11 @@ function CustPage(p){
   var editCust=us(null);/* 編集中顧客（編集用のコピー） */
   /* v18.47 追加修正: 編集対象の実体への参照。IDが重複していても正しい行へ保存するために使う */
   var editCustRef=us(null);
-  var nf=us({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
+  var nf=us({name:'',kana:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',honorific:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
+  /* v18.52 修正７①: 敬称マスタ（HONORIFICS）は非state管理のため、追加・削除後の再描画用カウンタ */
+  var honTick=us(0);
+  var honNew=us('');
+  var honOtherMode=us(false);
   /* v18.33 追B: 顧客属性フィルタの選択肢（登録済み属性のユニーク値） */
   /* v18.34 顧客回答B-9: 属性の基本選択肢（学校/プール/温浴施設/代理店/その他）＋登録済み属性が自動で一覧に加わる（随時追加） */
   var ATTR_BASE=['学校','プール','温浴施設','代理店','その他'];
@@ -4827,6 +4982,15 @@ function CustPage(p){
   /* v18.47 追加修正: 重複IDの検出（一覧で警告表示する。bump に依存して再計算される） */
   var dupIds=duplicateCustIds();
   var dupIdCount=Object.keys(dupIds).length;
+  /* v18.52 修正７②: 顧客コード欄にフリガナ・電話番号などが入ってしまっている行（CSVの行崩れの残骸）。
+     取込側は弾くようにしたが、既に登録されている分は案件との紐づけがあり得るので自動では消さず、
+     一覧で「ID異常」として目立たせ、顧客編集からIDを直せるようにする。 */
+  var badIdCusts=CUSTS.filter(function(c){return !isValidCustId(c.id);});
+  /* v18.52 修正７⑤: 住所は他県なのに都道府県が「東京都」のままの行（取込時の既定値フォールバックの名残）。 */
+  var prefMismatch=CUSTS.filter(function(c){
+    var g=inferPrefFromAddress(c.city);
+    return !!g&&g!==(c.pref||'');
+  });
   var fl=CUSTS.filter(function(c){
     if(pf[0]!=='all'&&c.pref!==pf[0])return false;
     if(af[0]!=='all'&&(c.attr||'')!==af[0])return false;/* v18.33 追B: 顧客属性フィルタ */
@@ -4836,9 +5000,25 @@ function CustPage(p){
       if(spf[0]==='__none__'){if(sp)return false;}
       else if(sp!==spf[0])return false;
     }
-    /* v18.33 要望⑲: 「担当者」(contact)欄の廃止に伴い検索対象からも除外（データは互換のため残置） */
-    if(sr[0]&&c.name.indexOf(sr[0])<0&&c.id.indexOf(sr[0])<0&&(c.city||'').indexOf(sr[0])<0)return false;
+    /* v18.33 要望⑲: 「担当者」(contact)欄の廃止に伴い検索対象からも除外（データは互換のため残置）
+       v18.52 修正７①-4: 法人名フリガナ（kana）も検索対象に追加。ひらがな入力・半角カナ・中黒の有無を
+       吸収するため kanaNorm() で正規化して照合する（「えいすうがっかん」でもヒットする）。 */
+    if(sr[0]){
+      var q=sr[0];
+      var hit=(c.name||'').indexOf(q)>=0||(c.id||'').indexOf(q)>=0||(c.city||'').indexOf(q)>=0;
+      if(!hit){var qn=kanaNorm(q);if(qn&&kanaNorm(c.kana).indexOf(qn)>=0)hit=true;}
+      if(!hit)return false;
+    }
     return true;
+  });
+  /* v18.52 修正７③: 顧客一覧は顧客IDの昇順で表示する（従来は登録順＝新規が先頭で番号が飛んでいた）。
+     IDは D00843 のような英字＋数字なので、英字部分→数値部分の順に比較して D00099 < D00100 になるようにする。 */
+  function custIdKey(id){var m=String(id||'').match(/^([A-Za-z]*)(\d*)/);return {p:(m&&m[1]||'').toUpperCase(),n:m&&m[2]?parseInt(m[2],10):-1};}
+  fl=fl.slice().sort(function(a,b){
+    var ka=custIdKey(a.id),kb=custIdKey(b.id);
+    if(ka.p!==kb.p)return ka.p<kb.p?-1:1;
+    if(ka.n!==kb.n)return ka.n-kb.n;
+    return String(a.id).localeCompare(String(b.id),'ja');
   });
   /* v18.33 追B: 顧客CSV/Excel取込（Access出力。SJIS/UTF-8両対応） */
   function importCustFile(e){
@@ -4861,7 +5041,11 @@ function CustPage(p){
         if(res.error){alert(res.error);return;}
         saveCusts();bump[1](bump[0]+1);
         if(typeof cloudSave==='function')cloudSave(p.userName||'');
-        alert('顧客取込完了: 新規'+res.added+'件 / 更新'+res.updated+'件 / スキップ'+res.skipped+'件\n※「顧客属性」は取込後に各顧客の編集画面で入力してください（例: 学校・プール・温浴施設）');
+        /* v18.52 修正７②: 顧客コードが不正な行（行崩れの断片）は取り込まずに件数と実例を知らせる */
+        var invMsg=(res.invalid&&res.invalid.length)
+          ?'\n\n⚠ 顧客コードが不正な '+res.invalid.length+' 行は取り込みませんでした（例: '+res.invalid.slice(0,3).join('／')+'）。\n　元CSVでその行が途中で改行・分割されていないかご確認ください。'
+          :'';
+        alert('顧客取込完了: 新規'+res.added+'件 / 更新'+res.updated+'件 / スキップ'+res.skipped+'件'+invMsg+'\n※「顧客属性」は取込後に各顧客の編集画面で入力してください（例: 学校・プール・温浴施設）');
       }catch(err){alert('取込に失敗しました: '+(err&&err.message||err));}
     };
     rd.readAsArrayBuffer(f);
@@ -4875,9 +5059,10 @@ function CustPage(p){
     var attrFinal=(f.attr==='その他'&&f.attrOther&&f.attrOther.trim())?f.attrOther.trim():(f.attr||'');
     /* v18.40 修正１①: 代理店属性の顧客はエンド納品先（複数）を保持できる */
     /* v18.47 追加修正: 件数ベースの採番は削除で重複するため、未使用IDを採番する nextCustId() を使う */
-    var nc={id:nextCustId(),name:f.name,pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',salesPerson:f.salesPerson||'',attr:attrFinal,endUsers:f.endUsers||[]};
+    /* v18.52 修正７①: 法人名フリガナ(kana)・先方担当者の敬称(honorific)も保存する */
+    var nc={id:nextCustId(),name:f.name,kana:f.kana||'',pref:f.pref,city:f.city||'',contact:f.contact||'',postal:f.postal||'',phone:f.phone||'',fax:f.fax||'',contactPerson:f.contactPerson||'',honorific:f.honorific||'',salesPerson:f.salesPerson||'',attr:attrFinal,endUsers:f.endUsers||[]};
     CUSTS.unshift(nc);
-    nf[1]({name:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
+    nf[1]({name:'',kana:'',pref:'東京都',city:'',contact:'',postal:'',phone:'',fax:'',contactPerson:'',honorific:'',salesPerson:'',attr:'',attrOther:'',endUsers:[]});
     showAdd[1](false);bump[1](bump[0]+1);saveCusts();
     /* v18.39 バグ修正: 従来は localStorage(saveCusts) にしか保存しておらず、追加した顧客が
        他端末に共有されず、再ログイン時のクラウド取込で消えていた。クラウドへも保存する。 */
@@ -4897,8 +5082,22 @@ function CustPage(p){
     var ref=editCustRef[0];
     var idx=ref?CUSTS.indexOf(ref):-1;
     if(idx<0)idx=CUSTS.findIndex(function(c){return c.id===ec.id;});
+    if(idx<0)return;
+    /* v18.52 修正７②: 顧客IDを直せるようにしたため、保存前に妥当性と重複を確認する。
+       IDを変えると、その顧客の案件(order.cid)との紐づけが切れるので、案件がある場合は cid も付け替える。 */
+    var oldId=(ref&&ref.id)||CUSTS[idx].id;
+    var newId=String(ec.id||'').trim();
+    if(newId!==oldId){
+      if(!isValidCustId(newId)){alert('顧客IDは半角英数（例: D00843）で入力してください。');return;}
+      if(CUSTS.some(function(c,i){return i!==idx&&c.id===newId;})){alert('顧客ID「'+newId+'」は既に使われています。別のIDを指定してください。');return;}
+      var linked=ORDERS.filter(function(o){return o.cid===oldId;});
+      if(!confirm('顧客IDを「'+oldId+'」から「'+newId+'」へ変更します。'+(linked.length?'\nこの顧客の案件 '+linked.length+' 件も新しいIDへ付け替えます。':'')+'\nよろしいですか？'))return;
+      linked.forEach(function(o){o.cid=newId;});
+      ec=Object.assign({},ec,{id:newId});
+      if(linked.length&&typeof saveOrders==='function')saveOrders();
+    }
     /* v18.39 バグ修正: 編集内容もクラウドへ保存（従来は localStorage のみで他端末に反映されなかった） */
-    if(idx>=0){CUSTS[idx]=Object.assign({},ec);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);editCust[1](null);editCustRef[1](null);}
+    CUSTS[idx]=Object.assign({},ec);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);editCust[1](null);editCustRef[1](null);
   }
   function deleteCust(c){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
@@ -4941,6 +5140,71 @@ function CustPage(p){
     );
   }
 
+  /* v18.52 修正７①-1: 先方担当者の敬称プルダウン（様/先生/事務長/校長＋自由入力）。
+     「その他（自由入力）」で追加した敬称はマスタ(HONORIFICS)へ登録され、全端末・次回以降も選べる。
+     規定の4件は削除不可、追加した分だけ ✕ で削除できる。編集・新規の両モーダルで共用する。 */
+  function HonorificField(value,onChange){
+    var cur=String(value||'');
+    var opts=HONORIFICS.slice();
+    if(cur&&opts.indexOf(cur)<0)opts.push(cur);/* 取込済みの「御中」など、マスタに無い値も表示できるようにする */
+    var customs=HONORIFICS.filter(function(v){return !isDefaultHonorific(v);});
+    function commitNew(){
+      var v=String(honNew[0]||'').trim();
+      if(!v){alert('追加する敬称を入力してください。');return;}
+      if(HONORIFICS.indexOf(v)<0){HONORIFICS.push(v);saveHonorifics();cloudSave(p.userName||'');}
+      honTick[1](honTick[0]+1);honOtherMode[1](false);honNew[1]('');
+      onChange(v);
+    }
+    return h('div',{style:{flex:1}},
+      h('label',{style:FL},'敬称'),
+      h('select',{className:'inp',value:honOtherMode[0]?'__other__':cur,onChange:function(e){
+        var v=e.target.value;
+        if(v==='__other__'){honOtherMode[1](true);honNew[1]('');return;}
+        honOtherMode[1](false);onChange(v);
+      }},
+        h('option',{value:''},'（なし）'),
+        opts.map(function(v){return h('option',{key:v,value:v},v);}),
+        h('option',{value:'__other__'},'その他（自由入力）')
+      ),
+      honOtherMode[0]?h('div',{style:{display:'flex',gap:4,marginTop:4}},
+        h('input',{className:'inp',style:{flex:1},value:honNew[0],placeholder:'例: 園長',onChange:function(e){honNew[1](e.target.value);},
+          onKeyDown:function(e){if(e.key==='Enter'){e.preventDefault();commitNew();}}}),
+        h('button',{className:'btn btn-xs btn-gn',style:{whiteSpace:'nowrap'},onClick:commitNew},'＋ 追加'),
+        h('button',{className:'btn btn-xs btn-ol',onClick:function(){honOtherMode[1](false);honNew[1]('');}},'取消')
+      ):null,
+      customs.length>0?h('div',{style:{marginTop:4,fontSize:8,color:'var(--g500)'}},'追加した敬称: ',
+        customs.map(function(v){return h('span',{key:v,style:{display:'inline-flex',alignItems:'center',gap:2,marginRight:4,padding:'1px 4px',background:'var(--g100)',borderRadius:4}},
+          v,
+          h('button',{className:'btn btn-xs btn-rd',style:{padding:'0 3px',lineHeight:1.2},title:'この敬称を選択肢から削除します',onClick:function(){
+            if(!confirm('敬称「'+v+'」を選択肢から削除します。よろしいですか？'))return;
+            HONORIFICS=HONORIFICS.filter(function(x){return x!==v;});
+            saveHonorifics();cloudSave(p.userName||'');honTick[1](honTick[0]+1);
+            if(cur===v)onChange('');
+          }},'✕')
+        );}),
+        h('span',{style:{marginLeft:4,color:'var(--g400)'}},'（様・先生・事務長・校長は規定のため削除できません）')
+      ):null
+    );
+  }
+
+  /* v18.52 修正７①-2: 弊社営業担当のプルダウン。
+     選択肢はユーザー管理で発行済みのアカウント名から自動生成する（ユーザーを増やせばそのまま増える）。
+     依頼どおり 岩上・高山・片岡 は除外。既に別名（例:「佐藤　志三朗」）が入っている顧客は、
+     その値が消えないよう選択肢の末尾に残す。 */
+  function SalesPersonField(value,onChange){
+    var cur=String(value||'');
+    var opts=salesPersonOptions();
+    var extra=(cur&&opts.indexOf(cur)<0)?cur:null;
+    return h('div',{style:{flex:1}},
+      h('label',{style:FL},'弊社営業担当'),
+      h('select',{className:'inp',value:cur,onChange:function(e){onChange(e.target.value);},title:'ユーザー管理で登録済みのアカウントから選択します'},
+        h('option',{value:''},'（未設定）'),
+        opts.map(function(s){return h('option',{key:s,value:s},s);}),
+        extra?h('option',{value:extra},extra+'（登録データの値）'):null
+      )
+    );
+  }
+
   return h('div',{className:'page'+(p.tab==='cust'?' show':'')},h('div',{className:'card'},
     h('div',{className:'chd'},h('h3',null,'顧客DB（'+CUSTS.length+'件）'),
       h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
@@ -4958,9 +5222,31 @@ function CustPage(p){
           salesPersons.map(function(s){return h('option',{key:s,value:s},s);}),
           noSalesCount>0?h('option',{value:'__none__'},'（担当者なし）'):null
         ),
-        h('input',{className:'inp',placeholder:'名前・ID・地域で検索…',value:sr[0],onChange:function(e){sr[1](e.target.value);},style:{width:180}})
+        /* v18.52 修正７①-4: フリガナでも検索できる（ひらがな入力・半角カナも可） */
+        h('input',{className:'inp',placeholder:'名前・フリガナ・ID・地域で検索…',value:sr[0],onChange:function(e){sr[1](e.target.value);},style:{width:200},title:'法人名・法人名フリガナ・顧客ID・市区町村で検索します（フリガナはひらがな入力でも可）'})
       )
     ),
+    /* v18.52 修正７②: 顧客コード欄に別の列の値（フリガナ・電話番号など）が入っている行の警告。
+       取込側では弾くようにしたので、ここに出るのは過去の取込で入ってしまった分だけ。 */
+    badIdCusts.length>0?h('div',{style:{padding:'6px 12px',margin:'0 0 6px',background:'#FEF2F2',border:'1.5px solid #FCA5A5',borderRadius:8,fontSize:11,color:'#991B1B'}},
+      '⚠ 顧客IDが正しくない顧客が '+badIdCusts.length+' 件あります（'+badIdCusts.slice(0,4).map(function(c){return c.id;}).join('・')+(badIdCusts.length>4?' ほか':'')+'）。'+
+      '取込元CSVでその行が途中で分割され、顧客フリガナや電話番号がIDの列にずれ込んだものです。'+
+      '該当行の「ID異常」バッジから編集を開き、正しい顧客IDと内容に直してください（案件が紐づいていればID変更時に一緒に付け替えます）。'
+    ):null,
+    /* v18.52 修正７⑤: 住所と都道府県が食い違っている行（取込時に都道府県を東京都で既定していた名残）。 */
+    prefMismatch.length>0?h('div',{style:{padding:'6px 12px',margin:'0 0 6px',background:'#FFF7ED',border:'1.5px solid #FDBA74',borderRadius:8,fontSize:11,color:'#9A3412',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+      h('span',null,'⚠ 住所と「都道府県」が一致していない顧客が '+prefMismatch.length+' 件あります（例: '+prefMismatch.slice(0,3).map(function(c){return c.id+' '+(c.pref||'未設定')+'→'+inferPrefFromAddress(c.city);}).join('／')+'）。'),
+      h('button',{className:'btn btn-xs btn-or',style:{fontWeight:700},onClick:function(){
+        if(p.isReadOnly){alert('読み取り専用モード中は修正できません');return;}
+        var list=prefMismatch.map(function(c){return {c:c,to:inferPrefFromAddress(c.city)};}).filter(function(x){return x.to;});
+        if(!list.length){alert('修正対象はありません。');return;}
+        var sample=list.slice(0,10).map(function(x){return '　'+x.c.id+' '+x.c.name+'：'+(x.c.pref||'未設定')+' → '+x.to;}).join('\n');
+        if(!confirm('住所から判定した都道府県へ '+list.length+' 件を修正します。\n\n'+sample+(list.length>10?'\n　…ほか'+(list.length-10)+'件':'')+'\n\nよろしいですか？'))return;
+        list.forEach(function(x){x.c.pref=x.to;});
+        saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);
+        alert('都道府県を '+list.length+' 件修正しました。');
+      }},'🔧 住所から都道府県を自動修正')
+    ):null,
     /* v18.47 追加修正: 過去の採番不具合で既に重複しているIDがある場合に注意喚起する。
        既存IDは案件(order.cid)と紐づいているため自動では振り直さない（どちらの顧客の案件か判別できないため）。 */
     dupIdCount>0?h('div',{style:{padding:'6px 12px',margin:'0 0 6px',background:'#FEF2F2',border:'1.5px solid #FCA5A5',borderRadius:8,fontSize:11,color:'#991B1B'}},
@@ -4977,12 +5263,17 @@ function CustPage(p){
       h('tbody',null,fl.map(function(c,ci){return h('tr',{key:c.id+'#'+ci},
         h('td',null,h('b',null,c.id),
           /* v18.47 追加修正: 既に重複しているIDは警告を出す（既存データのIDは案件(cid)と紐づくため自動で振り直さない） */
-          dupIds[c.id]?h('span',{className:'bg bg-r',style:{marginLeft:4,fontSize:8},title:'このIDは他の顧客と重複しています。案件との紐づけを確認のうえ、不要な方を削除してください'},'重複'):null
-        ),h('td',null,c.name),
+          dupIds[c.id]?h('span',{className:'bg bg-r',style:{marginLeft:4,fontSize:8},title:'このIDは他の顧客と重複しています。案件との紐づけを確認のうえ、不要な方を削除してください'},'重複'):null,
+          /* v18.52 修正７②: 顧客コードの列に別の値が入ってしまっている行 */
+          !isValidCustId(c.id)?h('span',{className:'bg bg-r',style:{marginLeft:4,fontSize:8},title:'顧客IDが不正です（取込元CSVの行崩れで別の列がずれ込んでいます）。編集から正しいIDへ直してください'},'ID異常'):null
+        ),
+        /* v18.52 修正７①-3: 法人名の下にフリガナを表示（検索対象にもなっている） */
+        h('td',null,c.name,c.kana?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},c.kana):null),
         h('td',{style:{fontSize:9}},c.attr||''),
         h('td',null,c.pref),h('td',null,c.city||''),
         h('td',{style:{fontSize:9}},c.postal||''),h('td',{style:{fontSize:9}},c.phone||''),
-        h('td',null,c.contactPerson||''),
+        /* v18.52 修正７①-1: 先方担当者は敬称付きで表示する */
+        h('td',null,(c.contactPerson||'')+(c.contactPerson&&c.honorific?' '+c.honorific:'')),
         h('td',null,c.salesPerson||''),
         h('td',{style:{whiteSpace:'nowrap'}},
           h('button',{className:'btn btn-xs btn-nv',onClick:function(){p.selectCust(c);}},'選択 →'),
@@ -4997,7 +5288,14 @@ function CustPage(p){
         h('button',{className:'btn btn-ol',onClick:function(){editCust[1](null);editCustRef[1](null);}},'キャンセル'),
         h('button',{className:'btn btn-gn',onClick:saveEditCust},'保存'))},
       h('div',null,
+        /* v18.52 修正７②: 顧客IDを直せるようにする（取込の行崩れでIDが壊れた顧客の手修正用）。
+           変更時は重複チェックのうえ、その顧客の案件(order.cid)も一緒に付け替える。 */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'顧客ID'+(isValidCustId(editCust[0].id)?'':'　⚠ 不正な値です（半角英数の顧客コードに直してください）')),
+          h('input',{className:'inp',value:editCust[0].id||'',onChange:function(e){ufEdit('id',e.target.value);},
+            style:isValidCustId(editCust[0].id)?null:{borderColor:'#FCA5A5',background:'#FEF2F2'}}))),
         h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'法人名（必須）'),h('input',{className:'inp',value:editCust[0].name||'',onChange:function(e){ufEdit('name',e.target.value);}}))),
+        /* v18.52 修正７①-3: 法人名フリガナ（顧客選択画面の検索対象にもなる） */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'法人名フリガナ'),h('input',{className:'inp',value:editCust[0].kana||'',onChange:function(e){ufEdit('kana',e.target.value);},placeholder:'例: カブシキガイシャエルイーシー'}))),
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'郵便番号'),h('input',{className:'inp',value:editCust[0].postal||'',onChange:function(e){ufEdit('postal',e.target.value);}})),
           h('div',{style:{flex:1}},h('label',{style:FL},'都道府県'),h('select',{className:'inp',value:editCust[0].pref||'東京都',onChange:function(e){ufEdit('pref',e.target.value);}},PREFS_ALL.map(function(pr){return h('option',{key:pr,value:pr},pr);})))
@@ -5012,9 +5310,13 @@ function CustPage(p){
         /* v18.40 修正１①: 顧客属性が代理店の場合、エンド納品先（複数）を編集できるようにする */
         editCust[0].attr==='代理店'?EndUserListEditor(editCust[0].endUsers,function(a){ufEdit('endUsers',a);}):null,
         /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
+        /* v18.52 修正７①-1②: 先方担当者に敬称プルダウン、弊社営業担当をプルダウン化 */
         h('div',{style:FS},
-          h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:editCust[0].contactPerson||'',onChange:function(e){ufEdit('contactPerson',e.target.value);}})),
-          h('div',{style:{flex:1}},h('label',{style:FL},'弊社営業担当'),h('input',{className:'inp',value:editCust[0].salesPerson||'',onChange:function(e){ufEdit('salesPerson',e.target.value);}}))
+          h('div',{style:{flex:2}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:editCust[0].contactPerson||'',onChange:function(e){ufEdit('contactPerson',e.target.value);}})),
+          HonorificField(editCust[0].honorific,function(v){ufEdit('honorific',v);})
+        ),
+        h('div',{style:FS},
+          SalesPersonField(editCust[0].salesPerson,function(v){ufEdit('salesPerson',v);})
         )
       )
     ):null,
@@ -5024,6 +5326,8 @@ function CustPage(p){
         h('button',{className:'btn btn-gn',onClick:addCust},'追加して選択 →'))},
       h('div',null,
         h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'法人名（必須）'),h('input',{className:'inp',value:nf[0].name,onChange:function(e){uf('name',e.target.value);},placeholder:'例: ○○株式会社'}))),
+        /* v18.52 修正７①-3: 法人名フリガナ（顧客選択画面の検索対象にもなる） */
+        h('div',{style:FS},h('div',{style:{flex:1}},h('label',{style:FL},'法人名フリガナ'),h('input',{className:'inp',value:nf[0].kana||'',onChange:function(e){uf('kana',e.target.value);},placeholder:'例: マルマルカブシキガイシャ'}))),
         h('div',{style:FS},
           h('div',{style:{flex:1}},h('label',{style:FL},'郵便番号'),h('input',{className:'inp',value:nf[0].postal,onChange:function(e){uf('postal',e.target.value);},placeholder:'例: 120-0005'})),
           h('div',{style:{flex:1}},h('label',{style:FL},'都道府県'),h('select',{className:'inp',value:nf[0].pref,onChange:function(e){uf('pref',e.target.value);}},PREFS_ALL.map(function(pr){return h('option',{key:pr,value:pr},pr);})))
@@ -5049,9 +5353,13 @@ function CustPage(p){
         /* v18.40 修正１①: 顧客属性が代理店の場合、エンド納品先（複数）を登録できるようにする */
         nf[0].attr==='代理店'?EndUserListEditor(nf[0].endUsers,function(a){uf('endUsers',a);}):null,
         /* v18.33 要望⑲: 「担当者名」入力欄を削除（先方担当者・弊社営業担当の2つに統一） */
+        /* v18.52 修正７①-1②: 先方担当者に敬称プルダウン、弊社営業担当をプルダウン化 */
         h('div',{style:FS},
-          h('div',{style:{flex:1}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:nf[0].contactPerson,onChange:function(e){uf('contactPerson',e.target.value);},placeholder:'例: 田中 太郎'})),
-          h('div',{style:{flex:1}},h('label',{style:FL},'弊社営業担当'),h('input',{className:'inp',value:nf[0].salesPerson,onChange:function(e){uf('salesPerson',e.target.value);},placeholder:'例: 齋藤 勝'}))
+          h('div',{style:{flex:2}},h('label',{style:FL},'先方担当者'),h('input',{className:'inp',value:nf[0].contactPerson,onChange:function(e){uf('contactPerson',e.target.value);},placeholder:'例: 田中 太郎'})),
+          HonorificField(nf[0].honorific,function(v){uf('honorific',v);})
+        ),
+        h('div',{style:FS},
+          SalesPersonField(nf[0].salesPerson,function(v){uf('salesPerson',v);})
         )
       )
     ):null
@@ -5179,6 +5487,10 @@ function InvPage(p){
     editingNo[1](null);editingMeta[1](null);
     /* v18.48 修正６④: 送付先は顧客ごとの選択のため、顧客を切り替えたら代理店宛（既定）に戻す */
     shipDest[1]('cust');
+    /* v18.52 修正７⑦: エンド納品先も顧客ごとの情報のためクリアする。
+       従来は残ったままだったので、A社で選んだエンド納品先がB社の案件へそのまま保存され、
+       案件管理に「コリア国際（近大東広島）」のように別顧客の納品先が並記されていた。 */
+    endUser[1]({name:'',postal:'',address:'',phone:''});
   },[p.selCust&&p.selCust.id]);
   /* v17.2 要望26: リピート発注 — OrdersPageでコピーされた案件の製品構成をビルダーへ読み込む。
      在庫追跡フィールドは除外し、見積/仮押さえは新規に行う（前回の引当は引き継がない）。
@@ -6863,7 +7175,11 @@ function OrdersPage(p){
         h('thead',null,h('tr',null,h('th',null,'No.'),h('th',null,'日付'),h('th',null,'顧客'),h('th',null,'明細'),h('th',null,'台数'),h('th',null,'倉庫'),h('th',null,'送料'),h('th',null,'ステータス'),h('th',null,'操作'))),
         h('tbody',null,fl.map(function(o){
           var c=CUSTS.find(function(x){return x.id===o.cid;});
-          var totalQty=o.lines.reduce(function(s,l){return l.isFreeInput?s:s+l.qty;},0);
+          /* v18.52 修正７④: 台数はロッカー本体の明細だけを数える。
+             パーツ単品追加（isPartOnly）の子部材の数量まで合算していたため、
+             QT-2026-119 のように「714台＋部材1478点」が 2192台 と表示されていた。 */
+          var totalQty=o.lines.reduce(function(s,l){return (l.isFreeInput||l.isPartOnly)?s:s+(l.qty||0);},0);
+          var partOnlyCount=o.lines.filter(function(l){return l.isPartOnly;}).length;
           var hasFree=o.lines.some(function(l){return l.isFreeInput;});
           return h('tr',{key:o.no},
             /* v18.38 修正箇所3②: 起票者（営業/事務）を案件番号の下に表示
@@ -6883,7 +7199,9 @@ function OrdersPage(p){
             /* v18.40 修正１③: 代理店経由でエンド納品先が設定されている場合、顧客名に（エンド納品先名）を併記 */
             h('td',null,(c?c.name:'')+(o.endUser&&o.endUser.name?'（'+o.endUser.name+'）':'')),
             h('td',null,o.lines.length+'件'),
-            h('td',{style:{fontWeight:700}},totalQty>0?fm(totalQty)+'台':'',hasFree?' +他':''),
+            h('td',{style:{fontWeight:700}},totalQty>0?fm(totalQty)+'台':(partOnlyCount>0?'−':''),hasFree?' +他':'',
+              /* v18.52 修正７④: 台数に含めなかったパーツ単品の明細数は別行で示す */
+              partOnlyCount>0?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400},title:'パーツ単品追加の明細（台数には含めていません）'},'部材 '+partOnlyCount+'件'):null),
             h('td',null,((WH_MAP[o.wh]||{}).s||'')+(o.wh2?' + '+((WH_MAP[o.wh2]||{}).s||''):'')),
             /* v18.38 修正箇所3⑤: 送付方法を明示して見積した案件は、どちらで算出した送料か分かるように併記
                v18.48 修正６⑤: 見積・仮押さえ時に選んだ「混載/チャーター」に加えて「代理店宛/エンドユーザー宛」も送料と並べて表示する。
