@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.52（修正７①〜⑧ 顧客編集の敬称/担当営業/フリガナ・フリガナ検索・ID昇順・台数カウント・都道府県の自動判定・エンド納品先の持ち越し修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.53（弊社営業担当をユーザー管理のアカウント名に統一・顧客データのフルネーム表記を氏名へ集約／修正７①〜⑧対応済み）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -546,6 +546,22 @@ function salesPersonOptions(){
   out.sort(function(a,b){return a.localeCompare(b,'ja');});
   return out;
 }
+/* v18.53 修正７①-2追: 顧客DBに残っているフルネーム表記（例「佐藤　志三朗」）を、
+   ユーザー管理のアカウント名（例「佐藤」）へ寄せて表示・照合する。
+   ・過去データは一括で書き換え済みだが、取込や手入力で再び入っても画面上は同じ担当者として扱えるようにしておく。
+   ・アカウント名で始まる／アカウント名を含む値だけを寄せる。該当が無ければ元の値をそのまま返す。 */
+function resolveSalesPerson(v){
+  var s=String(v||'').trim();
+  if(!s)return '';
+  var all=[];
+  (typeof USERS!=='undefined'?USERS:[]).forEach(function(u){var n=userDisplayName(u&&u.name);if(n&&all.indexOf(n)<0)all.push(n);});
+  if(all.indexOf(s)>=0)return s;
+  var flat=s.replace(/[\s　]/g,'');
+  /* 長いアカウント名から先に照合する（「佐藤」と「佐藤田」が両方いても取り違えないように） */
+  all.sort(function(a,b){return b.length-a.length;});
+  for(var i=0;i<all.length;i++){if(flat.indexOf(all[i])===0)return all[i];}
+  return s;
+}
 /* v18.52 修正７①④: フリガナ検索用の正規化。ひらがな→カタカナ、半角カナ・全角英数を揃え、
    区切り記号を落として「えいすう」でも「ｴｲｽｳ」でも同じ文字列にヒットさせる。 */
 function kanaNorm(s){
@@ -663,8 +679,9 @@ function deliveryPlaceOf(order,cust){
 /* v18.48 修正６②: 案件の担当者。見積書と同じ判定（案件のLEC担当者 → 顧客DBの「弊社営業担当」）。
    見積書側の最終フォールバック（齋藤 勝）は一覧表示・検索では補わず、未入力は空欄のままにする。 */
 function orderStaffOf(order,cust){
-  if(order&&order.salesPersonOverride)return order.salesPersonOverride;
-  return (cust&&cust.salesPerson)||'';
+  /* v18.53: 案件管理の「担当:」表示・検索も、顧客DBのフルネーム表記をアカウント名へ寄せて揃える */
+  if(order&&order.salesPersonOverride)return resolveSalesPerson(order.salesPersonOverride);
+  return resolveSalesPerson(cust&&cust.salesPerson);
 }
 /* v18.48 修正６⑤: 案件の送付方法（混載/チャーター）・送付先（代理店宛/エンドユーザー宛）の表示名 */
 function shipMethodLabel(m){return m==='charter'?'チャーター':(m==='mix'?'混載':'');}
@@ -4977,8 +4994,12 @@ function CustPage(p){
   /* v18.34 顧客回答B-9: 属性の基本選択肢（学校/プール/温浴施設/代理店/その他）＋登録済み属性が自動で一覧に加わる（随時追加） */
   var ATTR_BASE=['学校','プール','温浴施設','代理店','その他'];
   var attrs=ATTR_BASE.slice();CUSTS.forEach(function(c){if(c.attr&&attrs.indexOf(c.attr)<0)attrs.push(c.attr);});
-  /* v18.48 修正６③: 担当者プルダウンの選択肢は「弊社営業担当」欄に実際に入っている名称から自動生成する（登録・編集すると即座に増える） */
-  var salesPersons=[];CUSTS.forEach(function(c){var s=(c.salesPerson||'').trim();if(s&&salesPersons.indexOf(s)<0)salesPersons.push(s);});
+  /* v18.48 修正６③: 担当者フィルタの選択肢。
+     v18.53 修正７①-2追: ユーザー管理のアカウント名を基準にし、顧客データ側の表記ゆれ（フルネーム）は
+     resolveSalesPerson() でアカウント名へ寄せてから集計する。
+     アカウントを増やせばそのまま選択肢に増える（顧客に1件も割り当てが無くても出る）。 */
+  var salesPersons=salesPersonOptions();
+  CUSTS.forEach(function(c){var s=resolveSalesPerson(c.salesPerson);if(s&&salesPersons.indexOf(s)<0)salesPersons.push(s);});
   salesPersons.sort(function(a,b){return a.localeCompare(b,'ja');});
   var noSalesCount=CUSTS.filter(function(c){return !(c.salesPerson||'').trim();}).length;
   /* v18.47 追加修正: 重複IDの検出（一覧で警告表示する。bump に依存して再計算される） */
@@ -4998,7 +5019,8 @@ function CustPage(p){
     if(af[0]!=='all'&&(c.attr||'')!==af[0])return false;/* v18.33 追B: 顧客属性フィルタ */
     /* v18.48 修正６③: 弊社担当者フィルタ */
     if(spf[0]!=='all'){
-      var sp=(c.salesPerson||'').trim();
+      /* v18.53: フルネーム表記の顧客もアカウント名で絞り込めるように寄せてから比較する */
+      var sp=resolveSalesPerson(c.salesPerson);
       if(spf[0]==='__none__'){if(sp)return false;}
       else if(sp!==spf[0])return false;
     }
@@ -5194,15 +5216,17 @@ function CustPage(p){
      依頼どおり 岩上・高山・片岡 は除外。既に別名（例:「佐藤　志三朗」）が入っている顧客は、
      その値が消えないよう選択肢の末尾に残す。 */
   function SalesPersonField(value,onChange){
-    var cur=String(value||'');
+    /* v18.53: 顧客データに残っているフルネーム表記はアカウント名へ寄せて選択状態にする */
+    var cur=resolveSalesPerson(value);
     var opts=salesPersonOptions();
     var extra=(cur&&opts.indexOf(cur)<0)?cur:null;
     return h('div',{style:{flex:1}},
       h('label',{style:FL},'弊社営業担当'),
-      h('select',{className:'inp',value:cur,onChange:function(e){onChange(e.target.value);},title:'ユーザー管理で登録済みのアカウントから選択します'},
+      h('select',{className:'inp',value:cur,onChange:function(e){onChange(e.target.value);},title:'ユーザー管理で登録済みのアカウントから選択します（アカウントを追加すると自動で選択肢に増えます）'},
         h('option',{value:''},'（未設定）'),
         opts.map(function(s){return h('option',{key:s,value:s},s);}),
-        extra?h('option',{value:extra},extra+'（登録データの値）'):null
+        /* アカウントに無い名前（退職者など）が入っている場合だけ、消えないように末尾へ残す */
+        extra?h('option',{value:extra},extra+'（アカウント外）'):null
       )
     );
   }
@@ -5276,7 +5300,8 @@ function CustPage(p){
         h('td',{style:{fontSize:9}},c.postal||''),h('td',{style:{fontSize:9}},c.phone||''),
         /* v18.52 修正７①-1: 先方担当者は敬称付きで表示する */
         h('td',null,(c.contactPerson||'')+(c.contactPerson&&c.honorific?' '+c.honorific:'')),
-        h('td',null,c.salesPerson||''),
+        /* v18.53: 弊社担当はアカウント名の表記に揃えて表示する */
+        h('td',null,resolveSalesPerson(c.salesPerson)),
         h('td',{style:{whiteSpace:'nowrap'}},
           h('button',{className:'btn btn-xs btn-nv',onClick:function(){p.selectCust(c);}},'選択 →'),
           h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){editCust[1](Object.assign({},c));editCustRef[1](c);}},'編集'),
