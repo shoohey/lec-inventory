@@ -627,8 +627,10 @@ function inferPrefFromAddress(addr){
   for(var i=0;i<PREFS_LONGEST_FIRST.length;i++){
     if(s.indexOf(PREFS_LONGEST_FIRST[i])===0)return PREFS_LONGEST_FIRST[i];
   }
-  /* 「◯◯市/区/郡」の頭を取り出して市区町村名から引く（例: 岡山市北区… → 岡山県） */
-  var m=s.match(/^(.+?)(市|区|郡|町|村)/);
+  /* 「◯◯市」「◯◯区」の頭を取り出して市区名から引く（例: 岡山市北区… → 岡山県）。
+     ★「郡」「町」「村」は判定に使わない。郡名は他県の市名と衝突するため誤判定になる
+       （例: 大阪府三島郡→静岡県三島市／高知県高岡郡→富山県高岡市）。 */
+  var m=s.match(/^(.+?)(市|区)/);
   if(m&&PREF_BY_CITY[m[1]])return PREF_BY_CITY[m[1]];
   return '';
 }
