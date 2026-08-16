@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.53（弊社営業担当をユーザー管理のアカウント名に統一・顧客データのフルネーム表記を氏名へ集約／修正７①〜⑧対応済み）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.54（修正８① 商品・部材ごとの販売単価を見積に反映／仕入単価で粗利計算／棚卸単価と売上集計画面を新設）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -227,6 +227,7 @@ function buildCloudDoc(){
     freightTables:(typeof FREIGHT_TABLES_OVR!=='undefined'?FREIGHT_TABLES_OVR:{}),/* v18.30: 運賃表アップロードの全端末共有 */
     vendorCodes:(typeof VENDOR_CODES!=='undefined'?VENDOR_CODES:{}),/* v18.30: 業者コード紐づけの全端末共有 */
     costMaster:(typeof COST_MASTER!=='undefined'?COST_MASTER:{}),/* v18.33 要望⑱: 原価マスタの全端末共有 */
+    priceMaster:(typeof PRICE_MASTER!=='undefined'?{rows:PRICE_MASTER.rows||[],updatedAt:PRICE_MASTER.updatedAt||''}:null),/* v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタ（社外秘のためリポジトリには置かずクラウドで共有） */
     quoteOpts:(typeof QUOTE_OPTS!=='undefined'?QUOTE_OPTS:null),/* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタを全端末共有 */
     honorifics:(typeof HONORIFICS!=='undefined'?HONORIFICS:null),/* v18.52 修正７①: 先方担当者の敬称マスタを全端末共有 */
     deletedNos:DELETED_ORDER_NOS.slice(-500),
@@ -310,6 +311,10 @@ function applyCloudDoc(doc,opts){
     /* v18.33 要望⑱: 原価マスタ（品番→原価）の全端末共有 */
     if(doc.costMaster&&typeof doc.costMaster==='object'&&typeof COST_MASTER!=='undefined'){
       try{COST_MASTER=doc.costMaster;saveCostMaster();}catch(e){}
+    }
+    /* v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタ（後勝ち置換） */
+    if(doc.priceMaster&&Array.isArray(doc.priceMaster.rows)&&typeof PRICE_MASTER!=='undefined'){
+      try{PRICE_MASTER={rows:doc.priceMaster.rows,byCode:{},byCodeName:{},updatedAt:doc.priceMaster.updatedAt||''};indexPriceMaster();savePriceMaster();}catch(e){}
     }
     /* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタ（後勝ち置換・localStorageにも保持） */
     if(doc.quoteOpts&&typeof doc.quoteOpts==='object'&&typeof QUOTE_OPTS!=='undefined'){
@@ -743,7 +748,8 @@ function pushRentalRows(order,rows,startNo,subtotal,baseLine,baseRowTotal){
   if(baseRowTotal>0){
     var bRow=rows[rows.length-1];
     subtotal-=baseRowTotal;
-    rows.push({no:no++,rkey:'BASE_R',code:bRow.code,name:bRow.name,qty:bRow.qty,unit:bRow.unit,price:-BASE_PRICE,amount:-baseRowTotal,tax:'',remark:rowRemark(order,'BASE_R',RENTAL_NOTE)});
+    /* v18.54 修正８①: 直前に積んだベース行と同じ単価でマイナス計上する（固定値だと相殺できない） */
+    rows.push({no:no++,rkey:'BASE_R',code:bRow.code,name:bRow.name,qty:bRow.qty,unit:bRow.unit,price:-(bRow.price||BASE_PRICE),amount:-baseRowTotal,tax:'',remark:rowRemark(order,'BASE_R',RENTAL_NOTE)});
   }
   var vq=rentalVjQty(order);
   if(vq>0){
@@ -3584,6 +3590,379 @@ function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
 var LS_KEYS={orders:'lec_orders',nextON:'lec_nextON',stk:'lec_stk',held:'lec_held',incoming:'lec_incoming',nextIncId:'lec_nextIncId',editLog:'lec_editLog',custs:'lec_custs',users:'lec_users'};
 function saveUsers(){try{localStorage.setItem(LS_KEYS.users,JSON.stringify(USERS));}catch(e){console.warn('saveUsers failed',e);}}
 function saveOrders(){try{localStorage.setItem(LS_KEYS.orders,JSON.stringify(ORDERS));localStorage.setItem(LS_KEYS.nextON,String(nextON));}catch(e){console.warn('saveOrders failed',e);}}
+/* ========== v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタ ==========
+   「マスタ＿販売単価・原価.csv」(商品コード,商品名称,タイプ,商品区分,仕入単価,棚卸単価,販売単価) を取り込んで保持する。
+   ・販売単価 … 見積書の単価（従来は SIZES の一律8300だったため金額が実態と合っていなかった）
+   ・仕入単価 … 見積書作成画面の粗利計算の原価
+   ・棚卸単価 … 画面には出さず、売上集計（年間集計）の原価と在庫評価額に使う
+   ★仕入単価・棚卸単価は社外に出せない企業情報のため、index.html には一切埋め込まない。
+     COST_MASTER と同じく localStorage＋クラウド(lec_state.priceMaster)で保持する運用にしている。
+   ★同じ商品コードが複数行あるCSV（例「ＭＹＰＬ-E-Ｓ」＝Ｓ標準とＳホタ）に対応するため、
+     コード単独の索引と「コード#商品名称」の索引の2本を持ち、名称ヒントがあればそちらを優先して引く。 */
+var PRICE_MASTER={rows:[],byCode:{},byCodeName:{},updatedAt:''};
+function savePriceMaster(){try{localStorage.setItem('lec_price_master',JSON.stringify(PRICE_MASTER));}catch(e){}}
+function indexPriceMaster(){
+  var bc={},bcn={};
+  (PRICE_MASTER.rows||[]).forEach(function(r){
+    if(!r||!r.code)return;
+    if(bc[r.code]===undefined)bc[r.code]=r;/* 重複コードは先勝ち */
+    bcn[r.code+'#'+(r.name||'')]=r;
+  });
+  PRICE_MASTER.byCode=bc;PRICE_MASTER.byCodeName=bcn;
+}
+(function(){try{var m=JSON.parse(localStorage.getItem('lec_price_master')||'null');if(m&&Array.isArray(m.rows)){PRICE_MASTER=m;indexPriceMaster();}}catch(e){}})();
+function hasPriceMaster(){return !!(PRICE_MASTER.rows&&PRICE_MASTER.rows.length);}
+/* 商品コード（＋名称ヒント）から1行を引く */
+function priceRec(code,nameHint){
+  if(!code)return null;
+  if(nameHint){var r=PRICE_MASTER.byCodeName[code+'#'+nameHint];if(r)return r;}
+  return PRICE_MASTER.byCode[code]||null;
+}
+function sellOf(code,nameHint){var r=priceRec(code,nameHint);return r&&r.sell>0?r.sell:0;}
+function buyOf(code,nameHint){var r=priceRec(code,nameHint);return r&&r.buy>0?r.buy:0;}
+function stockUnitOf(code,nameHint){var r=priceRec(code,nameHint);return r&&r.stockUnit>0?r.stockUnit:0;}
+
+/* --- 商品コード対応表（コードのみ。金額は持たないので公開リポジトリに置いても問題ない） ---
+   キー: ライン群|サイズ|タイプ|扉種
+     ライン群 eco=日本製Ver.1/Ver.2 ／ tw=台湾製 ／ sa=Sα（新台湾製）
+     タイプ   std=標準 ／ per=パーソナル
+     扉種     d=同色扉 ／ h=ホタ扉 ／ c=クリア ／ o=オープン（扉なし）
+   値: [商品コード, 商品名称ヒント]（同一コードが複数行あるCSVを一意に引くため名称も持つ） */
+var PRODUCT_CODE_MAP={
+  'eco|L|std|d':['ＭＹＰＬ-E-Ｌ','MyプラECO　Ｌサイズ'],
+  'eco|L|std|h':['ＭＹＰＬ-E-ＬHL','MyプラECO　Ｌサイズ　ホタ'],
+  'eco|L|std|c':['ＭＹＰＬ-E-ＬC','MyプラECO　Ｌサイズ　クリア'],
+  'eco|L|per|d':['ＭＹＰＬ-E－ＬＰ','MyプラECO　Ｌサイズパーソナル'],
+  'eco|L|per|h':['ＭＹＰＬ－E-LPHL','MyプラECO　Ｌサイズパーソナル　ホタ'],
+  'eco|L|std|o':['ＭＹＰＬ-E－ＬＯＰ','ＭｙプラECOロッカー　Ｌサイズオープン'],
+  'eco|M|std|d':['MYPL-E-M','MyプラECO　Ｍサイズ'],
+  'eco|M|std|h':['MYPL-E-MHL','MyプラECO　Ｍサイズ　ホタ'],
+  'eco|M|std|c':['MYPL-E-MC','MyプラECO　Ｍサイズ　クリア色'],
+  'eco|M|per|d':['ＭＹＰＬ-E－MP','MyプラECO　Ｍサイズパーソナル'],
+  'eco|M|per|h':['ＭＹＰＬ－E-ＭＰHL','MyプラECO　Ｍサイズパーソナル　ホタ'],
+  'eco|M|std|o':['ＭＹＰＬ-E－ＭＯＰ','ＭｙプラECOロッカー　Ｍサイズオープン'],
+  'eco|S|std|d':['ＭＹＰＬ-E-Ｓ','MyプラECO　Ｓサイズ　'],
+  'eco|S|std|h':['ＭＹＰＬ-E-Ｓ','MyプラECO　Ｓサイズ　ホタ'],
+  'eco|S|std|c':['ＭＹＰＬ-E-ＳC','MyプラECO　Ｓサイズ　クリア色'],
+  'eco|S|per|d':['ＭＹＰＬ-E－ＳＰ','MyプラECO　Ｓサイズパーソナル'],
+  'eco|S|per|h':['ＭＹＰＬ-E－ＳＰHL','MyプラECO　Ｓサイズパーソナル　ホタ'],
+  'eco|S|std|o':['ＭＹＰＬ-E－ＳＯＰ','ＭｙプラECOロッカー　Ｓサイズオープン'],
+  'eco|SS|std|d':['ＭＹＰＬ-E－ＳＳ','MyプラECO　ＳＳサイズ'],
+  'eco|SS|std|c':['ＭＹＰＬ－E-ＳＳＣ','MyプラECO　ＳＳクリア'],
+  'eco|SS|per|d':['ＭＹＰＬ-E－ＳＳＰ','ＭｙプラECOロッカーＳＳ　パーソナルタイプ'],
+  'eco|SS|std|o':['MYPL-E-SS-OP','ＭｙプラECOロッカーＳＳサイズオープン棚なし'],
+  'eco|3S|std|d':['ＭＹＰＬ-E－３Ｓ','MyプラECO　3Ｓサイズ'],
+  'eco|3S|std|c':['ＭＹＰＬ－E-３ＳＣ','MyプラECO　３Ｓクリア'],
+  'eco|3S|per|d':['ＭＹＰＬ-E－３ＳＰ','ＭｙプラECOロッカー３Ｓ　パーソナルタイプ'],
+  'eco|3S|std|o':['MYPL-E-3SOP','ＭｙプラECOロッカー　3Ｓサイズオープン'],
+  /* SSα（jp2のSSAサイズ）。CSVは「棚付き・トッテ」込みの単価 */
+  'eco|SSA|std|d':['MYPL-E-SSα','MyプラECO　SSαサイズ　棚付き　トッテ'],
+  'eco|SSA|per|d':['MYPL-E-SSα','MyプラECO　SSαサイズ　棚付き　トッテ'],
+  'eco|SSA|std|o':['MYPL－E－SSα－OP','MyプラECO　SSαオープン・棚付（黒）'],
+  'eco|XL|std|o':['MYPL-XL-OP','Ｍｙプラロッカー　ＸＬサイズオープン'],
+  'tw|L|std|d':['ＭＹＰＬ-Ｌ','Myプラ　Ｌサイズ'],
+  'tw|L|per|d':['ＭＹＰＬ－ＬＰ','Myプラ　Ｌサイズパーソナル'],
+  'tw|M|std|d':['MYPL-M','Myプラ　Ｍサイズ'],
+  'tw|M|per|d':['ＭＹＰＬ－MP','Myプラ　Ｍサイズパーソナル'],
+  'tw|S|std|d':['ＭＹＰＬ-Ｓ','Myプラ　Ｓサイズ　'],
+  'tw|S|per|d':['ＭＹＰＬ－ＳＰ','Myプラ　Ｓサイズパーソナル'],
+  'tw|SS|std|d':['ＭＹＰＬ-ＳＳ','Myプラ　ＳＳサイズ'],
+  'tw|SS|per|d':['ＭＹＰＬ－ＳＳＰ','ＭｙプラロッカーＳＳ　パーソナルタイプ'],
+  'tw|3S|std|d':['ＭＹＰＬ-３Ｓ','Myプラ　3Ｓサイズ'],
+  'tw|3S|per|d':['ＭＹＰＬ－３ＳＰ','Ｍｙプラロッカー３Ｓ　パーソナルタイプ'],
+  'tw|XL|std|d':['ＭＹＰＬ－ＸＬ','Myプラ　ＸＬサイズ'],
+  'tw|XL|std|o':['MYPL-XL-OP','Ｍｙプラロッカー　ＸＬサイズオープン'],
+  'sa|S|std|d':['MYPL-Sα','MyプラロッカーSαサイズ　パーソナル'],
+  'sa|S|per|d':['MYPL-Sα','MyプラロッカーSαサイズ　パーソナル']
+};
+/* ベースボード・棚板（ライン群＋サイズグループ別） */
+var BASE_CODE_MAP={
+  'eco|sml':['MYPL-E-B','MyプラECOロッカーベースボード黒'],
+  'eco|ss':['MYPL-E-ＳＳ-B','ＭｙプラECOロッカーＳＳベースボード'],
+  'tw|sml':['ＭＹＰＬ－Ｂ','Myプラ　ベースボード'],
+  'tw|ss':['ＭＹＰＬ－ＳＳＢ','ＭｙプラロッカーＳＳ/３Ｓベース'],
+  'sa|sml':['MYPL-SαーB','MyプラロッカーSα用ベースボード（７ｃｍ）'],
+  'sa|ss':['MYPL-SαーB','MyプラロッカーSα用ベースボード（７ｃｍ）']
+};
+var SHELF_CODE_MAP={
+  'eco|sml':['ＭＹＰＬ-E－ＳＦ','ＭｙプラECOロッカー棚板（黒）'],
+  'eco|ss':['MYPL-E-SSSF','ＭｙプラECOロッカーＳＳ　棚板（黒）'],
+  'tw|sml':['ＭＹＰＬ-E－ＳＦ','ＭｙプラECOロッカー棚板（黒）'],
+  'tw|ss':['MYPL-E-SSSF','ＭｙプラECOロッカーＳＳ　棚板（黒）'],
+  'sa|sml':['MYPL－Sα－SF','MyプラロッカーSα用　棚板（黒）'],
+  'sa|ss':['MYPL－Sα－SF','MyプラロッカーSα用　棚板（黒）']
+};
+/* 錠前・トッテ。★CSVの名称から一意に判別できるものだけを紐づけている。
+   ダイヤル錠H110/H111/H112・シリンダー錠のカム長/短各種は、CSVに対応する行名が無く
+   どれに当たるか断定できないため未紐づけ（＝従来どおり金額0）。商品コード連携表を頂き次第追加する。 */
+var LOCK_CODE_MAP={
+  'totte':['F00017','トッテ'],
+  'padlock':['F00034','南京錠'],
+  'dialDST':['F00132','DST4桁ダイヤル錠'],
+  'coinReturn':['F00030','コインリターン錠'],
+  'cylinderExchange':['F00029','シリンダー錠（内筒交換タイプ）'],
+  'cylinderExchangeSpare':['F00143','内筒交換錠用スペアキー']
+};
+/* パーツ単品（部材在庫のキー＋サイズ）→ 商品コード */
+var PART_CODE_MAP={
+  'door|S':['MYPL-E-SD','単品　Ｓサイズ　扉'],'door|M':['MYPL-E-MD','単品　Ｍサイズ　扉'],'door|L':['MYPL-E-LD','単品　Ｌサイズ　扉'],
+  'door|SS':['MYPL-E-SSD','単品　ＳＳサイズ　扉　'],'door|3S':['MYPL-E-3SD','単品　３Ｓサイズ　扉　'],
+  'door|XL':['MYPL-XLD','単品　XＬサイズ　扉'],'door|SSA':['MYPL-E-SSαD','単品SSα扉'],
+  'doorH|S':['MYPL-E-SDH','単品　Sサイズ　扉　ホタタイプ'],'doorH|M':['MYPL-E-MDH','単品　Ｍサイズ　扉　ホタタイプ'],
+  'doorH|L':['MYPL-E-LDH','単品　Lサイズ　扉　ホタタイプ'],
+  'side|S':['MYPL-E-S-SB','単品　Ｓサイズ　サイドボード'],'side|M':['MYPL-E-M-SB','単品　Ｍサイズ　サイドボード'],
+  'side|L':['MYPL-E-L-SB','単品　Ｌサイズ　サイドボード'],'side|SS':['MYPL-E-SS-SB','単品　SSサイズ　サイドボード　'],
+  'side|3S':['MYPL-E-3S-SB','単品　３Ｓサイズ　サイドボード　'],
+  'back|S':['MYPL-E-S-BB','単品　Ｓサイズ　バックボード'],'back|M':['MYPL-E-M-BB','単品　Ｍサイズ　バックボード'],
+  'back|L':['MYPL-E-L-BB','単品　Ｌサイズ　バックボード'],'back|SS':['MYPL-E-SS-BB','単品　SSサイズ　バックボード　'],
+  'back|3S':['MYPL-E-3S-SB','単品　３Ｓサイズ　バックボード　'],
+  'top|sml':['MYPL-E-TB','単品　上下共通ボード'],'top|ss':['MYPL-E-SSTB','単品　ＳＳ上下共通ボード　'],
+  /* ベースボード（グレー/ブラックとも同単価） */
+  'base|sml':['MYPL-E-B','MyプラECOロッカーベースボード黒'],'base_bk|sml':['MYPL-E-B','MyプラECOロッカーベースボード黒'],
+  'base|ss':['MYPL-E-ＳＳ-B','ＭｙプラECOロッカーＳＳベースボード'],'base_bk|ss':['MYPL-E-ＳＳ-B','ＭｙプラECOロッカーＳＳベースボード'],
+  'vj|ss':['ＭＹＰＬ－Ｊ','上下ジョイント黒色（学校保管備品）'],
+  'totte|':['F00017','トッテ'],
+  'hanger|':['MYPL-E-HP-B','ハンガーパイプ（黒）'],
+  'hangerPipe|':['MYPL-E-HP-B','ハンガーパイプ（黒）'],
+  'doorPocket|':['MYPL-E-DP','ドアポケット黒（SML）'],
+  'anchorCap|':['MYPL-E-AC-G','ベースボード用　アンカー穴キャップ（グレー）'],
+  'hingeCoverSML|':['F00129','ヒンジキャップ（SML用）'],'hingeCoverSS|':['F00130','ヒンジキャップ（SS/３S用）'],
+  'namePlatePaper|':['F00116','ネーム用厚紙/100枚'],'namePlateCoverSML|':['F00109','ネームプレートカバー'],
+  'namePlateCoverSS|':['F00109','ネームプレートカバー'],
+  'topJoint|':['F00114','トップジョイント（クローバー）'],
+  'sj|sml':['ＭＹＰＬ－ＳＪ（SML）','サイドジョイント（SML）'],'sj|ss':['ＭＹＰＬ－ＳＪ（SS）','サイドジョイント（SS）'],
+  'vj|sml':['ＭＹＰＬ－Ｊ','上下ジョイント黒色（学校保管備品）'],
+  'capScrew_gy|':['F00127','SML目隠しネジ（12個入）'],'capScrew_bk|':['F00127','SML目隠しネジ（12個入）'],
+  'jointScrew_sml_bk|':['F00128','SML横連結ネジ（6個入り）'],'jointScrew_ss_bk|':['F00127-2','SS目隠しネジ（12個入）'],
+  'shelf|sml':['ＭＹＰＬ-E－ＳＦ','ＭｙプラECOロッカー棚板（黒）'],'shelf_bk|sml':['ＭＹＰＬ-E－ＳＦ','ＭｙプラECOロッカー棚板（黒）'],
+  'shelf|ss':['MYPL-E-SSSF','ＭｙプラECOロッカーＳＳ　棚板（黒）'],'shelf_bk|ss':['MYPL-E-SSSF','ＭｙプラECOロッカーＳＳ　棚板（黒）'],
+  'railSideSML|':['F00053','サイドレール（２本）'],'railBackSML|':['F00054','バックレール'],
+  'railSideSS|':['F00053','サイドレール（２本）'],'railBackSS|':['F00054','バックレール']
+};
+/* 製品ライン → 価格表のライン群 */
+function priceLineGroup(lineId){return (lineId==='tw')?'tw':(lineId==='sa')?'sa':'eco';}
+/* 明細1行 → 本体の商品コード。扉種は 同色/ホタ/クリア/オープン を見分ける */
+function bodyCodeOf(ln){
+  if(!ln)return null;
+  var g=priceLineGroup(ln.line);
+  var t=(ln.type==='personal')?'per':'std';
+  var d;
+  if(ln.noDoor||ln.type==='open')d='o';
+  else if(ln.color==='cl')d='c';
+  else if(ln.doorType==='doorH')d='h';
+  else d='d';
+  var e=PRODUCT_CODE_MAP[g+'|'+ln.size+'|'+t+'|'+d];
+  /* ホタ/クリアの単価が無い組合せは同色扉の単価へ、パーソナルが無ければ標準へ落とす */
+  if(!e&&d!=='d'&&d!=='o')e=PRODUCT_CODE_MAP[g+'|'+ln.size+'|'+t+'|d'];
+  if(!e&&t==='per')e=PRODUCT_CODE_MAP[g+'|'+ln.size+'|std|'+d]||PRODUCT_CODE_MAP[g+'|'+ln.size+'|std|d'];
+  return e||null;
+}
+function baseCodeOf(ln){var g=priceLineGroup(ln&&ln.line);var grp=(ln&&ln.size)?sizeObj(ln.size).grp:'sml';return BASE_CODE_MAP[g+'|'+grp]||BASE_CODE_MAP[g+'|sml']||null;}
+function shelfCodeOf(ln){var g=priceLineGroup(ln&&ln.line);var grp=(ln&&ln.size)?sizeObj(ln.size).grp:'sml';return SHELF_CODE_MAP[g+'|'+grp]||SHELF_CODE_MAP['eco|sml']||null;}
+function lockCodeOf(lockKey){return (lockKey&&lockKey!=='none')?(LOCK_CODE_MAP[lockKey]||null):null;}
+function partCodeOf(partKey,partSub){
+  if(!partKey)return null;
+  return PART_CODE_MAP[partKey+'|'+(partSub||'')]||PART_CODE_MAP[partKey+'|']||null;
+}
+function priceByEntry(e,kind){
+  if(!e)return 0;
+  return kind==='buy'?buyOf(e[0],e[1]):kind==='stock'?stockUnitOf(e[0],e[1]):sellOf(e[0],e[1]);
+}
+/* 明細1行あたりの販売単価（本体＋錠前）。マスタ未取込・未紐づけのときは 0 を返す（呼び元で従来単価へフォールバック） */
+function bodySellUnit(ln){
+  if(!hasPriceMaster())return 0;
+  var body=priceByEntry(bodyCodeOf(ln),'sell');
+  if(!body)return 0;
+  /* 錠前は表記は従来どおり本体行に併記のまま、金額だけを単価に上乗せする（修正８①のユーザー指示）
+     パーソナルで錠前なしのときは従来表記どおりトッテが付く */
+  var lockKey=(ln.lock&&ln.lock!=='none')?ln.lock:((ln.type==='personal')?'totte':null);
+  var lock=lockKey?priceByEntry(lockCodeOf(lockKey),'sell'):0;
+  return body+lock;
+}
+function bodyBuyUnit(ln){
+  if(!hasPriceMaster())return 0;
+  var body=priceByEntry(bodyCodeOf(ln),'buy');
+  var lockKey=(ln.lock&&ln.lock!=='none')?ln.lock:((ln.type==='personal')?'totte':null);
+  return body+(lockKey?priceByEntry(lockCodeOf(lockKey),'buy'):0);
+}
+function bodyStockUnit(ln){
+  if(!hasPriceMaster())return 0;
+  var body=priceByEntry(bodyCodeOf(ln),'stock');
+  var lockKey=(ln.lock&&ln.lock!=='none')?ln.lock:((ln.type==='personal')?'totte':null);
+  return body+(lockKey?priceByEntry(lockCodeOf(lockKey),'stock'):0);
+}
+/* ★修正８①（ユーザー選択「新規案件から適用」）: 保存時にその時点の単価を案件へ焼き付ける。
+   本体行の単価は案件に保存されていなかったため、単価表を直すと過去の見積書の金額まで変わってしまう。
+   保存済みの案件は priceVer を持たないので従来単価（SIZES.p / SHELF_PRICE / BASE_PRICE）のまま表示される。 */
+function applyPriceSnapshot(order){
+  if(!order||!hasPriceMaster())return order;
+  var stamped=false;
+  (order.lines||[]).forEach(function(l){
+    if(!l||l.isPartOnly||l.isFreeInput)return;
+    var u=bodySellUnit(l);
+    if(u>0){l.unitPrice2=u;stamped=true;}
+    var sp=priceByEntry(shelfCodeOf(l),'sell');
+    if(sp>0)l.shelfPrice2=sp;
+  });
+  var bl=(order.lines||[]).filter(function(l){return !l.isPartOnly&&!l.isFreeInput&&l.hasBase!==false;})[0];
+  if(bl){var bp=priceByEntry(baseCodeOf(bl),'sell');if(bp>0){order.basePrice2=bp;stamped=true;}}
+  if(stamped)order.priceVer=2;
+  return order;
+}
+/* 表示・帳票で使う単価。priceVer が無い案件（v18.53以前に保存済み）は従来の固定単価にフォールバックする */
+function lineSellPrice(order,ln){
+  if(order&&order.priceVer>=2&&ln&&ln.unitPrice2>0)return ln.unitPrice2;
+  return sizeObj(ln.size).p;
+}
+function lineShelfPrice(order,ln){
+  if(order&&order.priceVer>=2&&ln&&ln.shelfPrice2>0)return ln.shelfPrice2;
+  return SHELF_PRICE;
+}
+function orderBasePrice(order){
+  if(order&&order.priceVer>=2&&order.basePrice2>0)return order.basePrice2;
+  return BASE_PRICE;
+}
+/* 価格マスタCSV/Excelの取込。列は 商品コード/商品名称/タイプ/商品区分/仕入単価/棚卸単価/販売単価。
+   「\9,900」のような通貨表記も数値化する。 */
+function parsePriceMasterAoa(aoa){
+  var hdr=-1,ci={};
+  var COLS={code:/商品コード/,name:/商品名称|商品名/,type:/^タイプ$/,kubun:/商品区分/,buy:/仕入単価/,stockUnit:/棚卸単価/,sell:/販売単価/};
+  for(var r=0;r<Math.min(aoa.length,5);r++){
+    var row=aoa[r]||[],found={};
+    row.forEach(function(x,i){var s=String(x||'');Object.keys(COLS).forEach(function(k){if(COLS[k].test(s)&&found[k]==null)found[k]=i;});});
+    if(found.code!=null&&found.sell!=null){hdr=r;ci=found;break;}
+  }
+  if(hdr<0)return {error:'ヘッダ行（商品コード・販売単価）を認識できません'};
+  function num(v){var s=String(v==null?'':v).replace(/[¥\\￥,\s　]/g,'');if(!s)return 0;var n=parseFloat(s);return isNaN(n)?0:n;}
+  var rows=[],dup={},seen={};
+  for(var rr=hdr+1;rr<aoa.length;rr++){
+    var rw=aoa[rr]||[];
+    var code=String((ci.code!=null?rw[ci.code]:'')||'').trim();
+    var name=String((ci.name!=null?rw[ci.name]:'')||'').trim();
+    if(!code&&!name)continue;
+    if(!code)continue;
+    if(seen[code])dup[code]=true;else seen[code]=true;
+    rows.push({code:code,name:name,
+      type:String((ci.type!=null?rw[ci.type]:'')||'').trim(),
+      kubun:String((ci.kubun!=null?rw[ci.kubun]:'')||'').trim(),
+      buy:num(ci.buy!=null?rw[ci.buy]:''),
+      stockUnit:num(ci.stockUnit!=null?rw[ci.stockUnit]:''),
+      sell:num(ci.sell!=null?rw[ci.sell]:'')});
+  }
+  return {rows:rows,count:rows.length,dupCodes:Object.keys(dup)};
+}
+/* 対応表の充足状況。未紐づけの組合せを画面から確認できるようにする */
+function priceMappingReport(){
+  var ok=[],ng=[];
+  LINES.forEach(function(L){
+    (LINE_SIZES[L.id]||[]).forEach(function(sz){
+      ['standard','personal'].forEach(function(tp){
+        ['door','doorH'].forEach(function(dt){
+          if(L.id!=='jp01'&&L.id!=='jp2'&&dt==='doorH')return;
+          var ln={line:L.id,size:sz,type:tp,doorType:dt,lock:'none'};
+          var e=bodyCodeOf(ln);
+          var label=L.name+' '+(L.id==='sa'?'Sα':sizeObj(sz).l)+'／'+(tp==='personal'?'パーソナル':'標準')+'／'+(dt==='doorH'?'ホタ扉':'同色扉');
+          if(e&&sellOf(e[0],e[1])>0)ok.push(label+' → '+e[0]);else ng.push(label);
+        });
+      });
+    });
+  });
+  var lockNg=[];
+  LOCK_TYPES.forEach(function(lt){
+    if(lt.hidden||lt.v==='none')return;/* 「鍵なし」は金額を持たないので対象外 */
+    var e=lockCodeOf(lt.v);
+    if(!e||!sellOf(e[0],e[1]))lockNg.push(lt.l);
+  });
+  return {ok:ok,ng:ng,lockNg:lockNg};
+}
+
+/* ========== v18.54 修正８①: 売上集計（期間指定・納品完了のみ） ==========
+   ・集計対象は status==='納品完了' の案件だけ（ユーザー指示）
+   ・基準日は「納品日（＝出荷指示時に入力した納品予定日）」または「出荷日」を選べる
+   ・売価は案件に焼き付けた販売単価、原価は仕入単価、あわせて棚卸単価ベースの原価も出す */
+function reportBasisMs(order,basis){
+  if(basis==='ship'){
+    var s=order.shippedDate||order.shipSentDate||'';
+    var m=String(s).match(/(\d{4})[-\/年.](\d{1,2})[-\/月.](\d{1,2})/);
+    if(m)return new Date(+m[1],+m[2]-1,+m[3]).getTime();
+    return null;
+  }
+  var t=deliveryPlanMs(order);
+  if(t!=null)return t;
+  /* 納品日が未入力・自由文言の案件は出荷日→案件作成日の順で拾う（集計から黙って落とさないため） */
+  var s2=order.shippedDate||order.date||'';
+  var m2=String(s2).match(/(\d{4})[-\/年.](\d{1,2})[-\/月.](\d{1,2})/);
+  return m2?new Date(+m2[1],+m2[2]-1,+m2[3]).getTime():null;
+}
+function ymdToMs(s,endOfDay){
+  var m=String(s||'').match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m)return null;
+  return endOfDay?new Date(+m[1],+m[2]-1,+m[3],23,59,59,999).getTime():new Date(+m[1],+m[2]-1,+m[3]).getTime();
+}
+/* 案件1件の売上・原価。売価は帳票と同じ計算（本体＋棚板＋ベース＋パーツ＋送料−値引き） */
+function orderSalesFigures(order){
+  var gp=calcGrossProfit(order);
+  var sell=gp.total.sell+(order.shipping||0)-(order.discount||0);
+  return {sell:sell,goods:gp.total.sell,ship:order.shipping||0,disc:order.discount||0,
+    buyCost:gp.total.cost,stockCost:gp.stockCost||0,missing:gp.total.missing,hasCost:gp.hasCost};
+}
+function buildSalesReport(fromMs,toMs,basis){
+  var rows=[],months={};
+  (ORDERS||[]).forEach(function(o){
+    if(o.status!=='納品完了')return;
+    var t=reportBasisMs(o,basis);
+    if(t==null)return;
+    if(fromMs!=null&&t<fromMs)return;
+    if(toMs!=null&&t>toMs)return;
+    var f=orderSalesFigures(o);
+    var c=CUSTS.find(function(x){return x.id===o.cid;});
+    var d=new Date(t),ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    if(!months[ym])months[ym]={ym:ym,cnt:0,sell:0,buyCost:0,stockCost:0};
+    months[ym].cnt++;months[ym].sell+=f.sell;months[ym].buyCost+=f.buyCost;months[ym].stockCost+=f.stockCost;
+    rows.push({no:o.no,date:t,ym:ym,cust:c?c.name:'',end:(o.endUser&&o.endUser.name)||'',
+      staff:orderStaffOf(o,c),sell:f.sell,goods:f.goods,ship:f.ship,disc:f.disc,
+      buyCost:f.buyCost,stockCost:f.stockCost,missing:f.missing,priceVer:o.priceVer||0});
+  });
+  rows.sort(function(a,b){return a.date-b.date;});
+  var tot={cnt:rows.length,sell:0,buyCost:0,stockCost:0,missing:0,legacy:0};
+  rows.forEach(function(r){tot.sell+=r.sell;tot.buyCost+=r.buyCost;tot.stockCost+=r.stockCost;tot.missing+=r.missing;if(!r.priceVer)tot.legacy++;});
+  var mList=Object.keys(months).sort().map(function(k){return months[k];});
+  return {rows:rows,months:mList,total:tot};
+}
+/* 現在庫の棚卸評価額（在庫数×棚卸単価）。STKを直接たどるので、在庫表の行定義に依存しない。
+   STK[line][wh][key] は 数値 / {sub:数量} / door・doorHは {色:{サイズ:数量}} の3形。 */
+function buildStockValuation(){
+  var byWh={},total=0,totQty=0,missQty=0,missKeys={};
+  WH_IDS.forEach(function(w){byWh[w]={wh:w,val:0,qty:0};});
+  LINES.forEach(function(L){
+    WH_IDS.forEach(function(w){
+      var box=STK[L.id]&&STK[L.id][w];
+      if(!box)return;
+      Object.keys(box).forEach(function(key){
+        if(isCommonStockKey(key)&&L.id!=='jp2')return;/* 鍵類の共通プールを二重計上しない */
+        var v=box[key];
+        function add(q,sub){
+          if(!(q>0))return;
+          var u=priceByEntry(partCodeOf(key,sub),'stock');
+          if(!(u>0)){missQty+=q;missKeys[key+(sub?'('+sub+')':'')]=true;return;}
+          byWh[w].val+=q*u;byWh[w].qty+=q;total+=q*u;totQty+=q;
+        }
+        if(typeof v==='number'){add(v,'');return;}
+        if(!v||typeof v!=='object')return;
+        if(key==='door'||key==='doorH'){
+          Object.keys(v).forEach(function(col){
+            var byS=v[col];if(!byS||typeof byS!=='object')return;
+            Object.keys(byS).forEach(function(s){add(byS[s]||0,s);});
+          });
+          return;
+        }
+        Object.keys(v).forEach(function(sub){if(typeof v[sub]==='number')add(v[sub],sub);});
+      });
+    });
+  });
+  return {byWh:WH_IDS.map(function(w){return byWh[w];}),total:total,qty:totQty,missQty:missQty,missKeys:Object.keys(missKeys)};
+}
+
 /* ========== v18.33 要望⑱: 粗利計算（原価マスタ＋八木熊品番紐付け） ==========
    COST_MASTER: {品番: 原価円}。原価表はLEC側でアップロード（品番,原価のCSV/Excel。原価は企業情報のため共有ファイルには含めない運用）。
    KEY_TO_YAGI: 集計キー(key|sub|color)→八木熊品番。商品コードnew.xlsx(2026-07-23提供)の八木熊シートから採録。
@@ -3622,18 +4001,51 @@ function isLockCostKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0||/^dial|^cy
 /* 案件→粗利区分別の売価・原価集計。原価はBOM数量×COST_MASTER[品番]。品番or原価が無い部材は missing にカウント */
 function calcGrossProfit(order){
   var cat={body:{sell:0,cost:0,missing:0},lock:{sell:0,cost:0,missing:0},base:{sell:0,cost:0,missing:0},shelf:{sell:0,cost:0,missing:0}};
+  /* v18.54 修正８①: 原価は「商品コード別の仕入単価」を最優先で使う（商品／部材ごとの単価マスタ）。
+     マスタに無い部材だけ、従来の八木熊品番×COST_MASTER のBOM積み上げで補う。
+     stockCost は棚卸単価ベースの原価で、売上集計（年間集計）で使う。 */
+  var usePM=hasPriceMaster();
+  var stockCost=0,masterCost=0,masterHit=false;
   (order.lines||[]).forEach(function(l){
     if(l.isFreeInput){cat.body.sell+=l.qty*(l.unitPrice||0);return;}
     if(l.isPartOnly){
       var c=(l.partKey==='base'||l.partKey==='base_bk')?'base':(l.partKey==='shelf'||l.partKey==='shelf_bk')?'shelf':(isLockCostKey(l.partKey)?'lock':'body');
-      cat[c].sell+=l.qty*(l.unitPrice||0);return;
+      cat[c].sell+=l.qty*(l.unitPrice||0);
+      if(usePM){
+        var pe=partCodeOf(l.partKey,l.partSub);
+        var pb=priceByEntry(pe,'buy');
+        if(pb>0){cat[c].cost+=l.qty*pb;masterCost+=l.qty*pb;masterHit=true;stockCost+=l.qty*priceByEntry(pe,'stock');}
+        else cat[c].missing+=1;
+      }
+      return;
     }
-    var so=sizeObj(l.size);
-    cat.body.sell+=l.qty*so.p;
-    var sq=parseInt(l.shelfQty)||0;if(sq>0)cat.shelf.sell+=sq*SHELF_PRICE;
+    cat.body.sell+=l.qty*lineSellPrice(order,l);
+    var sq=parseInt(l.shelfQty)||0;if(sq>0)cat.shelf.sell+=sq*lineShelfPrice(order,l);
+    if(usePM){
+      var bb=bodyBuyUnit(l);
+      if(bb>0){cat.body.cost+=l.qty*bb;masterCost+=l.qty*bb;masterHit=true;stockCost+=l.qty*bodyStockUnit(l);}
+      else cat.body.missing+=1;
+      if(sq>0){
+        var se=shelfCodeOf(l),sb=priceByEntry(se,'buy');
+        if(sb>0){cat.shelf.cost+=sq*sb;masterCost+=sq*sb;stockCost+=sq*priceByEntry(se,'stock');}
+        else cat.shelf.missing+=1;
+      }
+    }
   });
   var baseLines=(order.lines||[]).filter(function(l){return !l.isPartOnly&&!l.isFreeInput&&l.hasBase!==false;});
-  cat.base.sell+=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0)*4000;
+  var baseQty=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0);
+  cat.base.sell+=baseQty*orderBasePrice(order);
+  if(usePM&&baseQty>0&&baseLines[0]){
+    var be=baseCodeOf(baseLines[0]),bb2=priceByEntry(be,'buy');
+    if(bb2>0){cat.base.cost+=baseQty*bb2;masterCost+=baseQty*bb2;masterHit=true;stockCost+=baseQty*priceByEntry(be,'stock');}
+    else cat.base.missing+=1;
+  }
+  /* 単価マスタで原価が取れている場合はBOM積み上げを行わない（同じ原価を二重に数えないため） */
+  if(masterHit){
+    var t2={sell:0,cost:0,missing:0};
+    ['body','lock','base','shelf'].forEach(function(c){t2.sell+=cat[c].sell;t2.cost+=cat[c].cost;t2.missing+=cat[c].missing;});
+    return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:t2,hasCost:true,stockCost:stockCost,src:'master'};
+  }
   var agg=aggregateOrderBOM(order);
   Object.keys(agg).forEach(function(kk){
     var pp=kk.split('|');var key=pp[0],sub=pp[1],color=pp[2];var qty=agg[kk];if(!(qty>0))return;
@@ -3645,7 +4057,7 @@ function calcGrossProfit(order){
   });
   var total={sell:0,cost:0,missing:0};
   ['body','lock','base','shelf'].forEach(function(c){total.sell+=cat[c].sell;total.cost+=cat[c].cost;total.missing+=cat[c].missing;});
-  return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:total,hasCost:Object.keys(COST_MASTER).length>0};
+  return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:total,hasCost:Object.keys(COST_MASTER).length>0,stockCost:0,src:'bom'};
 }
 /* 原価表アップロード: 「品番,原価」列を含むCSV/Excel（1シート目）。ヘッダ行の「品番」「原価」を検出、無ければ 1列目=品番/最終数値列=原価 */
 function parseCostMasterAoa(aoa){
@@ -3859,11 +4271,14 @@ function generateQuoteHTML(order,docType){
     if(sq>0){var sc2=SHELF_COLORS.find(function(x){return x.v===ln.shelfColor;})||{l:'グレー'};itemName+='・棚板（'+sc2.l+'）';}
     if(ln.type==='open')itemName+='（オープン）';
     /* Calculate amount including shelf */
-    var amt2=ln.qty*sz.p;
-    if(sq>0)amt2+=sq*SHELF_PRICE;
+    /* v18.54 修正８①: 単価は案件に焼き付けた販売単価（本体＋錠前）を使う。priceVerが無い旧案件は従来単価 */
+    var uPrice=lineSellPrice(order,ln),shPrice=lineShelfPrice(order,ln);
+    var bodyEnt=(order&&order.priceVer>=2)?bodyCodeOf(ln):null;
+    var amt2=ln.qty*uPrice;
+    if(sq>0)amt2+=sq*shPrice;
     subtotal+=amt2;
     /* v18.37 修正箇所2④: 備考欄は空欄スタート（外寸は直接編集のプルダウンから選択して挿入する） */
-    rows.push({no:rowNo++,rkey:'L'+ln.id,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(order,'L'+ln.id,'')});
+    rows.push({no:rowNo++,rkey:'L'+ln.id,code:(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:ln.qty,unit:'台',price:uPrice,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(order,'L'+ln.id,'')});
   });
   /* Base - aggregate from lines that have base */
   var baseLines=order.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
@@ -3874,8 +4289,10 @@ function generateQuoteHTML(order,docType){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
     var bName=productName(fl0.line||'jp01')+'ベースボード('+bColorName+')'+(bCap?' アンカー穴キャップ付':'');
-    var bt=ti*BASE_PRICE;subtotal+=bt;
-    rows.push({no:rowNo++,rkey:'BASE',code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:BASE_PRICE,amount:bt,tax:'10%(外)',remark:rowRemark(order,'BASE',isRentalQuote(order)?RENTAL_NOTE:'')});
+    /* v18.54 修正８①: ベースボードの単価もマスタから（旧案件は従来のBASE_PRICE） */
+    var bPrice=orderBasePrice(order);var bEnt=(order&&order.priceVer>=2)?baseCodeOf(fl0):null;
+    var bt=ti*bPrice;subtotal+=bt;
+    rows.push({no:rowNo++,rkey:'BASE',code:(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:bt,tax:'10%(外)',remark:rowRemark(order,'BASE',isRentalQuote(order)?RENTAL_NOTE:'')});
     baseRowTotal=bt;
   }
   /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載 */
@@ -5444,6 +5861,10 @@ function InvPage(p){
   /* v18.46 修正５⑤: 修正モードで作った案件は同じ案件番号の既存案件へ上書きし、作成日・起票者は引き継ぐ。
      通常時は従来どおり新規追加。 */
   function upsertOrder(order){
+    /* v18.54 修正８①: 保存する時点の販売単価を案件へ焼き付ける（ユーザー選択「新規案件から適用」）。
+       これを入れないと単価マスタを更新するたびに過去案件の見積金額まで変わってしまう。
+       案件作成5経路はすべてここを通るため、1か所で担保できる。 */
+    applyPriceSnapshot(order);
     var em=editingMeta[0];
     if(em&&order.no===em.no){
       if(em.date)order.date=em.date;
@@ -5648,7 +6069,7 @@ function InvPage(p){
     else if(pd.hasSub==='size'){pSub=partSub[0];pLabel+='('+(pLine==='sa'?'Sα':pSub)+')';}
     var pColorOpt=(LINE_COLORS[pLine]||LINE_COLORS[ln[0]]||[]);
     var pColor=pd.hasColor?(pColorOpt.find(function(c){return c.v===partColor[0];})?partColor[0]:(pColorOpt[0]&&pColorOpt[0].v)||''):'';
-    var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:parseInt(partPrice[0])||0,partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
+    var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:(parseInt(partPrice[0])||0)||priceByEntry(partCodeOf(realKey,pSub),'sell'),partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
     lines[1](nl);doCheck(nl);
   }
   /* Free input line (not in inventory) */
@@ -5981,6 +6402,7 @@ function InvPage(p){
       var whP=selWH[0]||'honsha';
       var shipInfoP=cust?calcShipping(lines[0],whP,shipPref()):null;
       var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+      applyPriceSnapshot(previewOrder);/* v18.54 修正８①: プレビューも新単価で表示する（新規案件と同じ扱い） */
       quoteOrder[1](previewOrder);showQuote[1](true);
       p.toast('読み取り専用：見積プレビューのみ（保存不可）');
       return;
@@ -6339,7 +6761,13 @@ function InvPage(p){
             ):null,
             h('div',{style:{display:'flex',gap:4,marginBottom:4}},
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'数量'),h('input',{className:'inp',type:'number',min:1,value:partQty[0],onChange:function(e){partQty[1](e.target.value);},style:{textAlign:'center'}})),
-              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'単価(税抜)'),h('input',{className:'inp',type:'number',min:0,value:partPrice[0],onChange:function(e){partPrice[1](e.target.value);},style:{textAlign:'center'}}))
+              /* v18.54 修正８①: 空欄のままなら価格マスタの販売単価が入る。マスタの金額はプレースホルダに出す */
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'単価(税抜)'),h('input',{className:'inp',type:'number',min:0,value:partPrice[0],placeholder:(function(){
+                try{var pdX=getPartAddDefs().find(function(x){return x.k===partType[0];});if(!pdX)return '';
+                  var kX=pdX.isDoor?pdX.doorKey:(pdX.stockKey||pdX.k);
+                  var sX=pdX.fixedSub?pdX.fixedSub:(pdX.hasSub==='grp'?sizeObj(partSub[0]).grp:(pdX.hasSub?partSub[0]:''));
+                  var v=priceByEntry(partCodeOf(kX,sX),'sell');return v>0?String(v):'';}catch(e){return '';}
+              })(),onChange:function(e){partPrice[1](e.target.value);},style:{textAlign:'center'},title:'空欄のままにすると価格マスタの販売単価が入ります'}))
             ),
             h('button',{className:'btn btn-or',style:{width:'100%'},onClick:addPartLine},'＋ パーツ単品追加')
           )
@@ -6765,9 +7193,42 @@ function InvPage(p){
             };
             rd.readAsArrayBuffer(f);
           }
+          /* v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタの取込。
+             ★原価は社外秘のため index.html には持たせず、クラウド(lec_state)にだけ保存する */
+          function onUpPrice(e){
+            var f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
+            if(p.isReadOnly){p.toast('読み取り専用モード中は単価マスタを更新できません');return;}
+            var rd=new FileReader();
+            rd.onload=function(ev){
+              try{
+                var buf=ev.target.result,aoa;
+                if(/\.(xlsx|xls)$/i.test(f.name)){
+                  var wb=XLSX.read(buf,{type:'array'});
+                  aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false});
+                }else{
+                  var txt;
+                  try{txt=new TextDecoder('utf-8',{fatal:true}).decode(buf);}catch(e2){txt=new TextDecoder('shift_jis').decode(buf);}
+                  aoa=parseCsvText(txt);
+                }
+                var pr=parsePriceMasterAoa(aoa);
+                if(pr.error){p.toast(pr.error);return;}
+                if(!pr.count){p.toast('単価データを認識できませんでした（商品コード・販売単価の列が必要です）');return;}
+                PRICE_MASTER={rows:pr.rows,byCode:{},byCodeName:{},updatedAt:new Date().toLocaleString('ja-JP')};
+                indexPriceMaster();savePriceMaster();cloudSave(p.userName);
+                quoteOrder[1](Object.assign({},quoteOrder[0]));
+                p.toast('単価マスタを取込みました: '+pr.count+'件・全端末共有'+(pr.dupCodes.length?'（同一商品コードが複数行: '+pr.dupCodes.length+'件は商品名称で判別）':''));
+              }catch(err){p.toast('単価マスタの読込に失敗: '+(err&&err.message||err));}
+            };
+            rd.readAsArrayBuffer(f);
+          }
           return h('div',{className:'no-print',style:{marginBottom:10,padding:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6}},/* v18.34 ⑱追随: @media printで非表示 */
             h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:4}},
               h('div',{style:{fontSize:10,fontWeight:700,color:'#276749'}},'📊 粗利計算表（社内用・印刷されません）'),
+              /* v18.54 修正８①: 単価マスタ（販売単価・仕入単価・棚卸単価）の取込 */
+              h('label',{className:'btn btn-xs btn-gn',style:{cursor:'pointer',fontSize:9}},'単価マスタ取込（販売単価・原価のCSV）',
+                h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:onUpPrice})),
+              h('span',{style:{fontSize:8,color:hasPriceMaster()?'var(--g500)':'#C53030',fontWeight:hasPriceMaster()?400:700}},
+                hasPriceMaster()?('単価マスタ: '+PRICE_MASTER.rows.length+'件'+(PRICE_MASTER.updatedAt?'（'+PRICE_MASTER.updatedAt+'）':'')):'⚠ 単価マスタ未取込（従来の暫定単価で計算中）'),
               h('label',{className:'btn btn-xs btn-ol',style:{cursor:'pointer',fontSize:9}},'原価表アップロード（品番,原価のCSV/Excel）',
                 h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:onUpCost})),
               h('span',{style:{fontSize:8,color:'var(--g400)'}},'原価マスタ: '+Object.keys(COST_MASTER).length+'件登録済')
@@ -6837,11 +7298,14 @@ function QuotePreview(p){
     var sq=parseInt(ln.shelfQty)||0;
     if(sq>0){var sc2=SHELF_COLORS.find(function(x){return x.v===ln.shelfColor;})||{l:'グレー'};itemName+='・棚板（'+sc2.l+'）';}
     if(ln.type==='open')itemName+='（オープン）';
-    var amt2=ln.qty*sz.p;
-    if(sq>0)amt2+=sq*SHELF_PRICE;
+    /* v18.54 修正８①: 単価は案件に焼き付けた販売単価（本体＋錠前）を使う。priceVerが無い旧案件は従来単価 */
+    var uPrice=lineSellPrice(o,ln),shPrice=lineShelfPrice(o,ln);
+    var bodyEnt=(o&&o.priceVer>=2)?bodyCodeOf(ln):null;
+    var amt2=ln.qty*uPrice;
+    if(sq>0)amt2+=sq*shPrice;
     subtotal+=amt2;
     /* v18.37 修正箇所2④: 備考欄は空欄スタート（外寸は直接編集のプルダウンから選択して挿入する） */
-    rows.push({no:rowNo++,rkey:'L'+ln.id,code:sz.code,name:itemName,qty:ln.qty,unit:'台',price:sz.p,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(o,'L'+ln.id,'')});
+    rows.push({no:rowNo++,rkey:'L'+ln.id,code:(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:ln.qty,unit:'台',price:uPrice,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(o,'L'+ln.id,'')});
   });
   var baseLines=o.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
   /* v14.3: ベースはパーソナルでn(1台×1枚)、常設はislands。上下共通ボードはtop側でn*2化 */
@@ -6851,8 +7315,10 @@ function QuotePreview(p){
     var fl0=baseLines[0]||{};var bColor=fl0.baseColor||'gy';var bCap=fl0.hasCap!==false;
     var bColorName=bColor==='bk'?'ブラック':'グレー';
     var bName=productName(fl0.line||'jp01')+'ベースボード('+bColorName+')'+(bCap?' アンカー穴キャップ付':'');
-    var bt=ti*BASE_PRICE;subtotal+=bt;
-    rows.push({no:rowNo++,rkey:'BASE',code:'MYPL-B',name:bName,qty:ti,unit:'枚',price:BASE_PRICE,amount:bt,tax:'10%(外)',remark:rowRemark(o,'BASE',isRentalQuote(o)?RENTAL_NOTE:'')});
+    /* v18.54 修正８①: ベースボードの単価もマスタから（旧案件は従来のBASE_PRICE） */
+    var bPrice=orderBasePrice(o);var bEnt=(o&&o.priceVer>=2)?baseCodeOf(fl0):null;
+    var bt=ti*bPrice;subtotal+=bt;
+    rows.push({no:rowNo++,rkey:'BASE',code:(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:bt,tax:'10%(外)',remark:rowRemark(o,'BASE',isRentalQuote(o)?RENTAL_NOTE:'')});
     baseRowTotal=bt;
   }
   /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載 */
@@ -7049,6 +7515,15 @@ function OrdersPage(p){
   var kw=us('');
   /* v18.50 修正６⑧(再修正): 案件一覧も画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
   var fitList=useFitHeight(260);
+  /* v18.54 修正８①: 売上集計。期間を指定して集計する（ユーザー指示）。対象は「納品完了」の案件のみ。 */
+  var salesRep=us(false);
+  var repFrom=us(''),repTo=us(''),repBasis=us('delivery');
+  ue(function(){
+    if(!salesRep[0]||repFrom[0])return;
+    /* 初期表示は今年度（4/1〜翌3/31）。プリセットで暦年などにも切り替えられる */
+    var n=new Date(),y=n.getFullYear()+(n.getMonth()<3?-1:0);
+    repFrom[1](y+'-04-01');repTo[1]((y+1)+'-03-31');
+  },[salesRep[0]]);
   function orderMatchesKw(o,q){
     if(!q)return true;
     q=q.toLowerCase();
@@ -7193,7 +7668,9 @@ function OrdersPage(p){
             h('option',{value:'delivery'},'納品予定日が近い順'),
             h('option',{value:'no'},'案件番号（新しい順）'),
             h('option',{value:'created'},'案件作成日（新しい順）')
-          )
+          ),
+          /* v18.54 修正８①: 年間の売上集計。棚卸単価はここでだけ使う */
+          h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:4,fontWeight:700},title:'期間を指定して売上・原価・粗利と棚卸評価額を集計します',onClick:function(){salesRep[1](true);}},'📊 売上集計')
         )
       ),
       ORDERS.length===0?h('div',{style:{padding:30,textAlign:'center',color:'var(--g400)'}},'案件がありません。'):
@@ -7367,6 +7844,121 @@ function OrdersPage(p){
         }))
       ))
     ),
+    /* ===== v18.54 修正８①: 売上集計（期間指定・納品完了のみ・棚卸単価はここで使う） ===== */
+    salesRep[0]?(function(){
+      var fromMs=ymdToMs(repFrom[0],false),toMs=ymdToMs(repTo[0],true);
+      var rep=buildSalesReport(fromMs,toMs,repBasis[0]);
+      var val=buildStockValuation();
+      var thS={border:'1px solid var(--g200)',padding:'3px 8px',fontSize:10,background:'var(--g50)',fontWeight:700,whiteSpace:'nowrap'};
+      var tdS={border:'1px solid var(--g200)',padding:'3px 8px',fontSize:10,textAlign:'right',whiteSpace:'nowrap'};
+      var tdL=Object.assign({},tdS,{textAlign:'left'});
+      var gpBuy=rep.total.sell-rep.total.buyCost;
+      var gpStk=rep.total.sell-rep.total.stockCost;
+      function pct(a,b){return b>0?(a/b*100).toFixed(1)+'%':'−';}
+      function preset(label,f,t){return h('button',{key:label,className:'btn btn-xs btn-ol',onClick:function(){repFrom[1](f);repTo[1](t);}},label);}
+      var nowY=new Date().getFullYear(),fy=nowY+(new Date().getMonth()<3?-1:0);
+      function card(title,value,sub,color){
+        return h('div',{style:{flex:'1 1 150px',minWidth:140,padding:'8px 12px',background:'#fff',border:'1px solid var(--g200)',borderRadius:8}},
+          h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:700}},title),
+          h('div',{style:{fontSize:18,fontWeight:900,color:color||'var(--nv)',lineHeight:1.3}},value),
+          sub?h('div',{style:{fontSize:9,color:'var(--g400)'}},sub):null);
+      }
+      function exportXlsx(){
+        try{
+          if(typeof XLSX==='undefined'){p.toast('SheetJS未読込');return;}
+          var wb=XLSX.utils.book_new();
+          var sum=[['売上集計'],['期間',repFrom[0]+' 〜 '+repTo[0]],['基準日',repBasis[0]==='ship'?'出荷日':'納品日'],['対象','納品完了の案件のみ'],[],
+            ['件数',rep.total.cnt],['売上高',rep.total.sell],['原価(仕入単価)',rep.total.buyCost],['粗利(仕入単価)',gpBuy],['粗利率',pct(gpBuy,rep.total.sell)],[],
+            ['原価(棚卸単価)',rep.total.stockCost],['粗利(棚卸単価)',gpStk],['粗利率',pct(gpStk,rep.total.sell)],[],
+            ['棚卸評価額(現在庫×棚卸単価)',val.total],['評価対象在庫数',val.qty]];
+          XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'サマリ');
+          var mo=[['年月','件数','売上高','原価(仕入)','粗利','原価(棚卸)','粗利(棚卸)']];
+          rep.months.forEach(function(m){mo.push([m.ym,m.cnt,m.sell,m.buyCost,m.sell-m.buyCost,m.stockCost,m.sell-m.stockCost]);});
+          XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(mo),'月別');
+          var de=[['案件番号','基準日','顧客','エンド納品先','担当','売上高','うち商品','送料','値引き','原価(仕入)','粗利','原価(棚卸)','単価版']];
+          rep.rows.forEach(function(r){de.push([r.no,new Date(r.date).toLocaleDateString('ja-JP'),r.cust,r.end,r.staff,r.sell,r.goods,r.ship,r.disc,r.buyCost,r.sell-r.buyCost,r.stockCost,r.priceVer?'新単価':'旧単価']);});
+          XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(de),'案件別');
+          var iv=[['倉庫','在庫数','棚卸評価額']];
+          val.byWh.forEach(function(b){iv.push([(WH_MAP[b.wh]||{}).n||b.wh,b.qty,b.val]);});
+          iv.push(['合計',val.qty,val.total]);
+          XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(iv),'棚卸評価額');
+          XLSX.writeFile(wb,'売上集計_'+repFrom[0]+'_'+repTo[0]+'.xlsx');
+        }catch(e){p.toast('Excel出力に失敗: '+(e&&e.message||e));}
+      }
+      return h(Modal,{show:true,title:'売上集計（納品完了の案件）',w:980,onClose:function(){salesRep[1](false);},
+        footer:h('div',{style:{display:'flex',gap:6}},
+          h('button',{className:'btn btn-or',onClick:exportXlsx},'📊 Excel出力'),
+          h('button',{className:'btn btn-ol',onClick:function(){salesRep[1](false);}},'閉じる'))},
+        h('div',null,
+          /* 期間指定 */
+          h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8,padding:8,background:'var(--g50)',border:'1px solid var(--g200)',borderRadius:8}},
+            h('span',{style:{fontSize:10,fontWeight:700,color:'var(--g600)'}},'期間'),
+            h('input',{className:'inp',type:'date',style:{width:140},value:repFrom[0],onChange:function(e){repFrom[1](e.target.value);}}),
+            h('span',{style:{fontSize:10}},'〜'),
+            h('input',{className:'inp',type:'date',style:{width:140},value:repTo[0],onChange:function(e){repTo[1](e.target.value);}}),
+            h('span',{style:{fontSize:10,fontWeight:700,color:'var(--g600)',marginLeft:6}},'基準日'),
+            h('select',{className:'inp',style:{width:110},value:repBasis[0],onChange:function(e){repBasis[1](e.target.value);},title:'納品日＝出荷指示時に入力した納品予定日'},
+              h('option',{value:'delivery'},'納品日'),h('option',{value:'ship'},'出荷日')),
+            h('span',{style:{marginLeft:6,color:'var(--g300)'}},'|'),
+            preset('今年度',fy+'-04-01',(fy+1)+'-03-31'),
+            preset('前年度',(fy-1)+'-04-01',fy+'-03-31'),
+            preset('今年',nowY+'-01-01',nowY+'-12-31'),
+            preset('前年',(nowY-1)+'-01-01',(nowY-1)+'-12-31')
+          ),
+          !hasPriceMaster()?h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#FEF2F2',border:'1.5px solid #FCA5A5',borderRadius:8,fontSize:10,color:'#991B1B'}},
+            '⚠ 単価マスタが未取込のため、原価（仕入単価・棚卸単価）は集計できません。見積書作成画面の「単価マスタ取込」から取り込んでください。'):null,
+          /* サマリ */
+          h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}},
+            card('対象件数',fm(rep.total.cnt)+'件','納品完了のみ'),
+            card('売上高','¥'+fm(rep.total.sell),'商品＋送料−値引き'),
+            card('原価（仕入単価）','¥'+fm(rep.total.buyCost),null,'#975a16'),
+            card('粗利（仕入単価）','¥'+fm(gpBuy),'粗利率 '+pct(gpBuy,rep.total.sell),'#276749'),
+            card('原価（棚卸単価）','¥'+fm(rep.total.stockCost),null,'#975a16'),
+            card('粗利（棚卸単価）','¥'+fm(gpStk),'粗利率 '+pct(gpStk,rep.total.sell),'#276749')
+          ),
+          (rep.total.missing>0||rep.total.legacy>0)?h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:8,fontSize:9,color:'#9A3412'}},
+            (rep.total.missing>0?'⚠ 単価マスタに紐づいていない部材が '+rep.total.missing+' 件あり、その分の原価は集計に含まれていません。 ':'')+
+            (rep.total.legacy>0?'⚠ '+rep.total.legacy+'件は単価マスタ導入前に保存された案件のため、当時の単価（旧単価）で売上を計上しています。':'')
+          ):null,
+          /* 月別 */
+          h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',margin:'10px 0 4px'}},'月別'),
+          h('div',{className:'scy',style:{maxHeight:200}},h('table',{style:{borderCollapse:'collapse',width:'100%'}},
+            h('thead',null,h('tr',null,['年月','件数','売上高','原価(仕入)','粗利','原価(棚卸)','粗利(棚卸)'].map(function(x){return h('th',{key:x,style:thS},x);}))),
+            h('tbody',null,rep.months.length===0?h('tr',null,h('td',{colSpan:7,style:Object.assign({},tdS,{textAlign:'center',color:'var(--g400)'})},'対象の案件がありません')):
+              rep.months.map(function(m){return h('tr',{key:m.ym},
+                h('td',{style:tdL},m.ym),h('td',{style:tdS},fm(m.cnt)),h('td',{style:tdS},'¥'+fm(m.sell)),
+                h('td',{style:tdS},'¥'+fm(m.buyCost)),h('td',{style:tdS},'¥'+fm(m.sell-m.buyCost)),
+                h('td',{style:tdS},'¥'+fm(m.stockCost)),h('td',{style:tdS},'¥'+fm(m.sell-m.stockCost)));}))
+          )),
+          /* 案件別 */
+          h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',margin:'10px 0 4px'}},'案件別'),
+          h('div',{className:'scy',style:{maxHeight:240}},h('table',{style:{borderCollapse:'collapse',width:'100%'}},
+            h('thead',null,h('tr',null,['案件番号','基準日','顧客','担当','売上高','原価(仕入)','粗利','原価(棚卸)'].map(function(x){return h('th',{key:x,style:thS},x);}))),
+            h('tbody',null,rep.rows.length===0?h('tr',null,h('td',{colSpan:8,style:Object.assign({},tdS,{textAlign:'center',color:'var(--g400)'})},'対象の案件がありません')):
+              rep.rows.map(function(r){return h('tr',{key:r.no},
+                h('td',{style:tdL},r.no,!r.priceVer?h('span',{className:'bg bg-y',style:{marginLeft:3,fontSize:8},title:'単価マスタ導入前に保存された案件です'},'旧単価'):null),
+                h('td',{style:tdL},new Date(r.date).toLocaleDateString('ja-JP')),
+                h('td',{style:tdL},r.cust+(r.end?'（'+r.end+'）':'')),
+                h('td',{style:tdL},r.staff||''),
+                h('td',{style:tdS},'¥'+fm(r.sell)),h('td',{style:tdS},'¥'+fm(r.buyCost)),
+                h('td',{style:tdS},'¥'+fm(r.sell-r.buyCost)),h('td',{style:tdS},'¥'+fm(r.stockCost)));}))
+          )),
+          /* 棚卸評価額 */
+          h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',margin:'10px 0 4px'}},'棚卸評価額（現在庫 × 棚卸単価・期間指定の影響を受けません）'),
+          h('table',{style:{borderCollapse:'collapse',width:'100%'}},
+            h('thead',null,h('tr',null,['倉庫','在庫数','棚卸評価額'].map(function(x){return h('th',{key:x,style:thS},x);}))),
+            h('tbody',null,
+              val.byWh.map(function(b){return h('tr',{key:b.wh},
+                h('td',{style:tdL},(WH_MAP[b.wh]||{}).n||b.wh),
+                h('td',{style:tdS},fm(b.qty)),h('td',{style:tdS},'¥'+fm(b.val)));}),
+              h('tr',{style:{fontWeight:900,background:'#ECFDF5'}},
+                h('td',{style:tdL},'合計'),h('td',{style:tdS},fm(val.qty)),h('td',{style:tdS},'¥'+fm(val.total)))
+            )
+          ),
+          val.missQty>0?h('div',{style:{fontSize:9,color:'#9A3412',marginTop:4}},'⚠ 棚卸単価が紐づいていない在庫が '+fm(val.missQty)+' 点あり、評価額に含まれていません（'+val.missKeys.slice(0,6).join('・')+(val.missKeys.length>6?' ほか':'')+'）。'):null
+        )
+      );
+    })():null,
     detail[0]?h(Modal,{show:true,title:'案件詳細 — '+detail[0].no,w:650,onClose:function(){detail[1](null);},
       footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
         detail[0].status==='仮押さえ'?h('button',{className:'btn btn-or',onClick:function(){
