@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.56（修正９の確認項目 常設タイプは上下ジョイントの要否欄を非表示／出荷指示書は予備パーツを合算した数量で出力）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.57（上下ジョイントの「必要」「不要」を独立したチェックボックスに変更）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6885,9 +6885,14 @@ function InvPage(p){
                  ★Sα(sa)は上下ジョイントの部材が存在しないため対象外。 */
               vjApplies?h('span',{key:'vjsep',style:{width:1,height:18,background:'var(--g200)',margin:'0 2px'}}):null,
               vjApplies?h('label',{key:'vjlbl',style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'上下ジョイント'):null,
-              vjApplies?h('label',{key:'vjchk',style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3},title:'チェック＝必要／外す＝不要'},
-                h('input',{type:'checkbox',checked:vjNeedEff,onChange:function(){vjNeed[1](!vjNeedEff);if(vjNeedEff)vjQty[1]('');}}),
-                vjNeedEff?'必要':'不要'):null,
+              /* v18.57: 「必要」「不要」をそれぞれ独立したチェックボックスにする（どちらを選んだかチェックで一目で分かるように）。
+                 どちらか一方だけが必ずチェックされた状態になる（チェック済みの方を押しても外れない）。 */
+              vjApplies?h('label',{key:'vjyes',style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:2,fontWeight:vjNeedEff?700:400,color:vjNeedEff?'var(--nv)':'var(--g500)'},title:'上下ジョイントを必要部材として計上します'},
+                h('input',{type:'checkbox',checked:vjNeedEff,onChange:function(){if(!vjNeedEff)vjNeed[1](true);}}),
+                '必要'):null,
+              vjApplies?h('label',{key:'vjno',style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:2,fontWeight:vjNeedEff?400:700,color:vjNeedEff?'var(--g500)':'#B45309'},title:'上下ジョイントを計上しません'},
+                h('input',{type:'checkbox',checked:!vjNeedEff,onChange:function(){if(vjNeedEff){vjNeed[1](false);vjQty[1]('');}}}),
+                '不要'):null,
               (vjApplies&&vjNeedEff)?h('input',{key:'vjqty',className:'inp',type:'number',min:0,value:vjQty[0],onChange:function(e){vjQty[1](e.target.value);},placeholder:String(vjAutoQtyUI),title:'ブランクなら計算式どおりの個数（'+vjAutoQtyUI+'個）',style:{width:56,textAlign:'center'}}):null,
               (vjApplies&&vjNeedEff)?h('span',{key:'vjnote',style:{fontSize:8,color:'var(--g500)'}},'個（ブランク＝計算式どおり'+vjAutoQtyUI+'個）'):null
             ),
