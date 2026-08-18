@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.57（上下ジョイントの「必要」「不要」を独立したチェックボックスに変更）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.58（案件詳細の部材内訳・編集権限なしでも顧客編集/見積作成・案件管理のExcel系ボタン整理・トレーニングモード）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -134,6 +134,42 @@ var APP_VERSION=(function(){
     return m?('v'+m[1]):'v?';
   }catch(e){return 'v?';}
 })();
+/* ========== v18.58 修正10④: トレーニングモード ==========
+   システムの使用トレーニング用に、「自由に編集・操作できるが本番環境のデータへ一切影響しない」練習モード。
+   仕組みは3層で、いずれか1つが漏れても本番へ書かないよう多重に止めている。
+    1) localStorage への書き込み … 下の lsSet/lsDel が受け止め、メモリ上のオーバーレイにだけ書く。
+       ブラウザに保存された実データ（案件・在庫・顧客・ログイン情報）は一切変更されない。
+    2) Supabase への保存 … cloudSave() の先頭で return する（全社共有の lec_state を書き換えない）。
+    3) 他端末への配信・同時編集ロック … presence/broadcast チャンネルを購読しないため、
+       トレーニング中の操作は他の人に届かず、他の人の編集権限も奪わない。
+   ★モードの保持先は sessionStorage（そのタブだけ・タブを閉じれば終了）。切替時はリロードして
+     クラウドから実データを読み直し、その「コピー」を練習台にする。終了も同じくリロードで元に戻る。 */
+var TRAINING=false;
+try{TRAINING=(sessionStorage.getItem('lec_training')==='1');}catch(e){}
+var _lsOverlay={};/* トレーニング中の localStorage 書き込み先。値=文字列 / null=削除済み */
+/* ★以降アプリ内では localStorage を直接触らず、必ずこの3つを経由すること（トレーニングの穴を作らないため） */
+function lsGet(k){
+  if(TRAINING&&Object.prototype.hasOwnProperty.call(_lsOverlay,k))return _lsOverlay[k];
+  try{return localStorage.getItem(k);}catch(e){return null;}
+}
+function lsSet(k,v){
+  if(TRAINING){_lsOverlay[k]=String(v);return;}
+  try{localStorage.setItem(k,v);}catch(e){}
+}
+function lsDel(k){
+  if(TRAINING){_lsOverlay[k]=null;return;}
+  try{localStorage.removeItem(k);}catch(e){}
+}
+function enterTraining(){
+  if(!confirm('トレーニングモードを開始します。\n\n・自由に操作・編集できますが、保存内容は本番データへ一切反映されません\n・他の利用者にも通知されません（編集権限も奪いません）\n・画面をリロードすると練習内容は消え、通常モードへ戻ります\n\n開始しますか？'))return;
+  try{sessionStorage.setItem('lec_training','1');}catch(e){alert('この環境ではトレーニングモードを利用できません');return;}
+  location.reload();
+}
+function exitTraining(){
+  if(!confirm('トレーニングモードを終了して通常モードへ戻ります。\n練習中に入力した内容はすべて破棄されます。よろしいですか？'))return;
+  try{sessionStorage.removeItem('lec_training');}catch(e){}
+  location.reload();
+}
 /* v18.50 修正６⑧(再修正): 一覧ボックスの高さを「画面に収まる高さ」へ自動調整するフック。
    v18.49 で .scy に overflow-x:scroll を入れて横スクロールバー自体は常に出るようにしたが、
    バーはボックスの下端に付くため、ボックスの高さが 68〜74vh 固定で画面の下へはみ出していると
@@ -203,8 +239,8 @@ function ensureStkLateAdditions(){
    削除Noを明示的に配り、受信側でローカルからも除去する。案件Noは再利用されない(nextON単調増加)ので安全。
    localStorageに永続化してリロードを跨いでも墓標を保持する。 */
 var DELETED_ORDER_NOS=[];
-try{var _dn=localStorage.getItem('lec_deleted_nos');if(_dn)DELETED_ORDER_NOS=JSON.parse(_dn)||[];}catch(e){}
-function saveDeletedNos(){try{localStorage.setItem('lec_deleted_nos',JSON.stringify(DELETED_ORDER_NOS.slice(-500)));}catch(e){}}
+try{var _dn=lsGet('lec_deleted_nos');if(_dn)DELETED_ORDER_NOS=JSON.parse(_dn)||[];}catch(e){}
+function saveDeletedNos(){try{lsSet('lec_deleted_nos',JSON.stringify(DELETED_ORDER_NOS.slice(-500)));}catch(e){}}
 function markOrderDeleted(no){
   if(!no)return;
   if(DELETED_ORDER_NOS.indexOf(no)<0)DELETED_ORDER_NOS.push(no);
@@ -216,8 +252,8 @@ function markOrderDeleted(no){
    custom_parts / custom_irisu も含めてクラウド共有する(B9の端末間非同期を解消) */
 function buildCloudDoc(){
   var cp=[],ci={};
-  try{cp=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');}catch(e){}
-  try{ci=JSON.parse(localStorage.getItem('lec_custom_irisu')||'{}');}catch(e){}
+  try{cp=JSON.parse(lsGet('lec_custom_parts')||'[]');}catch(e){}
+  try{ci=JSON.parse(lsGet('lec_custom_irisu')||'{}');}catch(e){}
   return {
     orders:ORDERS,nextON:nextON,held:HELD,stk:STK,
     incoming:INCOMING,nextIncId:nextIncId,
@@ -297,7 +333,7 @@ function applyCloudDoc(doc,opts){
     /* カスタム部材・カスタム入数をクラウドから取り込み、メモリ(PART_LABELS/IRISU)に反映 */
     if(Array.isArray(doc.customParts)){
       try{
-        localStorage.setItem('lec_custom_parts',JSON.stringify(doc.customParts));
+        lsSet('lec_custom_parts',JSON.stringify(doc.customParts));
         doc.customParts.forEach(function(it){if(it&&it.key){PART_LABELS[it.key]=it.label;if(it.irisu>0)IRISU[it.key]=it.irisu;}});
       }catch(e){}
     }
@@ -327,7 +363,7 @@ function applyCloudDoc(doc,opts){
     }
     if(doc.customIrisu&&typeof doc.customIrisu==='object'){
       try{
-        localStorage.setItem('lec_custom_irisu',JSON.stringify(doc.customIrisu));
+        lsSet('lec_custom_irisu',JSON.stringify(doc.customIrisu));
         Object.keys(doc.customIrisu).forEach(function(k){
           var v=doc.customIrisu[k];
           if(typeof v==='object'&&v!==null)IRISU[k]=Object.assign(IRISU[k]||{},v);
@@ -360,6 +396,9 @@ function cloudLoad(cb){
 
 /* 現在状態をクラウドへ保存(upsert)。デバウンスで連続保存を間引く。 */
 function cloudSave(userName,immediate){
+  /* v18.58 修正10④: トレーニングモード中は全社共有データ(lec_state)を絶対に書き換えない。
+     保存経路は全てここを通る（broadcastOrderUpdate も先頭で cloudSave を呼ぶ）ので、ここで止めれば本番へ届かない。 */
+  if(TRAINING)return;
   if(!supaClient||!CLOUD_READY)return;
   if(_cloudSaveTimer){clearTimeout(_cloudSaveTimer);_cloudSaveTimer=null;}
   var doFn=function(){
@@ -495,10 +534,10 @@ var QUOTE_OPT_DEFAULTS={
 };
 var QUOTE_OPTS={delivery:QUOTE_OPT_DEFAULTS.delivery.slice(),place:[],expiry:QUOTE_OPT_DEFAULTS.expiry.slice()};
 try{
-  var _qOpt=JSON.parse(localStorage.getItem('lec_quote_opts')||'null');
+  var _qOpt=JSON.parse(lsGet('lec_quote_opts')||'null');
   if(_qOpt&&typeof _qOpt==='object')QUOTE_OPT_KEYS.forEach(function(k){if(Array.isArray(_qOpt[k]))QUOTE_OPTS[k]=_qOpt[k].slice();});
 }catch(e){}
-function saveQuoteOpts(){try{localStorage.setItem('lec_quote_opts',JSON.stringify(QUOTE_OPTS));}catch(e){}}
+function saveQuoteOpts(){try{lsSet('lec_quote_opts',JSON.stringify(QUOTE_OPTS));}catch(e){}}
 /* v18.46 修正５④: 規定文言（QUOTE_OPT_DEFAULTS）は選択肢から削除できない仕様にする。
    過去に削除された状態がlocalStorage/クラウドに残っていても、読み込み時に復元する。 */
 function isDefaultQuoteOpt(kind,val){return (QUOTE_OPT_DEFAULTS[kind]||[]).indexOf(val)>=0;}
@@ -518,10 +557,10 @@ ensureQuoteOptDefaults();
 var HONORIFIC_DEFAULTS=['様','先生','事務長','校長'];
 var HONORIFICS=HONORIFIC_DEFAULTS.slice();
 try{
-  var _hon=JSON.parse(localStorage.getItem('lec_honorifics')||'null');
+  var _hon=JSON.parse(lsGet('lec_honorifics')||'null');
   if(Array.isArray(_hon))HONORIFICS=_hon.slice();
 }catch(e){}
-function saveHonorifics(){try{localStorage.setItem('lec_honorifics',JSON.stringify(HONORIFICS));}catch(e){}}
+function saveHonorifics(){try{lsSet('lec_honorifics',JSON.stringify(HONORIFICS));}catch(e){}}
 function isDefaultHonorific(v){return HONORIFIC_DEFAULTS.indexOf(v)>=0;}
 function ensureHonorificDefaults(){
   if(!Array.isArray(HONORIFICS))HONORIFICS=[];
@@ -859,7 +898,7 @@ var PART_ADD_DEFS=[
 /* localStorageのカスタム部材も含めたパーツ単品候補（部材在庫一覧と一致） */
 function getPartAddDefs(){
   var extra=[];
-  try{var cp=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');extra=cp.filter(function(it){return it&&it.key;}).map(function(it){return {k:it.key,l:'＋'+it.label};});}catch(e){}
+  try{var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');extra=cp.filter(function(it){return it&&it.key;}).map(function(it){return {k:it.key,l:'＋'+it.label};});}catch(e){}
   return PART_ADD_DEFS.concat(extra);
 }
 function productName(lineId,showVer){
@@ -1011,7 +1050,7 @@ var IRISU={
 /* v14.2: カスタム入数の永続化 - localStorageから上書き */
 (function applyCustomIrisu(){
   try{
-    var ci=JSON.parse(localStorage.getItem('lec_custom_irisu')||'{}');
+    var ci=JSON.parse(lsGet('lec_custom_irisu')||'{}');
     Object.keys(ci).forEach(function(k){
       if(typeof ci[k]==='object'&&ci[k]!==null){
         IRISU[k]=Object.assign(IRISU[k]||{},ci[k]);
@@ -2225,8 +2264,8 @@ function seinoSurcharge(distanceKm,weightKg){
 }
 /* v18.30 要望④: 送料計算表アップロードによる運賃表の上書き層（Supabase lec_state で全端末共有・localStorageにも保持） */
 var FREIGHT_TABLES_OVR={};
-(function(){try{FREIGHT_TABLES_OVR=JSON.parse(localStorage.getItem('lec_freight_tables')||'{}')||{};}catch(e){FREIGHT_TABLES_OVR={};}})();
-function saveFreightTables(){try{localStorage.setItem('lec_freight_tables',JSON.stringify(FREIGHT_TABLES_OVR));}catch(e){}}
+(function(){try{FREIGHT_TABLES_OVR=JSON.parse(lsGet('lec_freight_tables')||'{}')||{};}catch(e){FREIGHT_TABLES_OVR={};}})();
+function saveFreightTables(){try{lsSet('lec_freight_tables',JSON.stringify(FREIGHT_TABLES_OVR));}catch(e){}}
 function effRT(key){return (FREIGHT_TABLES_OVR.rate&&FREIGHT_TABLES_OVR.rate[key])||RATE_TABLES[key];}
 function effCT(key){return (FREIGHT_TABLES_OVR.charter&&FREIGHT_TABLES_OVR.charter[key])||CHARTER_TABLES[key];}
 /* v18.30 要望④: 送料計算表(運賃表)Excelの自動判別パーサ。改定時に管理者がアップロード→全端末共有。
@@ -2401,8 +2440,8 @@ function applyFreightUpload(list,who){
 /* v18.30 要望②: 業者(八木熊・新柏・尼高等)の商品コード⇔在庫アイテム紐づけマスタ。クラウド(lec_state)で全端末共有。
    形式: {コード文字列: {vendor,line,key,sub,color,size,label,cat}} ※cat/色サイズは在庫キー解決用（入庫予定itemsと同形式） */
 var VENDOR_CODES={};
-(function(){try{VENDOR_CODES=JSON.parse(localStorage.getItem('lec_vendor_codes')||'{}')||{};}catch(e){VENDOR_CODES={};}})();
-function saveVendorCodes(){try{localStorage.setItem('lec_vendor_codes',JSON.stringify(VENDOR_CODES));}catch(e){}}
+(function(){try{VENDOR_CODES=JSON.parse(lsGet('lec_vendor_codes')||'{}')||{};}catch(e){VENDOR_CODES={};}})();
+function saveVendorCodes(){try{lsSet('lec_vendor_codes',JSON.stringify(VENDOR_CODES));}catch(e){}}
 /* v18.30 要望②: 業者入庫データ(Excel/CSV)のパース。ヘッダ行から「コード/品番」「数量/入庫数」（任意で「倉庫」「日付」）列を自動検出し、
    VENDOR_CODES で在庫アイテムに解決する。戻り {rows:[{code,qty,item|null}],resolved,unresolved} | null(ヘッダ不明) */
 function parseVendorIncoming(wb){
@@ -2550,9 +2589,9 @@ function destFindDistance(tableKey,destCity){
 /* v18.9 P3-C: 運賃の管理者編集オーバーライド層。localStorageに上書き値を保存し、ロード時に適用。
    FREIGHT_OVR={shokei:{seino,misshu}, prefKm:{都道府県:km}, rates:{table:{wi:{di:値}}}}。変更履歴はlec_freight_history。 */
 var FREIGHT_OVR={};
-(function(){try{FREIGHT_OVR=JSON.parse(localStorage.getItem('lec_freight_override')||'{}')||{};}catch(e){FREIGHT_OVR={};}
+(function(){try{FREIGHT_OVR=JSON.parse(lsGet('lec_freight_override')||'{}')||{};}catch(e){FREIGHT_OVR={};}
   /* v18.31: r6_sapporoの表構成変更(50km列+10-60kg行追加)に伴い、旧構成のwi/diインデックスで保存されたセル上書きは誤適用になるため破棄（書込UIは現存せず通常は空） */
-  try{if(FREIGHT_OVR.rates&&FREIGHT_OVR.rates.r6_sapporo){delete FREIGHT_OVR.rates.r6_sapporo;localStorage.setItem('lec_freight_override',JSON.stringify(FREIGHT_OVR));}}catch(e){}})();
+  try{if(FREIGHT_OVR.rates&&FREIGHT_OVR.rates.r6_sapporo){delete FREIGHT_OVR.rates.r6_sapporo;lsSet('lec_freight_override',JSON.stringify(FREIGHT_OVR));}}catch(e){}})();
 function freightDefShokei(tableKey){return (tableKey==='r5_amago'||tableKey==='r6_sapporo')?363:325;}
 /* v18.34 顧客回答A-1: 見積記載運賃＝運賃原価×1.1を千円未満切上げ（顧客例: 35,800→39,380→40,000）。
    ※回答文言は「百円単位まで切り上げ」だが例が千円切上げのため例に準拠（7/30定例で最終確認）。
@@ -2576,13 +2615,13 @@ function effRateCell(tableKey,wi,di){
   var o=FREIGHT_OVR.rates&&FREIGHT_OVR.rates[tableKey]&&FREIGHT_OVR.rates[tableKey][wi];
   return (o&&o[di]!=null)?o[di]:null;
 }
-function saveFreightOverride(){try{localStorage.setItem('lec_freight_override',JSON.stringify(FREIGHT_OVR));}catch(e){}}
+function saveFreightOverride(){try{lsSet('lec_freight_override',JSON.stringify(FREIGHT_OVR));}catch(e){}}
 function recordFreightHistory(who,field,oldV,newV){
-  var h=[];try{h=JSON.parse(localStorage.getItem('lec_freight_history')||'[]');}catch(e){}
+  var h=[];try{h=JSON.parse(lsGet('lec_freight_history')||'[]');}catch(e){}
   h.push({who:who||'',ts:new Date().toLocaleString('ja-JP'),field:field,old:oldV,'new':newV});
-  try{localStorage.setItem('lec_freight_history',JSON.stringify(h.slice(-500)));}catch(e){}
+  try{lsSet('lec_freight_history',JSON.stringify(h.slice(-500)));}catch(e){}
 }
-function getFreightHistory(){try{return JSON.parse(localStorage.getItem('lec_freight_history')||'[]');}catch(e){return [];}}
+function getFreightHistory(){try{return JSON.parse(lsGet('lec_freight_history')||'[]');}catch(e){return [];}}
 /* v18.30 要望④: 運賃原価=地別運賃+諸経費(箱数×100)+燃料サーチャージ(西濃のみ)。見積運賃=切上げ(原価×1.1)。
    v18.34 顧客回答B-4①: 中継料(課金重量1000kg超の着点チャーター3万円)は運賃原価に算入し、見積側へも原価×1.1で反映
    （従来の「見積のみ実費加算」から変更）。 */
@@ -3072,7 +3111,7 @@ function exportFullBackup(editorNm){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(stkAoa),'在庫データ');
   var stamp=((typeof td2==='function'?td2():'')||'').replace(/\//g,'-')||'backup';
   XLSX.writeFile(wb,'LECバックアップ_顧客在庫_'+stamp+'.xlsx');
-  try{localStorage.setItem('lec_last_backup',new Date().toISOString().slice(0,10));}catch(_){}
+  try{lsSet('lec_last_backup',new Date().toISOString().slice(0,10));}catch(_){}
   try{EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),label:'データバックアップ書き出し（顧客+在庫）',editor:editorNm||'バックアップ'});}catch(_){}
   return true;
 }
@@ -3685,8 +3724,8 @@ function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
 
 /* ========== DATA PERSISTENCE (localStorage) ========== */
 var LS_KEYS={orders:'lec_orders',nextON:'lec_nextON',stk:'lec_stk',held:'lec_held',incoming:'lec_incoming',nextIncId:'lec_nextIncId',editLog:'lec_editLog',custs:'lec_custs',users:'lec_users'};
-function saveUsers(){try{localStorage.setItem(LS_KEYS.users,JSON.stringify(USERS));}catch(e){console.warn('saveUsers failed',e);}}
-function saveOrders(){try{localStorage.setItem(LS_KEYS.orders,JSON.stringify(ORDERS));localStorage.setItem(LS_KEYS.nextON,String(nextON));}catch(e){console.warn('saveOrders failed',e);}}
+function saveUsers(){try{lsSet(LS_KEYS.users,JSON.stringify(USERS));}catch(e){console.warn('saveUsers failed',e);}}
+function saveOrders(){try{lsSet(LS_KEYS.orders,JSON.stringify(ORDERS));lsSet(LS_KEYS.nextON,String(nextON));}catch(e){console.warn('saveOrders failed',e);}}
 /* ========== v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタ ==========
    「マスタ＿販売単価・原価.csv」(商品コード,商品名称,タイプ,商品区分,仕入単価,棚卸単価,販売単価) を取り込んで保持する。
    ・販売単価 … 見積書の単価（従来は SIZES の一律8300だったため金額が実態と合っていなかった）
@@ -3697,7 +3736,7 @@ function saveOrders(){try{localStorage.setItem(LS_KEYS.orders,JSON.stringify(ORD
    ★同じ商品コードが複数行あるCSV（例「ＭＹＰＬ-E-Ｓ」＝Ｓ標準とＳホタ）に対応するため、
      コード単独の索引と「コード#商品名称」の索引の2本を持ち、名称ヒントがあればそちらを優先して引く。 */
 var PRICE_MASTER={rows:[],byCode:{},byCodeName:{},updatedAt:''};
-function savePriceMaster(){try{localStorage.setItem('lec_price_master',JSON.stringify(PRICE_MASTER));}catch(e){}}
+function savePriceMaster(){try{lsSet('lec_price_master',JSON.stringify(PRICE_MASTER));}catch(e){}}
 function indexPriceMaster(){
   var bc={},bcn={};
   (PRICE_MASTER.rows||[]).forEach(function(r){
@@ -3707,7 +3746,7 @@ function indexPriceMaster(){
   });
   PRICE_MASTER.byCode=bc;PRICE_MASTER.byCodeName=bcn;
 }
-(function(){try{var m=JSON.parse(localStorage.getItem('lec_price_master')||'null');if(m&&Array.isArray(m.rows)){PRICE_MASTER=m;indexPriceMaster();}}catch(e){}})();
+(function(){try{var m=JSON.parse(lsGet('lec_price_master')||'null');if(m&&Array.isArray(m.rows)){PRICE_MASTER=m;indexPriceMaster();}}catch(e){}})();
 function hasPriceMaster(){return !!(PRICE_MASTER.rows&&PRICE_MASTER.rows.length);}
 /* 商品コード（＋名称ヒント）から1行を引く */
 function priceRec(code,nameHint){
@@ -4067,8 +4106,8 @@ function buildStockValuation(){
    KEY_TO_YAGI: 集計キー(key|sub|color)→八木熊品番。商品コードnew.xlsx(2026-07-23提供)の八木熊シートから採録。
    品番が無い部材（鍵類・トッテ等）と上下共通ボード品番3種の紐付け（吉野さんから後日連携）は原価未設定として集計。 */
 var COST_MASTER={};
-function saveCostMaster(){try{localStorage.setItem('lec_cost_master',JSON.stringify(COST_MASTER));}catch(e){}}
-(function(){try{COST_MASTER=JSON.parse(localStorage.getItem('lec_cost_master')||'{}')||{};}catch(e){COST_MASTER={};}})();
+function saveCostMaster(){try{lsSet('lec_cost_master',JSON.stringify(COST_MASTER));}catch(e){}}
+(function(){try{COST_MASTER=JSON.parse(lsGet('lec_cost_master')||'{}')||{};}catch(e){COST_MASTER={};}})();
 var KEY_TO_YAGI={
   'top|sml':'01703000','top|ss':'01857600',
   'base|sml':'01856700','base_bk|sml':'01882200','base|ss':'01876800','base_bk|ss':'01880600',
@@ -4180,34 +4219,34 @@ function parseCostMasterAoa(aoa){
   }
   return {map:res,count:cnt};
 }
-function saveStock(){try{localStorage.setItem(LS_KEYS.stk,JSON.stringify(STK));}catch(e){console.warn('saveStock failed',e);}}
-function saveHeld(){try{localStorage.setItem(LS_KEYS.held,JSON.stringify(HELD));}catch(e){console.warn('saveHeld failed',e);}}
-function saveIncoming(){try{localStorage.setItem(LS_KEYS.incoming,JSON.stringify(INCOMING));localStorage.setItem(LS_KEYS.nextIncId,String(nextIncId));}catch(e){console.warn('saveIncoming failed',e);}}
-function saveEditLog(){try{localStorage.setItem(LS_KEYS.editLog,JSON.stringify(EDIT_LOG));}catch(e){console.warn('saveEditLog failed',e);}}
-function saveCusts(){try{localStorage.setItem(LS_KEYS.custs,JSON.stringify(CUSTS));}catch(e){console.warn('saveCusts failed',e);}}
+function saveStock(){try{lsSet(LS_KEYS.stk,JSON.stringify(STK));}catch(e){console.warn('saveStock failed',e);}}
+function saveHeld(){try{lsSet(LS_KEYS.held,JSON.stringify(HELD));}catch(e){console.warn('saveHeld failed',e);}}
+function saveIncoming(){try{lsSet(LS_KEYS.incoming,JSON.stringify(INCOMING));lsSet(LS_KEYS.nextIncId,String(nextIncId));}catch(e){console.warn('saveIncoming failed',e);}}
+function saveEditLog(){try{lsSet(LS_KEYS.editLog,JSON.stringify(EDIT_LOG));}catch(e){console.warn('saveEditLog failed',e);}}
+function saveCusts(){try{lsSet(LS_KEYS.custs,JSON.stringify(CUSTS));}catch(e){console.warn('saveCusts failed',e);}}
 function saveAll(){saveOrders();saveStock();saveHeld();saveIncoming();saveEditLog();saveCusts();}
 /* Load persisted data */
 (function(){
   try{
     var s;
-    s=localStorage.getItem(LS_KEYS.orders);if(s){ORDERS=JSON.parse(s);}
-    s=localStorage.getItem(LS_KEYS.nextON);if(s){nextON=parseInt(s)||1;}
+    s=lsGet(LS_KEYS.orders);if(s){ORDERS=JSON.parse(s);}
+    s=lsGet(LS_KEYS.nextON);if(s){nextON=parseInt(s)||1;}
     /* 在庫スナップショット日付チェック: CSV由来の新在庫に切替えた時は保存STKを破棄してデフォルトを採用。
        HELD(仮押さえ)は業務データのため保持する。 */
-    var savedSnap=localStorage.getItem('lec_stk_snapshot');
+    var savedSnap=lsGet('lec_stk_snapshot');
     if(savedSnap===STK_SNAPSHOT_DATE){
-      s=localStorage.getItem(LS_KEYS.stk);if(s){STK=JSON.parse(s);}
+      s=lsGet(LS_KEYS.stk);if(s){STK=JSON.parse(s);}
     }else{
       console.log('[Stock] Snapshot updated:',savedSnap||'(none)','→',STK_SNAPSHOT_DATE,'— resetting STK to new default');
-      localStorage.removeItem(LS_KEYS.stk);
-      localStorage.setItem('lec_stk_snapshot',STK_SNAPSHOT_DATE);
+      lsDel(LS_KEYS.stk);
+      lsSet('lec_stk_snapshot',STK_SNAPSHOT_DATE);
     }
-    s=localStorage.getItem(LS_KEYS.held);if(s){HELD=JSON.parse(s);}
-    s=localStorage.getItem(LS_KEYS.incoming);if(s){INCOMING=JSON.parse(s);}
-    s=localStorage.getItem(LS_KEYS.nextIncId);if(s){nextIncId=parseInt(s)||1;}
-    s=localStorage.getItem(LS_KEYS.editLog);if(s){EDIT_LOG=JSON.parse(s);}
-    s=localStorage.getItem(LS_KEYS.custs);if(s){CUSTS=JSON.parse(s);}
-    s=localStorage.getItem(LS_KEYS.users);if(s){USERS=JSON.parse(s);}
+    s=lsGet(LS_KEYS.held);if(s){HELD=JSON.parse(s);}
+    s=lsGet(LS_KEYS.incoming);if(s){INCOMING=JSON.parse(s);}
+    s=lsGet(LS_KEYS.nextIncId);if(s){nextIncId=parseInt(s)||1;}
+    s=lsGet(LS_KEYS.editLog);if(s){EDIT_LOG=JSON.parse(s);}
+    s=lsGet(LS_KEYS.custs);if(s){CUSTS=JSON.parse(s);}
+    s=lsGet(LS_KEYS.users);if(s){USERS=JSON.parse(s);}
   }catch(e){console.warn('Data load failed',e);}
 })();
 
@@ -4895,14 +4934,14 @@ function App(){
      再度「仮押さえ」した際に新規採番せず同じ案件番号へ上書きする（OrdersPage→InvPage） */
   var editOrder=us(null);
   /* Presence state */
-  var userName=us(localStorage.getItem('lec_user_name')||'');
-  var userLoc=us(localStorage.getItem('lec_user_loc')||'honsha_office');
-  var loggedIn=us(!!localStorage.getItem('lec_user_name'));
+  var userName=us(lsGet('lec_user_name')||'');
+  var userLoc=us(lsGet('lec_user_loc')||'honsha_office');
+  var loggedIn=us(!!lsGet('lec_user_name'));
   var loginPw=us('');/* v18 P2: ログイン時パスワード入力 */
   var loginRole=us('');/* v18.32 要望⑧: ログイン画面の権限選択（氏名リストの絞り込み＋登録権限との照合。実効権限は従来どおりroleOf()でUSERSから導出） */
   var onlineUsers=us([]);
   var presenceStatus=us('connecting');/* connecting / connected / offline */
-  var presenceMin=us(localStorage.getItem('lec_presence_min')==='1');/* v18.21 右下同時利用バーの最小化状態 */
+  var presenceMin=us(lsGet('lec_presence_min')==='1');/* v18.21 右下同時利用バーの最小化状態 */
   var notif=us(null);
   var channelRef=ur(null);
   /* v14 D32: システム全体ロック - 先勝ち判定 */
@@ -4959,6 +4998,22 @@ function App(){
   /* Setup Supabase Presence & Broadcast */
   ue(function(){
     if(!loggedIn[0]||!supaClient||!userName[0])return;
+    /* v18.58 修正10④: トレーニングモードでは presence / broadcast / クラウド購読を一切張らない。
+       ・presence に参加しない ＝ 他の人の「編集権限」を奪わない・オンライン一覧にも出ない
+       ・broadcastChannel が null のまま ＝ 各所の送信は既存のnullガードで自動的に no-op になる
+       ・他端末からの受信もしない ＝ 練習中の画面が実データの更新で書き換わらない
+       起動時に一度だけ実データを読み込み（読み取り専用）、その複製を練習台にする。 */
+    if(TRAINING){
+      cloudLoad(function(ok){
+        if(ok){
+          bump[1](function(v){return v+1;});
+          notif[1]('🎓 トレーニングモードです。現在の本番データを読み込みました（ここでの操作は保存されません）');
+          setTimeout(function(){notif[1](null);},6000);
+        }
+      });
+      presenceStatus[1]('offline');
+      return function(){};
+    }
     /* Presence channel */
     var pKey=userName[0]+'_'+Date.now();
     myPresenceKey.current=pKey;
@@ -5195,9 +5250,9 @@ function App(){
     /* v18.32 要望⑧: 権限を選択済みで登録権限と不一致なら弾く（権限選択は絞り込み用。実効権限はUSERS登録値） */
     if(loginRole[0]&&(r.user.role||'user')!==loginRole[0]){showToast('選択した権限と登録されている権限が一致しません');return;}
     userName[1](nm);/* v18.32: trim済み氏名をstateへ書き戻す（前後空白つきログインでroleOfが不一致になり営業の閲覧専用が外れる穴を塞ぐ） */
-    localStorage.setItem('lec_user_name',nm);
-    localStorage.setItem('lec_user_loc',userLoc[0]);
-    localStorage.setItem('lec_user_role',roleOf(nm));
+    lsSet('lec_user_name',nm);
+    lsSet('lec_user_loc',userLoc[0]);
+    lsSet('lec_user_role',roleOf(nm));
     loginPw[1]('');
     loggedIn[1](true);
   }
@@ -5208,7 +5263,9 @@ function App(){
       h('div',{style:{background:'#fff',borderRadius:16,padding:32,width:400,boxShadow:'0 20px 60px rgba(0,0,0,.3)'}},
         h('div',{style:{textAlign:'center',marginBottom:20}},
           h('div',{style:{fontSize:20,fontWeight:900,color:'var(--nv)',marginBottom:4}},'LECロッカー業務システム'),
-          h('div',{style:{fontSize:10,color:'var(--g400)'}},'登録済みユーザーのみログインできます（氏名＋パスワード）')
+          h('div',{style:{fontSize:10,color:'var(--g400)'}},'登録済みユーザーのみログインできます（氏名＋パスワード）'),
+          /* v18.58 修正10④: トレーニング中はログイン画面から分かるようにしておく */
+          TRAINING?h('div',{style:{marginTop:8,background:'#7C3AED',color:'#fff',borderRadius:6,padding:'4px 8px',fontSize:10,fontWeight:900}},'🎓 トレーニングモード（本番データに反映されません）'):null
         ),
         /* v18.32 要望⑧: 入力項目を「権限 → 氏名 → 拠点 → パスワード」の順に */
         h('div',{style:{marginBottom:12}},
@@ -5253,7 +5310,9 @@ function App(){
   /* v18 P2: ログインユーザーのロールを USERS から導出。営業(sales)は閲覧+見積確認のみ＝書込不可。
      実効read-onlyは「同時編集ロック or 営業ロール」のいずれかでtrue。 */
   var currentRole=roleOf(userName[0]);
-  var roleReadOnly=currentRole==='sales';
+  /* v18.58 修正10④: トレーニング中は「自由に編集・操作できる」ことが目的なので、営業ロールの閲覧専用も外す
+     （どのみち保存先が本番から切り離されているため、実データへの影響はない）。 */
+  var roleReadOnly=(currentRole==='sales')&&!TRAINING;
   var effRO=isReadOnly[0]||roleReadOnly;
 
   return h('div',null,
@@ -5262,6 +5321,8 @@ function App(){
       h('div',{className:'tabs'},TABS.map(function(t){
         return h('button',{key:t.k,className:'tab'+(tab[0]===t.k?' on':''),onClick:function(){tab[1](t.k);}},t.l);
       })),
+      /* v18.58 修正10④: トレーニング中であることを常時はっきり出す（本番と取り違えないように） */
+      TRAINING?h('div',{style:{background:'#7C3AED',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:900,marginLeft:8,letterSpacing:1},title:'練習モードです。ここでの操作は本番データ（クラウド・他の端末）へ一切反映されません'},'🎓 トレーニングモード（本番データに反映されません）'):null,
       /* v14 D32: 読み取り専用バナー */
       roleReadOnly?h('div',{style:{background:'#975a16',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 閲覧専用（営業ロール：見積確認のみ可）'):(isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（編集中: '+(lockEditorName(onlineUsers[0])||'別のユーザー')+'）'):null),
       /* v14.4 hotfix2: 'offline'は「同期サーバー無効」と表現変更（エラー→機能無効通知へ）
@@ -5279,8 +5340,12 @@ function App(){
         h('span',{className:'hdr-me',style:{fontSize:8,opacity:.7}},myLocLabel+': '+userName[0]),
         /* v14 D31: ユーザー管理ボタン */
         h('button',{className:'hdr-mini-btn',style:{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:4,color:'#fff',fontSize:7,padding:'1px 5px',cursor:'pointer'},onClick:function(){showUserMgmt[1](true);}},'👥 ユーザー管理'),
+        /* v18.58 修正10④: トレーニングモードの開始／終了。どちらもリロードして状態を作り直す */
+        TRAINING
+          ?h('button',{className:'hdr-mini-btn',style:{background:'#fff',border:'1px solid #fff',borderRadius:4,color:'#7C3AED',fontSize:7,fontWeight:900,padding:'1px 5px',cursor:'pointer'},title:'練習を終了して通常モード（本番データ）に戻ります',onClick:exitTraining},'🎓 トレーニング終了')
+          :h('button',{className:'hdr-mini-btn',style:{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:4,color:'#fff',fontSize:7,padding:'1px 5px',cursor:'pointer'},title:'操作の練習用モード。本番データには一切反映されません',onClick:enterTraining},'🎓 トレーニング'),
         h('button',{className:'hdr-mini-btn',style:{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:4,color:'#fff',fontSize:7,padding:'1px 5px',cursor:'pointer'},onClick:function(){
-          localStorage.removeItem('lec_user_name');localStorage.removeItem('lec_user_loc');
+          lsDel('lec_user_name');lsDel('lec_user_loc');
           if(channelRef.current)channelRef.current.untrack();
           loggedIn[1](false);userName[1]('');
         }},'切替')
@@ -5289,6 +5354,10 @@ function App(){
          バージョンを上げるときは <title> の1か所を直すだけでここも自動で追従する（v14.7 の固定表示に戻さないこと）。 */
       h('div',{className:'ver',title:document.title},APP_VERSION)
     ),
+    /* v18.58 修正10④: ヘッダーが狭い画面で見切れても分かるよう、画面下端にも常時表示する */
+    TRAINING?h('div',{style:{position:'fixed',left:0,right:0,bottom:0,zIndex:9998,background:'#7C3AED',color:'#fff',fontSize:10,fontWeight:900,textAlign:'center',padding:'3px 8px',letterSpacing:1,boxShadow:'0 -2px 8px rgba(0,0,0,.2)'}},
+      '🎓 トレーニングモード（練習用）— 入力・保存した内容は本番データに一切反映されません。終了するには右上の「🎓 トレーニング終了」を押してください'
+    ):null,
     /* v18.38 修正箇所3①: 営業ロールにも顧客の新規追加・情報編集を許可するため、
        後発ログインによるロック(lockReadOnly)と営業ロール込みの読み取り専用(isReadOnly)を分けて渡す。
        削除・顧客一括取込は従来どおり isReadOnly（＝営業は不可）で制限。 */
@@ -5301,12 +5370,12 @@ function App(){
        offline時はバナーを非表示にして画面の邪魔をしない（ヘッダーの「💾 ローカルモード」のみで状態を示す）
        offline = Supabase未利用環境。ローカル動作は完全に可能なので、過度な警告を表示しない方針に変更 */
     loggedIn[0]&&presenceStatus[0]!=='offline'?(presenceMin[0]?
-      h('div',{className:'presence-floating collapsed'+(onlineUsers[0].length<=1?' solo':''),title:'クリックで同時利用バーを開く',onClick:function(){presenceMin[1](false);try{localStorage.setItem('lec_presence_min','0');}catch(_){}}},
+      h('div',{className:'presence-floating collapsed'+(onlineUsers[0].length<=1?' solo':''),title:'クリックで同時利用バーを開く',onClick:function(){presenceMin[1](false);try{lsSet('lec_presence_min','0');}catch(_){}}},
         h('span',{className:'pf-dot'}),
         h('span',{style:{fontWeight:900,fontSize:13,color:'var(--nv)'}},onlineUsers[0].length>=2?('👥 '+onlineUsers[0].length):(onlineUsers[0].length===1?'👤':'⏳')),
         h('span',{className:'pf-caret'},'▴')
       ):h('div',{className:'presence-floating'+(onlineUsers[0].length<=1?' solo':''),title:onlineUsers[0].length>=2?'他のユーザーがログイン中。仮押さえはリアルタイム同期されます':'現在あなたのみログイン中です'},
-      h('button',{className:'pf-toggle',title:'最小化',onClick:function(){presenceMin[1](true);try{localStorage.setItem('lec_presence_min','1');}catch(_){}}},'▾'),
+      h('button',{className:'pf-toggle',title:'最小化',onClick:function(){presenceMin[1](true);try{lsSet('lec_presence_min','1');}catch(_){}}},'▾'),
       h('span',{className:'pf-dot'}),
       h('div',null,
         h('div',{className:'pf-title'},
@@ -5610,8 +5679,9 @@ function CustPage(p){
   function addCust(){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止
        v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ
-       v18.39: 営業は仮押さえ権限を持たず在庫の競合が起きないため、後発ログインのロック中でも顧客追加を許可する */
-    if(p.lockReadOnly&&!p.salesView){alert('読み取り専用モード中は顧客追加できません');return;}
+       v18.39: 営業は仮押さえ権限を持たず在庫の競合が起きないため、後発ログインのロック中でも顧客追加を許可する
+       v18.58 修正10②: 顧客の追加・編集は在庫を動かさないため、編集権限（先勝ちロック）の有無に関わらず全員に開放した。
+       これで事務も「編集権限を持っていないと在庫確認しかできない」状態にならない。削除・一括取込は従来どおり isReadOnly で制限。 */
     var f=nf[0];if(!f.name)return;
     var attrFinal=(f.attr==='その他'&&f.attrOther&&f.attrOther.trim())?f.attrOther.trim():(f.attr||'');
     /* v18.40 修正１①: 代理店属性の顧客はエンド納品先（複数）を保持できる */
@@ -5631,8 +5701,8 @@ function CustPage(p){
   function saveEditCust(){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止
        v18.38 修正箇所3①: 営業ロールにも許可。制限は後発ログインのロック時のみ
-       v18.39: 営業は仮押さえ権限を持たないため、後発ログインのロック中でも顧客編集を許可する */
-    if(p.lockReadOnly&&!p.salesView){alert('読み取り専用モード中は顧客編集できません');return;}
+       v18.39: 営業は仮押さえ権限を持たないため、後発ログインのロック中でも顧客編集を許可する
+       v18.58 修正10②: 編集権限（先勝ちロック）の有無に関わらず全員が顧客編集できるようにした（addCust と同じ理由） */
     var ec=editCust[0];if(!ec||!ec.name){return;}
     /* v18.47 追加修正: IDが重複していると findIndex(id) が別の行を指し、editした内容が
        クリックした行と違う顧客へ保存されてしまう。編集開始時に控えた実体(editCustRef)を優先して特定する。 */
@@ -6559,16 +6629,10 @@ function InvPage(p){
     /* v18 P2(要望3/4): 後発ログインは見積「確認」のみ。ORDERSへ保存せず採番もしない（プレビュー表示だけ）
        v18.38 修正箇所3②: 営業ロールが作成した見積は案件管理一覧に保存する（従来はプレビューのみ）。
        仮押さえ・在庫引当は引き続き事務のみ（doReserveOnly/doHoldAndQuote は salesView で非表示のまま）。
-       v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも見積作成を許可する。 */
-    if(p.lockReadOnly&&!p.salesView){
-      var whP=selWH[0]||'honsha';
-      var shipInfoP=cust?calcShipping(lines[0],whP,shipPref()):null;
-      var previewOrder={no:'(プレビュー)',cid:cust.id,wh:whP,status:'見積確認',date:td2(),lines:lines[0].slice(),shipping:shipInfoP?shipInfoP.shipping:0,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:(paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0]),notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
-      applyPriceSnapshot(previewOrder);/* v18.54 修正８①: プレビューも新単価で表示する（新規案件と同じ扱い） */
-      quoteOrder[1](previewOrder);showQuote[1](true);
-      p.toast('読み取り専用：見積プレビューのみ（保存不可）');
-      return;
-    }
+       v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも見積作成を許可する。
+       v18.58 修正10②: 「編集権限を持っていない事務は在庫確認しかできない」状態を解消するため、
+       後発ログインのロック中でも見積を採番して案件管理へ保存できるようにした（従来はプレビュー表示のみだった）。
+       見積作成は STK/HELD を動かさないので、仮押さえの競合は起きない。仮押さえ・受注確定は従来どおり編集権限が必要。 */
     var wh=selWH[0]||'honsha';
     var shipInfo=cust?calcShipping(lines[0],wh,shipPref()):null;
     var pt3=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
@@ -7274,8 +7338,8 @@ function InvPage(p){
           var PAY_TERMS_LIST=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末','その他'];
           function updQ(patch){
             /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため、直接編集も営業に開放
-               v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも編集を許可する */
-            if(p.lockReadOnly&&!p.salesView){p.toast('読み取り専用モード中は見積の編集はできません');return;}
+               v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも編集を許可する
+               v18.58 修正10②: 見積作成を全員に開放したのに合わせ、作成した見積の直接編集も編集権限を問わず可能にする */
             var no2=Object.assign({},qo,patch);
             quoteOrder[1](no2);
             var idx=ORDERS.findIndex(function(x){return x.no===qo.no;});
@@ -7740,6 +7804,7 @@ function OrdersPage(p){
   /* v18.46 修正４④: ステータス絞り込みを複数選択に変更（空配列＝「全て」）。
      従来は単一選択で「仮押さえ＋受注確定だけ見る」といった絞り込みができなかった。 */
   var filter=us([]),detail=us(null),showQ=us(null);
+  var showBom=us(false);/* v18.58 修正10①: 案件詳細の「部材内訳」を開いているか（案件詳細を開き直すたびに閉じる） */
   /* v18.46 修正４④/修正５③: 並び替え。既定は納品予定日の近い順（修正５③） */
   var sortKey=us('delivery');
   var shipModal=us(null);/* order to show shipping modal for */
@@ -7972,7 +8037,7 @@ function OrdersPage(p){
               ):null
             ),
             h('td',null,
-              h('button',{className:'btn btn-xs btn-ol',onClick:function(){detail[1](o);}},'詳細'),
+              h('button',{className:'btn btn-xs btn-ol',onClick:function(){showBom[1](false);detail[1](o);}},'詳細'),
               h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(){openQuote(o,'quote');}},'見積'),
               /* v17.2 要望26: 前回コピーでリピート発注 */
               h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2,fontWeight:700},title:'この案件の内容をコピーして新規見積（リピート発注）',onClick:function(){
@@ -8017,28 +8082,11 @@ function OrdersPage(p){
                 spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:o.wh||WH_IDS[0]}));spareModal[1](o);
               }},'🧰 予備パーツ'+((o.spareParts||[]).length?'('+(o.spareParts||[]).length+')':'')),
               h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,fontWeight:700},title:'出荷指示書を新規ウィンドウで出力',onClick:function(){openQuote(o,'shipping');}},'📄 出荷指示書'),
-              /* v14.2: 出荷指示書のExcel出力（PDF生成と別に部材一覧入りExcel） */
-              h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'出荷指示書をExcel形式で出力',onClick:function(){generateExcel(o,'shipping');}},'📊 出荷Excel'),
-              /* v18.2 P5a: 公式様式(5型テンプレ完全一致)の出荷指示書を出力 */
-              h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:2,fontWeight:700},title:'公式様式(SML/SS・3S/XL/台湾製/Sα)の出荷指示書を出力',onClick:function(){
-                try{
-                  var r=buildShipInstruction(o);
-                  if(!r||!r.ws){p.toast('出荷指示書テンプレートが見つかりません（製品ライン未判定）');return;}
-                  var wb=XLSX.utils.book_new();
-                  XLSX.utils.book_append_sheet(wb,r.ws,r.sheetName||'出荷指示書');
-                  var sn=wb.SheetNames[0];
-                  /* v18.29: 印刷レイアウト(正本一致)を付与。印刷範囲/縮小率/余白/実列幅 */
-                  var perS=null;
-                  if(r.print){
-                    wb.Workbook={Names:[{Name:'_xlnm.Print_Area',Ref:"'"+sn+"'!"+r.print.area,Sheet:0}]};
-                    perS=[{scale:r.print.scale,center:r.print.center,cols:r.print.cols}];
-                  }
-                  if(perS)writeXlsxWithPrint(wb,'出荷指示書_'+o.no+'.xlsx',perS);
-                  else XLSX.writeFile(wb,'出荷指示書_'+o.no+'.xlsx');
-                  p.toast('出荷指示書(公式様式)を出力: '+o.no);
-                }catch(err){p.toast('出力エラー: '+err.message);}
-              }},'📋 出荷指示書(様式)'),
-              /* v18.28 顧客要望: 出荷指示書(様式)を手入力で修正（納品先・納品日・品名書換・数量）。案件に保存され様式/出荷Excel両方に反映 */
+              /* v18.28 顧客要望: 出荷指示書(様式)を手入力で修正（納品先・納品日・品名書換・数量）。案件に保存され様式/出荷Excel両方に反映
+                 ★v18.58 修正10③の要相談点: 反映先だった「📋 出荷指示書(様式)」「📊 出荷Excel」を削除したため、
+                   このボタンで保存した内容の出力先が無くなっている（保存自体は order.shipEdit へ従来どおり行われる）。
+                   「📄 出荷指示書」(印刷用HTML)は元々 shipEdit を参照していない。ユーザー確認後、
+                   不要ならこのボタンごと削除、必要なら 📄出荷指示書 側で shipEdit を参照するよう改修する。 */
               h('button',{className:'btn btn-xs btn-ol',style:Object.assign({marginLeft:2,fontWeight:700},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
                 title:isOrderLocked(o)?'納品完了の案件は編集できません（ステータスを差し戻してから操作してください）':'出荷指示書(様式)の内容を手入力で修正。保存すると「📋 出荷指示書(様式)」と「📊 出荷Excel」の様式シートに反映されます',onClick:function(){
                 /* v18.49 修正６⑨: 納品完了の案件は内容を編集できない */
@@ -8058,7 +8106,6 @@ function OrdersPage(p){
                 });
                 shipEditModal[1]({order:o,autoHv:autoHv,name:se.name||'',phone:se.phone||'',postal:se.postal||'',address:se.address||'',delivery:se.delivery||'',rows:rows});
               }},'✎ 様式手修正'),
-              h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){generateExcel(o,'quote');}},'見積Excel'),
               /* 一覧から直接削除 */
               h('button',{className:'btn btn-xs btn-rd',style:Object.assign({marginLeft:2,background:'#991B1B'},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
                 title:isOrderLocked(o)?'納品完了の案件は削除できません（ステータスを差し戻してから操作してください）':'この案件を削除します',onClick:function(){
@@ -8203,7 +8250,7 @@ function OrdersPage(p){
         )
       );
     })():null,
-    detail[0]?h(Modal,{show:true,title:'案件詳細 — '+detail[0].no,w:650,onClose:function(){detail[1](null);},
+    detail[0]?h(Modal,{show:true,title:'案件詳細 — '+detail[0].no,w:650,onClose:function(){showBom[1](false);detail[1](null);},
       footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
         detail[0].status==='仮押さえ'?h('button',{className:'btn btn-or',onClick:function(){
           if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
@@ -8359,7 +8406,13 @@ function OrdersPage(p){
           })),
           h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:3}},'※ オレンジ=次へ進める / ◀赤枠=差し戻し（在庫も自動で巻き戻します）')
         ),
-        h('b',{style:{fontSize:10}},'明細:'),
+        /* v18.58 修正10①: 「明細」の右に「部材内訳」ボタンを新設。押すとこの案件の部材一覧を下に表示する */
+        h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+          h('b',{style:{fontSize:10}},'明細:'),
+          h('button',{className:'btn btn-xs '+(showBom[0]?'btn-nv':'btn-tl'),style:{fontWeight:700},
+            title:'この案件の部材一覧（明細ごとの内訳と、部材ごとの合計）を表示します',
+            onClick:function(){showBom[1](!showBom[0]);}},(showBom[0]?'▲ ':'📦 ')+'部材内訳')
+        ),
         h('table',{className:'tbl',style:{marginTop:4}},
           h('thead',null,h('tr',null,h('th',null,'製品'),h('th',null,'サイズ'),h('th',null,'カラー'),h('th',null,'タイプ'),h('th',null,'構成'),h('th',null,'数量'))),
           h('tbody',null,detail[0].lines.map(function(l,i){
@@ -8399,7 +8452,55 @@ function OrdersPage(p){
               h('td',{style:{fontWeight:700}},fm(l.qty)+'台')
             );
           }))
-        )
+        ),
+        /* v18.58 修正10①: 部材内訳。明細ごとの内訳＋案件全体の合計＋（あれば）予備パーツ */
+        showBom[0]?(function(){
+          var bg;try{bg=orderBomGroups(detail[0]);}catch(err){bg=null;}
+          if(!bg)return h('div',{style:{marginTop:8,fontSize:10,color:'#c53030'}},'部材内訳を計算できませんでした（明細の内容をご確認ください）');
+          var sps=(detail[0].spareParts||[]).filter(function(s){return (parseInt(s.qty)||0)>0;});
+          var thB={border:'1px solid var(--g200)',background:'#f5f7fa',padding:'3px 6px',fontSize:9,textAlign:'left',fontWeight:700};
+          var tdB={border:'1px solid var(--g200)',padding:'3px 6px',fontSize:10};
+          var tdN={border:'1px solid var(--g200)',padding:'3px 6px',fontSize:10,textAlign:'right',fontWeight:700,width:70};
+          return h('div',{style:{marginTop:10,padding:8,background:'#f5f7fa',border:'1px solid var(--g200)',borderRadius:6}},
+            h('div',{style:{fontSize:10,fontWeight:900,color:'#1e3a5f',marginBottom:6}},'📦 部材内訳 — '+detail[0].no),
+            /* 明細ごとの内訳 */
+            bg.groups.length===0?h('div',{style:{fontSize:10,color:'var(--g400)'}},'部材がありません'):
+            bg.groups.map(function(g,gi){
+              return h('div',{key:'g'+gi,style:{marginBottom:8}},
+                h('div',{style:{fontSize:9,fontWeight:700,background:'var(--g200)',padding:'2px 6px',borderRadius:3}},g.title),
+                h('table',{style:{borderCollapse:'collapse',width:'100%',background:'#fff'}},
+                  h('tbody',null,g.rows.length===0
+                    ?h('tr',null,h('td',{style:Object.assign({},tdB,{color:'var(--g400)'})},'（この明細に部材はありません）'))
+                    :g.rows.map(function(r,ri){
+                      return h('tr',{key:'r'+ri},
+                        h('td',{style:tdB},r.label,r.reason?h('span',{style:{color:'var(--g400)',fontSize:8,marginLeft:4}},'（'+r.reason+'）'):null),
+                        h('td',{style:tdN},fm(r.qty)+(r.unit||'')));
+                    }))
+                )
+              );
+            }),
+            /* 部材ごとの合計 */
+            bg.totals.length>0?h('div',{style:{marginTop:4}},
+              h('div',{style:{fontSize:9,fontWeight:700,color:'#276749',marginBottom:2}},'部材ごとの合計（案件全体）'),
+              h('table',{style:{borderCollapse:'collapse',width:'100%',background:'#fff'}},
+                h('thead',null,h('tr',null,h('th',{style:thB},'部材'),h('th',{style:Object.assign({},thB,{textAlign:'right',width:70})},'数量'))),
+                h('tbody',null,bg.totals.map(function(t,ti){
+                  return h('tr',{key:'t'+ti},h('td',{style:tdB},t.label),h('td',{style:tdN},fm(t.qty)));
+                }))
+              )
+            ):null,
+            /* 予備パーツ（見積外の持ち出し）は数量の性質が違うため合算せず別枠で示す */
+            sps.length>0?h('div',{style:{marginTop:8}},
+              h('div',{style:{fontSize:9,fontWeight:700,color:'#975a16',marginBottom:2}},'🧰 予備パーツ（見積外の持ち出し・上の数量には含みません）'),
+              h('table',{style:{borderCollapse:'collapse',width:'100%',background:'#fff'}},
+                h('tbody',null,sps.map(function(s,si){
+                  return h('tr',{key:'s'+si},h('td',{style:tdB},s.label||s.key||''),h('td',{style:tdN},fm(parseInt(s.qty)||0)));
+                }))
+              )
+            ):null,
+            h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:6}},'※ 見積書の部材内訳と同じ計算です。出荷指示書は予備パーツを合算した数量で出力されます。')
+          );
+        })():null
       )
     ):null,
     /* ===== v18.55 修正９④: 予備パーツ管理モーダル =====
@@ -8680,6 +8781,47 @@ function OrdersPage(p){
    ただし鍵類等の共通在庫キー(COMMON_STOCK_KEYS)は在庫表と同じく全ライン共通プールのため
    絞り込まず常に集計する（絞ると在庫表の仮押さえ数と一覧の数が食い違うため）。
    filterLine省略時は従来どおり全明細を集計（Excel出力等の既存呼び出しは無影響）。 */
+/* v18.58 修正10①: 案件詳細の「部材内訳」表示用。明細ごとにBOMを展開したグループと、
+   案件全体で部材ごとに合算した一覧を返す。
+   数量は見積どおり（＝見積書・部材内訳と同じ計算。予備パーツは別枠で表示するためここでは合算しない）。
+   表示ロジックは見積プレビューの部材内訳（QuotePreview）と同じ組み立てにしてある。 */
+function orderBomGroups(order){
+  var groups=[],totals=[],tIdx={};
+  function addTotal(label,qty){
+    var q=parseInt(qty)||0;if(!q)return;
+    if(tIdx[label]===undefined){tIdx[label]=totals.length;totals.push({label:label,qty:0});}
+    totals[tIdx[label]].qty+=q;
+  }
+  ((order&&order.lines)||[]).forEach(function(ln){
+    if(ln._returned)return;/* 返品済みラインは計上しない（computeOrderParts と同じ扱い） */
+    if(ln.isFreeInput){
+      var fl=(ln.name||'')+'（自由入力）';
+      groups.push({title:'[自由入力] '+(ln.name||''),rows:[{label:fl,qty:parseInt(ln.qty)||0,unit:ln.unit||'個'}]});
+      addTotal(fl,ln.qty);
+      return;
+    }
+    var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
+    var bom,title;
+    if(ln.isPartOnly){
+      if(ln.isDoor)bom=[{key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub}];
+      else if(ln.partSub!==undefined)bom=[{key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel}];
+      else bom=[{key:ln.partKey,qty:ln.qty,label:ln.partLabel}];
+      title='[パーツ単品] '+productName(ln.line,true);
+    }else{
+      bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
+      var colorName=(ln.type==='open'||!co)?'':co.l;
+      title=productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'');
+    }
+    var rows=bom.map(function(b){
+      var lbl=b.label||b.key||'';
+      if(b.isDoor&&co)lbl+=' '+co.l;
+      addTotal(lbl,b.qty);
+      return {label:lbl,qty:parseInt(b.qty)||0,reason:b.reason||''};
+    });
+    groups.push({title:title,rows:rows});
+  });
+  return {groups:groups,totals:totals};
+}
 function computeOrderParts(order,filterLine){
   var parts={};
   var lineOk=function(ln,key,isDoor){
@@ -9080,7 +9222,7 @@ function PartsPage(p){
   /* v14.2 Codex P2対応: カスタム部材を structRowsAll に動的マージ
      これにより倉庫個別Excel・スナップショット・入庫予定・通常の在庫編集テーブル全てに反映される */
   try{
-    var cpAll=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');
+    var cpAll=JSON.parse(lsGet('lec_custom_parts')||'[]');
     cpAll.forEach(function(cp){
       if(!structRowsAll.find(function(r){return r.key===cp.key&&!r.sub;})){
         structRowsAll.push({label:'[カスタム] '+cp.label,key:cp.key,cat:'option',isCustom:true});
@@ -9137,7 +9279,7 @@ function PartsPage(p){
           h('button',{className:'btn btn-xs btn-or',onClick:function(){showItemMaster[1](true);}},'⚙ 項目管理'),
           /* v18.21 要望28: 週次バックアップ（管理者のみ）。在庫表+顧客をExcel書き出し→吉野さんへ送付。7日以上未実施で赤表示。 */
           roleOf(p.userName)==='admin'?(function(){
-            var last=null;try{last=localStorage.getItem('lec_last_backup');}catch(_){}
+            var last=null;try{last=lsGet('lec_last_backup');}catch(_){}
             var overdue=true;if(last){var dms=Date.parse(last);if(!isNaN(dms))overdue=((Date.now()-dms)/86400000)>=7;}
             return h('button',{key:'bk',className:'btn btn-xs '+(overdue?'btn-rd':'btn-gn'),title:'在庫表と顧客情報をExcelで書き出し（毎週バックアップ→吉野さんへ送付用）。'+(last?'　最終書き出し: '+last:'　未実施'),onClick:function(){if(exportFullBackup(p.userName)&&p&&typeof p.toast==='function')p.toast('バックアップを書き出しました（'+new Date().toISOString().slice(0,10)+'）。吉野さんへ送付してください。');}},'💾 バックアップ'+(overdue?'（要）':''));
           })():null,
@@ -9446,7 +9588,7 @@ function PartsPage(p){
               snapRows.push({item:'3桁ダイヤル南京錠 レッド',key:'padlockRed'});
               /* カスタム部材 */
               try{
-                var cp2=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');
+                var cp2=JSON.parse(lsGet('lec_custom_parts')||'[]');
                 cp2.forEach(function(it){snapRows.push({item:'＋'+it.label,key:it.key});});
               }catch(e){}
               snapRows.forEach(function(r){
@@ -9743,7 +9885,7 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'レッド',key:'padlockRed',irisu:iGet('padlockRed')});
           /* v14.2: 43. カスタム追加項目（localStorage `lec_custom_parts`から読み込み） */
           try{
-            var cp=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');
+            var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');
             cp.forEach(function(it,ii){
               uniRows.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});
             });
@@ -9970,7 +10112,7 @@ function PartsPage(p){
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
         uniR.push({item:'',variant:'レッド',key:'padlockRed',irisu:iG('padlockRed')});
         /* カスタム部材も含める */
-        try{var cpH=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpH.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
+        try{var cpH=JSON.parse(lsGet('lec_custom_parts')||'[]');cpH.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
         /* v18.44 修正３③: 選択中バージョン(製品ライン)の部材だけを集計（「全ラインの案件を表示」ON時は従来どおり全量） */
         /* v18.46 修正５⑦: 2倉庫で押さえている案件は、どちらの倉庫で何を押さえているか分からなかったため、
@@ -10313,7 +10455,7 @@ function PartsPage(p){
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
         uniR.push({item:'',variant:'レッド',key:'padlockRed',irisu:iG('padlockRed')});
         /* カスタム部材も含める */
-        try{var cpS=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');cpS.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
+        try{var cpS=JSON.parse(lsGet('lec_custom_parts')||'[]');cpS.forEach(function(it,ii){uniR.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});});}catch(e){}
         /* Compute parts per order */
         /* v18.44 修正３③: 出荷済み一覧も選択中バージョン(製品ライン)の部材だけを集計 */
         var orderParts=shipped.map(function(o){return{order:o,parts:computeOrderParts(o,selLine[0]),cust:CUSTS.find(function(x){return x.id===o.cid;}),allReturned:o.lines.every(function(l){return l._returned||l.isFreeInput;})};});
@@ -12007,18 +12149,18 @@ function PartsPage(p){
               var f=newItemForm[0];
               if(!f.key||!f.label){p.toast('キーとラベルを入力してください');return;}
               try{
-                var cp=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');
+                var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');
                 if(cp.find(function(x){return x.key===f.key;})||PART_LABELS[f.key]){p.toast('既に存在するキーです');return;}
                 cp.push({key:f.key,label:f.label,irisu:f.irisu});
-                localStorage.setItem('lec_custom_parts',JSON.stringify(cp));
+                lsSet('lec_custom_parts',JSON.stringify(cp));
                 /* PART_LABELS にも追加（メモリ上） */
                 PART_LABELS[f.key]=f.label;
                 /* IRISU にも追加 */
                 if(f.irisu>0){
                   IRISU[f.key]=f.irisu;
-                  var ci=JSON.parse(localStorage.getItem('lec_custom_irisu')||'{}');
+                  var ci=JSON.parse(lsGet('lec_custom_irisu')||'{}');
                   ci[f.key]=f.irisu;
-                  localStorage.setItem('lec_custom_irisu',JSON.stringify(ci));
+                  lsSet('lec_custom_irisu',JSON.stringify(ci));
                 }
                 newItemForm[1]({key:'',label:'',irisu:0});
                 p.toast('部材を追加しました: '+f.label);
@@ -12054,7 +12196,7 @@ function PartsPage(p){
                       if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
                       var v=parseInt(e.target.value)||0;
                       try{
-                        var ci=JSON.parse(localStorage.getItem('lec_custom_irisu')||'{}');
+                        var ci=JSON.parse(lsGet('lec_custom_irisu')||'{}');
                         if(r.sub){
                           if(typeof IRISU[r.baseKey]!=='object'||IRISU[r.baseKey]===null)IRISU[r.baseKey]={};
                           IRISU[r.baseKey][r.sub]=v;
@@ -12064,7 +12206,7 @@ function PartsPage(p){
                           IRISU[r.baseKey]=v;
                           ci[r.baseKey]=v;
                         }
-                        localStorage.setItem('lec_custom_irisu',JSON.stringify(ci));
+                        lsSet('lec_custom_irisu',JSON.stringify(ci));
                         bump[1](bump[0]+1);
                         cloudSave(p.userName);/* v14.6: 入数変更を全端末へ共有 */
                       }catch(ex){p.toast('入数保存失敗: '+ex.message);}
@@ -12076,10 +12218,10 @@ function PartsPage(p){
                       if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
                       if(!confirm('部材「'+r.label+'」を削除します。\n在庫データはそのまま残ります。\nよろしいですか？'))return;
                       try{
-                        var cp=JSON.parse(localStorage.getItem('lec_custom_parts')||'[]');
+                        var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');
                         var idx=cp.findIndex(function(x){return x.key===r.baseKey;});
                         if(idx>=0)cp.splice(idx,1);
-                        localStorage.setItem('lec_custom_parts',JSON.stringify(cp));
+                        lsSet('lec_custom_parts',JSON.stringify(cp));
                         p.toast('部材を削除しました: '+r.label);
                         bump[1](bump[0]+1);
                         cloudSave(p.userName);/* v14.6: 削除を全端末へ共有 */
