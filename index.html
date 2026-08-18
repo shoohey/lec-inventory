@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.55（修正９ 担当営業を全員表示／倉庫別在庫表の全品目表示と倉庫別編集／案件修正後の仮押さえ不具合／予備パーツ管理／エンド納品先の検索／上下ジョイントの要否／別製品ライン追加）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.56（修正９の確認項目 常設タイプは上下ジョイントの要否欄を非表示／出荷指示書は予備パーツを合算した数量で出力）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1330,11 +1330,14 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   /* Vertical joints: 常設タイプは不要。パーソナルは1台につき3個必要 (1台=島×段) */
   /* v18.25 要望⑧: Sα(新台湾製/line='sa')はパーソナルでも上下ジョイント(SML)が存在しないため除外（アンカー穴キャップ854行と同様にopts.line判定） */
   /* v18.55 修正９⑥: 商品選択画面に「上下ジョイント 必要／不要」のチェックボックスと個数入力を新設した。
-     ・opts.vjNeed が未定義＝v18.54以前に保存された明細 → 従来どおりの自動判定（パーソナル かつ Sα以外）。
-     ・opts.vjNeed が明示されていればその指定に従う（常設タイプでも「必要」にできる）。
-     ・個数(opts.vjQty)がブランク/0のときは自動計算値（1台×3個）を使う。 */
+     v18.56 修正９の確認項目①: 常設タイプは上下ジョイントがそもそも不要（ユーザー回答）。
+     そのため対象はパーソナル（かつ Sα以外）に限る＝従来の自動判定の条件と同じ。
+     ・opts.vjNeed が未定義＝v18.54以前に保存された明細 → 従来どおり「必要」扱い。
+     ・opts.vjNeed=false（不要にチェック）→ 計上しない。
+       レンタル品として既に出している等で正規個数より少ない場合は opts.vjQty に個数を入れる。
+     ・個数(opts.vjQty)がブランク/0のときは計算式どおりの個数（1台×3個）を使う。 */
   var vjAutoQty=n*3;
-  var vjNeed=(opts.vjNeed===undefined||opts.vjNeed===null)?(isPersonal&&opts.line!=='sa'):(!!opts.vjNeed&&opts.line!=='sa');
+  var vjNeed=isPersonal&&opts.line!=='sa'&&((opts.vjNeed===undefined||opts.vjNeed===null)?true:!!opts.vjNeed);
   if(vjNeed){
     var vjManual=parseInt(opts.vjQty)||0;
     var vjQ=vjManual>0?vjManual:vjAutoQty;
@@ -1925,7 +1928,38 @@ function shipRowToBOM(name){
   if(/サイド|SIDE/i.test(n))return {key:'side',sub:shipSize(n)};
   return null;
 }
-/* order全明細のBOMを {key|sub|color: qty} に集約（扉は色別展開・部分解放を差引・倉庫横断合算）。 */
+/* ===== v18.56 修正９の確認項目②: 出荷指示書は予備パーツも合算した数量で出す =====
+   ユーザー回答「予備とそれ以外を区別する必要はありません」。
+   予備パーツ(order.spareParts)の持ち出し数を、部材内訳の同じ部材の行へ足し込む。
+   一致する行が無い部材（見積に無い部材を予備で持ち出した場合）は行として追加する。
+   ・spareBomPool(order) … {key|sub|color:{qty,label,...}} を作る（未消化プール）
+   ・spareTake(pool,key,sub,color) … その部材ぶんを取り出してプールから消す（0のときは0）
+   ・spareRest(pool) … 最後まで一致しなかった残りを配列で返す
+   ★返却済みかどうかは見ない。出荷指示書は「出荷時に持ち出す数」を示す帳票のため、持ち出し数(qty)で合算する。 */
+function spareBomKey(key,sub,color){return (key||'')+'|'+(sub==null?'':sub)+'|'+(color||'');}
+function spareBomPool(order){
+  var pool={};
+  ((order&&order.spareParts)||[]).forEach(function(s){
+    var q=parseInt(s.qty)||0;if(q<=0)return;
+    var k=spareBomKey(s.key,s.sub,s.color);
+    if(!pool[k])pool[k]={qty:0,label:s.label||s.key||'',key:s.key,sub:s.sub,color:s.color,isDoor:!!s.isDoor,line:s.lineId};
+    pool[k].qty+=q;
+  });
+  return pool;
+}
+function spareTake(pool,key,sub,color){
+  if(!pool)return 0;
+  var e=pool[spareBomKey(key,sub,color)];
+  if(!e||e.qty<=0)return 0;
+  var q=e.qty;e.qty=0;return q;
+}
+function spareRest(pool){
+  var out=[];
+  Object.keys(pool||{}).forEach(function(k){if(pool[k].qty>0)out.push(pool[k]);});
+  return out;
+}
+/* order全明細のBOMを {key|sub|color: qty} に集約（扉は色別展開・部分解放を差引・倉庫横断合算）。
+   v18.56 確認項目②: 出荷指示書(様式Excel)もこの集約を使うため、予備パーツをここで合算する。 */
 function aggregateOrderBOM(order){
   var agg={};
   function add(key,sub,color,qty){if(!(qty>0))return;var k=key+'|'+(sub||'')+'|'+(color||'');agg[k]=(agg[k]||0)+qty;}
@@ -1945,6 +1979,9 @@ function aggregateOrderBOM(order){
       }
     });
   });
+  /* v18.56 確認項目②: 予備パーツを同じキーへ合算する（区別しない） */
+  var spPool=spareBomPool(order);
+  spareRest(spPool).forEach(function(s){add(s.key,s.sub,s.color,s.qty);});
   return agg;
 }
 function shipLookupAgg(agg,m){
@@ -4458,6 +4495,8 @@ function generateQuoteHTML(order,docType){
       if(r.isDoor){var kk=ln_+'|'+r.key+'|'+(r.color||'')+'|'+(r.doorSub||'');prDoorH[kk]=(prDoorH[kk]||0)+r.released;}
       else{var k2=ln_+'|'+r.key+'|'+(r.sub||'');prSubH[k2]=(prSubH[k2]||0)+r.released;}
     });
+    /* v18.56 修正９の確認項目②: 予備パーツも合算した数量で出す（予備とそれ以外は区別しない） */
+    var spPoolH=spareBomPool(order);
     html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">部材内訳</div>';
     html+='<table><thead><tr><th>部材名</th><th style="width:60px">数量</th></tr></thead><tbody>';
     order.lines.forEach(function(ln){
@@ -4509,6 +4548,8 @@ function generateQuoteHTML(order,docType){
           if(prSubH[pk3]>0){var ddd=Math.min(b.qty,prSubH[pk3]);b.qty-=ddd;prSubH[pk3]-=ddd;releasedNote=' (部分解放 -'+ddd+')';}
           else if(prSubH[pk3]<0){b.qty+=(-prSubH[pk3]);releasedNote=' (数量編集 +'+(-prSubH[pk3])+')';prSubH[pk3]=0;}
         }
+        /* v18.56 確認項目②: 同じ部材の予備パーツをこの行の数量へ足し込む（内訳は分けない） */
+        b.qty+=spareTake(spPoolH,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,b.isDoor?b.color:null);
         if(b.qty<=0)return;
         var lbl=b.label;
         if(b.isDoor){
@@ -4518,19 +4559,11 @@ function generateQuoteHTML(order,docType){
         html+='<tr><td>'+lbl+releasedNote+'</td><td class="c">'+b.qty+'</td></tr>';
       });
     });
+    /* v18.56 確認項目②: 見積明細に同じ部材が無かった予備パーツは、行として追加する（予備の注記は付けない） */
+    spareRest(spPoolH).forEach(function(s){
+      html+='<tr><td>'+(s.label||s.key||'')+'</td><td class="c">'+s.qty+'</td></tr>';
+    });
     html+='</tbody></table>';
-    /* v18.55 修正９④: 予備パーツ（見積外の持ち出し分）を出荷指示書にも出す。
-       見積・請求には一切含めず、出荷依頼の数量としてだけ記載する。 */
-    var spL=(order.spareParts||[]).filter(function(s){return (parseInt(s.qty)||0)>0;});
-    if(spL.length){
-      html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">予備パーツ（見積外・持ち出し）</div>';
-      html+='<table><thead><tr><th>部材名</th><th style="width:60px">数量</th><th style="width:90px">出荷元倉庫</th><th style="width:110px">備考</th></tr></thead><tbody>';
-      spL.forEach(function(s){
-        html+='<tr><td>'+(s.label||s.key||'')+'</td><td class="c">'+(parseInt(s.qty)||0)+'</td><td class="c">'+(((WH_MAP[s.wh]||{}).n)||'')+'</td><td>'+(s.note||'')+'</td></tr>';
-      });
-      html+='</tbody></table>';
-      html+='<div style="font-size:9px;color:#555;margin-top:3px">※ 予備パーツは請求対象外です。未使用分はお持ち帰りのうえ、システムの「予備パーツ」画面から返却先倉庫を登録してください。</div>';
-    }
   }
   if(!isReceipt&&!isShipping){
     html+='<div class="tot-box">';
@@ -4661,6 +4694,8 @@ function generateExcel(order,docType){
   /* v14.2 Codex P2対応: 出荷指示書には BOM/部材一覧シートを追加（倉庫作業者向け） */
   if(docType==='shipping'){
     var bomData=[['【出荷指示書 — 部材一覧】 案件: '+order.no+' / 出力日: '+td2()],[],['製品ライン','部材','サイズ/色','数量','倉庫','備考']];
+    /* v18.56 修正９の確認項目②: 予備パーツも合算した数量で出す（予備とそれ以外は区別しない） */
+    var spPoolE=spareBomPool(order);
     /* v14.2 Codex P2対応: 出荷Excel BOMでも _partialReleases のラインID で突合 */
     var prSubE={},prDoorE={};
     (order._partialReleases||[]).forEach(function(r){
@@ -4710,6 +4745,8 @@ function generateExcel(order,docType){
           if(prSubE[pk3]>0){var ddd=Math.min(b.qty,prSubE[pk3]);b.qty-=ddd;prSubE[pk3]-=ddd;releasedNote=' (部分解放 -'+ddd+')';}
           else if(prSubE[pk3]<0){b.qty+=(-prSubE[pk3]);releasedNote=' (数量編集 +'+(-prSubE[pk3])+')';prSubE[pk3]=0;}
         }
+        /* v18.56 確認項目②: 同じ部材の予備パーツをこの行の数量へ足し込む（内訳は分けない） */
+        b.qty+=spareTake(spPoolE,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,b.isDoor?b.color:null);
         if(b.qty<=0)return;
         var lbl=b.label||partLabelJP(b.key,b.sub,b.isDoor?b.color:null,b.isDoor);
         var sub=b.isDoor?(b.doorSub||''):(b.sub||'');
@@ -4742,6 +4779,11 @@ function generateExcel(order,docType){
         }
         bomData.push([lineName,lbl,sub,b.qty,WH_MAP[lineWh]?WH_MAP[lineWh].n:lineWh,(b.reason||'')+releasedNote]);
       });
+    });
+    /* v18.56 確認項目②: 見積明細に同じ部材が無かった予備パーツは行として追加する（予備の注記は付けない） */
+    spareRest(spPoolE).forEach(function(s){
+      var lnObjS=LINES.find(function(l){return l.id===s.line;});
+      bomData.push([lnObjS?lnObjS.name:'',s.label||s.key||'',s.isDoor?(s.sub||''):(s.sub||''),s.qty,WH_MAP[order.wh]?WH_MAP[order.wh].n:order.wh,'']);
     });
     var wsBom=XLSX.utils.aoa_to_sheet(bomData);
     wsBom['!cols']=[{wch:14},{wch:36},{wch:10},{wch:10},{wch:14},{wch:24}];
@@ -6094,10 +6136,12 @@ function InvPage(p){
   /* ライン別在庫ゲート＋ゲート適用後の自動入力値（tw/jp01はネジ在庫の取扱なし→自動入力しない） */
   var screwGates=screwCalc?{joint:lineStocksPart(ln[0],'jointScrew_'+sizeObj(sz[0]).grp+'_bk'),sj:lineStocksPart(ln[0],'sj'),cap:lineStocksPart(ln[0],'capScrew_gy')}:null;
   var screwAuto=screwCalc?{joint:screwGates.joint?screwCalc.total.joint:0,sj:(tp[0]==='personal'&&screwGates.sj&&hasSideJt[0]&&ln[0]!=='sa')?screwCalc.total.sj:0,cap:screwGates.cap?screwCalc.total.cap:0}:null;
-  /* v18.55 修正９⑥: 上下ジョイントの表示用。vjNeed が null（未操作）のうちは従来の自動判定＝パーソナルかつSα以外。
-     自動計算の個数は calcBOM と同じ「1台×3個」。 */
-  var vjAutoNeed=(tp[0]==='personal'&&ln[0]!=='sa');
-  var vjNeedEff=(vjNeed[0]===null)?vjAutoNeed:(!!vjNeed[0]&&ln[0]!=='sa');
+  /* v18.55 修正９⑥／v18.56 確認項目①: 上下ジョイントの表示用。
+     常設タイプは上下ジョイントがそもそも不要なので、要・不要のチェックボックス自体を出さない（vjApplies=false）。
+     対象はパーソナル（かつ Sα以外。Sαは上下ジョイントの部材が存在しない）。
+     チェックの既定は「必要」。個数がブランクなら計算式どおり（calcBOM と同じ 1台×3個）。 */
+  var vjApplies=(tp[0]==='personal'&&ln[0]!=='sa');
+  var vjNeedEff=vjApplies&&((vjNeed[0]===null)?true:!!vjNeed[0]);
   var vjAutoQtyUI=qty*3;
   ue(function(){
     if(!screwAuto){
@@ -6141,8 +6185,11 @@ function InvPage(p){
       }
     }
     var lineObj={id:Date.now(),line:ln[0],size:sz[0],type:tp[0],noDoor:!hasDoor[0]||jp2XLNoDoor,color:(!hasDoor[0]||jp2XLNoDoor)?'':(cb?cb[0].color:cl[0]),qty:qty,islands:spec.islands,tiers:spec.tiers,lock:lock,doorType:dt,hasBase:hasBase[0],baseColor:isJP?baseColor[0]:'gy',hasCap:isJP?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:ln[0]==='tw'?'gy':shelfColor[0],hasNameplate:hasNameplate[0],hasNamePaper:hasNamePaper[0],jointScrewQty:parseInt(extraJointScrew[0])||0,capScrewQty:parseInt(extraCapScrew[0])||0,capScrewGyQty:parseInt(extraCapScrewGy[0])||0,sideJointQty:parseInt(extraSideJoint[0])||0};
-    /* v18.55 修正９⑥: 上下ジョイントの必要/不要と個数。未指定(null)のままなら明細に持たせず従来の自動判定に任せる */
-    if(vjNeed[0]!==null){lineObj.vjNeed=!!vjNeed[0];lineObj.vjQty=(vjNeed[0]&&parseInt(vjQty[0])>0)?parseInt(vjQty[0]):0;}
+    /* v18.55 修正９⑥／v18.56 確認項目①: 上下ジョイントの必要/不要と個数。
+       常設タイプ・Sα は対象外（画面にも出していない）ので明細には持たせない。
+       パーソナルで未操作(null)なら従来どおり「必要・計算式どおり」なので何も持たせない。 */
+    if(vjApplies&&vjNeed[0]!==null){lineObj.vjNeed=!!vjNeed[0];lineObj.vjQty=(vjNeed[0]&&parseInt(vjQty[0])>0)?parseInt(vjQty[0]):0;}
+    else if(vjApplies&&parseInt(vjQty[0])>0){lineObj.vjNeed=true;lineObj.vjQty=parseInt(vjQty[0]);}
     if(spec.unitsOverride)lineObj.unitsOverride=spec.unitsOverride;
     if(spec.blocks)lineObj.blocks=spec.blocks;
     if(spec.inputMode)lineObj.inputMode=spec.inputMode;
@@ -6832,15 +6879,17 @@ function InvPage(p){
               /* v18.30: 初期値ブラック。台湾製は棚板グレーのみ取扱のため固定表示（calcBOM 854行の強制と表示を一致させる） */
               parseInt(shelfQty[0])>0?h('select',{className:'inp',value:ln[0]==='tw'?'gy':shelfColor[0],disabled:ln[0]==='tw',title:ln[0]==='tw'?'台湾製の棚板はグレーのみ取扱です':'',onChange:function(e){shelfColor[1](e.target.value);},style:{width:80}},SHELF_COLORS.map(function(sc){return h('option',{key:sc.v,value:sc.v},sc.l);})):null,
               /* v18.55 修正９⑥: 上下ジョイントの「必要／不要」チェックボックスと必要個数（依頼どおり棚板選択の右側に配置）。
-                 既定は従来の自動判定（パーソナルのみ必要）。個数がブランクなら自動計算した個数（1台×3個）を使う。
-                 ★Sα(sa)は上下ジョイントの部材が存在しないため選択不可にしている（在庫にない部材の不足が出ないように）。 */
-              h('span',{style:{width:1,height:18,background:'var(--g200)',margin:'0 2px'}}),
-              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'上下ジョイント'),
-              h('label',{style:{fontSize:9,cursor:ln[0]==='sa'?'not-allowed':'pointer',display:'flex',alignItems:'center',gap:3,opacity:ln[0]==='sa'?.4:1},title:ln[0]==='sa'?'Sα(新台湾製)は上下ジョイントの取扱がありません':'チェック＝必要／外す＝不要'},
-                h('input',{type:'checkbox',disabled:ln[0]==='sa',checked:vjNeedEff,onChange:function(){vjNeed[1](!vjNeedEff);if(vjNeedEff)vjQty[1]('');}}),
-                vjNeedEff?'必要':'不要'),
-              vjNeedEff&&ln[0]!=='sa'?h('input',{className:'inp',type:'number',min:0,value:vjQty[0],onChange:function(e){vjQty[1](e.target.value);},placeholder:String(vjAutoQtyUI),title:'ブランクなら自動計算（'+vjAutoQtyUI+'個）',style:{width:56,textAlign:'center'}}):null,
-              vjNeedEff&&ln[0]!=='sa'?h('span',{style:{fontSize:8,color:'var(--g500)'}},'個（ブランク＝自動'+vjAutoQtyUI+'個）'):null
+                 v18.56 確認項目①: 常設タイプは上下ジョイントがそもそも不要のため、要・不要の欄自体を出さない。
+                 パーソナルのみ表示し、既定は「必要」。個数ブランクなら計算式どおり（1台×3個）、
+                 入力があればその個数を必要部材として計上する（レンタル品で既に出している等、顧客ごとに個数が違うケース用）。
+                 ★Sα(sa)は上下ジョイントの部材が存在しないため対象外。 */
+              vjApplies?h('span',{key:'vjsep',style:{width:1,height:18,background:'var(--g200)',margin:'0 2px'}}):null,
+              vjApplies?h('label',{key:'vjlbl',style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'上下ジョイント'):null,
+              vjApplies?h('label',{key:'vjchk',style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3},title:'チェック＝必要／外す＝不要'},
+                h('input',{type:'checkbox',checked:vjNeedEff,onChange:function(){vjNeed[1](!vjNeedEff);if(vjNeedEff)vjQty[1]('');}}),
+                vjNeedEff?'必要':'不要'):null,
+              (vjApplies&&vjNeedEff)?h('input',{key:'vjqty',className:'inp',type:'number',min:0,value:vjQty[0],onChange:function(e){vjQty[1](e.target.value);},placeholder:String(vjAutoQtyUI),title:'ブランクなら計算式どおりの個数（'+vjAutoQtyUI+'個）',style:{width:56,textAlign:'center'}}):null,
+              (vjApplies&&vjNeedEff)?h('span',{key:'vjnote',style:{fontSize:8,color:'var(--g500)'}},'個（ブランク＝計算式どおり'+vjAutoQtyUI+'個）'):null
             ),
             /* v18.55 修正９⑦: 同じ顧客でサイズ違い（例: Mサイズ×20台＋Lサイズ×10台）を1案件でまとめて扱えるように、
                棚板入力の下に「別製品ライン追加」ボタンを新設した。押すと現在の「製品ライン〜棚板」の選択内容が
@@ -7605,7 +7654,10 @@ function QuotePreview(p){
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},'部材名'),
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:60})},'数量')
           )),
-          h('tbody',null,[].concat.apply([],o.lines.map(function(ln,li){
+          /* v18.56 修正９の確認項目②: 予備パーツも合算した数量で表示する（予備とそれ以外は区別しない） */
+          h('tbody',null,(function(){
+            var spPoolP=spareBomPool(o);
+            var rows=[].concat.apply([],o.lines.map(function(ln,li){
             if(ln.isFreeInput){
               return[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},'[自由入力] '+ln.name)),
                 h('tr',{key:'bom-'+li+'-0'},h('td',{style:cs},ln.name),h('td',{style:Object.assign({},cs,{textAlign:'center'})},ln.qty+' '+(ln.unit||'個')))];
@@ -7627,10 +7679,17 @@ function QuotePreview(p){
             var els=[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},hdrText))];
             bom.forEach(function(b,bi){
               var lbl_=b.label;if(b.isDoor&&co3_)lbl_+=' '+co3_.l;
-              els.push(h('tr',{key:'bom-'+li+'-'+bi},h('td',{style:cs},lbl_),h('td',{style:Object.assign({},cs,{textAlign:'center'})},b.qty)));
+              var q_=b.qty+spareTake(spPoolP,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,b.isDoor?(b.color||ln.color):null);
+              els.push(h('tr',{key:'bom-'+li+'-'+bi},h('td',{style:cs},lbl_),h('td',{style:Object.assign({},cs,{textAlign:'center'})},q_)));
             });
             return els;
-          })))
+            }));
+            /* 見積明細に同じ部材が無かった予備パーツは行として追加する */
+            spareRest(spPoolP).forEach(function(s,si){
+              rows.push(h('tr',{key:'bom-sp-'+si},h('td',{style:cs},s.label||s.key||''),h('td',{style:Object.assign({},cs,{textAlign:'center'})},s.qty)));
+            });
+            return rows;
+          })())
         )
       ):null,
       !isReceipt&&!isShipping?h('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:8}},
