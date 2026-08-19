@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.60（案件削除で在庫を戻す・見積作成案件は権限なしでも修正可・帳票ボタン整理）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.61（パーツ単品の扉で「扉色未定」を選べるように）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -7168,10 +7168,21 @@ function InvPage(p){
               (PART_ADD_DEFS.find(function(d){return d.k===partType[0];})||{}).hasSub?h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
                 h('select',{className:'inp',value:partSub[0],onChange:function(e){partSub[1](e.target.value);}},(LINE_SIZES[partLine[0]]||sizes).map(function(s){return h('option',{key:s,value:s},(partLine[0]||ln[0])==='sa'?'Sα':s);}))):null
             ),
-            (PART_ADD_DEFS.find(function(d){return d.k===partType[0];})||{}).hasColor?h('div',{style:{marginBottom:4}},
-              h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'カラー'),
-              h('select',{className:'inp',value:partColor[0],onChange:function(e){partColor[1](e.target.value);}},(LINE_COLORS[partLine[0]]||colors).filter(function(c){return !c.und;}).map(function(c){return h('option',{key:c.v,value:c.v},c.l);}))
-            ):null,
+            /* v18.61 追加修正: パーツ単品の「扉」は色が決まっていないことがある（特にXLサイズの扉）。
+               扉を選んでいるときだけカラーの選択肢に「扉色未定」を出す。
+               UND_COLOR は order:true（受発注扱い）なので、未定のまま明細に入れても在庫照会・仮押さえ・
+               出荷消費はスキップされる（本体明細の色未定と同じ既存インフラに乗る）。
+               扉以外の部材（ハンガーパイプ等）には色未定の概念が無いため従来どおり選択肢から除外する。 */
+            (function(){
+              var pdSel=PART_ADD_DEFS.find(function(d){return d.k===partType[0];})||{};
+              if(!pdSel.hasColor)return null;
+              var pcs=(LINE_COLORS[partLine[0]]||colors).filter(function(c){return pdSel.isDoor?true:!c.und;});
+              return h('div',{style:{marginBottom:4}},
+                h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'カラー'),
+                h('select',{className:'inp',value:partColor[0],onChange:function(e){partColor[1](e.target.value);}},pcs.map(function(c){return h('option',{key:c.v,value:c.v},c.l);})),
+                (pdSel.isDoor&&partColor[0]==='und')?h('div',{style:{fontSize:8,color:'#7C3AED',fontWeight:700,marginTop:2}},'※ 色未定のため在庫は引き当てません（受発注扱い）。色が決まったら「✏ 案件修正」から選び直してください'):null
+              );
+            })(),
             h('div',{style:{display:'flex',gap:4,marginBottom:4}},
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'数量'),h('input',{className:'inp',type:'number',min:1,value:partQty[0],onChange:function(e){partQty[1](e.target.value);},style:{textAlign:'center'}})),
               /* v18.54 修正８①: 空欄のままなら価格マスタの販売単価が入る。マスタの金額はプレースホルダに出す */
@@ -8096,10 +8107,13 @@ function OrdersPage(p){
     /* v18.31: 扉色未定(und)が残ったまま出荷すると、扉が出荷指示書に載らず在庫消費もされない。確定前に警告 */
     var hasUnd=(order.lines||[]).some(function(l){
       if(l.isFreeInput)return false;
+      /* v18.61 追加修正: パーツ単品の扉も「色未定」を選べるようにしたため、出荷確定前の警告対象に含める
+         （従来は !l.isPartOnly で除外しており、色未定のパーツ単品扉が黙って出荷されていた） */
+      if(l.isPartOnly)return !!l.isDoor&&l.color==='und';
       if(l.colorBreakdown&&l.colorBreakdown.length)return l.colorBreakdown.some(function(dc){return dc.color==='und'&&dc.qty>0;});
-      return l.color==='und'&&!l.noDoor&&!l.isPartOnly;
+      return l.color==='und'&&!l.noDoor;
     });
-    if(hasUnd&&!confirm('扉色が「未定」のままの明細があります。\nこのまま出荷すると扉は出荷指示書に記載されず、扉在庫も消費されません。\n（扉色の確定は✎様式手修正、または明細を作り直して行ってください）\n\nこのまま出荷確定しますか？'))return;
+    if(hasUnd&&!confirm('扉色が「未定」のままの明細があります。\nこのまま出荷すると扉は出荷指示書に記載されず、扉在庫も消費されません。\n（扉色を確定するには「✏ 案件修正」から色を選び直してください）\n\nこのまま出荷確定しますか？'))return;
     var sf=shipForm[0];
     order.shipTo={name:sf.shipToName,postal:sf.shipToPostal,address:sf.shipToAddress,phone:sf.shipToPhone};
     order.shipper=sf.shipper==='その他（手入力）'?sf.shipperCustom:sf.shipper;
