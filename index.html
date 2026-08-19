@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.59（様式手修正を「出荷指示書」へ反映）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.60（案件削除で在庫を戻す・見積作成案件は権限なしでも修正可・帳票ボタン整理）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1834,6 +1834,44 @@ function rollbackInventory(order,fromStatus,toStatus){
   }
   if(fromHeld&&ti<1){releaseOrderHeld(order);return {ok:true,mode:'release_held'};}
   return {ok:true,mode:'neutral'};
+}
+/* ===== v18.60 修正11①: 案件を削除したら、その案件が持っていた在庫を必ず在庫一覧へ戻す =====
+   従来は「仮押さえ・受注確定」の HELD（引当）を解除するだけで、出荷指示・出荷完了は
+   「STKから消費済み」として何もしていなかった。そのため出荷完了の案件を削除すると
+   実在庫が減ったまま戻らず、在庫一覧の数が合わなくなっていた（今回の指摘）。
+   ステータスに応じて rollbackInventory(案件,現ステータス,'見積作成') と同じ巻き戻しを行う:
+     仮押さえ / 受注確定      → releaseOrderHeld（引当を解除。STKは元々減っていない）
+     出荷指示 / 出荷完了      → restoreShippedStock（出荷時に引いたSTKを倉庫へ戻す）＋ 台帳クリア
+     見積作成                 → 在庫を持たないので何もしない
+   ※納品完了は削除できない（isOrderLocked）ので対象外。差し戻し(rollbackStatus)と同じ関数を
+     使うので、戻し方・EDIT_LOGへの記録の仕方は差し戻しと完全に同じになる。 */
+function restoreInventoryForDelete(order){
+  if(!order)return {ok:true,mode:'none'};
+  var si=STATUS_FLOW.indexOf(order.status);
+  if(si<=0)return {ok:true,mode:'none'};/* 見積作成（または不明なステータス）は在庫を持たない */
+  if(si>=STATUS_FLOW.indexOf('出荷指示')){
+    /* ★今回追加した経路: 出荷でSTKから引いた分を倉庫へ戻す（差し戻しと同じ rollbackInventory を使う） */
+    return rollbackInventory(order,order.status,'見積作成');
+  }
+  /* 仮押さえ・受注確定は従来と完全に同じ解放処理を残す。
+     releaseOrderHeld() は台帳(_actualHeld/_hadActualHeld)を持つ明細しか解放しないため、
+     台帳を持たない旧形式(v13以前)の明細で引当が残る可能性がある。ここは従来どおり
+     明細ごとに releaseLine を呼び、旧形式はBOM全量で戻すフォールバックに任せる。 */
+  (order.lines||[]).forEach(function(ln){
+    if(ln.isFreeInput)return;
+    if(order.wh2){releaseLine(ln,order.wh);releaseLine(ln,order.wh2);}
+    else{releaseLine(ln,order.wh);}
+  });
+  return {ok:true,mode:'release_held'};
+}
+/* 削除確認メッセージ。在庫がどう戻るかをステータスごとに明示する（黙って在庫が動かないように） */
+function deleteOrderConfirmMsg(order){
+  var si=STATUS_FLOW.indexOf(order.status);
+  var eff;
+  if(si>=STATUS_FLOW.indexOf('出荷指示'))eff='この案件で出荷済みの在庫を倉庫へ戻します（在庫数が復元されます）。';
+  else if(si===1||si===2)eff='仮押さえしていた在庫の引当を解除します（在庫は空きに戻ります）。';
+  else eff='この案件は在庫を確保していないため、在庫の増減はありません。';
+  return '案件 '+order.no+'（'+order.status+'）を削除します。\n\n'+eff+'\n\n本当によろしいですか？';
 }
 /* v17.2 要望26: リピート発注用に明細を複製し、在庫追跡フィールドを除去（前回の引当は引き継がない／元配列は非破壊） */
 function cloneLinesForRepeat(srcLines){
@@ -7441,8 +7479,7 @@ function InvPage(p){
     showQuote[0]&&quoteOrder[0]?h(Modal,{show:true,title:'見積書作成 — '+quoteOrder[0].no,w:900,onClose:function(){showQuote[1](false);},
       footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
         h('button',{className:'btn btn-ol',onClick:function(){showQuote[1](false);}},'閉じる'),
-        h('button',{className:'btn btn-gn',onClick:function(){printQuote(quoteOrder[0],'quote');}},'見積書印刷'),
-        h('button',{className:'btn btn-tl',onClick:function(){generateExcel(quoteOrder[0],'quote');}},'Excel DL')
+        h('button',{className:'btn btn-gn',onClick:function(){printQuote(quoteOrder[0],'quote');}},'見積書印刷')
       )},
       h('div',{style:{padding:10}},
         /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有） */
@@ -8085,8 +8122,10 @@ function OrdersPage(p){
   }
 
   return h('div',{className:'page'+(p.tab==='orders'?' show':'')},
+    /* v18.60 修正10の再修正③: 「📄 出荷指示書」「見積」ボタンを削除したため、それらを案内していたヒントを差し替え。
+       帳票の出力は「在庫確認・見積」画面の見積書作成モーダル（見積書印刷）に集約している。 */
     h('div',{style:{padding:'6px 10px',background:'#FEF3C7',borderRadius:6,marginBottom:6,fontSize:10,color:'#7C2D12'}},
-      '💡 ヒント: 各案件行の「📄 出荷指示書」ボタンから出荷指示書を新規ウィンドウで出力できます。'
+      '💡 ヒント: 案件の内容は「詳細」から確認できます（明細の右の「📦 部材内訳」でその案件の部材一覧も見られます）。'
     ),
     h('div',{className:'card'},
       h('div',{className:'chd'},h('h3',null,'案件管理（'+fl.length+'/'+ORDERS.length+'件）'),
@@ -8173,7 +8212,6 @@ function OrdersPage(p){
             ),
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){showBom[1](false);detail[1](o);}},'詳細'),
-              h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2},onClick:function(){openQuote(o,'quote');}},'見積'),
               /* v17.2 要望26: 前回コピーでリピート発注 */
               h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2,fontWeight:700},title:'この案件の内容をコピーして新規見積（リピート発注）',onClick:function(){
                 if(p.isReadOnly){p.toast('読み取り専用モード中はコピーできません');return;}
@@ -8188,7 +8226,11 @@ function OrdersPage(p){
                  修正後に改めて仮押さえすると同じ案件番号へ上書きされる（作成日・起票者は引き継ぐ）。
                  出荷指示以降はSTKを消費済みで、戻すには差し戻し操作が必要なため対象外にしている。 */
               (['見積作成','仮押さえ','受注確定'].indexOf(o.status)>=0)?h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2,fontWeight:700},title:'この案件の台数・詳細を修正します（仮押さえ在庫は一度解除されます）',onClick:function(){
-                if(p.isReadOnly){p.toast('読み取り専用モード中は修正できません');return;}
+                /* v18.60 修正10の再修正②: ステータスが「見積作成」の案件は在庫（HELD/STK）を一切動かさないため、
+                   編集権限（先勝ちロック）を持っていなくても修正できるようにした。修正10②で見積作成そのものを
+                   全員に開放したのに、作った見積を直せないままだったため。
+                   仮押さえ・受注確定の案件は引当の解除を伴うので従来どおり編集権限が必要。 */
+                if(p.isReadOnly&&o.status!=='見積作成'){p.toast('編集権限がないため、仮押さえ済みの案件は修正できません（ステータスが「見積作成」の案件のみ修正できます）');return;}
                 var ec=CUSTS.find(function(x){return x.id===o.cid;});
                 if(!ec){p.toast('顧客情報が見つかりません');return;}
                 if(!p.requestEdit||!p.requestRepeat){p.toast('この環境では案件修正を利用できません');return;}
@@ -8216,12 +8258,13 @@ function OrdersPage(p){
               h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'見積外の予備パーツの持ち出し・持ち帰りを登録します',onClick:function(){
                 spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:o.wh||WH_IDS[0]}));spareModal[1](o);
               }},'🧰 予備パーツ'+((o.spareParts||[]).length?'('+(o.spareParts||[]).length+')':'')),
-              h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2,fontWeight:700},title:'出荷指示書を新規ウィンドウで出力',onClick:function(){openQuote(o,'shipping');}},'📄 出荷指示書'),
               /* v18.28 顧客要望: 出荷指示書(様式)を手入力で修正（納品先・納品日・品名書換・数量）。案件の order.shipEdit へ保存。
-                 v18.59 修正10③(b): 反映先だった「📋 出荷指示書(様式)」「📊 出荷Excel」を v18.58 で削除したため、
-                 保存内容は「📄 出荷指示書」(印刷用HTML／画面プレビュー)へ反映する方式に変更した（ユーザー判断）。 */
+                 v18.59 修正10③(b): 反映先を「📄 出荷指示書」(印刷用HTML／画面プレビュー)へ変更した。
+                 ★v18.60 修正10の再修正③: その「📄 出荷指示書」ボタンも削除したため、現在この画面に出力先が無い。
+                   入力・保存（order.shipEdit）と、📄出荷指示書の生成ロジック側の反映（v18.59分）は生きているので、
+                   出荷指示書の出力を復活させれば手修正はそのまま効く。出荷指示書のフロー・様式の見直し待ち。 */
               h('button',{className:'btn btn-xs btn-ol',style:Object.assign({marginLeft:2,fontWeight:700},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
-                title:isOrderLocked(o)?'納品完了の案件は編集できません（ステータスを差し戻してから操作してください）':'出荷指示書の内容を手入力で修正（納品先・納品日・品名の書換・数量）。保存すると「📄 出荷指示書」に反映されます',onClick:function(){
+                title:isOrderLocked(o)?'納品完了の案件は編集できません（ステータスを差し戻してから操作してください）':'出荷指示書の内容（納品先・納品日・品名の書換・数量）を手入力で修正し、案件に保存します',onClick:function(){
                 /* v18.49 修正６⑨: 納品完了の案件は内容を編集できない */
                 if(isOrderLocked(o)){p.toast('納品完了の案件は編集できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
                 var tk=shipTemplateKey(o);var tpl=SHIP_TEMPLATES[tk];
@@ -8246,15 +8289,11 @@ function OrdersPage(p){
                 if(p.isReadOnly){p.toast('読み取り専用モード中は削除できません');return;}
                 /* v18.49 修正６⑨: 納品完了の案件は削除禁止 */
                 if(isOrderLocked(o)){p.toast('納品完了の案件は削除できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
-                if(!confirm('案件 '+o.no+' を削除します。\n仮押さえは自動解除されます。\nよろしいですか？'))return;
-                /* v14 Codex P2対応: 仮押さえ・受注確定とも HELDが残っているため解放（出荷指示以降はSTK消費済みのため不要） */
-                if(o.status==='仮押さえ'||o.status==='受注確定'){
-                  o.lines.forEach(function(ln){
-                    if(ln.isFreeInput)return;
-                    if(o.wh2){releaseLine(ln,o.wh);releaseLine(ln,o.wh2);}
-                    else{releaseLine(ln,o.wh);}
-                  });
-                }
+                if(!confirm(deleteOrderConfirmMsg(o)))return;
+                /* v18.60 修正11①: 削除時に、その案件が押さえている/消費している在庫を必ず在庫一覧へ戻す。
+                   従来は仮押さえ・受注確定のHELD解放だけで、出荷指示・出荷完了は「STK消費済み」として
+                   何もしていなかったため、出荷完了の案件を削除すると在庫が減ったまま戻らなかった。 */
+                restoreInventoryForDelete(o);
                 var idx=ORDERS.findIndex(function(x){return x.no===o.no;});
                 if(idx>=0)ORDERS.splice(idx,1);
                 markOrderDeleted(o.no);/* v14.6: 削除墓標を記録し全端末/リロード後も復活させない */
@@ -8426,15 +8465,10 @@ function OrdersPage(p){
           if(p.isReadOnly){p.toast('読み取り専用モード中は削除できません');return;}
           if(isOrderLocked(detail[0])){p.toast('納品完了の案件は削除できません。ステータスを差し戻してから操作してください');return;}
           var od=detail[0];
-          if(!confirm('案件 '+od.no+' を削除します。\n仮押さえは自動解除されます。\n本当によろしいですか？'))return;
-          /* v14 Codex P2対応: 仮押さえ・受注確定で残るHELDも解放（出荷指示以降は実在庫消費済みでHELD無し） */
-          if(od.status==='仮押さえ'||od.status==='受注確定'){
-            od.lines.forEach(function(ln){
-              if(ln.isFreeInput)return;
-              if(od.wh2){releaseLine(ln,od.wh);releaseLine(ln,od.wh2);}
-              else{releaseLine(ln,od.wh);}
-            });
-          }
+          if(!confirm(deleteOrderConfirmMsg(od)))return;
+          /* v18.60 修正11①: 削除時は仮押さえの解除だけでなく、出荷済み（出荷指示・出荷完了）で
+             実在庫から引かれている分も倉庫へ戻す。詳細は restoreInventoryForDelete のコメント参照。 */
+          restoreInventoryForDelete(od);
           var idx=ORDERS.findIndex(function(o){return o.no===od.no;});
           if(idx>=0)ORDERS.splice(idx,1);
           markOrderDeleted(od.no);/* v14.6: 削除墓標を記録し全端末/リロード後も復活させない */
@@ -8817,13 +8851,14 @@ function OrdersPage(p){
           if(Object.keys(se2).length)o2.shipEdit=se2;else delete o2.shipEdit;
           saveAll();
           broadcastOrderUpdate(p.userName||'',o2.no+' 出荷指示書(様式)を手修正');
-          p.toast(Object.keys(se2).length?'手修正を保存しました。「📄 出荷指示書」の出力に反映されます':'手修正なし（自動値のまま）');
+          p.toast(Object.keys(se2).length?'手修正を保存しました（出荷指示書の出力に反映されます）':'手修正なし（自動値のまま）');
           shipEditModal[1](null);p.bump&&p.bump();
         }},'保存'))},
       h('div',null,
-        /* v18.59 修正10③(b): 反映先が「📄 出荷指示書」へ変わったことを画面上でも明示する */
-        h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'空欄の項目は自動値（顧客/エンド納品先・在庫計算の数量）が使われます。入力した項目だけが「📄 出荷指示書」に ✎ 付きで反映され、案件に保存されて全端末で共有されます。',
-          h('span',{style:{color:'#975a16'}},'※数量を 0 にするとその部材は出荷指示書に載りません。')),
+        /* v18.60 修正10の再修正③: 出荷指示書の出力ボタンを削除したため、現状の位置づけを正直に書く */
+        h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'空欄の項目は自動値（顧客/エンド納品先・在庫計算の数量）が使われます。入力した項目だけが出荷指示書に ✎ 付きで反映され、案件に保存されて全端末で共有されます。',
+          h('span',{style:{color:'#975a16'}},'※数量を 0 にするとその部材は出荷指示書に載りません。'),
+          h('span',{style:{color:'#975a16'}},'※出荷指示書の出力は現在この画面から行えません（様式の見直し中）。入力内容は案件に保存され、出力を再開したときにそのまま反映されます。')),
         h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6,borderBottom:'1px solid var(--g200)',paddingBottom:4}},'納品先（空欄=自動）'),
         h('div',{style:{display:'flex',gap:4,marginBottom:6}},
           h('div',{style:{flex:2}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'納品先名'),h('input',{className:'inp',value:shipEditModal[0].name,placeholder:shipEditModal[0].autoHv.name||'',onChange:function(e){shipEditModal[1](Object.assign({},shipEditModal[0],{name:e.target.value}));}})),
