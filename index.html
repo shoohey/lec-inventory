@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.61（パーツ単品の扉で「扉色未定」を選べるように）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.62（見積書作成画面の値引き・支払条件・受渡地・外寸・送料表記）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -431,12 +431,14 @@ var LINES=[
 var INCOMING_LINES=LINES.filter(function(l){return l.id!=='jp01';});
 function defIncLine(cur){return (cur&&cur!=='jp01')?cur:'jp2';}
 var SIZES=[
-  {v:'S',l:'Sサイズ',p:8300,code:'MYPL-E-S',grp:'sml',dim:'W308×D465×H350mm',dimIn:'W266×D435×H322mm'},
-  {v:'M',l:'Mサイズ',p:8300,code:'MYPL-E-M',grp:'sml',dim:'W308×D465×H437mm',dimIn:'W266×D435×H410mm'},
-  {v:'L',l:'Lサイズ',p:8300,code:'MYPL-E-L',grp:'sml',dim:'W308×D465×H583mm',dimIn:'W266×D435×H555mm'},
-  {v:'XL',l:'XLサイズ',p:8300,code:'MYPL-E-XL',grp:'sml',dim:'W308×D465×H700mm',dimIn:''},
-  {v:'3S',l:'3Sサイズ',p:8300,code:'MYPL-E-3S',grp:'ss',dim:'W285×D350×H175mm',dimIn:'W244×D327×H155mm'},
-  {v:'SS',l:'SSサイズ',p:8300,code:'MYPL-E-SS',grp:'ss',dim:'W285×D350×H292mm',dimIn:'W244×D327×H271mm'},
+  /* v18.62 修正12⑤: dim は「常設タイプ」の外寸。パーソナルタイプは高さが異なるため dimPer を併記する。
+     （XL・SSα・SSW はパーソナルの取扱いが無いため dimPer なし＝常設の寸法を使う） */
+  {v:'S',l:'Sサイズ',p:8300,code:'MYPL-E-S',grp:'sml',dim:'W308×D465×H350mm',dimPer:'W308×D465×H380mm',dimIn:'W266×D435×H322mm'},
+  {v:'M',l:'Mサイズ',p:8300,code:'MYPL-E-M',grp:'sml',dim:'W308×D465×H437mm',dimPer:'W308×D465×H467mm',dimIn:'W266×D435×H410mm'},
+  {v:'L',l:'Lサイズ',p:8300,code:'MYPL-E-L',grp:'sml',dim:'W308×D465×H583mm',dimPer:'W308×D465×H613mm',dimIn:'W266×D435×H555mm'},
+  {v:'XL',l:'XLサイズ',p:8300,code:'MYPL-E-XL',grp:'sml',dim:'W308×D465×H874mm',dimIn:''},
+  {v:'3S',l:'3Sサイズ',p:8300,code:'MYPL-E-3S',grp:'ss',dim:'W285×D350×H175mm',dimPer:'W285×D350×H195mm',dimIn:'W244×D327×H155mm'},
+  {v:'SS',l:'SSサイズ',p:8300,code:'MYPL-E-SS',grp:'ss',dim:'W285×D350×H292mm',dimPer:'W285×D350×H312mm',dimIn:'W244×D327×H271mm'},
   {v:'SSA',l:'SSαサイズ',p:16600,code:'MYPL-E-SSA',grp:'ss',dbl:true,dim:'W285×D350×H467mm',dimIn:'W244×D327×Hmm'},
   /* v18.33 要望⑤: SSW（1台＝上下共通ボード1・SSサイド4・SSバックボード2・扉なし）。単価はSS×2構成の暫定16600（顧客確認事項） */
   {v:'SSW',l:'SSWサイズ',p:16600,code:'MYPL-E-SSW',grp:'ss',ssw:true,dim:'',dimIn:''}
@@ -526,13 +528,15 @@ var BASE_PRICE=4000;
 
 /* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタ。
    画面から追加・削除でき、localStorage＋クラウド(quoteOpts)で全端末共有する。 */
-var QUOTE_OPT_KEYS=['delivery','place','expiry'];
+var QUOTE_OPT_KEYS=['delivery','place','expiry','discount'];
 var QUOTE_OPT_DEFAULTS={
   delivery:['お打ち合わせの上','受注後中3日程度','受注後30日程度','受注後60日程度'],
   place:[],
-  expiry:['御見積後1ヶ月','御見積後3ヶ月','お打ち合わせの上']
+  expiry:['御見積後1ヶ月','御見積後3ヶ月','お打ち合わせの上'],
+  /* v18.62 修正12②: 値引き行の商品名称。規定3件は削除不可、自由入力した名称だけ追加・削除できる */
+  discount:['出精値引き','３年間継続購入割引','販促活動協力費']
 };
-var QUOTE_OPTS={delivery:QUOTE_OPT_DEFAULTS.delivery.slice(),place:[],expiry:QUOTE_OPT_DEFAULTS.expiry.slice()};
+var QUOTE_OPTS={delivery:QUOTE_OPT_DEFAULTS.delivery.slice(),place:[],expiry:QUOTE_OPT_DEFAULTS.expiry.slice(),discount:QUOTE_OPT_DEFAULTS.discount.slice()};
 try{
   var _qOpt=JSON.parse(lsGet('lec_quote_opts')||'null');
   if(_qOpt&&typeof _qOpt==='object')QUOTE_OPT_KEYS.forEach(function(k){if(Array.isArray(_qOpt[k]))QUOTE_OPTS[k]=_qOpt[k].slice();});
@@ -764,6 +768,40 @@ function rowRemark(order,rkey,fallback){
   var rr=(order&&order.rowRemarks)||{};
   if(Object.prototype.hasOwnProperty.call(rr,rkey))return rr[rkey]||'';
   return fallback||'';
+}
+/* ========== v18.62 修正12②: 値引きは「項目名＋金額」を複数行で持つ ==========
+   新形式は order.discounts=[{name:'出精値引き',amount:12000},…]。
+   旧案件は order.discount（合計値のみ）しか持たないため、その場合は既定名1行として扱う。
+   合計は従来どおり order.discount にも保存するので、売上集計など既存の参照はそのまま動く。
+   金額の入っていない行は見積書へ出力しない（＝項目は非表示）。 */
+function normDiscountRows(rows){
+  return (Array.isArray(rows)?rows:[]).map(function(r){
+    return {name:((r&&r.name)||'').trim(),amount:Math.max(0,parseInt(r&&r.amount)||0)};
+  });
+}
+function discountRowsOf(order){
+  if(order&&Array.isArray(order.discounts))return normDiscountRows(order.discounts);
+  var d=parseInt(order&&order.discount)||0;
+  return d>0?[{name:(QUOTE_OPT_DEFAULTS.discount[0]||'出精値引き'),amount:d}]:[];
+}
+function discountSum(rows){return normDiscountRows(rows).reduce(function(s,r){return s+r.amount;},0);}
+/* 見積書へ出す値引き行。金額0（未入力）の行と、名称が空の行は出さない */
+function discountRowsForDoc(order){
+  return discountRowsOf(order).filter(function(r){return r.amount>0;}).map(function(r){
+    return {name:r.name||(QUOTE_OPT_DEFAULTS.discount[0]||'出精値引き'),amount:r.amount};
+  });
+}
+/* 行備考(rowRemarks)のキー。1行目は従来どおり 'DISC'（過去に入力した備考を引き継ぐため） */
+function discountRowKey(i){return i===0?'DISC':('DISC'+i);}
+/* ========== v18.62 修正12⑥: 送料行の名称 ==========
+   チャーターを選んだ案件は既定文言を「送料（9時チャーター便・軒先渡し）」にする。
+   order.shipLabel に手入力があればそれを最優先で使う。 */
+var SHIP_NAME_MIX='送料(混載便・時間指定不可)';
+var SHIP_NAME_CHARTER='送料（9時チャーター便・軒先渡し）';
+function shipRowNameDefault(order){return (order&&order.shipMethod==='charter')?SHIP_NAME_CHARTER:SHIP_NAME_MIX;}
+function shipRowName(order){
+  var m=((order&&order.shipLabel)||'').trim();
+  return m||shipRowNameDefault(order);
 }
 /* v18.37 修正箇所2⑤: パーソナル受注のベースボード・上下ジョイントは購入ではなく無償レンタル。
    明細にプラス行とマイナス行を並べ、差引0円であることを見積書上で明示する。 */
@@ -1270,6 +1308,18 @@ function isOrderColor(lineId,colorId){
 function sizeObj(v){return SIZES.find(function(s){return s.v===v;})||SIZES[0];}
 /* v18.33 要望⑧: 新台湾製(sa)のサイズ表記は「Sα」のみ（在庫キーは size='S'/grp='sml' のまま。表示ラベルだけ差替） */
 function sizeLabel(line,size){return line==='sa'?'Sα':sizeObj(size).l;}
+/* v18.62 修正12⑤: 選択したサイズの外寸。パーソナルタイプ(type==='personal')は常設と高さが異なる。
+   'open'（旧オープンタイプ）や未指定は常設の寸法を使う。 */
+function sizeDimOf(size,type){
+  var s=sizeObj(size);
+  return (type==='personal'&&s.dimPer)?s.dimPer:(s.dim||'');
+}
+/* 見積明細の備考へ自動反映する外寸の文言（寸法を持たないサイズは空文字＝備考も空欄） */
+function lineDimRemark(ln){
+  if(!ln||ln.isPartOnly)return '';
+  var d=sizeDimOf(ln.size,ln.type);
+  return d?('外寸:'+d):'';
+}
 /* v18.31: 明細の台数（unitsOverride対応）と構成ラベル。
    blocks(2件以上)=「2列3段＋1列2段」/ inputMode:'direct'=「台数指定・ベースN枚」/ 従来=「N列×M段」。
    x=列と段の区切り文字（見積書の従来表記は'×'なし）。 */
@@ -4548,8 +4598,9 @@ function generateQuoteHTML(order,docType){
     var amt2=ln.qty*uPrice;
     if(sq>0)amt2+=sq*shPrice;
     subtotal+=amt2;
-    /* v18.37 修正箇所2④: 備考欄は空欄スタート（外寸は直接編集のプルダウンから選択して挿入する） */
-    rows.push({no:rowNo++,rkey:'L'+ln.id,code:(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:ln.qty,unit:'台',price:uPrice,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(order,'L'+ln.id,'')});
+    /* v18.62 修正12⑤: 備考欄には選択したサイズの外寸を自動反映する（パーソナル／常設で寸法が異なる）。
+       行ごとの手入力(rowRemarks)があればそちらが優先され、空欄にすることもできる。 */
+    rows.push({no:rowNo++,rkey:'L'+ln.id,code:(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:ln.qty,unit:'台',price:uPrice,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(order,'L'+ln.id,lineDimRemark(ln))});
   });
   /* Base - aggregate from lines that have base */
   var baseLines=order.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
@@ -4572,9 +4623,14 @@ function generateQuoteHTML(order,docType){
     rowNo=rr.no;subtotal=rr.subtotal;
   }
   var ship=order.shipping||0;
-  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,rkey:'SHIP',code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP','')});}
-  var disc=order.discount||0;
-  if(disc>0){subtotal-=disc;rows.push({no:rowNo++,rkey:'DISC',code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:'',remark:rowRemark(order,'DISC','')});}
+  /* v18.62 修正12⑥: 送料行の名称は送付方法（混載／チャーター）で切り替え、手入力(shipLabel)があればそれを使う */
+  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,rkey:'SHIP',code:'F00063',name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP','')});}
+  /* v18.62 修正12②: 値引きは項目名付きで複数行。金額が入っていない行は出力しない */
+  discountRowsForDoc(order).forEach(function(dr,di){
+    var dk=discountRowKey(di);
+    subtotal-=dr.amount;
+    rows.push({no:rowNo++,rkey:dk,code:'F00064',name:dr.name,qty:1,unit:'式',price:'',amount:-dr.amount,tax:'',remark:rowRemark(order,dk,'')});
+  });
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
   var hasNonPart=order.lines.some(function(l){return!l.isPartOnly;});
   var subject=order.subject||'';
@@ -6232,7 +6288,12 @@ function InvPage(p){
      従来は値が空になると既定値(QUOTE_OPTS[kind][0])へ戻る計算だったため、自由入力を選んでも即座に
      プルダウンが既定値へ戻り、入力欄が出ないまま＝自由入力ができない状態になっていた。 */
   var optFree=us({});
-  var discount=us(0);
+  /* v18.62 修正12②: 値引き行ごとに「（自由入力）」を選んだ状態を保持する（optFree と同じ理由） */
+  var discFree=us({});
+  /* v18.62 修正12②⑥: 値引きは「項目名＋金額」の複数行(discountRows)で保持する（旧: 合計値だけの discount）。
+     送料行の表記(shipLabel)とあわせて、リピート発注・案件修正でも引き継げるよう状態として持つ。 */
+  var discountRows=us([]);
+  var shipLabelSt=us('');
   /* v18.37 修正箇所2②: 商品備考は廃止（明細各行の備考欄へ移行）のため productNotes の状態は削除 */
   var quoteSubject=us(''),paymentTerms=us('前払い（銀行振り込み）'),paymentCustom=us(''),quoteNotes=us('');
   var quoteSalesPerson=us('');/* Override sales person per quote */
@@ -6310,7 +6371,8 @@ function InvPage(p){
     quoteSubject[1](ro.subject||'');
     if(ro.paymentTerms)paymentTerms[1](ro.paymentTerms);
     quoteNotes[1](ro.notes||'');
-    discount[1](ro.discount||0);
+    discountRows[1](discountRowsOf(ro));/* v18.62 修正12②: 旧形式(discountのみ)は既定名1行に変換して引き継ぐ */
+    shipLabelSt[1](ro.shipLabel||'');/* v18.62 修正12⑥ */
     quoteSalesPerson[1](ro.salesPersonOverride||'');
     endUser[1](ro.endUser?Object.assign({name:'',postal:'',address:'',phone:''},ro.endUser):{name:'',postal:'',address:'',phone:''});
     /* v18.48 修正６④⑤: 送付方法・送付先も引き継ぐ。案件修正（修正５⑤）はこの経路で内容を読み込むため、
@@ -6641,7 +6703,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,shipPref()):null;
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var pt=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -6671,7 +6733,7 @@ function InvPage(p){
     var totalShip=(shipA?shipA.shipping:0)+(shipB?shipB.shipping:0);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var pt2=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);
     p.toast('仮押さえ＆見積作成完了（2倉庫）: '+no);
@@ -6765,7 +6827,7 @@ function InvPage(p){
     var totalShip=(shipA?shipA.shipping:0)+(second&&shipB?shipB.shipping:0);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var ptA=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:main,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:main,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     if(second)order.wh2=second;
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);showPartWh[1](false);
@@ -6791,14 +6853,17 @@ function InvPage(p){
     var existing=quoteOrder[0];
     var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id;
     var no=isUpdate?existing.no:takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
-    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shippingByMethod(lines[0],wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shippingByMethod(lines[0],wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     if(isUpdate){
       /* v18.34 ⑪バグ修正: 見積書作成画面(モーダル)で直接編集した値を再作成で消さない。
          既存値優先は「左ペインに入力UIが無い項目」に限定する。
          v18.37 修正箇所2②: 全体備考(notes)・LEC担当者(salesPersonOverride)も見積オプションからUI削除したため対象に追加。
          あわせて直接編集のみで持つ項目（納期・受渡地・有効期限・行備考・レンタル記載）も引き継ぐ */
       order.subject=existing.subject||order.subject;
-      order.discount=(existing.discount!=null&&existing.discount!==0)?existing.discount:order.discount;
+      /* v18.62 修正12②: 値引きは項目名付きの複数行。見積書作成画面で入力済みなら丸ごと引き継ぐ */
+      var exDisc=discountRowsOf(existing);
+      if(discountSum(exDisc)>0){order.discounts=exDisc;order.discount=discountSum(exDisc);}
+      order.shipLabel=existing.shipLabel||order.shipLabel||'';/* v18.62 修正12⑥ */
       order.paymentTerms=existing.paymentTerms||order.paymentTerms;
       order.notes=existing.notes||order.notes;
       order.salesPersonOverride=existing.salesPersonOverride||order.salesPersonOverride;
@@ -6870,7 +6935,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,shipPref()):null;
     var no=takeOrderNo('RS');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var ptR=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:parseInt(discount[0])||0,createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts,deliveryDate:dlvIn};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts,deliveryDate:dlvIn};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);
     p.toast('仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -7496,7 +7561,7 @@ function InvPage(p){
         /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有） */
         (function(){
           var qo=quoteOrder[0];
-          var PAY_TERMS_LIST=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末','その他'];
+          var PAY_TERMS_LIST=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末','自由入力'];/* v18.62 修正12③: 「その他」→「自由入力」へ名称変更（下の欄に直接入力する運用は従来どおり） */
           function updQ(patch){
             /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため、直接編集も営業に開放
                v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも編集を許可する
@@ -7527,23 +7592,27 @@ function InvPage(p){
              v18.46 修正５④: 「（自由入力）」は optFree で明示的に保持する。
              以前は「値が選択肢に無い＝自由入力」と判定していたため、自由入力を選んで値を空にした瞬間に
              既定値(effVal)へ戻って選択肢に含まれてしまい、入力欄が現れず自由入力できなかった。 */
+          /* v18.62 修正12④: 選択肢が1件も無いフィールド（受渡地）は「（自由入力）」しか選べないプルダウンに
+             なってしまうため、その場合はプルダウン自体を出さず入力欄だけにする。
+             選択肢が登録されれば従来どおりプルダウンが出る（＝それ以外の運用はそのまま）。 */
           function optField(label,kind,field,effVal,placeholder){
             var list=QUOTE_OPTS[kind]||[];
-            var isFree=!!optFree[0][field];
+            var noSelect=list.length===0;
+            var isFree=noSelect||!!optFree[0][field];
             var cur=isFree?(qo[field]||''):(qo[field]||effVal||'');
             var known=!isFree&&list.indexOf(cur)>=0;
             function setV(v){var pt={};pt[field]=v;updQ(pt);}
             function setFree(on){var nf=Object.assign({},optFree[0]);if(on)nf[field]=true;else delete nf[field];optFree[1](nf);}
             return h('div',null,
               h('label',{style:EL},label),
-              h('select',{className:'inp',value:known?cur:'__free',onChange:function(e){
+              noSelect?null:h('select',{className:'inp',value:known?cur:'__free',onChange:function(e){
                 if(e.target.value==='__free'){setFree(true);setV('');}
                 else{setFree(false);setV(e.target.value);}
               }},
                 list.map(function(x){return h('option',{key:x,value:x},x);}),
                 h('option',{value:'__free'},'（自由入力）')
               ),
-              !known?h('input',{className:'inp',value:qo[field]||'',onChange:function(e){setV(e.target.value);},placeholder:placeholder||'直接入力',style:{marginTop:3},autoFocus:isFree&&!qo[field]}):null,
+              !known?h('input',{className:'inp',value:qo[field]||'',onChange:function(e){setV(e.target.value);},placeholder:placeholder||'直接入力',style:{marginTop:noSelect?0:3},autoFocus:!noSelect&&isFree&&!qo[field]}):null,
               h('div',{style:{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}},
                 (cur&&!known)?h('button',{className:'btn btn-xs btn-ol',onClick:function(){addOpt(kind,cur);setFree(false);}},'＋ 選択肢に追加'):null,
                 (cur&&known&&!isDefaultQuoteOpt(kind,cur))?h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626'},onClick:function(){delOpt(kind,cur);}},'－ 選択肢から削除'):null,
@@ -7557,9 +7626,54 @@ function InvPage(p){
           var dimMap={};
           (qo.lines||[]).forEach(function(l){
             if(l.isPartOnly)return;
-            var so2=sizeObj(l.size);
-            if(so2&&so2.dim)dimMap['L'+l.id]='外寸:'+so2.dim;
+            /* v18.62 修正12⑤: パーソナル／常設で外寸が異なるため、行のタイプに応じた寸法を出す */
+            var dr2=lineDimRemark(l);
+            if(dr2)dimMap['L'+l.id]=dr2;
           });
+          /* ========== v18.62 修正12①②: 値引きの編集（項目名＋金額を複数行） ==========
+             ・金額欄は0を初期表示しない（空欄スタート）
+             ・項目名はプルダウン（規定3件は削除不可）＋自由入力。自由入力した名称は選択肢へ追加・削除できる
+             ・＋ボタンで何行でも追加でき、金額が入っていない行は見積書へ出力しない
+             合計は order.discount にも保存するため、売上集計など既存の集計はそのまま動く。 */
+          function discountEditor(){
+            var drows=discountRowsOf(qo);
+            var dlist=QUOTE_OPTS.discount||[];
+            function commitD(next){var nx=normDiscountRows(next);updQ({discounts:nx,discount:discountSum(nx)});}
+            function setDRow(i,patch){commitD(drows.map(function(r,j){return j===i?Object.assign({},r,patch):Object.assign({},r);}));}
+            function addDRow(){commitD(drows.map(function(r){return Object.assign({},r);}).concat([{name:dlist[0]||'',amount:0}]));}
+            function delDRow(i){discFree[1]({});commitD(drows.filter(function(r,j){return j!==i;}));}
+            function setDFree(i,on){var nf=Object.assign({},discFree[0]);if(on)nf[i]=true;else delete nf[i];discFree[1](nf);}
+            return h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+              h('label',{style:EL},'値引き（項目名＋金額・複数可／金額が空欄の項目は見積書に出ません）'),
+              drows.length?drows.map(function(r,i){
+                var dFree=!!discFree[0][i];
+                var dKnown=!dFree&&dlist.indexOf(r.name)>=0;
+                return h('div',{key:i,style:{display:'flex',gap:4,alignItems:'flex-start',marginBottom:4,flexWrap:'wrap'}},
+                  h('div',{style:{flex:'1 1 220px',minWidth:170}},
+                    h('select',{className:'inp',value:dKnown?r.name:'__free',onChange:function(e){
+                      if(e.target.value==='__free'){setDFree(i,true);setDRow(i,{name:''});}
+                      else{setDFree(i,false);setDRow(i,{name:e.target.value});}
+                    }},
+                      dlist.map(function(x){return h('option',{key:x,value:x},x);}),
+                      h('option',{value:'__free'},'（自由入力）')
+                    ),
+                    !dKnown?h('input',{className:'inp',value:r.name||'',onChange:function(e){setDRow(i,{name:e.target.value});},placeholder:'値引きの項目名を入力',style:{marginTop:3}}):null,
+                    h('div',{style:{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}},
+                      (r.name&&!dKnown)?h('button',{className:'btn btn-xs btn-ol',onClick:function(){addOpt('discount',r.name);setDFree(i,false);}},'＋ 選択肢に追加'):null,
+                      (r.name&&dKnown&&!isDefaultQuoteOpt('discount',r.name))?h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626'},onClick:function(){delOpt('discount',r.name);}},'－ 選択肢から削除'):null,
+                      (r.name&&dKnown&&isDefaultQuoteOpt('discount',r.name))?h('span',{style:{fontSize:8,color:'var(--g400)',lineHeight:'20px'}},'※規定文言（削除不可）'):null
+                    )
+                  ),
+                  h('input',{className:'inp',type:'number',style:{width:110,flexShrink:0},value:r.amount?r.amount:'',placeholder:'値引き額',onChange:function(e){setDRow(i,{amount:parseInt(e.target.value)||0});}}),
+                  h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626',flexShrink:0},onClick:function(){delDRow(i);}},'－ 行削除')
+                );
+              }):h('div',{style:{fontSize:8,color:'var(--g500)',padding:'2px 0'}},'値引きはありません'),
+              h('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:2,flexWrap:'wrap'}},
+                h('button',{className:'btn btn-xs btn-ol',onClick:function(){addDRow();}},'＋ 値引きを追加'),
+                drows.length>1?h('span',{style:{fontSize:8,color:'var(--g500)'}},'値引き合計 ¥'+fm(discountSum(drows))):null
+              )
+            );
+          }
           function updRemark(rkey,val){
             var rr3=Object.assign({},qo.rowRemarks||{});
             rr3[rkey]=val;updQ({rowRemarks:rr3});
@@ -7567,14 +7681,17 @@ function InvPage(p){
           var hasPersonal=(qo.lines||[]).some(function(l){return !l.isPartOnly&&l.type==='personal';});
           return h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
             h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます）'),
-            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:4}},
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 2fr',gap:6,marginBottom:4}},
               h('div',null,h('label',{style:EL},'件名（空欄で自動生成: 商品名・サイズ・台数）'),h('input',{className:'inp',value:qo.subject||'',onChange:function(e){updQ({subject:e.target.value});}})),
-              h('div',null,h('label',{style:EL},'値引き（円）'),h('input',{className:'inp',type:'number',value:qo.discount||0,onChange:function(e){updQ({discount:parseInt(e.target.value)||0});}})),
-              h('div',null,h('label',{style:EL},'送料（円）'),h('input',{className:'inp',type:'number',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0});}}))
+              h('div',null,h('label',{style:EL},'送料（円）'),h('input',{className:'inp',type:'number',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0});}})),
+              /* v18.62 修正12⑥: 送料行の名称。チャーターを選んだ案件は既定が「送料（9時チャーター便・軒先渡し）」になる。手入力で上書きも可 */
+              h('div',null,h('label',{style:EL},'送料の表記（空欄＝'+shipRowNameDefault(qo)+'）'),h('input',{className:'inp',value:qo.shipLabel||'',onChange:function(e){updQ({shipLabel:e.target.value});},placeholder:shipRowNameDefault(qo)}))
             ),
+            /* v18.62 修正12①②: 値引き（項目名＋金額を複数行。0の初期表示はしない） */
+            discountEditor(),
             h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}},
               h('div',null,h('label',{style:EL},'支払条件'),
-                h('select',{className:'inp',value:ptKnown?qo.paymentTerms:'その他',onChange:function(e){updQ({paymentTerms:e.target.value==='その他'?'':e.target.value});}},
+                h('select',{className:'inp',value:ptKnown?qo.paymentTerms:'自由入力',onChange:function(e){updQ({paymentTerms:e.target.value==='自由入力'?'':e.target.value});}},
                   PAY_TERMS_LIST.map(function(pt){return h('option',{key:pt,value:pt},pt);})),
                 !ptKnown?h('input',{className:'inp',value:qo.paymentTerms||'',onChange:function(e){updQ({paymentTerms:e.target.value});},placeholder:'支払条件を入力',style:{marginTop:3}}):null
               ),
@@ -7755,8 +7872,8 @@ function QuotePreview(p){
     var amt2=ln.qty*uPrice;
     if(sq>0)amt2+=sq*shPrice;
     subtotal+=amt2;
-    /* v18.37 修正箇所2④: 備考欄は空欄スタート（外寸は直接編集のプルダウンから選択して挿入する） */
-    rows.push({no:rowNo++,rkey:'L'+ln.id,code:(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:ln.qty,unit:'台',price:uPrice,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(o,'L'+ln.id,'')});
+    /* v18.62 修正12⑤: 備考欄には選択したサイズの外寸を自動反映する（印刷用HTMLと同一） */
+    rows.push({no:rowNo++,rkey:'L'+ln.id,code:(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:ln.qty,unit:'台',price:uPrice,amount:amt2,tax:'10%(外)',configNote:'【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''),remark:rowRemark(o,'L'+ln.id,lineDimRemark(ln))});
   });
   var baseLines=o.lines.filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
   /* v14.3: ベースはパーソナルでn(1台×1枚)、常設はislands。上下共通ボードはtop側でn*2化 */
@@ -7778,9 +7895,14 @@ function QuotePreview(p){
     rowNo=rr2.no;subtotal=rr2.subtotal;
   }
   var ship=o.shipping||0;
-  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,rkey:'SHIP',code:'F00063',name:'送料(混載便・時間指定不可)',qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(o,'SHIP','')});}
-  var disc=o.discount||0;
-  if(disc>0){subtotal-=disc;rows.push({no:rowNo++,rkey:'DISC',code:'F00064',name:'出精値引き',qty:1,unit:'式',price:'',amount:-disc,tax:'',remark:rowRemark(o,'DISC','')});}
+  /* v18.62 修正12⑥: 送料行の名称（印刷用HTMLと同一ロジック） */
+  if(ship>0){subtotal+=ship;rows.push({no:rowNo++,rkey:'SHIP',code:'F00063',name:shipRowName(o),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(o,'SHIP','')});}
+  /* v18.62 修正12②: 値引きの複数行（印刷用HTMLと同一ロジック） */
+  discountRowsForDoc(o).forEach(function(dr,di){
+    var dk=discountRowKey(di);
+    subtotal-=dr.amount;
+    rows.push({no:rowNo++,rkey:dk,code:'F00064',name:dr.name,qty:1,unit:'式',price:'',amount:-dr.amount,tax:'',remark:rowRemark(o,dk,'')});
+  });
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
   var hasNonPart=o.lines.some(function(l){return!l.isPartOnly;});
   var subject=o.subject||'';
@@ -8465,9 +8587,17 @@ function OrdersPage(p){
           if(newSubject===null)return;
           var newNotes=prompt('備考を編集',od.notes||'');
           if(newNotes===null)return;
-          var newDisc=prompt('値引き金額',od.discount||0);
+          /* v18.62 修正12②: 値引きは項目名付きの複数行になったため、ここは合計値の編集に限定する。
+             金額を変えたときだけ1項目へまとめ直す（変えなければ項目別の内訳はそのまま残す）。 */
+          var dRows=discountRowsOf(od),dSum=discountSum(dRows);
+          var newDisc=prompt('値引き金額（合計）'+(dRows.length>1?'　※現在'+dRows.length+'項目に分かれています。金額を変更すると1項目にまとまります（項目別の編集は「在庫確認・見積」→見積書作成画面から）':''),dSum);
           if(newDisc===null)return;
-          od.subject=newSubject;od.notes=newNotes;od.discount=parseInt(newDisc)||0;
+          var dVal=Math.max(0,parseInt(newDisc)||0);
+          od.subject=newSubject;od.notes=newNotes;
+          if(dVal!==dSum){
+            od.discounts=dVal>0?[{name:(dRows[0]&&dRows[0].name)||(QUOTE_OPT_DEFAULTS.discount[0]||'出精値引き'),amount:dVal}]:[];
+            od.discount=dVal;
+          }
           p.toast('案件を更新しました: '+od.no);
           detail[1](Object.assign({},od));/* force rerender */
           saveAll();
