@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.62（見積書作成画面の値引き・支払条件・受渡地・外寸・送料表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.63（見積書の直接編集を見積書と同じ並びへ・外寸挿入の廃止・レンタル文言・送料表記の編集）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -833,7 +833,8 @@ function pushRentalRows(order,rows,startNo,subtotal,baseLine,baseRowTotal){
     var vName=productName((baseLine||{}).line||'jp01')+'上下ジョイント';
     var vt=vq*VJ_PRICE;
     subtotal+=vt;
-    rows.push({no:no++,rkey:'VJ',code:'',name:vName,qty:vq,unit:'個',price:VJ_PRICE,amount:vt,tax:'10%(外)',remark:rowRemark(order,'VJ',RENTAL_NOTE)});
+    /* v18.63 修正12の再修正③: プラス計上の行には文言を入れない（マイナス行 VJ_R にのみ記載） */
+    rows.push({no:no++,rkey:'VJ',code:'',name:vName,qty:vq,unit:'個',price:VJ_PRICE,amount:vt,tax:'10%(外)',remark:rowRemark(order,'VJ','')});
     subtotal-=vt;
     rows.push({no:no++,rkey:'VJ_R',code:'',name:vName,qty:vq,unit:'個',price:-VJ_PRICE,amount:-vt,tax:'',remark:rowRemark(order,'VJ_R',RENTAL_NOTE)});
   }
@@ -4614,7 +4615,8 @@ function generateQuoteHTML(order,docType){
     /* v18.54 修正８①: ベースボードの単価もマスタから（旧案件は従来のBASE_PRICE） */
     var bPrice=orderBasePrice(order);var bEnt=(order&&order.priceVer>=2)?baseCodeOf(fl0):null;
     var bt=ti*bPrice;subtotal+=bt;
-    rows.push({no:rowNo++,rkey:'BASE',code:(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:bt,tax:'10%(外)',remark:rowRemark(order,'BASE',isRentalQuote(order)?RENTAL_NOTE:'')});
+    /* v18.63 修正12の再修正③: 「レンタル品（無償貸与）」はマイナス計上の行にだけ記載する（プラス行は空欄） */
+    rows.push({no:rowNo++,rkey:'BASE',code:(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:bt,tax:'10%(外)',remark:rowRemark(order,'BASE','')});
     baseRowTotal=bt;
   }
   /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載 */
@@ -7623,13 +7625,8 @@ function InvPage(p){
           /* v18.37 修正箇所2④: 明細の備考欄は行ごとに入力。行の並び・行キーは帳票生成と同一ロジックから取得する */
           var qRows=[];
           try{qRows=(generateQuoteHTML(qo,'quote')||{}).rows||[];}catch(e){qRows=[];}
-          var dimMap={};
-          (qo.lines||[]).forEach(function(l){
-            if(l.isPartOnly)return;
-            /* v18.62 修正12⑤: パーソナル／常設で外寸が異なるため、行のタイプに応じた寸法を出す */
-            var dr2=lineDimRemark(l);
-            if(dr2)dimMap['L'+l.id]=dr2;
-          });
+          /* v18.63 修正12の再修正②: 外寸は v18.62 で明細の備考へ自動反映するようになったため、
+             「外寸を挿入…」プルダウン用の dimMap は不要になった（備考欄の直接編集のみに統一）。 */
           /* ========== v18.62 修正12①②: 値引きの編集（項目名＋金額を複数行） ==========
              ・金額欄は0を初期表示しない（空欄スタート）
              ・項目名はプルダウン（規定3件は削除不可）＋自由入力。自由入力した名称は選択肢へ追加・削除できる
@@ -7681,28 +7678,27 @@ function InvPage(p){
           var hasPersonal=(qo.lines||[]).some(function(l){return !l.isPartOnly&&l.type==='personal';});
           return h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
             h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます）'),
-            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 2fr',gap:6,marginBottom:4}},
+            /* v18.63 修正12の再修正①: 編集欄の並びを見積書の上から順（件名・担当者→納期・有効期限・受渡地→
+               支払条件→明細の備考→送料→値引き→全体備考）に揃える。 */
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:6,marginBottom:4}},
               h('div',null,h('label',{style:EL},'件名（空欄で自動生成: 商品名・サイズ・台数）'),h('input',{className:'inp',value:qo.subject||'',onChange:function(e){updQ({subject:e.target.value});}})),
-              h('div',null,h('label',{style:EL},'送料（円）'),h('input',{className:'inp',type:'number',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0});}})),
-              /* v18.62 修正12⑥: 送料行の名称。チャーターを選んだ案件は既定が「送料（9時チャーター便・軒先渡し）」になる。手入力で上書きも可 */
-              h('div',null,h('label',{style:EL},'送料の表記（空欄＝'+shipRowNameDefault(qo)+'）'),h('input',{className:'inp',value:qo.shipLabel||'',onChange:function(e){updQ({shipLabel:e.target.value});},placeholder:shipRowNameDefault(qo)}))
+              h('div',null,h('label',{style:EL},'LEC担当者（空欄=顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
             ),
-            /* v18.62 修正12①②: 値引き（項目名＋金額を複数行。0の初期表示はしない） */
-            discountEditor(),
+            /* v18.37 修正箇所2③: 納期・有効期限・受渡地（プルダウン＋自由入力・選択肢は追加/削除可）
+               v18.63 修正12の再修正①: 見積書ヘッダーと同じ 納期→有効期限→受渡地 の並びにする */
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}},
+              optField('納期','delivery','deliveryTerm',deliveryTermOf(qo),'納期を入力'),
+              optField('有効期限','expiry','validUntil',validUntilOf(qo),'有効期限を入力'),
+              /* v18.48 修正６④: 送付先=エンドユーザー宛の案件は、空欄時の既定がエンド納品先住所の市区町村までになる */
+              optField('受渡地（空欄='+(qo&&qo.shipDest==='end'?'エンド納品先':'顧客住所')+'の市区町村まで）','place','deliveryPlace','',deliveryPlaceOf(qo,CUSTS.find(function(c){return c.id===qo.cid;}))||'受渡地を入力')
+            ),
             h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}},
               h('div',null,h('label',{style:EL},'支払条件'),
                 h('select',{className:'inp',value:ptKnown?qo.paymentTerms:'自由入力',onChange:function(e){updQ({paymentTerms:e.target.value==='自由入力'?'':e.target.value});}},
                   PAY_TERMS_LIST.map(function(pt){return h('option',{key:pt,value:pt},pt);})),
                 !ptKnown?h('input',{className:'inp',value:qo.paymentTerms||'',onChange:function(e){updQ({paymentTerms:e.target.value});},placeholder:'支払条件を入力',style:{marginTop:3}}):null
               ),
-              h('div',null,h('label',{style:EL},'LEC担当者（空欄=顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
-            ),
-            /* v18.37 修正箇所2③: 納期・受渡地・有効期限（プルダウン＋自由入力・選択肢は追加/削除可） */
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}},
-              optField('納期','delivery','deliveryTerm',deliveryTermOf(qo),'納期を入力'),
-              /* v18.48 修正６④: 送付先=エンドユーザー宛の案件は、空欄時の既定がエンド納品先住所の市区町村までになる */
-              optField('受渡地（空欄='+(qo&&qo.shipDest==='end'?'エンド納品先':'顧客住所')+'の市区町村まで）','place','deliveryPlace','',deliveryPlaceOf(qo,CUSTS.find(function(c){return c.id===qo.cid;}))||'受渡地を入力'),
-              optField('有効期限','expiry','validUntil',validUntilOf(qo),'有効期限を入力')
+              h('div',null)
             ),
             /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載。パーソナルタイプ選択時のみ */
             hasPersonal?h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
@@ -7712,23 +7708,32 @@ function InvPage(p){
               ),
               h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'明細にプラス行とマイナス行を並べて計上し、差引0円で表示します（上下ジョイント単価 ¥'+fm(VJ_PRICE)+'）')
             ):null,
-            /* v18.37 修正箇所2④: 明細各行の備考（税欄の右）。外寸はプルダウンから挿入でき、手入力も可 */
+            /* v18.37 修正箇所2④: 明細各行の備考（税欄の右）。
+               v18.63 修正12の再修正②: 外寸は v18.62 で自動反映するようになったため「外寸を挿入…」の
+               プルダウンは削除。外寸を消して自由に書き換えたい場合はこの入力欄を直接編集する。 */
             qRows.length?h('div',{style:{marginBottom:4}},
-              h('label',{style:EL},'明細の備考（各行ごとに入力・税欄の右に表示）'),
+              h('label',{style:EL},'明細の備考（各行ごとに入力・税欄の右に表示／外寸は自動で入ります。不要なら消してください）'),
               h('div',{style:{maxHeight:150,overflowY:'auto',background:'#fff',border:'1px solid var(--g200)',borderRadius:4,padding:4}},
                 qRows.map(function(r){
                   var rk=r.rkey||('N'+r.no);
                   return h('div',{key:rk,style:{display:'flex',gap:4,alignItems:'center',marginBottom:3}},
                     h('span',{style:{fontSize:8,color:'var(--g500)',width:150,flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:r.name},r.name),
-                    dimMap[rk]?h('select',{className:'inp',style:{width:88,fontSize:8,flexShrink:0},value:'',onChange:function(e){if(e.target.value)updRemark(rk,e.target.value);}},
-                      h('option',{value:''},'外寸を挿入…'),
-                      h('option',{value:dimMap[rk]},dimMap[rk])
-                    ):null,
                     h('input',{className:'inp',style:{flex:1,fontSize:9},value:(qo.rowRemarks||{})[rk]!==undefined?(qo.rowRemarks||{})[rk]:(r.remark||''),onChange:function(e){updRemark(rk,e.target.value);},placeholder:'備考を入力'})
                   );
                 })
               )
             ):null,
+            /* v18.63 修正12の再修正①: 送料と値引きは見積書の明細末尾に出る項目なので、
+               明細の備考の下・全体備考の上へ移動する（見積書と同じ上からの並び）。 */
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 2fr',gap:6,marginBottom:4}},
+              h('div',null,h('label',{style:EL},'送料（円）'),h('input',{className:'inp',type:'number',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0});}})),
+              /* v18.62 修正12⑥／v18.63 修正12の再修正④: 送料行の名称。既定文言を最初から入力欄に入れておき、
+                 その文章をそのまま書き換えられるようにする（空欄にすると既定文言に戻る）。 */
+              h('div',null,h('label',{style:EL},'送料の表記（そのまま編集できます／空欄にすると既定文言に戻ります）'),
+                h('input',{className:'inp',value:qo.shipLabel||shipRowNameDefault(qo),onChange:function(e){updQ({shipLabel:e.target.value});},placeholder:shipRowNameDefault(qo)}))
+            ),
+            /* v18.62 修正12①②: 値引き（項目名＋金額を複数行。0の初期表示はしない） */
+            discountEditor(),
             h('div',null,
               h('label',{style:EL},'全体備考（見積書末尾に表示・改行するとそのまま改行されます）'),
               h('textarea',{className:'inp',rows:3,value:qo.notes||'',onChange:function(e){updQ({notes:e.target.value});},placeholder:'例:\n・○○まで継続購入お願いします。\n・ご契約終了時にはレンタル品は全てご返却をお願いします。',style:{resize:'vertical'}})
@@ -7886,7 +7891,8 @@ function QuotePreview(p){
     /* v18.54 修正８①: ベースボードの単価もマスタから（旧案件は従来のBASE_PRICE） */
     var bPrice=orderBasePrice(o);var bEnt=(o&&o.priceVer>=2)?baseCodeOf(fl0):null;
     var bt=ti*bPrice;subtotal+=bt;
-    rows.push({no:rowNo++,rkey:'BASE',code:(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:bt,tax:'10%(外)',remark:rowRemark(o,'BASE',isRentalQuote(o)?RENTAL_NOTE:'')});
+    /* v18.63 修正12の再修正③: レンタルの文言はマイナス行のみ（印刷用HTMLと同一） */
+    rows.push({no:rowNo++,rkey:'BASE',code:(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:bt,tax:'10%(外)',remark:rowRemark(o,'BASE','')});
     baseRowTotal=bt;
   }
   /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載 */
