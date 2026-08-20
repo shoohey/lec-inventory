@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.63（見積書の直接編集を見積書と同じ並びへ・外寸挿入の廃止・レンタル文言・送料表記の編集）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.64（レンタル品のチェックボックスを常設タイプの案件でも表示）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -803,12 +803,22 @@ function shipRowName(order){
   var m=((order&&order.shipLabel)||'').trim();
   return m||shipRowNameDefault(order);
 }
-/* v18.37 修正箇所2⑤: パーソナル受注のベースボード・上下ジョイントは購入ではなく無償レンタル。
-   明細にプラス行とマイナス行を並べ、差引0円であることを見積書上で明示する。 */
+/* v18.37 修正箇所2⑤: ベースボード・上下ジョイントを購入ではなく無償レンタルとして記載する。
+   明細にプラス行とマイナス行を並べ、差引0円であることを見積書上で明示する。
+   v18.64: 従来は「パーソナルタイプの明細を含む案件」だけを対象にしていたため、常設タイプだけの案件では
+   見積書作成画面のチェックボックス自体が出ず、レンタル運用ができなかった。
+   対象を「レンタルに回せる部材（ベースボード・上下ジョイント）がある案件」へ広げる。
+   ※ チェックを入れていない案件(rentalOffset未設定)の見積書は従来と完全に同じ。 */
 var RENTAL_NOTE='レンタル品（無償貸与）';
+/* レンタルのプラス／マイナス計上ができる部材の数（ベースボード枚数＋上下ジョイント個数） */
+function rentalTargetQty(order){
+  var base=((order&&order.lines)||[]).filter(function(l){return !l.isPartOnly&&l.hasBase!==false;})
+    .reduce(function(s,l){return s+lineBaseCount(l);},0);
+  return base+rentalVjQty(order);
+}
 function isRentalQuote(order){
   if(!order||!order.rentalOffset)return false;
-  return (order.lines||[]).some(function(l){return !l.isPartOnly&&l.type==='personal';});
+  return rentalTargetQty(order)>0;
 }
 function rentalVjQty(order){
   var q=0;
@@ -7675,7 +7685,9 @@ function InvPage(p){
             var rr3=Object.assign({},qo.rowRemarks||{});
             rr3[rkey]=val;updQ({rowRemarks:rr3});
           }
-          var hasPersonal=(qo.lines||[]).some(function(l){return !l.isPartOnly&&l.type==='personal';});
+          /* v18.64: レンタル記載のチェックボックスは常に表示する（従来はパーソナルタイプを含む案件のみ）。
+             レンタルに回せる部材が無い案件（パーツ単品のみ等）では、押しても効かない旨を添えて出す。 */
+          var rentalQty=rentalTargetQty(qo);
           return h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
             h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます）'),
             /* v18.63 修正12の再修正①: 編集欄の並びを見積書の上から順（件名・担当者→納期・有効期限・受渡地→
@@ -7700,14 +7712,19 @@ function InvPage(p){
               ),
               h('div',null)
             ),
-            /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載。パーソナルタイプ選択時のみ */
-            hasPersonal?h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+            /* v18.37 修正箇所2⑤: レンタル品（ベースボード・上下ジョイント）のマイナス記載。
+               v18.64: 常設タイプだけの案件でも使えるよう、チェックボックスは常に表示する。 */
+            h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
               h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:9,fontWeight:600,cursor:'pointer'}},
                 h('input',{type:'checkbox',checked:!!qo.rentalOffset,onChange:function(e){updQ({rentalOffset:e.target.checked});}}),
                 'ベースボード・上下ジョイントをレンタル品（無償貸与）として記載する'
               ),
-              h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'明細にプラス行とマイナス行を並べて計上し、差引0円で表示します（上下ジョイント単価 ¥'+fm(VJ_PRICE)+'）')
-            ):null,
+              h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},
+                rentalQty>0
+                  ?'明細にプラス行とマイナス行を並べて計上し、差引0円で表示します（上下ジョイント単価 ¥'+fm(VJ_PRICE)+'）。「レンタル品（無償貸与）」の文言はマイナス行の備考にだけ入ります'
+                  :'※ この案件にはレンタルに回せる部材（ベースボード・上下ジョイント）が無いため、チェックしても明細は変わりません'
+              )
+            ),
             /* v18.37 修正箇所2④: 明細各行の備考（税欄の右）。
                v18.63 修正12の再修正②: 外寸は v18.62 で自動反映するようになったため「外寸を挿入…」の
                プルダウンは削除。外寸を消して自由に書き換えたい場合はこの入力欄を直接編集する。 */
