@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.65（レンタル品のチェックボックスをパーソナル選択時のみの従来運用へ戻す）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.66（同一部材を複数倉庫へ数量分割して仮押さえ・受注発注品の仕入送料ポップアップ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1230,6 +1230,25 @@ function isCommonStockKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0;}
    在庫が足りている場合は通常どおり在庫数を表示して押さえ、不足時のみ受発注扱い（NGにしない）。 */
 var ORDER_ONLY_KEYS=['cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderDMaster','cylinderLMaster','cylinderExchange','cylinderExchangeSpare','coinReturn'];
 function isOrderOnlyKey(key){return ORDER_ONLY_KEYS.indexOf(key)>=0;}
+/* v18.66 修正13②: 受注発注品は在庫を持たず都度メーカーから仕入れるため、見積に「仕入れ送料」を
+   乗せ忘れると赤字になる。パーツ単品追加でこれらを選んだ時点でポップアップ注意喚起を出す。
+   一覧と仕入先は修正13②のdocx（受注発注品の表）に準拠している:
+     井門     : ダイヤル錠DST / ダイヤル錠(オプナス) / シリンダー錠カム短Dマスター・Lマスター /
+                3桁ダイヤル南京錠 グリーン・ブラック・レッド
+     スターリー: 内筒交換錠（＋内筒交換用予備）/ コインリターン錠
+     サラ     : 番号シール
+   ★ORDER_ONLY_KEYS（在庫判定用）とは目的が別なので統合しないこと。
+     ORDER_ONLY_KEYS にしか無いキー（カム長スタンダード/F/B・カム短スタンダード/F/B/C）は
+     docxの表に載っていないため、ここには入れていない（仕入先が未確認のため）。 */
+var ORDER_SUPPLIER_MAP={
+  dialDST:'井門',dialOpnus:'井門',
+  cylinderDMaster:'井門',cylinderLMaster:'井門',
+  padlockGreen:'井門',padlockBlack:'井門',padlockRed:'井門',
+  cylinderExchange:'スターリー',cylinderExchangeSpare:'スターリー',coinReturn:'スターリー',
+  numLabel:'サラ'
+};
+var ORDER_FREIGHT_NOTE='受注発注品の為、仕入れ送料を加算してください。例：サラ ¥1,500〜、スターリー・井門 ¥1,000〜';
+function orderSupplierOf(key){return ORDER_SUPPLIER_MAP[key]||'';}
 function gs(line,wh,key,sub){
   if(isCommonStockKey(key)){
     /* 鍵類は全製品ライン合算 */
@@ -6485,6 +6504,13 @@ function InvPage(p){
     lines[1](nl);doCheck(nl,selWH[0]||'');
     return true;
   }
+  /* v18.66 修正13②: 受注発注品を選んだ時の注意喚起ポップアップ（仕入れ送料の加算忘れ防止） */
+  function alertOrderFreight(k){
+    var sup=orderSupplierOf(k);
+    if(!sup)return;
+    var pdA=getPartAddDefs().find(function(d){return d.k===k;});
+    alert('⚠ '+((pdA&&pdA.l)||k)+'（仕入先: '+sup+'）は受注発注品です。\n\n'+ORDER_FREIGHT_NOTE);
+  }
   function addPartLine(){
     if(!cust)return;
     /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
@@ -6763,6 +6789,55 @@ function InvPage(p){
       return Math.max(0,b.sub!==undefined?avail(hl,w,b.key,b.sub):avail(hl,w,b.key));
     }catch(e){return 0;}
   }
+  /* ===== v18.66 修正13①: 同一部材を複数倉庫からかき集めて仮押さえする =====
+     例）500台ぶんの鍵のうち 100個を柏、400個を本社 で押さえる。
+     partWhSel[key] は従来の「倉庫ID(文字列)」から [{wh,qty},…] の配列へ変更した。
+     配列が1件だけなら従来どおり「その部材はその倉庫で全量」と同じ動作になる。
+     倉庫の総数は従来どおり2つまで（order.wh / order.wh2 と送料計算がその前提のため）。 */
+  /* 仮押さえ対象になる実数量。扉は受発注色・扉色未定・オープン分を除いた数（holdBOMPartial と同じ基準） */
+  function bomNeedQty(ln,b){
+    if(!b)return 0;
+    if(b.isDoor){
+      var cbs=(ln.colorBreakdown&&ln.colorBreakdown.length)?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
+      return cbs.reduce(function(s,dc){return s+((isOrderColor(ln.line,dc.color)||dc.color==='open')?0:(dc.qty||0));},0);
+    }
+    return b.qty||0;
+  }
+  /* 扉は明細単位の色別内訳(colorBreakdown)で押さえるため、分割数量ぶんを内訳の先頭から切り出す。
+     切り出しの合計は元の内訳と必ず一致するので、色ごとの総押さえ数は分割前と変わらない。 */
+  function carveColorBreakdown(ln,b,skip,take){
+    var cbs=(ln.colorBreakdown&&ln.colorBreakdown.length)?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
+    var out=[],pos=0;
+    cbs.forEach(function(dc){
+      if(isOrderColor(ln.line,dc.color)||dc.color==='open')return;/* 仮押さえ対象外は詰めずに飛ばす */
+      var q=dc.qty||0;
+      var s=Math.max(skip,pos),e=Math.min(skip+take,pos+q);
+      if(e>s)out.push({color:dc.color,qty:e-s});
+      pos+=q;
+    });
+    return out;
+  }
+  /* 旧形式（文字列＝倉庫ID）が残っていても落ちないようにする保険付き */
+  function allocsOf(k,defWh,need){
+    var a=(partWhSel[0]||{})[k];
+    if(!a)return [{wh:defWh,qty:need}];
+    if(typeof a==='string')return [{wh:a,qty:need}];
+    return a.length?a:[{wh:defWh,qty:need}];
+  }
+  function setAllocs(k,arr){var m=Object.assign({},partWhSel[0]);m[k]=arr;partWhSel[1](m);}
+  function allocSum(arr){return (arr||[]).reduce(function(s,a){return s+(parseInt(a.qty)||0);},0);}
+  /* 現在の割当に登場する倉庫の一覧（既定では数量0の行は数えない）。
+     受発注色の扉だけの案件など「押さえる数量が0」のケースでは全件0になるため、
+     その場合だけ数量を無視して倉庫を拾う（従来どおり案件を登録できるようにする）。 */
+  function usedWhList(anyQty){
+    var ws={};
+    Object.keys(partWhSel[0]||{}).forEach(function(k){
+      var a=(partWhSel[0]||{})[k];
+      if(typeof a==='string'){if(a)ws[a]=1;return;}
+      (a||[]).forEach(function(al){if(al.wh&&(anyQty||(parseInt(al.qty)||0)>0))ws[al.wh]=1;});
+    });
+    return Object.keys(ws);
+  }
   function openPartWh(){
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
     if(!lines[0].length){p.toast('明細を追加してください');return;}
@@ -6770,39 +6845,64 @@ function InvPage(p){
     var def=selWH[0]||(whResults[0].find(function(r){return r.check&&r.check.ok&&!r.noLine;})||{}).whId||WH_IDS[0];
     lines[0].forEach(function(ln,li){
       if(ln.isFreeInput)return;
-      getBOM(ln).forEach(function(b,bi){init[li+'_'+bi]=def;});
+      getBOM(ln).forEach(function(b,bi){init[li+'_'+bi]=[{wh:def,qty:bomNeedQty(ln,b)}];});
     });
     partWhSel[1](init);showPartWh[1](true);
   }
   function doHoldAndQuoteAssigned(){
     if(!lines[0].length)return;
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
-    var sel=partWhSel[0]||{};
-    var used={};Object.keys(sel).forEach(function(k){if(sel[k])used[sel[k]]=(used[sel[k]]||0)+1;});
-    var whList=Object.keys(used);
-    if(!whList.length){p.toast('倉庫を選択してください');return;}
+    /* v18.66 修正13①: 割当は [{wh,qty},…]。倉庫の総数は従来どおり2つまで */
+    var whList=usedWhList();
+    if(!whList.length)whList=usedWhList(true);/* 押さえる数量が0の案件（受発注色の扉のみ等）でも従来どおり登録できるようにする */
+    if(!whList.length){p.toast('倉庫と数量を指定してください');return;}
     if(whList.length>2){p.toast('倉庫は2つまでにしてください（現在'+whList.length+'倉庫）');return;}
-    whList.sort(function(a,b){return used[b]-used[a];});
+    /* 割当数量が多い倉庫を主倉庫の既定にする（従来は割当された部材の「件数」で決めていた） */
+    var usedQty={};
+    lines[0].forEach(function(ln,li){
+      if(ln.isFreeInput)return;
+      getBOM(ln).forEach(function(b,bi){
+        allocsOf(li+'_'+bi,whList[0],bomNeedQty(ln,b)).forEach(function(al){
+          var q=parseInt(al.qty)||0;if(al.wh&&q>0)usedQty[al.wh]=(usedQty[al.wh]||0)+q;
+        });
+      });
+    });
+    whList.sort(function(a,b){return (usedQty[b]||0)-(usedQty[a]||0);});
     /* v18.44 修正３⑤: 部材別倉庫指定でも、新柏が含まれる場合は主倉庫(order.wh)を新柏にする */
     var kIx=whList.indexOf('kashiwa');
     if(kIx>0){whList.splice(kIx,1);whList.unshift('kashiwa');}
     var main=whList[0],second=whList[1]||null;
+    /* v18.66 修正13①: 割当合計のチェック（超過は必ず止める／不足は残りを未確保＝発注待ちにする） */
+    var overMsg=[],underMsg=[];
+    lines[0].forEach(function(ln,li){
+      if(ln.isFreeInput)return;
+      getBOM(ln).forEach(function(b,bi){
+        var need=bomNeedQty(ln,b),sum=allocSum(allocsOf(li+'_'+bi,main,need));
+        if(sum>need)overMsg.push('・'+b.label+'　割当'+fm(sum)+' / 必要'+fm(need));
+        else if(sum<need)underMsg.push('・'+b.label+'　割当'+fm(sum)+' / 必要'+fm(need)+'（残り'+fm(need-sum)+'は発注待ち）');
+      });
+    });
+    if(overMsg.length){
+      p.toast('割当数量が必要数を超えている部材があります。数量を見直してください');
+      alert('以下の部材で、倉庫への割当数量の合計が必要数を超えています:\n'+overMsg.slice(0,8).join('\n')+(overMsg.length>8?'\n…他'+(overMsg.length-8)+'件':''));
+      return;
+    }
     /* 空き不足の事前確認（不足分は未確保=発注待ちで登録） */
     var shortMsg=[];
     lines[0].forEach(function(ln,li){
       if(ln.isFreeInput)return;
       getBOM(ln).forEach(function(b,bi){
-        var w=sel[li+'_'+bi]||main;
-        var free=partFreeAt(ln,b,w);
-        /* v18.31: 扉は受発注色/扉色未定/オープン分を需要から除外して比較（仮押さえ対象外のため不足警告に含めない。従来はund/bk等で常に不足誤警告→実際は未確保登録もされず文言が事実と不一致だった） */
-        var needQ=b.qty;
-        if(b.isDoor){
-          var cbs2=ln.colorBreakdown&&ln.colorBreakdown.length?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
-          needQ=cbs2.reduce(function(s,dc){return s+((isOrderColor(ln.line,dc.color)||dc.color==='open')?0:dc.qty);},0);
-        }
-        if(free<needQ)shortMsg.push('・'+b.label+'（'+((WH_MAP[w]||{}).s||w)+'）不足:'+fm(needQ-free));
+        /* v18.31: 扉は受発注色/扉色未定/オープン分を需要から除外して比較（仮押さえ対象外のため不足警告に含めない） */
+        var need=bomNeedQty(ln,b);
+        allocsOf(li+'_'+bi,main,need).forEach(function(al){
+          var w=al.wh||main,q=parseInt(al.qty)||0;
+          if(!q)return;
+          var free=partFreeAt(ln,b,w);
+          if(free<q)shortMsg.push('・'+b.label+'（'+((WH_MAP[w]||{}).s||w)+'）不足:'+fm(q-free));
+        });
       });
     });
+    if(underMsg.length)shortMsg=shortMsg.concat(underMsg);
     if(shortMsg.length){
       var m='以下のパーツが指定倉庫で在庫不足です（未確保として発注待ちに登録します）:\n'+shortMsg.slice(0,6).join('\n');
       if(shortMsg.length>6)m+='\n…他'+(shortMsg.length-6)+'件';
@@ -6819,10 +6919,40 @@ function InvPage(p){
       var bom=getBOM(ln);
       var merged=[];
       bom.forEach(function(b,bi){
-        var wh=sel[li+'_'+bi]||main;
-        var got=holdBOMPartial(ln.line,wh,[b],ln.color,ln.size,ln.colorBreakdown,unsecuredParts);
-        got.forEach(function(e2){e2._wh=wh;});
-        merged=merged.concat(got);
+        /* v18.66 修正13①: 割当ごとに数量を切り出して押さえる。1件だけなら従来と同じ動作。 */
+        var need=bomNeedQty(ln,b);
+        var allocs=allocsOf(li+'_'+bi,main,need);
+        var pos=0;
+        allocs.forEach(function(al){
+          var wh=al.wh||main,q=Math.max(0,parseInt(al.qty)||0);
+          if(!q)return;
+          if(pos+q>need)q=Math.max(0,need-pos);/* 念のための二重ガード（超過は上で弾いている） */
+          if(!q)return;
+          var got;
+          if(b.isDoor){
+            var cbPart=carveColorBreakdown(ln,b,pos,q);
+            if(!cbPart.length){pos+=q;return;}/* 全量が受発注色などで対象外 */
+            got=holdBOMPartial(ln.line,wh,[Object.assign({},b,{qty:q})],ln.color,ln.size,cbPart,unsecuredParts);
+          }else{
+            got=holdBOMPartial(ln.line,wh,[Object.assign({},b,{qty:q})],ln.color,ln.size,ln.colorBreakdown,unsecuredParts);
+          }
+          got.forEach(function(e2){e2._wh=wh;});
+          merged=merged.concat(got);
+          pos+=q;
+        });
+        /* 割当合計が必要数に満たない分は、どの倉庫でも押さえずに未確保（発注待ち）として登録する */
+        var rest=need-pos;
+        if(rest>0){
+          if(b.isDoor){
+            carveColorBreakdown(ln,b,pos,rest).forEach(function(dc){
+              unsecuredParts.push({line:ln.line,wh:main,key:b.key,color:dc.color,size:ln.size,qty:dc.qty,label:b.label+(dc.color?' '+dc.color:''),isDoor:true});
+            });
+          }else if(b.sub!==undefined){
+            unsecuredParts.push({line:ln.line,wh:main,key:b.key,sub:b.sub,qty:rest,label:b.label,isDoor:false});
+          }else{
+            unsecuredParts.push({line:ln.line,wh:main,key:b.key,qty:rest,label:b.label,isDoor:false});
+          }
+        }
       });
       ln._actualHeld=merged;ln._heldWh=main;ln._hadActualHeld=true;
     });
@@ -7233,10 +7363,15 @@ function InvPage(p){
             ),
             h('div',{style:{display:'flex',gap:4,marginBottom:4}},
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'パーツ（部材在庫一覧の全項目）'),
-                h('select',{className:'inp',value:partType[0],onChange:function(e){partType[1](e.target.value);}},getPartAddDefs().map(function(pd){return h('option',{key:pd.k,value:pd.k},pd.l);}))),
+                /* v18.66 修正13②: 受注発注品を選んだ時点で仕入れ送料の注意喚起ポップアップを出す */
+                h('select',{className:'inp',value:partType[0],onChange:function(e){partType[1](e.target.value);alertOrderFreight(e.target.value);}},getPartAddDefs().map(function(pd){return h('option',{key:pd.k,value:pd.k},pd.l);}))),
               (PART_ADD_DEFS.find(function(d){return d.k===partType[0];})||{}).hasSub?h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
                 h('select',{className:'inp',value:partSub[0],onChange:function(e){partSub[1](e.target.value);}},(LINE_SIZES[partLine[0]]||sizes).map(function(s){return h('option',{key:s,value:s},(partLine[0]||ln[0])==='sa'?'Sα':s);}))):null
             ),
+            /* v18.66 修正13②: ポップアップを閉じた後も注意事項が見えるよう、選択中が受注発注品の間は
+               パネル内に常時バナーを出す（見積へ仕入れ送料を乗せるのは手入力なので、入力時に見えている必要がある） */
+            orderSupplierOf(partType[0])?h('div',{style:{fontSize:8,fontWeight:700,color:'#92400E',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'3px 5px',marginBottom:4,lineHeight:1.5}},
+              '⚠ 受注発注品（仕入先: '+orderSupplierOf(partType[0])+'）　'+ORDER_FREIGHT_NOTE):null,
             /* v18.61 追加修正: パーツ単品の「扉」は色が決まっていないことがある（特にXLサイズの扉）。
                扉を選んでいるときだけカラーの選択肢に「扉色未定」を出す。
                UND_COLOR は order:true（受発注扱い）なので、未定のまま明細に入れても在庫照会・仮押さえ・
@@ -7483,7 +7618,7 @@ function InvPage(p){
             p.salesView?null:h('button',{className:'btn btn-or',style:{fontSize:12,padding:'8px 14px'},onClick:doReserveOnly,disabled:!selWH[0]},'仮押さえのみ（見積無）'),
             p.salesView?null:h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px'},onClick:doHoldAndQuote,disabled:!selWH[0]},'仮押さえ＆見積書作成'),
             /* v18.30 要望③: 部材ごとに倉庫を選んで仮押さえ（単一倉庫で足りる場合でも意図的に分割できる） */
-            p.salesView?null:h('button',{className:'btn btn-tl',style:{fontSize:12,padding:'8px 14px'},onClick:openPartWh,disabled:!lines[0].length,title:'例: 本体は新柏倉庫、鍵は本社で仮押さえ（倉庫は2つまで）'},'🔀 部材別倉庫で仮押さえ'),
+            p.salesView?null:h('button',{className:'btn btn-tl',style:{fontSize:12,padding:'8px 14px'},onClick:openPartWh,disabled:!lines[0].length,title:'例: 本体は新柏倉庫、鍵は本社で仮押さえ。同じ部材を数量で分けて複数倉庫からかき集めることもできます（倉庫は2つまで）'},'🔀 部材別倉庫で仮押さえ'),
             p.salesView?h('span',{style:{fontSize:9,color:'#975a16',alignSelf:'center'}},'営業ロール：見積の作成・保存は可能です（仮押さえ・在庫引当は事務へ依頼してください）'):null,
             quoteOrder[0]&&!showQuote[0]?h('button',{className:'btn btn-tl',onClick:function(){showQuote[1](true);}},'📄 直近の見積を開く: '+quoteOrder[0].no):null,
             /* v18.55 修正９④: 倉庫が未選択のとき「仮押さえ」ボタンは disabled になる。以前は何の説明も無く
@@ -7522,14 +7657,17 @@ function InvPage(p){
       )
     ),
     /* v18.30 要望③: 部材別倉庫指定モーダル */
-    showPartWh[0]?h(Modal,{show:true,title:'🔀 部材別に倉庫を指定して仮押さえ',w:780,onClose:function(){showPartWh[1](false);},
+    showPartWh[0]?h(Modal,{show:true,title:'🔀 部材別に倉庫を指定して仮押さえ',w:820,onClose:function(){showPartWh[1](false);},
       footer:h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
-        (function(){var ws={};Object.keys(partWhSel[0]).forEach(function(k){if(partWhSel[0][k])ws[partWhSel[0][k]]=1;});var arr=Object.keys(ws);
+        (function(){var arr=usedWhList();
           return h('span',{style:{fontSize:10,fontWeight:700,color:arr.length>2?'#DC2626':'var(--gn)',marginRight:'auto'}},'選択中: '+(arr.map(function(w){return (WH_MAP[w]||{}).s||w;}).join(' / ')||'-')+(arr.length>2?' ※2倉庫までにしてください':''));})(),
         h('button',{className:'btn btn-ol',onClick:function(){showPartWh[1](false);}},'キャンセル'),
         h('button',{className:'btn btn-gn',onClick:doHoldAndQuoteAssigned},'この割当で仮押さえ＆見積書作成'))},
       h('div',null,
-        h('div',{style:{fontSize:10,color:'var(--g600)',marginBottom:6}},'各部材の仮押さえ倉庫を選択してください（例: 本体=新柏、鍵=本社）。倉庫は2つまで。空きが足りない部材は「未確保（発注待ち）」として登録されます。'),
+        /* v18.66 修正13①: 同じ部材を複数倉庫へ数量で分けて押さえられる */
+        h('div',{style:{fontSize:10,color:'var(--g600)',marginBottom:6}},'各部材の仮押さえ倉庫と数量を指定してください（例: 本体=新柏、鍵=本社）。',
+          h('b',{style:{color:'#1e3a5f'}},'「＋ 倉庫を追加して分割」で、同じ部材を複数の倉庫からかき集めることもできます（例: 鍵 500個のうち 柏100 / 本社400）。'),
+          '　倉庫は全体で2つまで。割当が必要数に満たない分と、指定倉庫の空きが足りない分は「未確保（発注待ち）」として登録されます。'),
         lines[0].map(function(ln,li){
           if(ln.isFreeInput)return null;
           var bom=getBOM(ln);
@@ -7538,18 +7676,46 @@ function InvPage(p){
           return h('div',{key:ln.id,style:{marginBottom:10}},
             h('div',{style:{fontWeight:700,fontSize:10,color:'#1e3a5f',marginBottom:2}},'明細'+(li+1)+': '+lname),
             h('table',{className:'tbl',style:{fontSize:9}},
-              h('thead',null,h('tr',null,h('th',null,'部材'),h('th',{style:{width:60}},'必要'),h('th',{style:{width:200}},'仮押さえ倉庫（現在の空き）'))),
+              h('thead',null,h('tr',null,h('th',null,'部材'),h('th',{style:{width:56}},'必要'),h('th',{style:{width:300}},'仮押さえ倉庫（現在の空き）と数量'),h('th',{style:{width:80}},'割当合計'))),
               h('tbody',null,bom.map(function(b,bi){
                 var k=li+'_'+bi;
+                var need=bomNeedQty(ln,b);
                 var opts=WH_IDS.filter(function(w){return hasStock(ln.line,w)||hasStock(normalizeStockLine(ln.line,b.key),w);});
+                var allocs=allocsOf(k,opts[0]||WH_IDS[0],need);
+                var sum=allocSum(allocs);
+                var rest=need-sum;
                 return h('tr',{key:bi},
                   h('td',null,b.label),
-                  h('td',{style:{textAlign:'right',fontWeight:700}},fm(b.qty)),
-                  h('td',null,h('select',{className:'inp',value:partWhSel[0][k]||'',onChange:function(e){var m=Object.assign({},partWhSel[0]);m[k]=e.target.value;partWhSel[1](m);}},
-                    opts.map(function(w){
-                      var free=partFreeAt(ln,b,w);
-                      return h('option',{key:w,value:w},((WH_MAP[w]||{}).s||(WH_MAP[w]||{}).n||w)+'（空き'+fm(free)+(free<b.qty?'・不足':'')+'）');
-                    })))
+                  h('td',{style:{textAlign:'right',fontWeight:700}},fm(need)),
+                  h('td',null,
+                    allocs.map(function(al,ai){
+                      var free=partFreeAt(ln,b,al.wh);
+                      var q=parseInt(al.qty)||0;
+                      return h('div',{key:ai,style:{display:'flex',gap:3,alignItems:'center',marginBottom:2}},
+                        h('select',{className:'inp',style:{flex:1,minWidth:150},value:al.wh||'',onChange:function(e){
+                          var na=allocs.map(function(x,xi){return xi===ai?{wh:e.target.value,qty:x.qty}:{wh:x.wh,qty:x.qty};});setAllocs(k,na);
+                        }},opts.map(function(w){
+                          var fr=partFreeAt(ln,b,w);
+                          return h('option',{key:w,value:w},((WH_MAP[w]||{}).s||(WH_MAP[w]||{}).n||w)+'（空き'+fm(fr)+'）');
+                        })),
+                        h('input',{className:'inp',type:'number',min:0,style:{width:66,textAlign:'right',color:(q>free?'#DC2626':'inherit'),fontWeight:700},value:al.qty,title:q>free?'この倉庫の空きを超えています（超過分は未確保＝発注待ちになります）':'',onChange:function(e){
+                          var na=allocs.map(function(x,xi){return xi===ai?{wh:x.wh,qty:e.target.value===''?'':(parseInt(e.target.value)||0)}:{wh:x.wh,qty:x.qty};});setAllocs(k,na);
+                        }}),
+                        allocs.length>1?h('button',{className:'btn btn-xs btn-ol',title:'この割当行を削除',onClick:function(){
+                          setAllocs(k,allocs.filter(function(x,xi){return xi!==ai;}));
+                        }},'－'):null
+                      );
+                    }),
+                    h('button',{className:'btn btn-xs btn-tl',style:{marginTop:1},disabled:allocs.length>=WH_IDS.length,onClick:function(){
+                      /* 未割当の残数を既定値にして、まだ使っていない倉庫を1行足す */
+                      var usedW={};allocs.forEach(function(x){if(x.wh)usedW[x.wh]=1;});
+                      var nw=opts.find(function(w){return !usedW[w];})||opts[0]||WH_IDS[0];
+                      setAllocs(k,allocs.concat([{wh:nw,qty:Math.max(0,rest)}]));
+                    }},'＋ 倉庫を追加して分割')
+                  ),
+                  h('td',{style:{textAlign:'right',fontWeight:700,color:sum===need?'var(--gn)':(sum>need?'#DC2626':'#B45309')}},
+                    fm(sum)+' / '+fm(need),
+                    sum>need?h('div',{style:{fontSize:7,fontWeight:700,color:'#DC2626'}},'超過'):(sum<need?h('div',{style:{fontSize:7,fontWeight:700,color:'#B45309'}},'残'+fm(need-sum)+'は発注待ち'):null))
                 );
               }))
             ));
