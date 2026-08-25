@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.66（同一部材を複数倉庫へ数量分割して仮押さえ・受注発注品の仕入送料ポップアップ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.67（案件修正の上書き・案件管理の拠点タブと納品完了タブ・部材内訳の出荷元倉庫・入金確認）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -731,6 +731,26 @@ function orderStaffOf(order,cust){
   if(order&&order.salesPersonOverride)return resolveSalesPerson(order.salesPersonOverride);
   return resolveSalesPerson(cust&&cust.salesPerson);
 }
+/* ===== v18.67 修正14②: 案件の担当拠点（本社／関西営業所） =====
+   判定は「顧客登録の弊社営業担当（案件で上書きしていればそちら）」→「ユーザー管理のその人の拠点情報」。
+   例: 顧客ID D00034 の弊社担当が佐藤で、ユーザー管理の佐藤の拠点が関西営業所なら 'kansai'。
+   担当者が未登録／ユーザー管理に無い／拠点が「その他」の案件は '' を返す。
+   '' の案件は拠点タブには出ず「全案件」タブでのみ表示する（黙って一覧から消さないため）。 */
+function orderBaseOf(order,cust){
+  var st=orderStaffOf(order,cust);
+  if(!st)return '';
+  var u=(typeof USERS!=='undefined'?USERS:[]).find(function(x){return userDisplayName(x&&x.name)===st;});
+  if(!u)return '';
+  if(u.loc==='kansai_office')return 'kansai';
+  if(u.loc==='honsha_office')return 'honsha';
+  return '';
+}
+var ORDER_BASE_TABS=[{v:'honsha',l:'本社'},{v:'kansai',l:'関西'}];
+function orderBaseLabel(b){var t=ORDER_BASE_TABS.find(function(x){return x.v===b;});return t?t.l:'';}
+/* v18.67 修正14③: 案件詳細の冒頭に出す納品日・出荷日。
+   納品日＝出荷指示時に入力した納品予定日(order.deliveryDate)、出荷日＝出荷完了時に入力した日付。 */
+function orderDeliveryDate(order){return (order&&order.deliveryDate)||'';}
+function orderShipDate(order){return (order&&(order.shippedDate||order.shipSentDate))||'';}
 /* v18.48 修正６⑤: 案件の送付方法（混載/チャーター）・送付先（代理店宛/エンドユーザー宛）の表示名 */
 function shipMethodLabel(m){return m==='charter'?'チャーター':(m==='mix'?'混載':'');}
 function shipDestLabel(d){return d==='end'?'エンド':(d==='cust'?'代理店':'');}
@@ -6301,11 +6321,35 @@ function InvPage(p){
         }
         ORDERS[ix]=order;
       }else ORDERS.push(order);
-      editingNo[1](null);editingMeta[1](null);
+      /* v18.67 修正14①: ここで案件修正モードを解除しない。
+         従来は1回目の保存で editingNo をクリアしていたため、
+         「案件修正 → 見積書のみ作成（内容確認） → 仮押さえ＆見積書作成」のように
+         2回目の保存をすると新しい案件番号が採番され、元の案件が「見積作成」のまま残っていた。
+         修正モードは、顧客を切り替えるか「修正をやめる」を押すまで続く。
+         2回目以降の保存で在庫を二重に押さえないよう、各保存経路の先頭で
+         releaseEditingHold() が直前の押さえを解放する。 */
     }else{
       ORDERS.push(order);
     }
   }
+  /* v18.67 修正14①: 案件修正モードで同じ案件番号へ上書きする前に、その案件が現在押さえている
+     在庫（HELD）を解放する。解放しないまま上書きすると押さえ台帳(_actualHeld)だけが差し替わり、
+     HELD に解放されない数量が残る（幽霊在庫）。「見積作成」の案件は在庫を押さえていないので何もしない。 */
+  function releaseEditingHold(){
+    var no=editingNo[0];if(!no)return;
+    var ex=ORDERS.find(function(x){return x.no===no;});
+    if(!ex)return;
+    if(ex.status!=='仮押さえ'&&ex.status!=='受注確定')return;
+    (ex.lines||[]).forEach(function(ln){
+      if(ln.isFreeInput)return;
+      if(ex.wh2){releaseLine(ln,ex.wh);releaseLine(ln,ex.wh2);}
+      else{releaseLine(ln,ex.wh);}
+    });
+    ex.status='見積作成';
+    rebuildHeldFromOrders();
+  }
+  /* v18.67 修正14①: 保存時のトーストに「上書き」であることを添える */
+  function ovwTag(){return editingNo[0]?'案件修正の上書き保存 ／ ':'';}
   var optTick=us(0);/* v18.37 修正箇所2③: 選択肢マスタ(QUOTE_OPTS)は非state管理のため、追加/削除後の再描画用カウンタ */
   /* v18.46 修正５④: 「（自由入力）」を選んだ状態をフィールド単位で保持する。
      従来は値が空になると既定値(QUOTE_OPTS[kind][0])へ戻る計算だったため、自由入力を選んでも即座に
@@ -6703,14 +6747,17 @@ function InvPage(p){
     if(!lines[0].length||!selWH[0])return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
-    /* 重複仮押さえ防止: 既に同じ顧客の仮押さえドラフトがある場合は警告 */
+    /* 重複仮押さえ防止: 既に同じ顧客の仮押さえドラフトがある場合は警告
+       v18.67 修正14①: 案件修正モードで上書きしようとしている案件そのものは警告の対象外。
+       上書き＝押さえ直しなので在庫は追加消費されない（直後の releaseEditingHold で一度解放する）。 */
     var existing=quoteOrder[0];
-    if(existing&&existing.status==='仮押さえ'&&existing.cid===cust.id){
+    if(existing&&existing.status==='仮押さえ'&&existing.cid===cust.id&&existing.no!==editingNo[0]){
       if(!confirm('既に仮押さえ済の案件「'+existing.no+'」があります。\nさらに仮押さえすると在庫が追加で消費されます。\n本当に続けますか？')){
         p.toast('中止しました。既存の仮押さえを解除したい場合は案件管理から操作してください');
         return;
       }
     }
+    releaseEditingHold();/* v18.67 修正14①: 2回目以降の上書きで在庫を二重に押さえない */
     var wh=selWH[0];
     /* v14 A8: 在庫不足でも仮押さえ可能。不足分は未確保フラグを付けて発注待ちに流す */
     var fullCheck=checkAllLinesWH(lines[0],wh);
@@ -6736,7 +6783,7 @@ function InvPage(p){
     var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);
-    p.toast('仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
+    p.toast(ovwTag()+'仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
     /* v14 D30: 他セッションへ通知 */
     broadcastOrderUpdate(p.userName||'',no+' 仮押さえ作成');
     /* whResults保持改善: 倉庫比較UIが消えないよう doCheck で再計算
@@ -6749,6 +6796,7 @@ function InvPage(p){
     if(!lines[0].length||selMulti[0]===null||!multiWH[0][selMulti[0]])return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
+    releaseEditingHold();/* v18.67 修正14①: 2回目以降の上書きで在庫を二重に押さえない */
     var mo=multiWH[0][selMulti[0]];
     var whA=mo.whA,whB=mo.whB;
     /* v14.2 Codex P2対応: 各ラインの _actualHeld(倉庫情報入り) を保存して、出荷BOM Excel で正しく分配 */
@@ -6766,7 +6814,7 @@ function InvPage(p){
     var order={no:no,cid:cust.id,wh:whA,wh2:whB,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);
-    p.toast('仮押さえ＆見積作成完了（2倉庫）: '+no);
+    p.toast(ovwTag()+'仮押さえ＆見積作成完了（2倉庫）: '+no);
     selMulti[1](null);
     doCheck(lines[0]);/* whResults保持: 再計算で倉庫比較UI維持 */
     p.bump();saveAll();
@@ -6857,6 +6905,7 @@ function InvPage(p){
     if(!whList.length)whList=usedWhList(true);/* 押さえる数量が0の案件（受発注色の扉のみ等）でも従来どおり登録できるようにする */
     if(!whList.length){p.toast('倉庫と数量を指定してください');return;}
     if(whList.length>2){p.toast('倉庫は2つまでにしてください（現在'+whList.length+'倉庫）');return;}
+    releaseEditingHold();/* v18.67 修正14①: 2回目以降の上書きで在庫を二重に押さえない */
     /* 割当数量が多い倉庫を主倉庫の既定にする（従来は割当された部材の「件数」で決めていた） */
     var usedQty={};
     lines[0].forEach(function(ln,li){
@@ -6965,7 +7014,7 @@ function InvPage(p){
     if(second)order.wh2=second;
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);showPartWh[1](false);
-    p.toast('仮押さえ＆見積作成完了（部材別倉庫: '+((WH_MAP[main]||{}).s||main)+(second?' + '+((WH_MAP[second]||{}).s||second):'')+'）: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
+    p.toast(ovwTag()+'仮押さえ＆見積作成完了（部材別倉庫: '+((WH_MAP[main]||{}).s||main)+(second?' + '+((WH_MAP[second]||{}).s||second):'')+'）: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
     broadcastOrderUpdate(p.userName||'',no+' 仮押さえ作成（部材別倉庫）');
     doCheck(lines[0]);
     p.bump();saveAll();
@@ -6985,7 +7034,9 @@ function InvPage(p){
     var pt3=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
     /* 既存の見積ドラフトがあれば上書き、それ以外は新規作成 */
     var existing=quoteOrder[0];
-    var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id;
+    /* v18.67 修正14①: 案件修正モード中は、その案件番号のドラフト以外を「更新対象」にしない */
+    var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id&&(!editingNo[0]||existing.no===editingNo[0]);
+    releaseEditingHold();/* v18.67 修正14①: 仮押さえ済みの案件を見積作成で上書きするときは押さえを解放する */
     var no=isUpdate?existing.no:takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shippingByMethod(lines[0],wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     if(isUpdate){
@@ -7022,7 +7073,7 @@ function InvPage(p){
       p.toast('見積書を更新: '+no);
     }else{
       upsertOrder(order);/* v18.46 修正５⑤ */
-      p.toast('見積書作成: '+no);
+      p.toast(ovwTag()+'見積書作成: '+no);
     }
     quoteOrder[1](order);showQuote[1](true);
     p.bump();saveAll();
@@ -7039,11 +7090,12 @@ function InvPage(p){
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
     /* 重複仮押さえ防止 */
     var existingR=quoteOrder[0];
-    if(existingR&&existingR.status==='仮押さえ'&&existingR.cid===cust.id){
+    if(existingR&&existingR.status==='仮押さえ'&&existingR.cid===cust.id&&existingR.no!==editingNo[0]){
       if(!confirm('既に仮押さえ済の案件「'+existingR.no+'」があります。\nさらに仮押さえすると在庫が追加で消費されます。\n本当に続けますか？')){
         p.toast('中止しました');return;
       }
     }
+    releaseEditingHold();/* v18.67 修正14①: 2回目以降の上書きで在庫を二重に押さえない */
     var wh=selWH[0];
     /* v14 A8: 不足ありでも仮押さえ可（未確保フラグ付与） */
     var fullCheck=checkAllLinesWH(lines[0],wh);
@@ -7072,7 +7124,7 @@ function InvPage(p){
     var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts,deliveryDate:dlvIn};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);
-    p.toast('仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
+    p.toast(ovwTag()+'仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
     /* whResults保持（v18.55 修正９④: 押さえた倉庫の選択を維持する） */
     doCheck(lines[0],wh);
     p.bump();saveAll();
@@ -7098,7 +7150,8 @@ function InvPage(p){
     /* v18.46 修正５⑤: 案件修正モードであることを明示（保存すると同じ案件番号へ上書きされるため） */
     editingNo[0]?h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'6px 12px',background:'#FFF7ED',border:'1.5px solid #FB923C',borderRadius:8,marginBottom:8,fontSize:11,color:'#7C2D12'}},
       h('b',null,'✏ 案件修正モード: '+editingNo[0]),
-      h('span',null,'この内容で「仮押さえ」または「見積書のみ作成」すると、同じ案件番号へ上書き保存されます（作成日・起票者は引き継ぎ）。'),
+      /* v18.67 修正14①: 何度保存しても同じ案件番号へ上書きされることを明示する（従来は1回目の保存だけ上書きだった） */
+      h('span',null,'この内容で「仮押さえ＆見積書作成」「仮押さえのみ」「見積書のみ作成」「部材別倉庫で仮押さえ」のいずれで保存しても、同じ案件番号へ上書きされます（作成日・起票者は引き継ぎ）。何度保存し直しても番号は変わりません。'),
       h('button',{className:'btn btn-xs btn-ol',onClick:function(){
         editingNo[1](null);editingMeta[1](null);
         p.toast('案件修正モードを解除しました。以降の登録は新規案件として採番されます');
@@ -8286,6 +8339,10 @@ function OrdersPage(p){
   /* v18.46 修正４④: ステータス絞り込みを複数選択に変更（空配列＝「全て」）。
      従来は単一選択で「仮押さえ＋受注確定だけ見る」といった絞り込みができなかった。 */
   var filter=us([]),detail=us(null),showQ=us(null);
+  /* v18.67 修正14②④: 案件管理のタブ。'all'=全案件 / 'honsha'=本社 / 'kansai'=関西 / 'done'=納品完了。
+     拠点タブは「顧客登録の弊社営業担当」→「ユーザー管理の拠点情報」で振り分ける（orderBaseOf）。
+     納品完了の案件は 'done' タブへ自動的に移り、他のタブ（進行中の案件一覧）には出さない。 */
+  var baseTab=us('all');
   var showBom=us(false);/* v18.58 修正10①: 案件詳細の「部材内訳」を開いているか（案件詳細を開き直すたびに閉じる） */
   /* v18.46 修正４④/修正５③: 並び替え。既定は納品予定日の近い順（修正５③） */
   var sortKey=us('delivery');
@@ -8339,11 +8396,43 @@ function OrdersPage(p){
     if(ca!==cb2)return ca>cb2?1:-1;
     return a.no>b.no?1:-1;
   }
+  /* v18.67 修正14②: 案件の担当拠点（顧客の弊社営業担当→ユーザー管理の拠点） */
+  function baseOfOrder(o){return orderBaseOf(o,CUSTS.find(function(x){return x.id===o.cid;}));}
+  /* v18.67 修正14②④: タブごとの件数。納品完了は 'done' タブへ集約し、拠点タブ・全案件には出さない */
+  var tabCount={all:0,honsha:0,kansai:0,done:0,nobase:0};
+  ORDERS.forEach(function(o){
+    if(o.status==='納品完了'){tabCount.done++;return;}
+    tabCount.all++;
+    var b=baseOfOrder(o);
+    if(b==='honsha')tabCount.honsha++;
+    else if(b==='kansai')tabCount.kansai++;
+    else tabCount.nobase++;
+  });
   var fl=ORDERS.filter(function(o){
+    /* v18.67 修正14④: 納品完了は「納品完了」タブだけに出す（案件一覧＝進行中の案件） */
+    var done=o.status==='納品完了';
+    if(baseTab[0]==='done'){if(!done)return false;}
+    else{
+      if(done)return false;
+      /* v18.67 修正14②: 拠点タブは担当拠点で絞り込む（拠点未判定の案件は「全案件」でのみ表示） */
+      if(baseTab[0]!=='all'&&baseOfOrder(o)!==baseTab[0])return false;
+    }
     /* v18.46 修正４④: 空配列＝全て。複数選択時はいずれかに一致すれば表示 */
     if(filter[0].length&&filter[0].indexOf(o.status)<0)return false;
     return orderMatchesKw(o,kw[0]);
   }).sort(cmpOrders);
+  /* v18.67 修正14⑤: 入金確認（納品完了タブ）。納品完了の案件はロック中だが、入金確認は納品後に行う運用なので許可する
+     （予備パーツの持ち帰りと同じ扱い）。 */
+  function togglePaid(o,on){
+    if(p.isReadOnly){p.toast('読み取り専用モード中は入金確認を登録できません');return;}
+    o.paid=!!on;
+    if(on){o.paidAt=td2();o.paidBy=p.userName||'';}
+    else{delete o.paidAt;delete o.paidBy;}
+    p.toast((on?'入金確認: ':'入金確認を解除: ')+o.no);
+    saveAll();
+    broadcastOrderUpdate(p.userName||'',o.no+(on?' 入金確認':' 入金確認解除'));
+    p.bump&&p.bump();
+  }
 
   function changeStatus(order,ns){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
@@ -8440,14 +8529,38 @@ function OrdersPage(p){
     h('div',{style:{padding:'6px 10px',background:'#FEF3C7',borderRadius:6,marginBottom:6,fontSize:10,color:'#7C2D12'}},
       '💡 ヒント: 案件の内容は「詳細」から確認できます（明細の右の「📦 部材内訳」でその案件の部材一覧も見られます）。'
     ),
+    /* ===== v18.67 修正14②④: 拠点タブ（全案件／本社／関西）＋納品完了タブ =====
+       拠点は「顧客登録の弊社営業担当」→「ユーザー管理のその人の拠点情報」で判定する。
+       納品完了の案件は自動的に「納品完了」タブへ移り、他のタブには出さない。 */
+    h('div',{style:{display:'flex',gap:4,alignItems:'flex-end',flexWrap:'wrap',marginBottom:6,borderBottom:'2px solid var(--g200)',paddingBottom:0}},
+      [{v:'all',l:'全案件',n:tabCount.all,t:'納品完了を除く全ての案件'},
+       {v:'honsha',l:'本社',n:tabCount.honsha,t:'担当者の拠点が「本社」の案件'},
+       {v:'kansai',l:'関西',n:tabCount.kansai,t:'担当者の拠点が「関西営業所」の案件'},
+       {v:'done',l:'✅ 納品完了',n:tabCount.done,t:'納品完了した案件（入金確認・総金額はこのタブに表示されます）'}
+      ].map(function(t){
+        var on=baseTab[0]===t.v;
+        return h('button',{key:t.v,title:t.t,onClick:function(){baseTab[1](t.v);},style:{
+          padding:'6px 16px',fontSize:11,fontWeight:on?900:600,cursor:'pointer',
+          border:'1px solid var(--g200)',borderBottom:on?'3px solid var(--nv)':'1px solid var(--g200)',
+          background:on?'#fff':'#f5f7fa',color:on?'var(--nv)':'var(--g500)',
+          borderRadius:'6px 6px 0 0',marginBottom:-2
+        }},t.l+'（'+fm(t.n)+'）');
+      }),
+      /* 担当者が未登録／ユーザー管理に無い案件は拠点を判定できないため、「全案件」タブにだけ出す旨を明示する */
+      (baseTab[0]!=='done'&&tabCount.nobase>0)?h('span',{style:{fontSize:9,color:'#975a16',marginLeft:8,marginBottom:4},
+        title:'顧客登録の「弊社営業担当」が未設定、またはユーザー管理にその担当者の拠点が登録されていない案件です。顧客登録で担当者を設定すると拠点タブに振り分けられます'},
+        '※ 拠点未判定 '+fm(tabCount.nobase)+'件は「全案件」タブにのみ表示されます'):null
+    ),
     h('div',{className:'card'},
-      h('div',{className:'chd'},h('h3',null,'案件管理（'+fl.length+'/'+ORDERS.length+'件）'),
+      h('div',{className:'chd'},h('h3',null,(baseTab[0]==='done'?'納品完了':baseTab[0]==='all'?'案件管理':('案件管理 — '+orderBaseLabel(baseTab[0])))+'（'+fl.length+'/'+(baseTab[0]==='done'?tabCount.done:tabCount.all)+'件）'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
           /* v18.48 修正６②: 検索対象からアイテムを外し担当者を追加したため、プレースホルダの文言も差し替える */
           h('input',{className:'inp',style:{width:200},value:kw[0],onChange:function(e){kw[1](e.target.value);},placeholder:'🔍 案件番号・顧客・倉庫・担当者で検索…'}),
           /* v18.46 修正４④: ステータスは複数選択可（クリックでON/OFF）。「全て」で解除 */
-          h('button',{className:'btn btn-xs '+(filter[0].length===0?'btn-nv':'btn-ol'),onClick:function(){filter[1]([]);},title:'ステータスの絞り込みを解除'},'全て'),
-          STATUS_FLOW.map(function(s){
+          /* v18.67 修正14④: 納品完了タブは全件が「納品完了」なのでステータス絞り込みは出さない。
+             他のタブでは「納品完了」を選択肢から外す（納品完了タブへ移っているため0件になる）。 */
+          baseTab[0]==='done'?null:h('button',{className:'btn btn-xs '+(filter[0].length===0?'btn-nv':'btn-ol'),onClick:function(){filter[1]([]);},title:'ステータスの絞り込みを解除'},'全て'),
+          (baseTab[0]==='done'?[]:STATUS_FLOW.filter(function(s){return s!=='納品完了';})).map(function(s){
             var on=filter[0].indexOf(s)>=0;
             return h('button',{key:s,className:'btn btn-xs '+(on?'btn-nv':'btn-ol'),title:'クリックで選択/解除（複数選択できます）',onClick:function(){
               filter[1](on?filter[0].filter(function(x){return x!==s;}):filter[0].concat([s]));
@@ -8465,10 +8578,19 @@ function OrdersPage(p){
           h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:4,fontWeight:700},title:'期間を指定して売上・原価・粗利と棚卸評価額を集計します',onClick:function(){salesRep[1](true);}},'📊 売上集計')
         )
       ),
-      ORDERS.length===0?h('div',{style:{padding:30,textAlign:'center',color:'var(--g400)'}},'案件がありません。'):
+      /* v18.67 修正14②④: タブごとに0件のときは、その理由が分かる文言を出す */
+      fl.length===0?h('div',{style:{padding:30,textAlign:'center',color:'var(--g400)'}},
+        ORDERS.length===0?'案件がありません。':
+        baseTab[0]==='done'?'納品完了の案件はまだありません。':
+        baseTab[0]==='all'?'進行中の案件はありません（納品完了の案件は「✅ 納品完了」タブにあります）。':
+        ('「'+orderBaseLabel(baseTab[0])+'」の進行中案件はありません。顧客登録の「弊社営業担当」とユーザー管理の拠点情報で振り分けています。')
+      ):
       /* v18.50 修正６⑧(再修正): 一覧ボックスを画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
       h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'72vh'}},h('table',{className:'tbl'},
-        h('thead',null,h('tr',null,h('th',null,'No.'),h('th',null,'日付'),h('th',null,'顧客'),h('th',null,'明細'),h('th',null,'台数'),h('th',null,'倉庫'),h('th',null,'送料'),h('th',null,'ステータス'),h('th',null,'操作'))),
+        /* v18.67 修正14⑤: 納品完了タブだけ、ステータスの右に「総金額／入金チェック」の列を足す */
+        h('thead',null,h('tr',null,h('th',null,'No.'),h('th',null,'日付'),h('th',null,'顧客'),h('th',null,'明細'),h('th',null,'台数'),h('th',null,'倉庫'),h('th',null,'送料'),h('th',null,'ステータス'),
+          baseTab[0]==='done'?h('th',null,'総金額 ／ 入金'):null,
+          h('th',null,'操作'))),
         h('tbody',null,fl.map(function(o){
           var c=CUSTS.find(function(x){return x.id===o.cid;});
           /* v18.52 修正７④: 台数はロッカー本体の明細だけを数える。
@@ -8523,6 +8645,25 @@ function OrdersPage(p){
                 '仮押さえ解除 '+o.holdReleasedAt+(o.holdReleasedBy?'（'+o.holdReleasedBy+'）':'')
               ):null
             ),
+            /* ===== v18.67 修正14⑤: 納品完了タブの「総金額 ／ 入金」列 =====
+               上段に案件の総金額（税込）、下段に入金チェックボックスを置く（依頼: 総金額は入金チェックの上部）。
+               金額は売上集計（📊 売上集計）と同じ計算＝商品＋棚板＋ベース＋パーツ＋送料−値引き。 */
+            baseTab[0]==='done'?h('td',{style:{minWidth:118}},
+              (function(){
+                var f;try{f=orderSalesFigures(o);}catch(err){f=null;}
+                if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
+                var tax=Math.floor(f.sell*0.1);
+                return h('div',{style:{fontSize:12,fontWeight:900,color:'#1e3a5f',lineHeight:1.3},
+                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+' ＋送料 ¥'+fm(f.ship)+' −値引き ¥'+fm(f.disc)+'）／消費税 ¥'+fm(tax)+'　※売上集計と同じ計算です'},
+                  '¥'+fm(f.sell+tax));
+              })(),
+              h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:p.isReadOnly?'not-allowed':'pointer',color:o.paid?'#065F46':'var(--g500)'},
+                title:o.paid?('入金確認済み'+(o.paidAt?'（'+o.paidAt+(o.paidBy?' '+o.paidBy:'')+'）':'')):'入金が確認できたらチェックを入れてください'},
+                h('input',{type:'checkbox',checked:!!o.paid,disabled:!!p.isReadOnly,onChange:function(e){togglePaid(o,e.target.checked);}}),
+                o.paid?'入金済':'入金確認'
+              ),
+              o.paid&&o.paidAt?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:1}},o.paidAt+(o.paidBy?'／'+o.paidBy:'')):null
+            ):null,
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){showBom[1](false);detail[1](o);}},'詳細'),
               /* v17.2 要望26: 前回コピーでリピート発注 */
@@ -8811,8 +8952,12 @@ function OrdersPage(p){
         isOrderLocked(detail[0])?h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#F0FDF4',border:'1.5px solid #86EFAC',borderRadius:8,fontSize:11,color:'#065F46',fontWeight:700}},
           '🔒 納品完了の案件です。内容の編集・削除はできません（下の「ステータス遷移」で差し戻すと編集できるようになります）。'
         ):null,
+        /* v18.67 修正14③: 冒頭の「日付（案件作成日）」を「納品日」「出荷日」に変更（ユーザー指示）。
+           納品日＝出荷指示時に入力した納品予定日(order.deliveryDate)、出荷日＝出荷完了時に入力した日付(order.shippedDate)。
+           案件作成日は案件一覧の「作成:」欄で確認できる。 */
         h('div',{style:{marginBottom:10,display:'flex',gap:10,flexWrap:'wrap',fontSize:11}},
-          h('div',null,h('b',null,'日付: '),detail[0].date),
+          h('div',{title:'納品日（出荷指示時に入力した納品予定日）'},h('b',null,'納品日: '),orderDeliveryDate(detail[0])||h('span',{style:{color:'var(--g400)'}},'−')),
+          h('div',{title:'出荷日（ステータスを「出荷完了」にするときに入力した日付）'},h('b',null,'出荷日: '),orderShipDate(detail[0])||h('span',{style:{color:'var(--g400)'}},'−')),
           h('div',null,h('b',null,'顧客: '),(CUSTS.find(function(c){return c.id===detail[0].cid;})||{}).name||''),
           h('div',null,h('b',null,'倉庫: '),((WH_MAP[detail[0].wh]||{}).n||'')+(detail[0].wh2?' + '+((WH_MAP[detail[0].wh2]||{}).n||''):'')),
           h('div',null,h('b',null,'送料: '),detail[0].shipping?'¥'+fm(detail[0].shipping):'-')
@@ -8941,42 +9086,45 @@ function OrdersPage(p){
             );
           }))
         ),
-        /* v18.58 修正10①: 部材内訳。明細ごとの内訳＋案件全体の合計＋（あれば）予備パーツ */
+        /* v18.58 修正10①: 部材内訳。明細ごとの内訳＋（あれば）予備パーツ
+           v18.67 修正14③: 部材ごとに「どの倉庫から出したか」の列を追加し、倉庫を分けている部材は倉庫ごとの行に分ける。
+           あわせて「部材ごとの合計（案件全体）」の表は削除した（明細1件の案件では同じ表が2つ並んで見えていたため）。 */
         showBom[0]?(function(){
           var bg;try{bg=orderBomGroups(detail[0]);}catch(err){bg=null;}
           if(!bg)return h('div',{style:{marginTop:8,fontSize:10,color:'#c53030'}},'部材内訳を計算できませんでした（明細の内容をご確認ください）');
           var sps=(detail[0].spareParts||[]).filter(function(s){return (parseInt(s.qty)||0)>0;});
           var thB={border:'1px solid var(--g200)',background:'#f5f7fa',padding:'3px 6px',fontSize:9,textAlign:'left',fontWeight:700};
           var tdB={border:'1px solid var(--g200)',padding:'3px 6px',fontSize:10};
+          var tdW={border:'1px solid var(--g200)',padding:'3px 6px',fontSize:10,width:96};
           var tdN={border:'1px solid var(--g200)',padding:'3px 6px',fontSize:10,textAlign:'right',fontWeight:700,width:70};
+          var multiWh=!!detail[0].wh2;
           return h('div',{style:{marginTop:10,padding:8,background:'#f5f7fa',border:'1px solid var(--g200)',borderRadius:6}},
-            h('div',{style:{fontSize:10,fontWeight:900,color:'#1e3a5f',marginBottom:6}},'📦 部材内訳 — '+detail[0].no),
-            /* 明細ごとの内訳 */
+            h('div',{style:{fontSize:10,fontWeight:900,color:'#1e3a5f',marginBottom:6}},'📦 部材内訳 — '+detail[0].no,
+              multiWh?h('span',{style:{marginLeft:8,fontSize:9,fontWeight:700,color:'#0E7490'}},'（'+((WH_MAP[detail[0].wh]||{}).n||detail[0].wh)+' ＋ '+((WH_MAP[detail[0].wh2]||{}).n||detail[0].wh2)+' の2倉庫に分けています）'):null),
+            /* 明細ごとの内訳（倉庫別） */
             bg.groups.length===0?h('div',{style:{fontSize:10,color:'var(--g400)'}},'部材がありません'):
             bg.groups.map(function(g,gi){
               return h('div',{key:'g'+gi,style:{marginBottom:8}},
                 h('div',{style:{fontSize:9,fontWeight:700,background:'var(--g200)',padding:'2px 6px',borderRadius:3}},g.title),
                 h('table',{style:{borderCollapse:'collapse',width:'100%',background:'#fff'}},
+                  h('thead',null,h('tr',null,
+                    h('th',{style:thB},'部材'),
+                    h('th',{style:Object.assign({},thB,{width:96})},'出荷元倉庫'),
+                    h('th',{style:Object.assign({},thB,{textAlign:'right',width:70})},'数量'))),
                   h('tbody',null,g.rows.length===0
-                    ?h('tr',null,h('td',{style:Object.assign({},tdB,{color:'var(--g400)'})},'（この明細に部材はありません）'))
+                    ?h('tr',null,h('td',{style:Object.assign({},tdB,{color:'var(--g400)'}),colSpan:3},'（この明細に部材はありません）'))
                     :g.rows.map(function(r,ri){
                       return h('tr',{key:'r'+ri},
                         h('td',{style:tdB},r.label,r.reason?h('span',{style:{color:'var(--g400)',fontSize:8,marginLeft:4}},'（'+r.reason+'）'):null),
+                        h('td',{style:tdW},r.wh?h('span',{title:(WH_MAP[r.wh]||{}).n||r.wh},(WH_MAP[r.wh]||{}).n||r.wh):h('span',{style:{color:'var(--g400)'}},'−'),
+                          r.approx?h('span',{style:{color:'var(--g400)',fontSize:8,marginLeft:3},title:'この案件には倉庫別の押さえ台帳が無いため、案件の倉庫をそのまま表示しています（見積のみ・旧案件など）'},'※推定'):null),
                         h('td',{style:tdN},fm(r.qty)+(r.unit||'')));
                     }))
                 )
               );
             }),
-            /* 部材ごとの合計 */
-            bg.totals.length>0?h('div',{style:{marginTop:4}},
-              h('div',{style:{fontSize:9,fontWeight:700,color:'#276749',marginBottom:2}},'部材ごとの合計（案件全体）'),
-              h('table',{style:{borderCollapse:'collapse',width:'100%',background:'#fff'}},
-                h('thead',null,h('tr',null,h('th',{style:thB},'部材'),h('th',{style:Object.assign({},thB,{textAlign:'right',width:70})},'数量'))),
-                h('tbody',null,bg.totals.map(function(t,ti){
-                  return h('tr',{key:'t'+ti},h('td',{style:tdB},t.label),h('td',{style:tdN},fm(t.qty)));
-                }))
-              )
-            ):null,
+            /* v18.67 修正14③: 「部材ごとの合計（案件全体）」は削除（ユーザー指示）。
+               明細が1件の案件では明細ごとの内訳と同じ表が2つ並んで見えていたため。 */
             /* 予備パーツ（見積外の持ち出し）は数量の性質が違うため合算せず別枠で示す */
             sps.length>0?h('div',{style:{marginTop:8}},
               h('div',{style:{fontSize:9,fontWeight:700,color:'#975a16',marginBottom:2}},'🧰 予備パーツ（見積外の持ち出し・上の数量には含みません）'),
@@ -9272,23 +9420,52 @@ function OrdersPage(p){
    ただし鍵類等の共通在庫キー(COMMON_STOCK_KEYS)は在庫表と同じく全ライン共通プールのため
    絞り込まず常に集計する（絞ると在庫表の仮押さえ数と一覧の数が食い違うため）。
    filterLine省略時は従来どおり全明細を集計（Excel出力等の既存呼び出しは無影響）。 */
-/* v18.58 修正10①: 案件詳細の「部材内訳」表示用。明細ごとにBOMを展開したグループと、
-   案件全体で部材ごとに合算した一覧を返す。
+/* v18.58 修正10①: 案件詳細の「部材内訳」表示用。明細ごとにBOMを展開したグループを返す。
    数量は見積どおり（＝見積書・部材内訳と同じ計算。予備パーツは別枠で表示するためここでは合算しない）。
-   表示ロジックは見積プレビューの部材内訳（QuotePreview）と同じ組み立てにしてある。 */
-function orderBomGroups(order){
-  var groups=[],totals=[],tIdx={};
-  function addTotal(label,qty){
-    var q=parseInt(qty)||0;if(!q)return;
-    if(tIdx[label]===undefined){tIdx[label]=totals.length;totals.push({label:label,qty:0});}
-    totals[tIdx[label]].qty+=q;
+   表示ロジックは見積プレビューの部材内訳（QuotePreview）と同じ組み立てにしてある。
+   v18.67 修正14③: 「部材ごとの合計（案件全体）」(totals) は返さなくなった（ユーザー指示で表示を削除）。
+   代わりに各行へ出荷元倉庫(wh)を持たせ、倉庫を分けている部材は倉庫ごとの行に分けて返す。 */
+/* v18.67 修正14③: 1つの部材(BOM行)を「どの倉庫から何個出したか」に分ける。
+   押さえ台帳 _actualHeld（出荷後は出荷直前のスナップショット _shippedActualHeld）に
+   倉庫(_wh)と数量が記録されているので、その比率で BOM行の数量を配分する。
+   台帳が無い案件（見積のみ・旧データ・未確保のみ）は案件の倉庫をそのまま示し approx を立てる。
+   戻り値: [{wh:'honsha',qty:12,approx:false},…]（合計は必ず b.qty と一致する） */
+function bomRowWhSplit(order,ln,b){
+  var whA=(order&&order.wh)||'',whB=(order&&order.wh2)||'';
+  var need=parseInt(b&&b.qty)||0;
+  if(need<=0)return [];
+  var src=(ln._actualHeld&&ln._actualHeld.length>0)?ln._actualHeld:(ln._shippedActualHeld||[]);
+  var byWh={},order2=[],tot=0;
+  (src||[]).forEach(function(ah){
+    if(!ah||ah.key!==b.key)return;
+    if(b.isDoor){if(!ah.isDoor)return;}
+    else if(b.sub!==undefined&&b.sub!==null){if(ah.sub!==b.sub)return;}
+    else if(ah.sub!==undefined&&ah.sub!==null&&ah.sub!=='')return;
+    var w=ah._wh||ln._heldWh||whA;
+    var q=parseInt(ah.qty)||0;if(!(q>0)||!w)return;
+    if(byWh[w]===undefined){byWh[w]=0;order2.push(w);}
+    byWh[w]+=q;tot+=q;
+  });
+  if(!tot||!order2.length){
+    var w0=ln._heldWh||whA;
+    return w0?[{wh:w0,qty:need,approx:true}]:[];
   }
+  if(order2.length===1)return [{wh:order2[0],qty:need,approx:false}];
+  var out=[],acc=0;
+  order2.forEach(function(w,i){
+    var q=(i===order2.length-1)?(need-acc):Math.round(need*(byWh[w]/tot));
+    acc+=q;
+    if(q>0)out.push({wh:w,qty:q,approx:false});
+  });
+  return out;
+}
+function orderBomGroups(order){
+  var groups=[];
   ((order&&order.lines)||[]).forEach(function(ln){
     if(ln._returned)return;/* 返品済みラインは計上しない（computeOrderParts と同じ扱い） */
     if(ln.isFreeInput){
       var fl=(ln.name||'')+'（自由入力）';
-      groups.push({title:'[自由入力] '+(ln.name||''),rows:[{label:fl,qty:parseInt(ln.qty)||0,unit:ln.unit||'個'}]});
-      addTotal(fl,ln.qty);
+      groups.push({title:'[自由入力] '+(ln.name||''),rows:[{label:fl,qty:parseInt(ln.qty)||0,unit:ln.unit||'個',wh:'',approx:false}]});
       return;
     }
     var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
@@ -9303,15 +9480,22 @@ function orderBomGroups(order){
       var colorName=(ln.type==='open'||!co)?'':co.l;
       title=productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'');
     }
-    var rows=bom.map(function(b){
+    /* v18.67 修正14③: 倉庫に分けて押さえ・出荷した部材は、倉庫ごとに行を分ける
+       （どこからどの部材を出したかが分かるようにする）。 */
+    var rows=[];
+    bom.forEach(function(b){
       var lbl=b.label||b.key||'';
       if(b.isDoor&&co)lbl+=' '+co.l;
-      addTotal(lbl,b.qty);
-      return {label:lbl,qty:parseInt(b.qty)||0,reason:b.reason||''};
+      var qty=parseInt(b.qty)||0;
+      var sp=bomRowWhSplit(order,ln,b);
+      if(!sp.length){rows.push({label:lbl,qty:qty,reason:b.reason||'',wh:'',approx:false});return;}
+      sp.forEach(function(x){
+        rows.push({label:lbl,qty:x.qty,reason:b.reason||'',wh:x.wh,approx:x.approx});
+      });
     });
     groups.push({title:title,rows:rows});
   });
-  return {groups:groups,totals:totals};
+  return {groups:groups};
 }
 function computeOrderParts(order,filterLine){
   var parts={};
