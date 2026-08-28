@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.68（修正15: 在庫限り表示・受注発注ポップアップ拡大・必要部材一式・多倉庫仮押さえ・DST検索キー・出荷完了バグ修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.69（修正15追加: 必要部材一式のネジは1袋100個固定・予備パーツの一括返却）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -3303,6 +3303,11 @@ function sparePartUsed(sp){
   return Math.max(0,(parseInt(sp.qty)||0)-(parseInt(sp.returnQty)||0));
 }
 function sparePartStockLine(sp){return normalizeStockLine(sp.lineId,sp.key);}
+/* v18.69 修正15④追: ジョイントネジ・目隠しネジは1袋100個入りで、袋単位でしか持ち出せない（ユーザー回答 2026-08-28）。
+   「必要部材一式」ではネジ類だけ計算値ではなく100個（1袋）固定で登録する。台数を増やしても袋数は増やさない。
+   100個より多く必要な場合は、持ち出し登録のあとに個別に追加登録して調整する運用。 */
+var SPARE_BAG_KEYS={jointScrew_sml_bk:100,jointScrew_ss_bk:100,jointScrew_ss_gy:100,capScrew_bk:100,capScrew_gy:100};
+function spareBagQtyOf(key){return SPARE_BAG_KEYS[key]||0;}
 /* ===== v18.68 修正15④: 「必要部材一式」= その案件で1台分に必要になる部材の一式 =====
    例）Sサイズ常設ブルー・ダイヤル錠 100台＋ベース25枚 の案件なら、1台分は
        Sサイズ常設ブルーの本体部材一式＋ダイヤル錠1個＋ベース1枚。
@@ -3355,7 +3360,13 @@ function orderUnitBOM(order){
     if(!mm[k]){mm[k]=Object.assign({},e);keys.push(k);}
     else mm[k].qty+=e.qty;
   });
-  return keys.map(function(k){return mm[k];});
+  /* v18.69 修正15④追: ネジ類は1袋100個入り。計算値ではなく必ず100個（1袋）で持ち出す（台数倍もしない） */
+  return keys.map(function(k){
+    var e=mm[k];
+    var bag=spareBagQtyOf(e.key);
+    if(bag){e.qty=bag;e.bag=bag;e.label=e.label+'〔1袋'+bag+'個〕';}
+    return e;
+  });
 }
 /* 予備パーツを出荷元倉庫から持ち出す（実在庫を減らす）。空き在庫が足りない場合も持ち出しは記録し、
    在庫は0でクランプされる（_rbAddStock/_rbDrainCommon の仕様）。事前に呼び出し側で空きを確認すること。 */
@@ -8517,6 +8528,8 @@ function OrdersPage(p){
   var spareBump=us(0);
   /* v18.68 修正15④: 「必要部材一式」（この案件で1台分に必要な部材の一式）を台数指定でまとめて持ち出す */
   var spareSet=us({units:1,wh:'',note:''});
+  /* v18.69 修正15④追: 予備パーツの一括返却（返却先倉庫をまとめて指定して未返却分を一度に返す） */
+  var spareBulkWh=us('');
   /* v18.50 修正６⑧(再修正): 案件一覧も画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
   var fitList=useFitHeight(260);
   /* v18.54 修正８①: 売上集計。期間を指定して集計する（ユーザー指示）。対象は「納品完了」の案件のみ。 */
@@ -8886,7 +8899,7 @@ function OrdersPage(p){
               }},'✏ 案件修正'):null,
               /* v18.55 修正９④: 予備パーツ（見積外の持ち出し・持ち帰り）。納品完了の案件でも押せる（持ち帰りは納品後に起きるため） */
               h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'見積外の予備パーツの持ち出し・持ち帰りを登録します',onClick:function(){
-                spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:o.wh||WH_IDS[0]}));spareSet[1]({units:1,wh:o.wh||WH_IDS[0],note:''});/* v18.68 修正15④ */spareModal[1](liveOrder(o));
+                spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:o.wh||WH_IDS[0]}));spareSet[1]({units:1,wh:o.wh||WH_IDS[0],note:''});spareBulkWh[1](o.wh||'');/* v18.68 修正15④ */spareModal[1](liveOrder(o));
               }},'🧰 予備パーツ'+((o.spareParts||[]).length?'('+(o.spareParts||[]).length+')':'')),
               /* v18.28 顧客要望: 出荷指示書(様式)を手入力で修正（納品先・納品日・品名書換・数量）。案件の order.shipEdit へ保存。
                  v18.59 修正10③(b): 反映先を「📄 出荷指示書」(印刷用HTML／画面プレビュー)へ変更した。
@@ -9118,7 +9131,7 @@ function OrdersPage(p){
         /* v18.55 修正９④: 予備パーツ（見積外の持ち出し・持ち帰り）の管理。
            納品完了の案件でも開ける（持ち帰りは納品後に発生するため isOrderLocked の対象外にしている）。 */
         h('button',{className:'btn btn-or',onClick:function(){
-          spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:detail[0].wh||WH_IDS[0]}));spareSet[1]({units:1,wh:detail[0].wh||WH_IDS[0],note:''});/* v18.68 修正15④ */spareModal[1](liveOrder(detail[0]));/* v18.68 修正15⑧ */
+          spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:detail[0].wh||WH_IDS[0]}));spareSet[1]({units:1,wh:detail[0].wh||WH_IDS[0],note:''});spareBulkWh[1](detail[0].wh||'');/* v18.68 修正15④ */spareModal[1](liveOrder(detail[0]));/* v18.68 修正15⑧ */
         }},'🧰 予備パーツ'+((detail[0].spareParts||[]).length?'（'+(detail[0].spareParts||[]).length+'件）':'')),
         h('button',{className:'btn btn-ol',onClick:function(){detail[1](null);}},'閉じる')
       )},
@@ -9419,7 +9432,9 @@ function OrdersPage(p){
               h('div',{style:{fontSize:9,color:'#065F46',lineHeight:1.6,marginBottom:4}},
                 '「必要部材一式」＝この案件で',h('b',null,'1台分'),'に必要になる部材の一式です（本体部材＋錠前＋ベース等）。',h('br'),
                 '案件の総数によって何台分の予備を用意するかが変わるため、台数を指定してまとめて持ち出せます（既定は1台分）。',
-                h('br'),'※ パーツ単品で追加した明細は「1台分」の対象外です（上のフォームから個別に登録してください）。'),
+                h('br'),'※ パーツ単品で追加した明細は「1台分」の対象外です（上のフォームから個別に登録してください）。',
+                h('br'),h('b',null,'※ ジョイントネジ・目隠しネジは1袋100個入りのため、台数にかかわらず100個（1袋）で登録します。'),
+                'それ以上必要な場合は、登録後に上のフォームから追加してください。'),
               setRows.length===0?h('div',{style:{fontSize:10,color:'var(--g500)'}},'この案件には1台分を算出できる明細がありません（パーツ単品のみの案件など）。'):
               h('div',null,
                 h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',alignItems:'flex-end',marginBottom:4}},
@@ -9433,7 +9448,8 @@ function OrdersPage(p){
                   h('button',{className:'btn btn-gn',style:{fontWeight:700},onClick:function(){
                     if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
                     if(!sf.wh){p.toast('出荷元倉庫を選んでください');return;}
-                    var plan=setRows.map(function(r){return Object.assign({},r,{qty:r.qty*units});});
+                    /* v18.69 修正15④追: ネジ類（1袋100個入り）は台数倍しない */
+                    var plan=setRows.map(function(r){return Object.assign({},r,{qty:r.bag?r.qty:(r.qty*units)});});
                     var shortLines=[];
                     plan.forEach(function(r){
                       var probe=Object.assign({},r,{wh:sf.wh});
@@ -9461,8 +9477,58 @@ function OrdersPage(p){
                 ),
                 h('div',{style:{fontSize:9,color:'var(--g600)',background:'#fff',border:'1px solid var(--g200)',borderRadius:4,padding:'4px 6px',maxHeight:120,overflowY:'auto'}},
                   h('b',null,units+'台分の内訳（'+setRows.length+'品目）: '),
-                  setRows.map(function(r,ri){return h('span',{key:'us'+ri,style:{marginRight:8,whiteSpace:'nowrap'}},r.label+' × '+fm(r.qty*units));})
+                  setRows.map(function(r,ri){return h('span',{key:'us'+ri,style:{marginRight:8,whiteSpace:'nowrap'}},r.label+' × '+fm(r.bag?r.qty:(r.qty*units)));})
                 )
+              )
+            );
+          })(),
+          /* ===== v18.69 修正15④追: 一括返却（パーツごとに1件ずつ返すのが手間、というユーザー要望） ===== */
+          (function(){
+            var open=sps.filter(function(s){return s.status!=='returned';});
+            if(!open.length)return null;
+            function doBulk(useAll){
+              if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+              var bw=spareBulkWh[0];
+              /* 行ごとに返却先が指定されていればそちらを優先。未指定の行は一括指定の倉庫へ返す */
+              var plan=[],needBulkWh=false;
+              open.forEach(function(sp){
+                var r0=spareRet[0][sp.id]||{qty:String(sp.qty),wh:''};
+                var q=useAll?(parseInt(sp.qty)||0):parseInt(r0.qty);
+                if(isNaN(q)||q<0||q>(parseInt(sp.qty)||0))q=parseInt(sp.qty)||0;
+                var w=r0.wh||bw;
+                if(q>0&&!w)needBulkWh=true;
+                plan.push({sp:sp,qty:q,wh:w});
+              });
+              if(needBulkWh){p.toast('返却先の倉庫を選んでください（行ごとの指定が無い分の返却先になります）');return;}
+              var totRet=0,totUse=0;
+              plan.forEach(function(x){totRet+=x.qty;totUse+=(parseInt(x.sp.qty)||0)-x.qty;});
+              var msg='未返却の予備パーツ '+plan.length+'件をまとめて返却します。\n\n'
+                +plan.slice(0,10).map(function(x){return '・'+x.sp.label+'　返却'+fm(x.qty)+(x.qty>0?'（'+((WH_MAP[x.wh]||{}).n||x.wh)+'へ入庫）':'')+((parseInt(x.sp.qty)||0)-x.qty>0?'／使用'+fm((parseInt(x.sp.qty)||0)-x.qty):'');}).join('\n')
+                +(plan.length>10?('\n…他'+(plan.length-10)+'件'):'')
+                +'\n\n合計 返却'+fm(totRet)+'個'+(totUse>0?'／使用'+fm(totUse)+'個（在庫からは出たままになります）':'')
+                +'\n\nこの内容で確定しますか？';
+              if(!confirm(msg))return;
+              var okN=0;
+              plan.forEach(function(x){
+                var rr=spareReturnIn(x.sp,x.qty,x.wh,p.userName||'');
+                if(rr.ok)okN++;
+              });
+              if(!okN){p.toast('返却を登録できませんでした');return;}
+              spareRet[1]({});
+              persist('予備パーツ一括返却（'+okN+'件・返却'+totRet+'／使用'+totUse+'）');
+              p.toast('予備パーツを一括返却しました: '+okN+'件（返却'+fm(totRet)+'個'+(totUse>0?'／使用'+fm(totUse)+'個':'')+'）');
+            }
+            return h('div',{style:{padding:8,marginBottom:8,background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6}},
+              h('div',{style:{fontSize:10,fontWeight:700,color:'#1E40AF',marginBottom:2}},'↩ 一括返却（未返却 '+open.length+'件）'),
+              h('div',{style:{fontSize:9,color:'#1E40AF',lineHeight:1.6,marginBottom:4}},
+                '未返却の予備パーツをまとめて返却入庫します。返却先は下で指定した倉庫（',h('b',null,'行ごとに返却先を選んである場合はそちらを優先'),'）。',h('br'),
+                '「全数を返却」＝持ち出した数をそのまま全部戻します。「入力した返却数で返却」＝各行の返却数の欄に入れた数で返し、残りは現場で使用した扱いになります。'),
+              h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',alignItems:'flex-end'}},
+                h('div',{style:{flex:'1 1 150px'}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'返却先倉庫（一括）'),
+                  h('select',{className:'inp',value:spareBulkWh[0],onChange:function(e){spareBulkWh[1](e.target.value);}},
+                    [h('option',{key:'_',value:''},'選択…')].concat(whList.map(function(w){return h('option',{key:w,value:w},(WH_MAP[w]||{}).n||w);})))),
+                h('button',{className:'btn btn-gn',style:{fontWeight:700},onClick:function(){doBulk(true);}},'未返却をすべて全数返却'),
+                h('button',{className:'btn btn-tl',style:{fontWeight:700},title:'各行の「返却数」欄に入力した数で一括返却します（未入力の行は全数）',onClick:function(){doBulk(false);}},'入力した返却数で一括返却')
               )
             );
           })(),
