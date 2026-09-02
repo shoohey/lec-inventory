@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.70（修正16: 粗利表の売価手修正・扉のライン選択・売価の紐づけ修正・商品コード表示）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.71（修正17: 部材別倉庫の仮押さえを扉色ごとに指定できるようにする）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1379,6 +1379,14 @@ function isOrderColor(lineId,colorId){
 function doorLineOf(ln){return (ln&&ln.doorLine)||(ln&&ln.line)||'';}
 /* BOM行から扉のラインを引く（calcBOM が扉行に doorLine を載せている） */
 function bomDoorLine(b,fallbackLine){return (b&&b.doorLine)||fallbackLine;}
+/* v18.71 修正17: 扉色の表示名。扉だけ別ライン（Ver.1・台湾製）のことがあるので、必ず扉のラインで引く。
+   色コード(pb/pp 等)は在庫キー・保存データなので不変。画面に出すのはこのラベルだけにする。 */
+function doorColorLabelOf(lineId,colorId){
+  if(colorId==='open')return 'オープン';
+  if(isUndColor(colorId))return '扉色未定';
+  var c=(LINE_COLORS[lineId]||[]).find(function(x){return x.v===colorId;});
+  return c?c.l:(colorId||'');
+}
 
 /* ========== BOM CALCULATION ========== */
 function sizeObj(v){return SIZES.find(function(s){return s.v===v;})||SIZES[0];}
@@ -7259,13 +7267,16 @@ function InvPage(p){
      出荷Excelの倉庫分配は既存ロジックのまま正しく動く（幽霊在庫を作らない）。
      v18.68 修正15⑤: 倉庫数の上限（2つまで）を撤廃。使った倉庫は order.whs（配列）に保存し、
      order.wh（主倉庫）/order.wh2 は後方互換のため引き続き書き込む。 */
-  function partFreeAt(ln,b,w){
+  /* v18.71 修正17: 扉は色ごとに倉庫を分けられるようにしたため、色を指定して空き数を引けるようにした。
+     color 省略時は従来どおり「その明細の全扉色のうち最小の空き数」を返す（旧呼び出しの互換）。 */
+  function partFreeAt(ln,b,w,color){
     try{
       if(b.isDoor){
-        var colors=ln.colorBreakdown&&ln.colorBreakdown.length?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
-        var mn=Infinity;
         /* v18.68 修正15⑦: 受発注色の扉も在庫がある分は押さえるため、空き数の判定対象に含める */
         var _dlp=bomDoorLine(b,ln.line);/* v18.70 修正16② */
+        if(color)return Math.max(0,availD(_dlp,w,color,ln.size,b.key));
+        var colors=ln.colorBreakdown&&ln.colorBreakdown.length?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
+        var mn=Infinity;
         colors.forEach(function(dc){if(dc.color==='open'||isUndColor(dc.color))return;var f=availD(_dlp,w,dc.color,ln.size,b.key);if(f<mn)mn=f;});
         return mn===Infinity?0:Math.max(0,mn);
       }
@@ -7278,29 +7289,50 @@ function InvPage(p){
      partWhSel[key] は従来の「倉庫ID(文字列)」から [{wh,qty},…] の配列へ変更した。
      配列が1件だけなら従来どおり「その部材はその倉庫で全量」と同じ動作になる。
      v18.68 修正15⑤: 倉庫の総数の上限は撤廃（柏＋本社＋第一倉庫＋第二倉庫のような押さえ方も可）。 */
-  /* 仮押さえ対象になる実数量。扉は受発注色・扉色未定・オープン分を除いた数（holdBOMPartial と同じ基準） */
-  function bomNeedQty(ln,b){
-    if(!b)return 0;
-    if(b.isDoor){
-      var cbs=(ln.colorBreakdown&&ln.colorBreakdown.length)?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
-      /* v18.68 修正15⑦: 受発注色の扉も仮押さえ対象なので必要数に数える（扉色未定・オープンのみ除外） */
-      return cbs.reduce(function(s,dc){return s+((dc.color==='open'||isUndColor(dc.color))?0:(dc.qty||0));},0);
-    }
-    return b.qty||0;
-  }
-  /* 扉は明細単位の色別内訳(colorBreakdown)で押さえるため、分割数量ぶんを内訳の先頭から切り出す。
-     切り出しの合計は元の内訳と必ず一致するので、色ごとの総押さえ数は分割前と変わらない。 */
-  function carveColorBreakdown(ln,b,skip,take){
+  /* ===== v18.71 修正17: 1案件で扉色が複数色ある場合、色ごとに倉庫を指定して仮押さえする =====
+     例）Mサイズ20台・扉色 パステルピンク10台/パステルブルー10台 →
+         ピンクは尼高、ブルーは新柏、その他部材（本体・鍵など）は本社、という指定ができる。
+     従来は扉が「明細のBOM行1つ＝全色まとめて1行」だったため、数量で分割しても
+     どの色がどの倉庫に行くのかを画面で指定できず、内訳の先頭から機械的に切り出していた。
+     v18.71 からは扉のBOM行を色ごとの割当行に分ける（下記 partWhRows）。
+     押さえた結果は従来どおり _actualHeld に {色, 倉庫(_wh)} 単位で記録されるので、
+     解除(releaseActualHeld)・出荷消費(shipOrderMulti/_heldQtyAt)・仮押さえ一覧の倉庫別列
+     (computeOrderPartsByWh)・案件詳細の部材内訳 は、そのまま色別・倉庫別に正しく動く。 */
+  /* 仮押さえの割当対象になる扉色を [{color,qty}] で返す（オープン・扉色未定は対象外。同じ色は合算） */
+  function doorAllocColors(ln,b){
     var cbs=(ln.colorBreakdown&&ln.colorBreakdown.length)?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
-    var out=[],pos=0;
+    var out=[];
     cbs.forEach(function(dc){
-      if(dc.color==='open'||isUndColor(dc.color))return;/* 仮押さえ対象外は詰めずに飛ばす（v18.68 修正15⑦: 受発注色は対象に含める） */
-      var q=dc.qty||0;
-      var s=Math.max(skip,pos),e=Math.min(skip+take,pos+q);
-      if(e>s)out.push({color:dc.color,qty:e-s});
-      pos+=q;
+      if(dc.color==='open'||isUndColor(dc.color))return;/* v18.68 修正15⑦: 受発注色は対象に含める */
+      var q=parseInt(dc.qty)||0;if(q<=0)return;
+      var f=out.find(function(x){return x.color===dc.color;});
+      if(f)f.qty+=q;else out.push({color:dc.color,qty:q});
     });
     return out;
+  }
+  /* 部材別倉庫モーダルの「割当行」。扉だけ色ごとに分かれる。
+     key は partWhSel の添字。扉は '明細_BOM行#色コード' として色ごとに独立させている。 */
+  function partWhRows(ln,li){
+    var rows=[];
+    getBOM(ln).forEach(function(b,bi){
+      if(b.isDoor){
+        var dL=bomDoorLine(b,ln.line);
+        var dcs=doorAllocColors(ln,b);
+        if(!dcs.length){rows.push({key:li+'_'+bi,b:b,need:0,label:b.label,color:null});return;}/* 全量オープン・扉色未定 */
+        dcs.forEach(function(dc){
+          rows.push({key:li+'_'+bi+'#'+dc.color,b:b,need:dc.qty,label:b.label+'　'+doorColorLabelOf(dL,dc.color),color:dc.color});
+        });
+        return;
+      }
+      rows.push({key:li+'_'+bi,b:b,need:parseInt(b.qty)||0,label:b.label,color:null});
+    });
+    return rows;
+  }
+  /* 割当行で選べる倉庫（在庫バケットを持っている倉庫だけ）。扉は扉のラインで判定する。 */
+  function partWhOpts(ln,b){
+    var stLine=b.isDoor?bomDoorLine(b,ln.line):normalizeStockLine(ln.line,b.key);
+    var o=WH_IDS.filter(function(w){return hasStock(ln.line,w)||hasStock(stLine,w);});
+    return o.length?o:WH_IDS.slice();
   }
   /* 旧形式（文字列＝倉庫ID）が残っていても落ちないようにする保険付き */
   function allocsOf(k,defWh,need){
@@ -7330,7 +7362,8 @@ function InvPage(p){
     var def=selWH[0]||(whResults[0].find(function(r){return r.check&&r.check.ok&&!r.noLine;})||{}).whId||WH_IDS[0];
     lines[0].forEach(function(ln,li){
       if(ln.isFreeInput)return;
-      getBOM(ln).forEach(function(b,bi){init[li+'_'+bi]=[{wh:def,qty:bomNeedQty(ln,b)}];});
+      /* v18.71 修正17: 扉は色ごとの行になる */
+      partWhRows(ln,li).forEach(function(row){init[row.key]=[{wh:def,qty:row.need}];});
     });
     partWhSel[1](init);showPartWh[1](true);
   }
@@ -7346,8 +7379,8 @@ function InvPage(p){
     var usedQty={};
     lines[0].forEach(function(ln,li){
       if(ln.isFreeInput)return;
-      getBOM(ln).forEach(function(b,bi){
-        allocsOf(li+'_'+bi,whList[0],bomNeedQty(ln,b)).forEach(function(al){
+      partWhRows(ln,li).forEach(function(row){
+        allocsOf(row.key,whList[0],row.need).forEach(function(al){
           var q=parseInt(al.qty)||0;if(al.wh&&q>0)usedQty[al.wh]=(usedQty[al.wh]||0)+q;
         });
       });
@@ -7361,10 +7394,10 @@ function InvPage(p){
     var overMsg=[],underMsg=[];
     lines[0].forEach(function(ln,li){
       if(ln.isFreeInput)return;
-      getBOM(ln).forEach(function(b,bi){
-        var need=bomNeedQty(ln,b),sum=allocSum(allocsOf(li+'_'+bi,main,need));
-        if(sum>need)overMsg.push('・'+b.label+'　割当'+fm(sum)+' / 必要'+fm(need));
-        else if(sum<need)underMsg.push('・'+b.label+'　割当'+fm(sum)+' / 必要'+fm(need)+'（残り'+fm(need-sum)+'は発注待ち）');
+      partWhRows(ln,li).forEach(function(row){
+        var need=row.need,sum=allocSum(allocsOf(row.key,main,need));
+        if(sum>need)overMsg.push('・'+row.label+'　割当'+fm(sum)+' / 必要'+fm(need));
+        else if(sum<need)underMsg.push('・'+row.label+'　割当'+fm(sum)+' / 必要'+fm(need)+'（残り'+fm(need-sum)+'は発注待ち）');
       });
     });
     if(overMsg.length){
@@ -7376,14 +7409,14 @@ function InvPage(p){
     var shortMsg=[];
     lines[0].forEach(function(ln,li){
       if(ln.isFreeInput)return;
-      getBOM(ln).forEach(function(b,bi){
-        /* v18.31: 扉は受発注色/扉色未定/オープン分を需要から除外して比較（仮押さえ対象外のため不足警告に含めない） */
-        var need=bomNeedQty(ln,b);
-        allocsOf(li+'_'+bi,main,need).forEach(function(al){
+      /* v18.31: 扉は扉色未定/オープン分を需要から除外して比較（仮押さえ対象外のため不足警告に含めない）
+         v18.71 修正17: 扉は色ごとの割当行なので、空き数もその色で見る（従来は全色の最小値で判定していた） */
+      partWhRows(ln,li).forEach(function(row){
+        allocsOf(row.key,main,row.need).forEach(function(al){
           var w=al.wh||main,q=parseInt(al.qty)||0;
           if(!q)return;
-          var free=partFreeAt(ln,b,w);
-          if(free<q)shortMsg.push('・'+b.label+'（'+((WH_MAP[w]||{}).s||w)+'）不足:'+fm(q-free));
+          var free=partFreeAt(ln,row.b,w,row.color);
+          if(free<q)shortMsg.push('・'+row.label+'（'+((WH_MAP[w]||{}).s||w)+'）不足:'+fm(q-free));
         });
       });
     });
@@ -7401,12 +7434,12 @@ function InvPage(p){
     var unsecuredParts=[];
     clonedLines.forEach(function(ln,li){
       if(ln.isFreeInput)return;
-      var bom=getBOM(ln);
       var merged=[];
-      bom.forEach(function(b,bi){
-        /* v18.66 修正13①: 割当ごとに数量を切り出して押さえる。1件だけなら従来と同じ動作。 */
-        var need=bomNeedQty(ln,b);
-        var allocs=allocsOf(li+'_'+bi,main,need);
+      /* v18.66 修正13①: 割当ごとに数量を切り出して押さえる。1件だけなら従来と同じ動作。
+         v18.71 修正17: 扉は色ごとの割当行なので、その色だけを colorBreakdown に渡して押さえる。 */
+      partWhRows(ln,li).forEach(function(row){
+        var b=row.b,need=row.need;
+        var allocs=allocsOf(row.key,main,need);
         var pos=0;
         allocs.forEach(function(al){
           var wh=al.wh||main,q=Math.max(0,parseInt(al.qty)||0);
@@ -7415,9 +7448,7 @@ function InvPage(p){
           if(!q)return;
           var got;
           if(b.isDoor){
-            var cbPart=carveColorBreakdown(ln,b,pos,q);
-            if(!cbPart.length){pos+=q;return;}/* 全量が受発注色などで対象外 */
-            got=holdBOMPartial(ln.line,wh,[Object.assign({},b,{qty:q})],ln.color,ln.size,cbPart,unsecuredParts);
+            got=holdBOMPartial(ln.line,wh,[Object.assign({},b,{qty:q})],ln.color,ln.size,[{color:row.color,qty:q}],unsecuredParts);
           }else{
             got=holdBOMPartial(ln.line,wh,[Object.assign({},b,{qty:q})],ln.color,ln.size,ln.colorBreakdown,unsecuredParts);
           }
@@ -7429,13 +7460,12 @@ function InvPage(p){
         var rest=need-pos;
         if(rest>0){
           if(b.isDoor){
-            carveColorBreakdown(ln,b,pos,rest).forEach(function(dc){
-              /* v18.68 修正15⑦: 受発注色の扉はメーカー発注が前提。押さえられなかった分を
-                 「未確保（発注待ち）」に積むと出荷時に不要な警告が出るので従来どおり積まない */
-              var _dlu=bomDoorLine(b,ln.line);/* v18.70 修正16②: 扉のラインで判定・登録する */
-              if(isOrderColor(_dlu,dc.color))return;
-              unsecuredParts.push({line:_dlu,wh:main,key:b.key,color:dc.color,size:ln.size,qty:dc.qty,label:b.label+(dc.color?' '+dc.color:''),isDoor:true});
-            });
+            /* v18.68 修正15⑦: 受発注色の扉はメーカー発注が前提。押さえられなかった分を
+               「未確保（発注待ち）」に積むと出荷時に不要な警告が出るので従来どおり積まない */
+            var _dlu=bomDoorLine(b,ln.line);/* v18.70 修正16②: 扉のラインで判定・登録する */
+            if(!isOrderColor(_dlu,row.color)){
+              unsecuredParts.push({line:_dlu,wh:main,key:b.key,color:row.color,size:ln.size,qty:rest,label:row.label,isDoor:true});
+            }
           }else if(b.sub!==undefined){
             unsecuredParts.push({line:ln.line,wh:main,key:b.key,sub:b.sub,qty:rest,label:b.label,isDoor:false});
           }else{
@@ -8137,7 +8167,7 @@ function InvPage(p){
             p.salesView?null:h('button',{className:'btn btn-or',style:{fontSize:12,padding:'8px 14px'},onClick:doReserveOnly,disabled:!selWH[0]},'仮押さえのみ（見積無）'),
             p.salesView?null:h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px'},onClick:doHoldAndQuote,disabled:!selWH[0]},'仮押さえ＆見積書作成'),
             /* v18.30 要望③: 部材ごとに倉庫を選んで仮押さえ（単一倉庫で足りる場合でも意図的に分割できる） */
-            p.salesView?null:h('button',{className:'btn btn-tl',style:{fontSize:12,padding:'8px 14px'},onClick:openPartWh,disabled:!lines[0].length,title:'例: 本体は新柏倉庫、鍵は本社で仮押さえ。同じ部材を数量で分けて複数倉庫からかき集めることもできます（倉庫数の制限はありません）'},'🔀 部材別倉庫で仮押さえ'),
+            p.salesView?null:h('button',{className:'btn btn-tl',style:{fontSize:12,padding:'8px 14px'},onClick:openPartWh,disabled:!lines[0].length,title:'例: 本体は新柏倉庫、鍵は本社で仮押さえ。同じ部材を数量で分けて複数倉庫からかき集めることもできます。扉は扉色ごとに倉庫を指定できます（倉庫数の制限はありません）'},'🔀 部材別倉庫で仮押さえ'),
             p.salesView?h('span',{style:{fontSize:9,color:'#975a16',alignSelf:'center'}},'営業ロール：見積の作成・保存は可能です（仮押さえ・在庫引当は事務へ依頼してください）'):null,
             quoteOrder[0]&&!showQuote[0]?h('button',{className:'btn btn-tl',onClick:function(){showQuote[1](true);}},'📄 直近の見積を開く: '+quoteOrder[0].no):null,
             /* v18.55 修正９④: 倉庫が未選択のとき「仮押さえ」ボタンは disabled になる。以前は何の説明も無く
@@ -8191,35 +8221,38 @@ function InvPage(p){
         /* v18.66 修正13①: 同じ部材を複数倉庫へ数量で分けて押さえられる */
         h('div',{style:{fontSize:10,color:'var(--g600)',marginBottom:6}},'各部材の仮押さえ倉庫と数量を指定してください（例: 本体=新柏、鍵=本社）。',
           h('b',{style:{color:'#1e3a5f'}},'「＋ 倉庫を追加して分割」で、同じ部材を複数の倉庫からかき集めることもできます（例: 鍵 500個のうち 柏100 / 本社400）。'),
-          '　倉庫は全体で2つまで。割当が必要数に満たない分と、指定倉庫の空きが足りない分は「未確保（発注待ち）」として登録されます。'),
+          /* v18.71 修正17: 扉は色ごとの行に分かれるので、その説明を出す（倉庫数の上限は v18.68 で撤廃済み） */
+          h('b',{style:{color:'#B45309'}},'　扉は扉色ごとの行に分かれます（例: パステルピンク=尼高、パステルブルー=新柏）。'),
+          '　倉庫の数に制限はありません。割当が必要数に満たない分と、指定倉庫の空きが足りない分は「未確保（発注待ち）」として登録されます。'),
         lines[0].map(function(ln,li){
           if(ln.isFreeInput)return null;
-          var bom=getBOM(ln);
+          var rows=partWhRows(ln,li);
           var lo2=LINES.find(function(x){return x.id===ln.line;});
           var lname=ln.isPartOnly?ln.partLabel:((lo2?lo2.mark+' ':'')+sizeLabel(ln.line,ln.size)+' '+lineSpecLabel(ln)+'（'+fm(ln.qty)+'台）');
           return h('div',{key:ln.id,style:{marginBottom:10}},
             h('div',{style:{fontWeight:700,fontSize:10,color:'#1e3a5f',marginBottom:2}},'明細'+(li+1)+': '+lname),
             h('table',{className:'tbl',style:{fontSize:9}},
               h('thead',null,h('tr',null,h('th',null,'部材'),h('th',{style:{width:56}},'必要'),h('th',{style:{width:300}},'仮押さえ倉庫（現在の空き）と数量'),h('th',{style:{width:80}},'割当合計'))),
-              h('tbody',null,bom.map(function(b,bi){
-                var k=li+'_'+bi;
-                var need=bomNeedQty(ln,b);
-                var opts=WH_IDS.filter(function(w){return hasStock(ln.line,w)||hasStock(normalizeStockLine(ln.line,b.key),w);});
+              /* v18.71 修正17: 扉は色ごとの行（partWhRows）。それ以外は従来どおりBOM行1つ＝1行 */
+              h('tbody',null,rows.map(function(row,ri){
+                var b=row.b,k=row.key,need=row.need;
+                var opts=partWhOpts(ln,b);
                 var allocs=allocsOf(k,opts[0]||WH_IDS[0],need);
                 var sum=allocSum(allocs);
                 var rest=need-sum;
-                return h('tr',{key:bi},
-                  h('td',null,b.label),
+                return h('tr',{key:k},
+                  h('td',null,row.label,
+                    row.color?h('span',{style:{display:'inline-block',width:9,height:9,borderRadius:2,marginLeft:4,verticalAlign:'middle',border:'1px solid var(--g300)',background:((LINE_COLORS[bomDoorLine(b,ln.line)]||[]).find(function(c){return c.v===row.color;})||{}).x||'#fff'}}):null),
                   h('td',{style:{textAlign:'right',fontWeight:700}},fm(need)),
                   h('td',null,
                     allocs.map(function(al,ai){
-                      var free=partFreeAt(ln,b,al.wh);
+                      var free=partFreeAt(ln,b,al.wh,row.color);
                       var q=parseInt(al.qty)||0;
                       return h('div',{key:ai,style:{display:'flex',gap:3,alignItems:'center',marginBottom:2}},
                         h('select',{className:'inp',style:{flex:1,minWidth:150},value:al.wh||'',onChange:function(e){
                           var na=allocs.map(function(x,xi){return xi===ai?{wh:e.target.value,qty:x.qty}:{wh:x.wh,qty:x.qty};});setAllocs(k,na);
                         }},opts.map(function(w){
-                          var fr=partFreeAt(ln,b,w);
+                          var fr=partFreeAt(ln,b,w,row.color);
                           return h('option',{key:w,value:w},((WH_MAP[w]||{}).s||(WH_MAP[w]||{}).n||w)+'（空き'+fm(fr)+'）');
                         })),
                         h('input',{className:'inp',type:'number',min:0,style:{width:66,textAlign:'right',color:(q>free?'#DC2626':'inherit'),fontWeight:700},value:al.qty,title:q>free?'この倉庫の空きを超えています（超過分は未確保＝発注待ちになります）':'',onChange:function(e){
@@ -10070,15 +10103,17 @@ function OrdersPage(p){
    倉庫(_wh)と数量が記録されているので、その比率で BOM行の数量を配分する。
    台帳が無い案件（見積のみ・旧データ・未確保のみ）は案件の倉庫をそのまま示し approx を立てる。
    戻り値: [{wh:'honsha',qty:12,approx:false},…]（合計は必ず b.qty と一致する） */
-function bomRowWhSplit(order,ln,b){
+/* v18.71 修正17: 扉は色ごとに倉庫を分けられるようになったため、扉色(dcColor)と必要数(needOv)を
+   指定して「その色ぶん」だけを倉庫別に分けられるようにした。省略時は従来どおりBOM行まるごと。 */
+function bomRowWhSplit(order,ln,b,dcColor,needOv){
   var whA=(order&&order.wh)||'';/* v18.68 修正15⑤: 分配は _actualHeld の _wh 記録から引くので主倉庫だけあれば足りる */
-  var need=parseInt(b&&b.qty)||0;
+  var need=parseInt(needOv!==undefined&&needOv!==null?needOv:(b&&b.qty))||0;
   if(need<=0)return [];
   var src=(ln._actualHeld&&ln._actualHeld.length>0)?ln._actualHeld:(ln._shippedActualHeld||[]);
   var byWh={},order2=[],tot=0;
   (src||[]).forEach(function(ah){
     if(!ah||ah.key!==b.key)return;
-    if(b.isDoor){if(!ah.isDoor)return;}
+    if(b.isDoor){if(!ah.isDoor)return;if(dcColor!==undefined&&dcColor!==null&&ah.color!==dcColor)return;}
     else if(b.sub!==undefined&&b.sub!==null){if(ah.sub!==b.sub)return;}
     else if(ah.sub!==undefined&&ah.sub!==null&&ah.sub!=='')return;
     var w=ah._wh||ln._heldWh||whA;
@@ -10125,7 +10160,23 @@ function orderBomGroups(order){
     var rows=[];
     bom.forEach(function(b){
       var lbl=b.label||b.key||'';
-      if(b.isDoor&&co)lbl+=' '+co.l;
+      /* v18.71 修正17: 扉は色ごとに倉庫を分けられるので、扉色ごとの行に分けて出荷元倉庫を示す。
+         （従来は複数色でも明細の代表色ラベル1行にまとめており、どの色をどこから出すのかが分からなかった） */
+      if(b.isDoor){
+        var dLg=bomDoorLine(b,ln.line);
+        var dcs=(ln.colorBreakdown&&ln.colorBreakdown.length>0)?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
+        dcs.forEach(function(dc){
+          var dq=parseInt(dc.qty)||0;
+          if(dq<=0)return;
+          var dlbl=lbl+' '+doorColorLabelOf(dLg,dc.color);
+          /* オープン(扉なし)・扉色未定は在庫を引き当てないため倉庫は出さない */
+          if(dc.color==='open'||isUndColor(dc.color)){rows.push({label:dlbl,qty:dq,reason:b.reason||'',wh:'',approx:false});return;}
+          var spd=bomRowWhSplit(order,ln,b,dc.color,dq);
+          if(!spd.length){rows.push({label:dlbl,qty:dq,reason:b.reason||'',wh:'',approx:false});return;}
+          spd.forEach(function(x){rows.push({label:dlbl,qty:x.qty,reason:b.reason||'',wh:x.wh,approx:x.approx});});
+        });
+        return;
+      }
       var qty=parseInt(b.qty)||0;
       var sp=bomRowWhSplit(order,ln,b);
       if(!sp.length){rows.push({label:lbl,qty:qty,reason:b.reason||'',wh:'',approx:false});return;}
