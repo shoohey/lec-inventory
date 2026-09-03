@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.73（見積書の明細行で単価/値引きを編集・レンタルと販売の選択・扉色行の分離ほか）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.74（値引きの選択肢復活・粗利へ値引き反映・LEC欄を右端・ドラッグ位置の線）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -850,11 +850,15 @@ function shipRowName(order){
 var RENTAL_NOTE='レンタル品（無償貸与）';
 var RENTAL_PARTS=[{k:'base',l:'ベースボード'},{k:'vj',l:'上下ジョイント'},{k:'sj',l:'サイドジョイント'}];
 var RENTAL_MODES=[{v:'none',l:'記載しない'},{v:'sale',l:'販売として記載'},{v:'rental',l:'レンタル品（無償貸与）'}];
+/* ★v18.74 修正17の再修正（確認2）: 既定値は3品目とも「記載しない」に統一（ユーザー指示）。
+   旧 rentalOffset=true の案件だけ従来どおり3品目ともレンタル扱いにする。
+   ★これにより rentalSel を持たない過去案件は★ベースボードの行も出なくなる。
+     記載したい案件は見積書作成画面で「販売として記載」または「レンタル品」を選ぶ運用。 */
 function rentalSelOf(order){
   var s=(order&&order.rentalSel)||null;
   var legacy=(order&&order.rentalOffset)?'rental':null;
   return {
-    base:(s&&s.base)||legacy||'sale',
+    base:(s&&s.base)||legacy||'none',
     vj:(s&&s.vj)||legacy||'none',
     sj:(s&&s.sj)||legacy||'none'
   };
@@ -4802,10 +4806,13 @@ function ymdToMs(s,endOfDay){
   return endOfDay?new Date(+m[1],+m[2]-1,+m[3],23,59,59,999).getTime():new Date(+m[1],+m[2]-1,+m[3]).getTime();
 }
 /* 案件1件の売上・原価。売価は帳票と同じ計算（本体＋棚板＋ベース＋パーツ＋送料−値引き） */
+/* v18.74 修正17の再修正⑬: 粗利の売価（gp.total.sell）に値引きが含まれるようになったため、
+   ここで値引きを二重に引かないようにする。goods は値引き後の商品売価。 */
 function orderSalesFigures(order){
   var gp=calcGrossProfit(order);
-  var sell=gp.total.sell+(order.shipping||0)-(order.discount||0);
-  return {sell:sell,goods:gp.total.sell,ship:order.shipping||0,disc:order.discount||0,
+  var disc=discountSum(discountRowsOf(order));
+  var sell=gp.total.sell+(order.shipping||0);
+  return {sell:sell,goods:gp.total.sell,ship:order.shipping||0,disc:disc,
     buyCost:gp.total.cost,stockCost:gp.stockCost||0,missing:gp.total.missing,hasCost:gp.hasCost};
 }
 function buildSalesReport(fromMs,toMs,basis){
@@ -4963,8 +4970,10 @@ function calcGrossProfit(order){
   total.sell=goodsSellOf(order,total.sell);/* v18.73 修正17の追加⑳ */
   return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:total,hasCost:Object.keys(COST_MASTER).length>0,stockCost:0,src:'bom'};
 }
-/* v18.73 修正17の追加⑳: 粗利の「売価」は★明細の行の金額合計（送料・値引きは除く）にする。
+/* v18.73 修正17の追加⑳: 粗利の「売価」は★明細の行の金額合計（送料は除く）にする。
    明細の行で単価を手入力するとそのまま粗利へ反映される（粗利表側の売価は編集不可にした）。
+   ★v18.74 修正17の再修正⑬: ★値引きも売価から引く（値引きを入れると粗利が下がる）。
+     二重に引かないよう orderSalesFigures 側の -値引き は撤去してある。
    ★レンタル品のマイナス行も含めて合計するので、レンタルにした品目は売価0として扱われる。
    ★区分別(cat.body/lock/base/shelf)の売価は従来の計算のまま残してある（区分別表示を復活させるとき用）。
    明細を組み立てられない場合（想定外のデータ）は従来の区分合計へフォールバックする。 */
@@ -4973,7 +4982,7 @@ function goodsSellOf(order,fallback){
     var rs=buildQuoteRows(order).rows;
     if(!rs||!rs.length)return fallback;
     return rs.reduce(function(s,r){
-      if(r.rkey==='SHIP'||/^DISC/.test(r.rkey))return s;
+      if(r.rkey==='SHIP')return s;
       return s+(parseInt(r.amount)||0);
     },0);
   }catch(e){return fallback;}
@@ -5387,8 +5396,9 @@ function generateQuoteHTML(order,docType){
   html+='<div style="display:flex;gap:20px;font-size:9px"><span>電話番号 '+(cust&&cust.phone?cust.phone:'')+'</span><span>FAX番号 '+(cust&&cust.fax?cust.fax:'')+'</span></div>';
   html+='<div style="font-size:9px">顧客コード '+(cust?cust.id:'')+'</div>';
   html+='</div>';
-  /* margin-top でお客様名（1行目）より下から始めている */
-  html+='<div style="width:44%;text-align:left;font-size:9px;line-height:1.8;padding:0 0 0 12px;margin-top:34px">';
+  /* v18.74 修正17の再修正⑧: 上下関係（お客様名より下）はそのままで、ブロックを★右端へ寄せる。
+     flex:0 0 auto にして内容幅にすると space-between で右端に張り付く。文字始まりは左揃えのまま。 */
+  html+='<div style="flex:0 0 auto;text-align:left;font-size:9px;line-height:1.8;padding:0;margin-top:34px">';
   html+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">株式会社LEC</div>';
   var salesP=order.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
   /* v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記する） */
@@ -7050,8 +7060,9 @@ function InvPage(p){
   var optFree=us({});
   /* v18.62 修正12②: 値引き行ごとに「（自由入力）」を選んだ状態を保持する（optFree と同じ理由） */
   var discFree=us({});
-  /* v18.72 修正17⑩: ドラッグ中の明細行キー（並べ替え用の一時状態） */
-  var dragRk=us(null);
+  /* v18.72 修正17⑩: ドラッグ中の明細行キー（並べ替え用の一時状態）
+     v18.74: dropRk=いま重ねている行（挿入位置の線を出す） / unitDraft=単価欄の入力中の文字列 */
+  var dragRk=us(null),dropRk=us(null),unitDraft=us({});
   /* v18.73 修正17の追加④: 全体備考の定型文。選んだ区分（パーソナル／常設）と、挿入する文章のチェック状態 */
   var notesTplKey=us(''),notesTplPick=us({});
   /* v18.62 修正12②⑥: 値引きは「項目名＋金額」の複数行(discountRows)で保持する（旧: 合計値だけの discount）。
@@ -8805,6 +8816,13 @@ function InvPage(p){
                     );
                   })
                 ),
+                /* v18.74 修正17の再修正（確認2）: 既定は3品目とも「記載しない」。
+                   数量があるのに記載しないままの品目は見積書に出ないので、気づけるよう注意を出す。 */
+                (function(){
+                  var miss=RENTAL_PARTS.filter(function(rp){return (qtyOf[rp.k]||0)>0&&rsel[rp.k]==='none';});
+                  return miss.length?h('div',{style:{fontSize:8,fontWeight:700,color:'#975a16',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'2px 5px',marginTop:3}},
+                    '⚠ '+miss.map(function(m){return m.l;}).join('・')+' は数量がありますが「記載しない」のため見積書に出ません（既定は記載しないです）'):null;
+                })(),
                 h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'※ 上下ジョイント単価 ¥'+fm(VJ_PRICE)+' ／ サイドジョイントは単価マスタ（未取込時 SMLXL ¥'+fm(SJ_PRICE.sml)+'・SS/3S ¥'+fm(SJ_PRICE.ss)+'）。単価は下の「明細の行」で手修正できます')
               );
             })(),
@@ -8826,14 +8844,40 @@ function InvPage(p){
                   var dr=di>=0?(discountRowsOf(qo)[di]||null):null;
                   var uEditable=rowUnitEditable(r)&&!ex;
                   var uOv=rowUnitOv(qo,rk);
-                  var drop=function(e){e.preventDefault();moveRow(dragRk[0],rk);dragRk[1](null);};
+                  var drop=function(e){e.preventDefault();moveRow(dragRk[0],rk);dragRk[1](null);dropRk[1](null);};
+                  /* v18.74: 挿入位置の線。つかんでいる行より上の行に重ねたら「その行の上」、下なら「その行の下」 */
+                  var showLine=!!dragRk[0]&&dropRk[0]===rk&&dragRk[0]!==rk;
+                  var lineAbove=showLine&&(qRows.findIndex(function(x){return (x.rkey||('N'+x.no))===dragRk[0];})>ri);
                   var cells=[
                     h('span',{key:'g',title:'ドラッグして並べ替え',style:{cursor:'grab',fontSize:11,color:'var(--g400)',flexShrink:0}},'⇅'),
                     h('span',{key:'n',style:{fontSize:8,color:'var(--g500)',width:12,flexShrink:0,textAlign:'right'}},String(ri+1))
                   ];
                   /* 品名 */
                   if(ex)cells.push(h('input',{key:'nm',className:'inp',style:{width:132,flexShrink:0,fontSize:9},value:ex.name||'',placeholder:'品名（自由入力）',onChange:function(e){updExtra(rk,{name:e.target.value});}}));
-                  else if(dr)cells.push(h('input',{key:'nm',className:'inp',style:{width:132,flexShrink:0,fontSize:9},value:dr.name||'',placeholder:'値引きの項目名',onChange:function(e){setDiscRow(di,{name:e.target.value});}}));
+                  else if(dr)cells.push((function(){
+                    /* v18.74 修正17の再修正⑬: 値引きの項目名は★プルダウン（選択肢マスタ）＋自由入力に戻す。
+                       自由入力した名称は「＋ 選択肢に追加」で全端末共有の選択肢へ足せる（規定文言は削除不可）。 */
+                    var dlist=QUOTE_OPTS.discount||[];
+                    var dFree=!!discFree[0][di];
+                    var dKnown=!dFree&&dlist.indexOf(dr.name)>=0;
+                    return h('div',{key:'nm',style:{width:132,flexShrink:0}},
+                      h('select',{className:'inp',style:{fontSize:9},value:dKnown?dr.name:'__free',onChange:function(e){
+                        var nf=Object.assign({},discFree[0]);
+                        if(e.target.value==='__free'){nf[di]=true;discFree[1](nf);setDiscRow(di,{name:''});}
+                        else{delete nf[di];discFree[1](nf);setDiscRow(di,{name:e.target.value});}
+                      }},
+                        dlist.map(function(x){return h('option',{key:x,value:x},x);}),
+                        h('option',{value:'__free'},'（自由入力）')
+                      ),
+                      !dKnown?h('input',{className:'inp',style:{marginTop:2,fontSize:9},value:dr.name||'',placeholder:'値引きの項目名を入力',onChange:function(e){setDiscRow(di,{name:e.target.value});}}):null,
+                      h('div',{style:{display:'flex',gap:3,marginTop:2,flexWrap:'wrap'}},
+                        (dr.name&&!dKnown)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){
+                          addOpt('discount',dr.name);var nf2=Object.assign({},discFree[0]);delete nf2[di];discFree[1](nf2);
+                        }},'＋ 選択肢に追加'):null,
+                        (dr.name&&dKnown&&!isDefaultQuoteOpt('discount',dr.name))?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,color:'#DC2626'},onClick:function(){delOpt('discount',dr.name);}},'－ 選択肢から削除'):null
+                      )
+                    );
+                  })());
                   else cells.push(h('span',{key:'nm',style:{fontSize:8,color:'var(--g500)',width:132,flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:r.name},r.name));
                   /* 数量・単位 */
                   if(ex){
@@ -8849,10 +8893,19 @@ function InvPage(p){
                   /* 単価 */
                   if(ex)cells.push(h('input',{key:'p',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9},value:(ex.price===''||ex.price==null)?'':ex.price,placeholder:'単価',onChange:function(e){updExtra(rk,{price:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
                   else if(dr)cells.push(h('input',{key:'p',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9},value:dr.unitPrice?dr.unitPrice:'',placeholder:'値引単価',onChange:function(e){setDiscRow(di,{unitPrice:parseInt(e.target.value)||0});}}));
-                  else if(uEditable)cells.push(h('input',{key:'p',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9,background:uOv!==null?'#FEF3C7':'#fff'},
-                    value:uOv!==null?uOv:(r.price===''?'':r.price),placeholder:'単価',
-                    title:'単価を手入力すると 金額＝単価×数量 になり、粗利計算表の売価にも反映されます（空欄にすると単価マスタの金額に戻ります）',
-                    onChange:function(e){setRowUnit(rk,e.target.value);}}));
+                  /* v18.74 修正17の再修正: 数字を全部消すと元の金額に戻ってしまう事象を解消する。
+                     入力中の文字列は unitDraft に持ち、空欄のまま打ち直せるようにする。
+                     欄から離れた（blur）時点で確定し、空欄なら手入力を取り消して単価マスタの金額に戻す。 */
+                  else if(uEditable)cells.push(h('input',{key:'p',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9,background:(unitDraft[0][rk]!==undefined||uOv!==null)?'#FEF3C7':'#fff'},
+                    value:unitDraft[0][rk]!==undefined?unitDraft[0][rk]:(uOv!==null?String(uOv):(r.price===''?'':String(r.price))),
+                    placeholder:'単価',
+                    title:'単価を手入力すると 金額＝単価×数量 になり、粗利計算表の売価にも反映されます（空欄にして欄から離れると単価マスタの金額に戻ります）',
+                    onChange:function(e){var d=Object.assign({},unitDraft[0]);d[rk]=e.target.value;unitDraft[1](d);},
+                    onBlur:function(e){
+                      var d=Object.assign({},unitDraft[0]);delete d[rk];unitDraft[1](d);
+                      setRowUnit(rk,e.target.value);
+                    },
+                    onKeyDown:function(ev){if(ev.key==='Enter')ev.target.blur();}}));
                   else cells.push(h('span',{key:'p',style:{fontSize:8,color:'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.price===''?'':('¥'+fm(r.price))));
                   /* 金額 */
                   if(dr)cells.push(h('input',{key:'a',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9},disabled:!!(dr.qty>0&&dr.unitPrice>0),value:dr.amount?dr.amount:'',placeholder:'値引き額',onChange:function(e){setDiscRow(di,{amount:parseInt(e.target.value)||0});}}));
@@ -8865,10 +8918,17 @@ function InvPage(p){
                   else if(uOv!==null)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手入力した単価を取り消して単価マスタの金額に戻す',onClick:function(){setRowUnit(rk,'');}},'↺'));
                   else cells.push(h('span',{key:'x',style:{width:18,flexShrink:0}}));
                   return h('div',{key:rk,draggable:true,
-                    onDragStart:function(){dragRk[1](rk);},
-                    onDragOver:function(e){e.preventDefault();},
+                    onDragStart:function(){dragRk[1](rk);dropRk[1](null);},
+                    onDragEnd:function(){dragRk[1](null);dropRk[1](null);},
+                    /* v18.74 修正17の再修正: ドラッグ中はどこへ入るかが分かるよう、
+                       挿入位置に線（青いボーダー）を出す。上へ運ぶときは行の上、下へ運ぶときは行の下に出す。 */
+                    onDragOver:function(e){e.preventDefault();if(dropRk[0]!==rk)dropRk[1](rk);},
+                    onDragLeave:function(){if(dropRk[0]===rk)dropRk[1](null);},
                     onDrop:drop,
-                    style:{display:'flex',gap:3,alignItems:'center',marginBottom:3,padding:'1px 2px',borderRadius:3,
+                    style:{display:'flex',gap:3,alignItems:dr?'flex-start':'center',marginBottom:3,padding:'1px 2px',borderRadius:3,
+                      borderTop:(showLine&&lineAbove)?'2px solid #1e3a5f':'2px solid transparent',
+                      borderBottom:(showLine&&!lineAbove)?'2px solid #1e3a5f':'2px solid transparent',
+                      opacity:dragRk[0]===rk?0.45:1,
                       background:dragRk[0]===rk?'#EFF6FF':(dr?'#FFF7ED':(ex?'#F0FDF4':'transparent'))}},cells);
                 }):h('div',{style:{fontSize:8,color:'var(--g500)',padding:'2px 0'}},'明細がありません'),
                 h('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:4,flexWrap:'wrap'}},
@@ -9099,9 +9159,10 @@ function QuotePreview(p){
           ),
           h('div',{style:{fontSize:9}},'顧客コード '+(cust?cust.id:''))
         ),
-        h('div',{style:{width:'44%',textAlign:'left',fontSize:9,lineHeight:1.8,padding:'0 0 0 12px',marginTop:34}},
+        h('div',{style:{flex:'0 0 auto',textAlign:'left',fontSize:9,lineHeight:1.8,padding:0,marginTop:34}},
           h('div',{style:{fontSize:13,fontWeight:700,marginBottom:2}},'株式会社LEC'),
-          /* v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記） */
+          /* v18.74 修正17の再修正⑧: 上下関係はそのまま・ブロックは右端へ（印刷用HTMLと同じ）
+             v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記） */
           o.showRepName?h('div',{style:{fontSize:10,fontWeight:600,marginBottom:2}},o.repName||REP_NAME_DEFAULT):null,
           h('div',null,'〒120-0005'),h('div',null,'東京都足立区綾瀬7-4-1'),
           h('div',null,'TEL. 03-5849-5563  FAX. 03-5849-5564'),
@@ -9611,7 +9672,7 @@ function OrdersPage(p){
                 if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
                 var tax=Math.floor(f.sell*0.1);
                 return h('div',{style:{fontSize:12,fontWeight:900,color:'#1e3a5f',lineHeight:1.3},
-                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+' ＋送料 ¥'+fm(f.ship)+' −値引き ¥'+fm(f.disc)+'）／消費税 ¥'+fm(tax)+'　※売上集計と同じ計算です'},
+                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+'　※売上集計と同じ計算です'},
                   '¥'+fm(f.sell+tax));
               })(),
               h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:p.isReadOnly?'not-allowed':'pointer',color:o.paid?'#065F46':'var(--g500)'},
