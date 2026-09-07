@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.75（全体備考の定型文は既定で未チェック）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.76（修正18: Sαレール・Sα部材の絞込・複数倉庫の送料・在庫表の並び・扉色未定を既定）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -490,6 +490,47 @@ var LINE_COLORS={
   ]
 };
 function isUndColor(colorId){return colorId==='und';}
+/* v18.76 修正18⑥: 商品選択の「扉カラー」は【色未定】→標準色→受注色 の順に並べる（既定の選択も色未定）。
+   LINE_COLORS 自体の並び（在庫一覧・倉庫Excel等の並び）は変えず、商品選択の表示順だけをここで作る。
+   受注色（order:true）は末尾へ寄せる。UND_COLOR も order:true を持つため und:true で先に拾っている。 */
+function doorColorChoices(lineId){
+  var src=LINE_COLORS[lineId]||[];
+  var und=src.filter(function(c){return c.und;});
+  var std=src.filter(function(c){return !c.und&&!c.order;});
+  var ord=src.filter(function(c){return !c.und&&c.order;});
+  return und.concat(std,ord);
+}
+/* 扉カラーの既定値（＝色未定）。そのラインに und が無い場合だけ先頭色へ寄せる */
+function defDoorColor(lineId){
+  var list=doorColorChoices(lineId);
+  return list.length?list[0].v:'';
+}
+/* ===== v18.76 修正18①②: Sα（新台湾製）の取扱部材 =====
+   Sα は「出荷指示書原本 (台湾製Sα）」のとおり部材が限られる（本体部材＋レール2種＋ネジ2種。鍵は日本製と共通）。
+   在庫キーは SML と同じ top/base/shelf の 'sml' や side/back の 'S' を流用しているため、
+   在庫一覧では「SMLXL共通」「Sサイズ」と表示されてしまっていた（修正18②の指摘）。
+   ここで Sα のときだけ使う「表示名」と「取扱いのある部材キー」を1か所に定義する。
+   ★実データ（Supabase の stk.sa）にある非ゼロ在庫は
+     top|sml / back|S / base|sml / side|S / shelf|sml / door(S・3色) / railLong / railShort /
+     capScrew_gy / jointScrew_sml_bk の10種で、この一覧と一致している。 */
+var SA_PARTS=[
+  {key:'top',sub:'sml',item:'上下共通ボード',variant:'Sα共通（グレー）',cat:'size'},
+  {key:'base',sub:'sml',item:'ベースボード',variant:'Sα（グレー・7cm）',cat:'size',color2:'gy'},
+  {key:'side',sub:'S',item:'サイドボード',variant:'Sα（グレー）',cat:'size'},
+  {key:'back',sub:'S',item:'バックボード',variant:'Sα（グレー）',cat:'size'},
+  {key:'shelf',sub:'sml',item:'棚板',variant:'Sα（グレー）',cat:'option',color2:'gy'},
+  {key:'railLong',sub:'',item:'レール長(Sα)',variant:'',cat:'option'},
+  {key:'railShort',sub:'',item:'レール短(Sα)',variant:'',cat:'option'},
+  {key:'jointScrew_sml_bk',sub:'',item:'横連結ネジ',variant:'Sα（ブラック）',cat:'option'},
+  {key:'capScrew_gy',sub:'',item:'目隠しネジ',variant:'Sα（グレー）',cat:'option'}
+];
+var SA_PART_MAP=(function(){var m={};SA_PARTS.forEach(function(r){m[r.key+'|'+(r.sub||'')]=r;});return m;})();
+/* Sα で扱う部材か。鍵（cat:'lock'）は「以下、鍵は日本製と共通」のため常に表示する。 */
+function isSaPart(key,sub,cat){
+  if(cat==='lock')return true;
+  return !!SA_PART_MAP[key+'|'+(sub||'')];
+}
+function saPartOf(key,sub){return SA_PART_MAP[key+'|'+(sub||'')]||null;}
 /* v18.21 要望18: 商品選択の錠前を実在庫キー(部材在庫一覧/パーツ単品 cat:'lock')と同名・同数で紐付け。
    旧 dialH110/dialH111 は在庫キーが存在せず(在庫は dialH110new/dialH111new のみ)常に欠品表示になっていたため実在庫キーへ修正。
    cylinderMaster は削除15項目で確定のため除去。汎用cylinderは在庫に対応キーが無く(在庫はcylinderShort/Long系)要吉野確認のため暫定保持。 */
@@ -1081,6 +1122,9 @@ var PART_LABELS={
   cylinderShortStd:'シリンダー錠(2本キー)カム短スタンダード',cylinderShortF:'シリンダー錠(2本キー)カム短Fマスター',cylinderShortB:'シリンダー錠(2本キー)カム短Bマスター',cylinderShortC:'シリンダー錠(2本キー)カム短Cマスター',
   cylinderExchange:'内筒交換錠',cylinderExchangeSpare:'内筒交換用予備',
   coinReturn:'コインリターン錠',railSideSML:'SMLXL共通サイドレール',railBackSML:'SMLXL共通バックレール',railSideSS:'SS・3S共通サイドレール',railBackSS:'SS・3S共通バックレール',
+  /* v18.76 修正18①: Sα（新台湾製）専用のレール。在庫キー railLong/railShort は v15 時代から新柏に実データがあったが、
+     どの一覧にも行が無く画面から見えていなかった（新柏の商品コードは LR / SR）。 */
+  railLong:'レール長(Sα)',railShort:'レール短(Sα)',
   jointScrew:'ジョイントネジ',jointScrew_sml_bk:'ジョイントネジ(SMLXL・ブラック)',jointScrew_ss_bk:'ジョイントネジ(SS・3S・ブラック)',jointScrew_ss_gy:'ジョイントネジ(SS・3S・グレー)',
   capScrew:'目隠しネジ',capScrew_bk:'目隠しネジ(ブラック)',capScrew_gy:'目隠しネジ(グレー)',
   anchorCap:'アンカー穴キャップ',
@@ -1195,6 +1239,7 @@ var IRISU={
   padlock:150,
   cylinder:100,cylinderLongStd:100,cylinderLongF:100,cylinderLongB:100,cylinderShortStd:100,cylinderShortF:100,cylinderShortB:100,cylinderShortC:100,cylinderExchange:100,cylinderExchangeSpare:100,cylinderMaster:50,
   coinReturn:50,railSideSML:1,railBackSML:1,railSideSS:1,railBackSS:1,jointScrew:1,capScrew:1,doorPocket:1,
+  railLong:100,railShort:50,/* v18.76 修正18①: Sαレールの入数（出荷指示書 台湾製Sα の LONG RAIL=100 / SHORT RAIL=50） */
   /* v14.2: 新規21項目の入数デフォルト */
   dialOpnus:50,cylinderFMaster:50,cylinderBMaster:50,cylinderCMaster:50,cylinderDMaster:50,cylinderLMaster:50,
   dialKeyH110:100,dialKeyH111:100,dialKeyD003:100,dialKeyD018:100,dialKeyDST:100,
@@ -1232,7 +1277,8 @@ var BOX_WEIGHT={
   searchKey:1.0,masterKey:1.0,
   padlock:5.0,
   cylinder:3.0,cylinderLongStd:3.0,cylinderLongF:3.0,cylinderLongB:3.0,cylinderShortStd:3.0,cylinderShortF:3.0,cylinderShortB:3.0,cylinderShortC:3.0,cylinderExchange:3.0,cylinderExchangeSpare:3.0,cylinderMaster:3.0,
-  coinReturn:3.0,railSideSML:1.5,railBackSML:1.0,railSideSS:1.5,railBackSS:1.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0
+  coinReturn:3.0,railSideSML:1.5,railBackSML:1.0,railSideSS:1.5,railBackSS:1.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0,
+  railLong:1.5,railShort:1.0/* v18.76 修正18① */
 };
 var MISC_FEE=325;
 var MARKUP=1.1;
@@ -2077,6 +2123,7 @@ function rollbackInventory(order,fromStatus,toStatus){
   var fromHeld=(fi===1||fi===2),toHeld=(ti===1||ti===2);
   if(fromShipped&&!toShipped){
     restoreShippedStock(order);
+    clearStockConsumed(order);/* v18.76 修正18③: 在庫を戻したので消費の記録も消す */
     if(toHeld){reHoldFromSnapshot(order);return {ok:true,mode:'unship_rehold'};}
     order.lines.forEach(function(ln){if(ln.isFreeInput)return;delete ln._shippedActualHeld;ln._actualHeld=[];ln._hadActualHeld=false;});
     return {ok:true,mode:'unship_to_quote'};
@@ -2308,6 +2355,60 @@ function aggregateOrderBOM(order){
   var spPool=spareBomPool(order);
   spareRest(spPool).forEach(function(s){add(s.key,s.sub,s.color,s.qty);});
   return agg;
+}
+/* ===== v18.76 修正18④: 「その倉庫から出る部材だけ」のBOM集計 =====
+   複数倉庫で仮押さえした案件は倉庫ごとに別便で出るため、送料も倉庫ごとに計算しなければならない。
+   従来は案件全体のBOMを主倉庫（例: 新柏）から出すものとして1回だけ計算しており、
+   新柏＋尼高＋本社の3か所出しでも「全部を新柏から出した」送料になっていた（依頼18④）。
+   振り分けは仮押さえ台帳 _actualHeld の _wh を見る。台帳が無い明細（見積のみ等）は
+   従来どおり _heldWh（無ければ主倉庫）へまとめる。予備パーツは持ち出した倉庫へ入れる。 */
+function aggregateOrderBOMByWh(order,wh){
+  var agg={};
+  function add(key,sub,color,qty){if(!(qty>0))return;var k=key+'|'+(sub||'')+'|'+(color||'');agg[k]=(agg[k]||0)+qty;}
+  var main=(orderWhs(order)[0])||(order&&order.wh)||'';
+  ((order&&order.lines)||[]).forEach(function(ln){
+    if(ln.isFreeInput||ln._returned)return;
+    var ah=ln._actualHeld&&ln._actualHeld.length?ln._actualHeld:(ln._shippedActualHeld||null);
+    if(ah&&ah.length){
+      ah.forEach(function(e){
+        if((e._wh||ln._heldWh||main)!==wh)return;
+        if(e.isDoor)add(e.key,e.size,e.color,parseInt(e.qty)||0);
+        else add(e.key,e.sub,null,parseInt(e.qty)||0);
+      });
+    }else if((ln._heldWh||main)===wh){
+      var sub=aggregateOrderBOM({lines:[ln],_partialReleases:order._partialReleases});
+      Object.keys(sub).forEach(function(k){agg[k]=(agg[k]||0)+sub[k];});
+    }
+  });
+  /* 予備パーツ（持ち出し倉庫が分かるものはその倉庫へ。分からないものは主倉庫へ） */
+  spareRest(spareBomPool(order)).forEach(function(s){
+    var sw=null;
+    ((order&&order.spareParts)||[]).some(function(sp){
+      if(sp.key===s.key&&(sp.sub||'')===(s.sub||'')&&(sp.color||'')===(s.color||'')){sw=sp.wh||sp.fromWh||null;return true;}
+      return false;
+    });
+    if((sw||main)===wh)add(s.key,s.sub,s.color,s.qty);
+  });
+  return agg;
+}
+/* v18.76 修正18④: 案件の倉庫ごとの送料内訳。単一倉庫のときは従来どおり1件だけ返す。 */
+function orderShipLegs(order,destCity,destPref){
+  var whs=orderWhs(order);
+  if(!whs.length)whs=[order&&order.wh].filter(Boolean);
+  if(whs.length<=1)return [{wh:whs[0]||'',fr:calcFreight(order,destCity,destPref)}];
+  return whs.map(function(w){
+    var ol=Object.assign({},order,{wh:w,_whOnly:w});
+    return {wh:w,fr:calcFreight(ol,destCity,destPref)};
+  });
+}
+/* 倉庫ごとの見積送料の合計。1つでも運賃表で解けない倉庫があれば ok:false（呼び元は従来の簡易送料へ落とす） */
+function orderShipQuotedTotal(order,destCity,destPref){
+  var legs=orderShipLegs(order,destCity,destPref);
+  var total=0,ok=true;
+  legs.forEach(function(g){
+    if(g.fr&&g.fr.ok&&g.fr.quoted!=null)total+=g.fr.quoted;else ok=false;
+  });
+  return {ok:ok,total:total,legs:legs};
 }
 function shipLookupAgg(agg,m){
   if(!m)return 0;
@@ -3182,8 +3283,8 @@ function shipExtraBoxes(units){
   if(units<=300)return 6;
   return 10;
 }
-function calcShipWeight(order){
-  var agg=aggregateOrderBOM(order);/* key|sub|color → qty */
+/* v18.76 修正18④: BOM集計(key|sub|color→数量) → 実重量・容積重量・箱数（予備箱は含まない） */
+function shipWeightOfAgg(agg){
   var bySub={};
   Object.keys(agg).forEach(function(kk){var p=kk.split('|');var ks=p[0]+'|'+p[1];bySub[ks]=(bySub[ks]||0)+agg[kk];});
   var aw=0,vw=0,boxes=0,unmapped=[];
@@ -3192,8 +3293,23 @@ function calcShipWeight(order){
     if(!d){if(bySub[ks]>0)unmapped.push(ks);return;}
     var box=bySub[ks]/d.iri;boxes+=box;aw+=box*d.jitsu;vw+=box*d.yoseki;
   });
+  return {aw:aw,vw:vw,boxes:boxes,unmapped:unmapped};
+}
+function calcShipWeight(order){
+  /* v18.76 修正18④: order._whOnly が指定されていれば「その倉庫から出る部材」だけで重量を出す
+     （複数倉庫の案件は倉庫ごとに別便になるため、送料も倉庫ごとに計算する） */
+  var whOnly=order&&order._whOnly;
+  var agg=whOnly?aggregateOrderBOMByWh(order,whOnly):aggregateOrderBOM(order);/* key|sub|color → qty */
+  var b=shipWeightOfAgg(agg);
+  var aw=b.aw,vw=b.vw,boxes=b.boxes,unmapped=b.unmapped;
   /* v18.33 要望⑨: 追加箱数（予備箱）を台数から自動加算 */
   var units=((order&&order.lines)||[]).reduce(function(s,l){return s+((l&&!l.isPartOnly&&!l.isFreeInput)?lineUnits(l):0);},0);
+  if(whOnly){
+    /* 予備箱は「1回の出荷ごと」に必要なので倉庫ごとに算入する。
+       その倉庫から出る台数は正確には持っていないため、箱数の比率で按分して切り上げる。 */
+    var all=shipWeightOfAgg(aggregateOrderBOM(order));
+    units=all.boxes>0?Math.min(units,Math.ceil(units*(boxes/all.boxes))):0;
+  }
   var extra=shipExtraBoxes(units);
   boxes+=extra;aw+=extra*30;vw+=extra*30;
   aw=Math.round(aw*1000)/1000;vw=Math.round(vw*1000)/1000;
@@ -3716,6 +3832,25 @@ function _heldQtyAt(ln,wh,b,dcColor){
   });
   return s;
 }
+/* ===== v18.76 修正18③: 出荷でSTKを引いた事実を案件に記録する =====
+   「出荷完了になっているのに在庫が減っていない」という報告（RS-2026-118／QT-2026-122）の原因調査用。
+   これまで在庫を引いた証拠は EDIT_LOG（直近500件で古いものから消える）だけで、案件からは辿れなかった。
+   ・shipOrder / shipOrderMulti が走った時刻と倉庫を order._stockConsumed に残す
+   ・差し戻し（restoreShippedStock）で在庫を戻したら記録も消す
+   ・案件詳細で「出荷指示以降なのに記録も台帳も無い」案件に警告を出す（stockConsumedState）
+   ・出荷指示を2回押しても在庫が二重に引かれないよう confirmShipOrder で確認を挟む */
+function markStockConsumed(order){
+  if(!order)return;
+  order._stockConsumed={at:new Date().toLocaleString('ja-JP'),whs:orderWhs(order).slice()};
+}
+function clearStockConsumed(order){if(order)delete order._stockConsumed;}
+/* 'consumed'（記録あり）/'legacy'（記録は無いが出荷台帳がある＝v18.75以前の出荷）/'none'（証拠なし） */
+function stockConsumedState(order){
+  if(!order)return 'none';
+  if(order._stockConsumed&&order._stockConsumed.at)return 'consumed';
+  var has=((order.lines||[]).some(function(l){return l&&l._shippedActualHeld&&l._shippedActualHeld.length;}));
+  return has?'legacy':'none';
+}
 function shipOrderMulti(order){
   /* v14.2 Codex P1/P2対応: 部分解放履歴を BOM から差し引く（扉は色別、ラインIDで突合） */
   var pr=order._partialReleases||[];
@@ -3820,6 +3955,7 @@ function shipOrderMulti(order){
        v18.68 修正15⑤: 押さえている全倉庫ぶん解放する */
     whs.forEach(function(w){releaseLine(ln,w);});
   });
+  markStockConsumed(order);/* v18.76 修正18③: 在庫を引いた記録を案件に残す */
 }
 /* v18.68 修正15⑤: 出荷時の倉庫別消費数を決める。
    des[i]=その倉庫で仮押さえしていた数（_actualHeld の _wh 記録）／stk[i]=その倉庫の実在庫。
@@ -3938,6 +4074,7 @@ function shipOrder(order){
     /* v14: releaseLine で actualHeld 優先解放（partial hold対応） */
     releaseLine(ln,order.wh);
   });
+  markStockConsumed(order);/* v18.76 修正18③: 在庫を引いた記録を案件に残す */
 }
 
 /* ========== CHECK ALL LINES AT WAREHOUSE ========== */
@@ -4476,7 +4613,10 @@ var ITEM_CODES={
   /* ★H110/H111は連携表に「ダイヤル錠H110/H111」の1行しかないため、現行品(dialH110new/H111new)に紐づけている。
      旧型(dialH110/dialH111)にも同じコードを使うかは要確認。 */
   'dialH110new|':['Keyless LockH110','H110',''],
-  'dialH111new|':['Keyless LockH111','H111','']
+  'dialH111new|':['Keyless LockH111','H111',''],
+  /* v18.76 修正18①: Sα（新台湾製）のレール。新柏でのコードは LR / SR（尼高・八木熊は取扱なし） */
+  'railLong|':['','LR',''],
+  'railShort|':['','SR','']
 };
 /* 扉は 扉種|色|サイズ。日本製Ver.1 の扉は ITEM_CODES_DOOR_V1 に分けている */
 var ITEM_CODES_DOOR={
@@ -6958,7 +7098,7 @@ function InvPage(p){
     window.addEventListener('resize',onR);
     return function(){window.removeEventListener('resize',onR);};
   },[]);
-  var ln=us('jp2'),sz=us('M'),tp=us('standard'),cl=us('pb'),lk=us('dialH110new');
+  var ln=us('jp2'),sz=us('M'),tp=us('standard'),cl=us('und')/* v18.76 修正18⑥: 扉カラーの既定は【色未定】 */,lk=us('dialH110new');
   var doorType=us('door');
   var hasDoor=us(true);/* 扉の有無 (true=扉あり / false=扉なし) */
   /* v18.70 修正16②: 扉だけ別の製品ライン（日本製Ver.1・台湾製）を選べるようにする。
@@ -7095,16 +7235,17 @@ function InvPage(p){
 
   /* v18.70 修正16②: 扉カラーの品揃えは「扉の製品ライン」に従う */
   var doorLine=doorLn[0]||ln[0];
-  var colors=LINE_COLORS[doorLine]||[];
+  /* v18.76 修正18⑥: 商品選択の扉カラーは【色未定】→標準色→受注色 の順で並べる（doorColorChoices） */
+  var colors=doorColorChoices(doorLine);
   var sizes=LINE_SIZES[ln[0]]||[];
   var isJP=ln[0]==='jp01'||ln[0]==='jp2';
   /* v18.33 要望⑤: SSWは扉なし製品のため、jp2×XLと同じ「扉なし強制」機構に乗せる（jp2XLNoDoor=強制扉なしフラグとして共用） */
   var jp2XLNoDoor=isJp2XLDoorBlocked(ln[0],sz[0])||sz[0]==='SSW';/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ） */
-  function changeLine(v){ln[1](v);doorLn[1]('');/* v18.70 修正16②: 本体ラインを変えたら扉ラインも本体に合わせ直す */cl[1]((LINE_COLORS[v]||[])[0]?LINE_COLORS[v][0].v:'');var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
+  function changeLine(v){ln[1](v);doorLn[1]('');/* v18.70 修正16②: 本体ラインを変えたら扉ラインも本体に合わせ直す */cl[1](defDoorColor(v));/* v18.76 修正18⑥: 既定は色未定 */var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
   /* v18.70 修正16②: 扉ラインを変えたとき、選択中の色がそのラインに無ければ先頭色へ寄せる */
   function changeDoorLine(v){
     doorLn[1](v);
-    var nc=LINE_COLORS[v||ln[0]]||[];
+    var nc=doorColorChoices(v||ln[0]);/* v18.76 修正18⑥: 先頭＝色未定 */
     if(nc.length&&!nc.find(function(c){return c.v===cl[0];}))cl[1](nc[0].v);
     multiColor[1](false);/* 色の品揃えが変わるため複数色配分はいったん解除 */
   }
@@ -7566,6 +7707,20 @@ function InvPage(p){
     p.bump();saveAll();
   }
 
+  /* v18.76 修正18④: 複数倉庫で仮押さえした案件の見積送料。
+     従来は「各倉庫 × 案件全体の重量」を足していた（＝どの倉庫からも全量出す前提）ため実態と合わなかった。
+     仮押さえ台帳(_actualHeld._wh)を見て倉庫ごとの荷物だけで運賃表を引き、その合計を送料にする。
+     行先の距離が引けない倉庫が1つでもあれば、従来の簡易送料の合計へ落とす（安全側）。 */
+  function multiShipTotal(orderLike,fallback){
+    var c=shipCust();
+    if(!c)return fallback;
+    if(FREIGHT_OVR&&FREIGHT_OVR.officialMode===false)return fallback;
+    try{
+      var r=orderShipQuotedTotal(orderLike,c.city||'',c.pref||'');
+      if(r.ok&&r.total>0)return r.total;
+    }catch(e){}
+    return fallback;
+  }
   function doHoldAndQuoteMulti(){
     if(!lines[0].length||selMulti[0]===null||!multiWH[0][selMulti[0]])return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
@@ -7582,7 +7737,9 @@ function InvPage(p){
       var actualM=holdBOMMultiN(ln.line,mwhs,bom,ln.color,ln.size,ln.colorBreakdown);
       ln._actualHeld=actualM;ln._heldWh=whA;ln._hadActualHeld=true;/* 主倉庫を _heldWh としてマーク。詳細分配は _actualHeld._wh で判断 */
     });
-    var totalShip=mwhs.reduce(function(s,w){var sh=cust?calcShipping(lines[0],w,shipPref()):null;return s+(sh?sh.shipping:0);},0);
+    /* v18.76 修正18④: 倉庫ごとの荷物で送料を出して合算する */
+    var simpleShipM=mwhs.reduce(function(s,w){var sh=cust?calcShipping(lines[0],w,shipPref()):null;return s+(sh?sh.shipping:0);},0);
+    var totalShip=multiShipTotal({lines:clonedLinesM,wh:whA,whs:mwhs.slice()},simpleShipM);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var pt2=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
     var order={no:no,cid:cust.id,wh:whA,wh2:mwhs[1]||null,whs:mwhs,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
@@ -7809,8 +7966,10 @@ function InvPage(p){
       });
       ln._actualHeld=merged;ln._heldWh=main;ln._hadActualHeld=true;
     });
-    /* v18.68 修正15⑤: 送料は使った全倉庫ぶんを合算する（従来は主倉庫＋2つ目だけだった） */
-    var totalShip=whList.reduce(function(s,w){var sh=cust?calcShipping(clonedLines,w,shipPref()):null;return s+(sh?sh.shipping:0);},0);
+    /* v18.68 修正15⑤: 送料は使った全倉庫ぶんを合算する（従来は主倉庫＋2つ目だけだった）
+       v18.76 修正18④: 各倉庫に案件全体の重量を掛けるのをやめ、その倉庫から出る荷物だけで運賃表を引く */
+    var simpleShipA=whList.reduce(function(s,w){var sh=cust?calcShipping(clonedLines,w,shipPref()):null;return s+(sh?sh.shipping:0);},0);
+    var totalShip=multiShipTotal({lines:clonedLines,wh:main,whs:whList.slice()},simpleShipA);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var ptA=paymentTerms[0]==='その他'?paymentCustom[0]:paymentTerms[0];
     var order={no:no,cid:cust.id,wh:main,whs:whList.slice(),status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
@@ -9525,6 +9684,12 @@ function OrdersPage(p){
     order.deliveryDate=sf.deliveryDate;
     order.shippingNotes=sf.shippingNotes;
     order.shipNo=sf.shipNo||'';
+    /* v18.76 修正18③: 出荷指示を2回押すと在庫が二重に引かれる。既に引いている案件は必ず確認を挟む
+       （v18.68 修正15⑧ で直したステータスの取りこぼしと同じ場面で起きていた事故の再発防止）。 */
+    if(stockConsumedState(order)!=='none'){
+      var _sc=order._stockConsumed;
+      if(!confirm('この案件はすでに在庫を引き落としています'+(_sc&&_sc.at?'（'+_sc.at+'）':'（過去の出荷指示）')+'。\nこのまま進めると同じ数量がもう一度在庫から引かれます。\n\n在庫を引き直したい場合は、いったん「受注確定」へ差し戻してから出荷指示してください。\n\nそれでも続けますか？'))return;
+    }
     if(orderWhs(order).length>1){shipOrderMulti(order);}else{shipOrder(order);}/* v18.68 修正15⑤ */
     order.status='出荷指示';
     /* v14.5 E1: 在庫消費の永続化・同期を「印刷ウィンドウより先に」確実に実行（ポップアップブロックでデータが失われないように） */
@@ -9977,10 +10142,105 @@ function OrdersPage(p){
           h('div',null,h('b',null,'倉庫: '),orderWhLabel(detail[0])),
           h('div',null,h('b',null,'送料: '),detail[0].shipping?'¥'+fm(detail[0].shipping):'-')
         ),
+        /* ===== v18.76 修正18③: 在庫の引き落とし状況を案件詳細に出す =====
+           「出荷完了になっているのに在庫が減っていない」（RS-2026-118／QT-2026-122）の点検用。
+           出荷指示以降なのに引き落としの証拠（記録も出荷台帳も）が無い案件は赤字で警告する。
+           v18.75以前に出荷した案件は記録を持たないので、出荷台帳(_shippedActualHeld)があれば
+           「出荷済み（記録は無し）」として扱い、警告は出さない。 */
+        (function(){
+          var o=detail[0];
+          if(STATUS_FLOW.indexOf(o.status)<STATUS_FLOW.indexOf('出荷指示'))return null;
+          var st=stockConsumedState(o);
+          if(st==='consumed')return h('div',{style:{padding:'5px 10px',marginBottom:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6,fontSize:10,color:'#065F46'}},
+            '✅ 在庫の引き落とし済み（'+o._stockConsumed.at+' ／ '+((o._stockConsumed.whs||[]).map(function(w){return (WH_MAP[w]||{}).n||w;}).join(' + ')||orderWhLabel(o))+'）');
+          /* 在庫を引き直す（引き落としが抜けている案件の手当て）。
+             _hadActualHeld が立っているので仮押さえ(HELD)には触らず、実在庫(STK)だけを引く。 */
+          var reconsume=function(){
+            var lo=liveOrder(o);
+            var items=[];
+            (lo.lines||[]).forEach(function(l){(l._shippedActualHeld||[]).forEach(function(e){
+              items.push((PART_LABELS[e.key]||e.key)+(e.color?('/'+e.color):'')+(e.sub||e.size?('/'+(e.sub||e.size)):'')+' ×'+e.qty);
+            });});
+            if(!confirm('【在庫の引き直し】'+lo.no+'\n\nこの案件ぶんの部材を実在庫からもう一度差し引きます。\n'+
+              '★すでに在庫が引かれている場合は二重に減ってしまいます。実在庫と付き合わせてから実行してください。\n\n'+
+              (items.length?('例: '+items.slice(0,6).join(' / ')+(items.length>6?(' …他'+(items.length-6)+'件'):'')+'\n\n'):'')+
+              '実行しますか？'))return;
+            if(orderWhs(lo).length>1){shipOrderMulti(lo);}else{shipOrder(lo);}
+            detail[1](null);saveAll();p.bump&&p.bump();
+            broadcastOrderUpdate(p.userName||'',lo.no+' 在庫を引き直し');
+            p.toast('在庫を引き直しました（'+lo.no+'）。部材在庫一覧で数量をご確認ください');
+          };
+          var canFix=!p.isReadOnly;
+          if(st==='legacy')return h('div',{style:{padding:'5px 10px',marginBottom:8,background:'var(--g50)',border:'1px solid var(--g200)',borderRadius:6,fontSize:10,color:'var(--g600)',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
+            h('span',null,'📦 出荷済み（v18.76より前の出荷のため、在庫を引いた日時の記録は残っていません）'),
+            canFix?h('button',{className:'btn btn-xs btn-ol',title:'実在庫と付き合わせて「引かれていない」と分かった場合だけ使ってください。二重に引くと在庫が減りすぎます',onClick:reconsume},'在庫が引かれていない場合はここから引き直す'):null
+          );
+          return h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#FEE2E2',border:'1.5px solid #FCA5A5',borderRadius:8,fontSize:11,color:'#991B1B',fontWeight:700}},
+            '⚠️ この案件は「'+o.status+'」ですが、在庫を引き落とした記録が見つかりません（在庫数がずれている可能性があります）。',
+            h('div',{style:{fontWeight:400,marginTop:3}},'いったん「受注確定」へ差し戻してから、もう一度「出荷指示」へ進めると在庫が正しく引かれます。差し戻しでは在庫は戻りません（引かれていないため）。'),
+            canFix?h('button',{className:'btn btn-xs btn-rd',style:{marginTop:4},onClick:reconsume},'在庫を引き直す'):null
+          );
+        })(),
         /* v18.8 P3-D: 送料試算（参考・実データ運賃表）。請求には自動反映せず実物照合用。 */
         (function(){
           var o=detail[0];var cust=CUSTS.find(function(c){return c.id===o.cid;});
           if(!cust)return null;
+          var _tblName={r5_amago:'尼高 西濃混載',r6_sapporo:'札幌 西濃混載',misshu:'全国混載',y_honsha:'本社発 ヤマト宅急便',y_kansai:'関西営業所発 ヤマト宅急便'};
+          /* ===== v18.76 修正18④: 複数倉庫から出す案件は倉庫ごとに送料を出す =====
+             従来はこの試算も order.wh（主倉庫）だけで案件全体の重量を計算していたため、
+             新柏＋尼高＋本社の3か所出しでも「全て新柏出し」の送料が出ていた（依頼18④）。 */
+          var _whsAll=orderWhs(o);
+          if(_whsAll.length>1){
+            var legs=orderShipLegs(o,cust.city||'',cust.pref||'');
+            var legTotal=0,legNG=0;
+            legs.forEach(function(g){if(g.fr&&g.fr.ok&&g.fr.quoted!=null)legTotal+=g.fr.quoted;else legNG++;});
+            return h('div',{style:{marginBottom:10,padding:8,background:'#f5f7fa',borderRadius:6,border:'1px solid var(--g200)',fontSize:10}},
+              h('div',{style:{fontWeight:700,color:'#1e3a5f',marginBottom:4}},'🚚 送料試算（実データ運賃表）　',
+                h('span',{style:{color:'#B45309'}},'倉庫ごとの内訳（'+_whsAll.length+'か所出し）'),
+                h('span',{style:{fontWeight:400,color:'var(--g400)',marginLeft:6,fontSize:9}},'※倉庫ごとに別便になるため、それぞれの荷物で運賃表を引いて合算しています')),
+              h('div',{style:{fontSize:10,marginBottom:4}},h('b',null,'行先: '),(cust.pref||'')+(cust.city||'')),
+              h('table',{className:'tbl',style:{fontSize:9}},
+                h('thead',null,h('tr',null,
+                  h('th',null,'倉庫'),h('th',null,'運賃表'),h('th',null,'距離/地域'),h('th',null,'課金重量・箱数'),
+                  h('th',{style:{textAlign:'right'}},'地別運賃'),h('th',{style:{textAlign:'right'}},'諸経費'),
+                  h('th',{style:{textAlign:'right'}},'運賃原価'),h('th',{style:{textAlign:'right'}},'見積運賃(×1.1)'))),
+                h('tbody',null,legs.map(function(g,gi){
+                  var f=g.fr||{};
+                  var nm=(WH_MAP[g.wh]||{}).n||g.wh;
+                  if(!f.ok)return h('tr',{key:'lg'+gi},
+                    h('td',{style:{fontWeight:700}},nm),
+                    h('td',{colSpan:7,style:{color:'#975a16'}},
+                      f.reason==='distance_unknown'?'行先の距離が判定できません（沖縄/離島 or 都道府県未設定）→ チャーター便をご検討ください':
+                      f.reason==='over_weight_charter'?('請求重量 '+f.weight+'kg が混載の上限を超過 → チャーター便対象'):
+                      ('試算不可（'+(f.reason||'')+'）')));
+                  return h('tr',{key:'lg'+gi},
+                    h('td',{style:{fontWeight:700}},nm),
+                    h('td',null,_tblName[f.table]||f.table),
+                    h('td',null,f.yamato?(YAMATO_REGION_LABEL[f.region]||f.region):(f.distance+'km'+(f.approxDistance?'(暫定)':''))),
+                    h('td',null,f.yamato?(f.boxSize+'サイズ×'+f.boxCount+'箱'):(f.weight+'kg / '+f.boxes+'箱'+(f.extraBoxes?'(予備'+f.extraBoxes+')':''))),
+                    h('td',{style:{textAlign:'right'}},'¥'+fm(f.rate)),
+                    h('td',{style:{textAlign:'right'}},f.yamato?'-':('¥'+fm(f.shokei))),
+                    h('td',{style:{textAlign:'right'}},'¥'+fm(f.genka)),
+                    h('td',{style:{textAlign:'right',fontWeight:700,color:'#276749'}},'¥'+fm(f.quoted)));
+                }))
+              ),
+              h('div',{style:{marginTop:4,display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}},
+                h('span',{style:{fontWeight:700,color:'#276749',fontSize:11}},'合計 見積運賃: ¥'+fm(legTotal)+(legNG?'（試算できた倉庫のみ）':'')),
+                h('span',null,h('b',null,'この案件の送料欄: '),o.shipping?'¥'+fm(o.shipping):'-'),
+                /* v18.76 修正18④: v18.75以前に作った案件は「全量を主倉庫から出す」送料で保存されている。
+                   倉庫ごとに計算し直した金額へ、この場で入れ替えられるようにする。 */
+                (!legNG&&legTotal>0&&legTotal!==o.shipping&&!p.isReadOnly&&!isOrderLocked(o))?h('button',{className:'btn btn-xs btn-gn',onClick:function(){
+                  if(!confirm('この案件の送料を ¥'+fm(o.shipping||0)+' → ¥'+fm(legTotal)+' （倉庫ごとの合計）に入れ替えます。よろしいですか？'))return;
+                  var lo=liveOrder(o);lo.shipping=legTotal;
+                  detail[1](null);saveAll();p.bump&&p.bump();
+                  broadcastOrderUpdate(p.userName||'',lo.no+' 送料を倉庫別合計へ更新');
+                  p.toast('送料を ¥'+fm(legTotal)+' に更新しました（'+lo.no+'）');
+                }},'この金額を送料欄に入れる'):null
+              ),
+              legNG?h('div',{style:{fontSize:9,color:'#975a16',marginTop:3}},'※ '+legNG+'倉庫ぶんが運賃表で解けませんでした。案件の送料欄は従来どおりの簡易送料（重量×単価）の合計になっています。'):null,
+              h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:3}},'※ 倉庫ごとの荷物は仮押さえの割当（部材別倉庫の指定）に従って振り分けています。予備箱（1箱30kg）は出荷1件ごとに算入するため倉庫ごとに乗ります。')
+            );
+          }
           var fr=calcFreight(o,cust.city||'',cust.pref||'');
           var tblName={r5_amago:'尼高 西濃混載',r6_sapporo:'札幌 西濃混載',misshu:'全国混載',y_honsha:'本社発 ヤマト宅急便',y_kansai:'関西営業所発 ヤマト宅急便'}[fr.table]||fr.table;
           return h('div',{style:{marginBottom:10,padding:8,background:'#f5f7fa',borderRadius:6,border:'1px solid var(--g200)',fontSize:10}},
@@ -11060,6 +11320,207 @@ function PartsPage(p){
       }
     });
   }catch(e){console.warn('カスタム部材マージ失敗',e);}
+  /* ===== v18.76 修正18①②: Sα（新台湾製）の在庫一覧 =====
+     ① Sα専用のレール（レール長／レール短。新柏のコードは LR/SR）を在庫項目として出す。
+        在庫キー railLong/railShort には v15 時代から新柏に実データ（520本/260本）が入っていたが、
+        どの一覧にも行が無く画面から確認できなかった。
+     ② Sαで取扱いのない部材は出さず、サイズ表記も「SMLXL共通」ではなく「Sα」にする（SA_PARTS）。
+        鍵は日本製と共通のため従来どおり全て表示する。
+        ★万一 SA_PARTS に無いキーに在庫が入っていた場合は消さずに残す（_saHasStock）。 */
+  var isSaLine=selLine[0]==='sa';
+  if(isSaLine){
+    structRowsAll.push({label:'レール長(Sα)',key:'railLong',cat:'option'});
+    structRowsAll.push({label:'レール短(Sα)',key:'railShort',cat:'option'});
+  }
+  /* 部材の区分(size/option/lock)を key|sub から引く索引。Sαの絞り込みより前に作る */
+  var partCatMap={};
+  structRowsAll.forEach(function(r){partCatMap[r.key+'|'+(r.sub||'')]=r.cat;});
+  function partCatOf(key,sub){return partCatMap[key+'|'+(sub||'')]||'option';}
+  function _saHasStock(key,sub){
+    try{
+      return WH_IDS.some(function(w){return (sub!==undefined&&sub!==''?gs('sa',w,key,sub):gs('sa',w,key))>0;});
+    }catch(e){return false;}
+  }
+  function saKeepRow(key,sub,cat){
+    return isSaPart(key,sub,cat)||_saHasStock(key,sub);
+  }
+  if(isSaLine){
+    structRowsAll=structRowsAll.filter(function(r){
+      if(r.isCustom)return true;
+      return saKeepRow(r.key,r.sub,r.cat);
+    }).map(function(r){
+      var sp=saPartOf(r.key,r.sub);
+      return sp?Object.assign({},r,{label:sp.item+(sp.variant?'　'+sp.variant:'')}):r;
+    });
+  }
+  /* ===== v18.76 修正18⑤: 在庫表の行の並びを1か所に集約 =====
+     従来は「全倉庫一覧」がこの手組みリスト、「各倉庫タブ」が structRowsAll の順という二重管理で、
+     倉庫ボタンを押すとアイテムの並び方が変わっていた（依頼18⑤）。
+     buildUniRows() を唯一の並び順の出所にして、全倉庫一覧・各倉庫タブの両方がこれを使う。
+     ★在庫表の行を足す/並べ替えるときは、この関数だけを直せばよい。 */
+  function buildUniRows(){
+          /* Build unified rows: アイテム | 色 | 入り数 | 各倉庫(実在庫|仮押さえ|使える数) */
+          var uniRows=[];
+          var iGet=function(k,s){if(!IRISU[k])return'';if(typeof IRISU[k]==='number')return IRISU[k];if(s&&IRISU[k][s])return IRISU[k][s];return'';};
+          var szList=sizes.filter(function(s){return s!=='SSA'&&s!=='SSW';});
+          /* v18.48 修正６①: 扉だけは SSα(SSA) の在庫行を持つため、扉用のサイズ一覧を別に用意する */
+          var szDoor=sizes.filter(isDoorSize);
+          /* === CSV順序準拠 === */
+          /* 1. 上下共通ボード */
+          uniRows.push({item:'上下共通ボード',variant:'SMLXL共通グレー',key:'top',sub:'sml',irisu:iGet('top','sml'),grp:'sml'});
+          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'top',sub:'ss',irisu:iGet('top','ss'),grp:'ss'});
+          /* 2. ベースボード (グレー/ブラック別表示) */
+          uniRows.push({item:'ベースボード',variant:'SMLXL共通（グレー）',key:'base',sub:'sml',irisu:iGet('base','sml'),grp:'sml',color2:'gy'});
+          uniRows.push({item:'',variant:'SMLXL共通（ブラック）',key:'base_bk',sub:'sml',irisu:iGet('base','sml'),grp:'sml',color2:'bk'});
+          uniRows.push({item:'',variant:'SS・3S共通（グレー）',key:'base',sub:'ss',irisu:iGet('base','ss'),grp:'ss',color2:'gy'});
+          uniRows.push({item:'',variant:'SS・3S共通（ブラック）',key:'base_bk',sub:'ss',irisu:iGet('base','ss'),grp:'ss',color2:'bk'});
+          /* 3. サイドボード - S, M, L, SS, 3S order */
+          ['S','M','L','SS','3S'].filter(function(s){return szList.indexOf(s)>=0;}).forEach(function(s,i){
+            uniRows.push({item:i===0?'サイドボード':'',variant:s+'(グレー)',key:'side',sub:s,irisu:iGet('side',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});
+          });
+          /* 4. バックボード - S, M, L, SS, 3S order */
+          ['S','M','L','SS','3S'].filter(function(s){return szList.indexOf(s)>=0;}).forEach(function(s,i){
+            uniRows.push({item:i===0?'バックボード':'',variant:s+'(グレー)',key:'back',sub:s,irisu:iGet('back',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});
+          });
+          /* 5. 扉（色別: 各色→ホタ→次の色） */
+          colors.forEach(function(c){
+            /* 通常扉 */
+            ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
+              uniRows.push({item:i===0?'扉　'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iGet('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
+            });
+            /* ホタ扉 (XLなし) */
+            ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
+              uniRows.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iGet('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
+            });
+          });
+          /* 6. 棚板 (色別に在庫独立) */
+          uniRows.push({item:'棚板',variant:'SMLXL共通（ブラック）',key:'shelf_bk',sub:'sml',irisu:iGet('shelf','sml'),grp:'sml',color2:'bk'});
+          uniRows.push({item:'',variant:'SMLXL共通（グレー）',key:'shelf',sub:'sml',irisu:iGet('shelf','sml'),grp:'sml',color2:'gy'});
+          uniRows.push({item:'',variant:'SS(ブラック)',key:'shelf_bk',sub:'ss',irisu:iGet('shelf','ss'),grp:'ss',color2:'bk'});
+          uniRows.push({item:'',variant:'SS(グレー)',key:'shelf',sub:'ss',irisu:iGet('shelf','ss'),grp:'ss',color2:'gy'});
+          /* 7. 上下ジョイント */
+          uniRows.push({item:'上下ジョイント',variant:'SMLXL共通(ブラック)',key:'vj',sub:'sml',irisu:iGet('vj','sml'),grp:'sml'});
+          uniRows.push({item:'',variant:'SS・3S共通(ブラック)',key:'vj',sub:'ss',irisu:iGet('vj','ss'),grp:'ss'});
+          /* 8. ハンガーパイプ
+             v18.46 修正５⑩: 同じ在庫キー(hanger)で「ブラック」「グレー」の2行を出していたため、
+             実在庫は1つなのに黒とグレーへ同じ数が二重表示されていた。日本製の取扱はブラックのみのため1行に統合。 */
+          uniRows.push({item:'ハンガーパイプ',variant:'ブラック',key:'hanger',irisu:iGet('hanger')});
+          /* 9. コネクター
+             v18.46 修正５⑩: XL・SSとも取扱はグレーのみ（ブラックは無い）。同上の二重表示を解消し、グレー1行に統合。 */
+          uniRows.push({item:'コネクター',variant:'XLグレー',key:'connector',sub:'XL',irisu:iGet('connector','XL'),grp:'sml'});
+          uniRows.push({item:'',variant:'SSグレー',key:'connector',sub:'SS',irisu:iGet('connector','SS'),grp:'ss'});
+          /* 10. アンカー穴キャップ (色別 sub で独立トラッキング) */
+          uniRows.push({item:'アンカー穴キャップ',variant:'ブラック',key:'anchorCap',sub:'bk',irisu:iGet('anchorCap','bk')});
+          uniRows.push({item:'',variant:'グレー',key:'anchorCap',sub:'gy',irisu:iGet('anchorCap','gy')});
+          /* 11. トップジョイント */
+          uniRows.push({item:'トップジョイント',variant:'クローバー🍀',key:'topJoint',irisu:iGet('topJoint')});
+          uniRows.push({item:'',variant:'葉っぱ🍂',key:'topJointLeaf',irisu:iGet('topJointLeaf')});/* v18.72 修正17㉒: 葉っぱは独立在庫キー(topJointLeaf)。従来はクローバーと同じキーで数量が連動していた */
+          /* 12. サイドジョイント
+             v18.46 修正５⑩: 取扱はグレーのみ（ブラックは無い）。同一在庫キーの黒/グレー二重表示を解消しグレー1行に統合。 */
+          uniRows.push({item:'サイドジョイント',variant:'SMLXL共通グレー',key:'sj',sub:'sml',irisu:iGet('sj','sml'),grp:'sml'});
+          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'sj',sub:'ss',irisu:iGet('sj','ss'),grp:'ss'});
+          /* 13. トッテ */
+          uniRows.push({item:'トッテ',variant:'新',key:'totte',irisu:iGet('totte')});
+          /* 14. ダイヤル錠 */
+          /* v18.40 修正１⑥: 廃番の旧型H110/H111(旧)は在庫表から削除 */
+          uniRows.push({item:'ダイヤル錠',variant:'H110',key:'dialH110new',irisu:iGet('dialH110new')});
+          uniRows.push({item:'',variant:'H111',key:'dialH111new',irisu:iGet('dialH111new')});
+          /* v18.72 修正17②の回答: H112(自由式)は取扱終了のため在庫表から削除 */
+          /* v14.5 C7: 実在庫を持つ旧キーを画面にも表示（Excelと項目一致） */
+          uniRows.push({item:'',variant:'DST',key:'dialDST',irisu:iGet('dialDST')});
+          /* 17. 南京錠 */
+          uniRows.push({item:'南京錠',variant:'',key:'padlock',irisu:iGet('padlock')});
+          /* 18. シリンダー錠 */
+          uniRows.push({item:'シリンダー錠',variant:'(2本キー)カム長スタンダード',key:'cylinderLongStd',irisu:iGet('cylinderLongStd')});
+          uniRows.push({item:'',variant:'(2本キー)カム長Fマスター',key:'cylinderLongF',irisu:iGet('cylinderLongF')});
+          uniRows.push({item:'',variant:'(2本キー)カム長Bマスター',key:'cylinderLongB',irisu:iGet('cylinderLongB')});
+          uniRows.push({item:'',variant:'(2本キー)カム短スタンダード',key:'cylinderShortStd',irisu:iGet('cylinderShortStd')});
+          uniRows.push({item:'',variant:'(2本キー)カム短Fマスター',key:'cylinderShortF',irisu:iGet('cylinderShortF')});
+          uniRows.push({item:'',variant:'(2本キー)カム短Bマスター',key:'cylinderShortB',irisu:iGet('cylinderShortB')});
+          uniRows.push({item:'',variant:'(2本キー)カム短Cマスター',key:'cylinderShortC',irisu:iGet('cylinderShortC')});
+          /* v18.44 修正３⑥: 受注発注のカム短Dマスター/カム短Lマスターをシリンダー錠グループへ追加
+             （在庫キーは既存の cylinderDMaster/cylinderLMaster を継続使用。下部にあった単独行「シリンダー Dマスター/Lマスター」はここへ統合） */
+          uniRows.push({item:'',variant:'(2本キー)カム短Dマスター',key:'cylinderDMaster',irisu:iGet('cylinderDMaster')});
+          uniRows.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
+          uniRows.push({item:'',variant:'内筒交換錠',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
+          uniRows.push({item:'',variant:'内筒交換用予備',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
+          /* v14.5 C7: 実在庫を持つ旧キー（無印・マスター組）を画面にも表示（Excelと項目一致） */
+          uniRows.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iGet('coinReturn')});
+          /* v16: レール新方式（在庫4商品） */
+          uniRows.push({item:'SMLXL共通サイドレール',variant:'',key:'railSideSML',irisu:iGet('railSideSML')});
+          uniRows.push({item:'SMLXL共通バックレール',variant:'',key:'railBackSML',irisu:iGet('railBackSML')});
+          uniRows.push({item:'SS・3S共通サイドレール',variant:'',key:'railSideSS',irisu:iGet('railSideSS')});
+          uniRows.push({item:'SS・3S共通バックレール',variant:'',key:'railBackSS',irisu:iGet('railBackSS')});
+          /* v18.76 修正18①: Sα（新台湾製）のレール。Sαを選んでいるときだけ行を出す（他ラインには在庫キーが無い） */
+          if(isSaLine){
+            uniRows.push({item:'レール長(Sα)',variant:'',key:'railLong',irisu:iGet('railLong')});
+            uniRows.push({item:'レール短(Sα)',variant:'',key:'railShort',irisu:iGet('railShort')});
+          }
+          /* 20. ジョイントネジ (3種を独立キーで分離トラッキング) */
+          uniRows.push({item:'ジョイントネジ',variant:'SMLXL共通ブラック',key:'jointScrew_sml_bk',irisu:''});
+          uniRows.push({item:'',variant:'SS・3S共通ブラック',key:'jointScrew_ss_bk',irisu:''});
+          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'jointScrew_ss_gy',irisu:''});
+          /* 21. 目隠しネジ (色別キー分離) */
+          uniRows.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
+          uniRows.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
+          /* 22. ドアポケット */
+          uniRows.push({item:'ドアポケット',variant:'ブラック',key:'doorPocket',irisu:''});
+          /* v14.8 #4: 「扉すべて」合算行を廃止（個別の色別扉行は上部に表示済み） */
+          /* v14.2: 26-30. シリンダーマスター（5種） v14.5 C7: 入数をIRISUから取得しExcelと統一 */
+          uniRows.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iGet('dialOpnus')});
+          /* v18.44 修正３⑥: シリンダー Dマスター/Lマスターの単独行は上のシリンダー錠グループ（(2本キー)カム短D/Lマスター）へ統合済み */
+          /* v14.2: 31-34. ダイヤル錠検索キー（4種） */
+          uniRows.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iGet('dialKeyH110')});
+          uniRows.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iGet('dialKeyH111')});
+          uniRows.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:iGet('dialKeyD003')});
+          uniRows.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:iGet('dialKeyD018')});
+          uniRows.push({item:'ダイヤル錠検索キー DST',variant:'',key:'dialKeyDST',irisu:iGet('dialKeyDST')});/* v18.68 修正15⑥ */
+          /* v14.2: 35-39. ヒンジカバー・ネームプレート系 */
+          uniRows.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:iGet('hingeCoverSML')});
+          uniRows.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iGet('hingeCoverSS')});
+          uniRows.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iGet('namePlateCoverSML')});
+          uniRows.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iGet('namePlateCoverSS')});
+          uniRows.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iGet('namePlatePaper')});
+          /* v14.2: 40-42. 3桁ダイヤル南京錠（3種） */
+          uniRows.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iGet('padlockGreen')});
+          uniRows.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iGet('padlockBlack')});
+          uniRows.push({item:'',variant:'レッド',key:'padlockRed',irisu:iGet('padlockRed')});
+          /* v14.2: 43. カスタム追加項目（localStorage `lec_custom_parts`から読み込み） */
+          try{
+            var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');
+            cp.forEach(function(it,ii){
+              uniRows.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});
+            });
+          }catch(e){}
+          /* v18.40 修正１⑤: アイテム名検索用に、空欄('')になっている継続行にも直前のアイテム名を引き継がせてタグ付け。
+             これによりグループ単位（＝同じアイテムの色・サイズ違い全体）でヒット判定でき、一致した行は色・サイズを全表示できる */
+          (function(){
+            var lastItem='';
+            uniRows.forEach(function(r){
+              if(r.item)lastItem=r.item;
+              r._grpItem=lastItem;
+            });
+          })();
+    /* 部材フィルタ（サイズ部材/オプション/鍵）で使う区分を付ける */
+    uniRows.forEach(function(r){if(!r.isDoor)r.cat=r.isCustom?'option':partCatOf(r.key,r.sub);});
+    /* v18.76 修正18②: Sα は取扱部材だけに絞り、名称も Sα 表記へ差し替える（ホタ扉の取扱いも無い） */
+    if(isSaLine){
+      uniRows=uniRows.filter(function(r){
+        if(r.isDoorTotal)return true;
+        if(r.isDoor)return r.dk!=='doorH';
+        if(r.isCustom)return true;
+        return saKeepRow(r.key,r.sub,r.cat);
+      }).map(function(r){
+        if(r.isDoor||r.isDoorTotal)return r;
+        var sp=saPartOf(r.key,r.sub);
+        return sp?Object.assign({},r,{item:sp.item,variant:sp.variant}):r;
+      });
+      /* 名称を差し替えたのでグループ名を振り直す */
+      var lastIt='';
+      uniRows.forEach(function(r){if(r.item)lastIt=r.item;r._grpItem=lastIt;});
+    }
+    return uniRows;
+  }
   var structRows=partFilter[0]==='all'?structRowsAll:structRowsAll.filter(function(r){return r.cat===partFilter[0];});
   /* Apply size filter */
   if(sizeFilter[0]!=='all'){
@@ -11481,93 +11942,57 @@ function PartsPage(p){
           /* ===== Excel-like single warehouse view ===== */
           var w=selWH[0];
           var exRows=[];
-          /* Structural parts grouped by category */
-          var catOrder=[{cat:'size',label:'サイズ部材'},{cat:'option',label:'オプション'},{cat:'lock',label:'鍵'}];
-          var filteredRows=partFilter[0]==='all'?structRowsAll:structRowsAll.filter(function(r){return r.cat===partFilter[0];});
-          if(sizeFilter[0]!=='all'){
-            var sf2=sizeFilter[0];var sfGrp2=(sf2==='3S'||sf2==='SS')?'ss':'sml';
-            filteredRows=filteredRows.filter(function(r){if(!r.sub)return true;if(r.sub===sf2)return true;if(r.sub===sfGrp2)return true;return false;});
-          }
-          if(itemSearch[0].trim()){
-            var _isq2=itemSearch[0].trim().toLowerCase();
-            /* v18.70 修正16④: 請求書のコードを打ち込んでもアイテムを探せるようにする */
-            filteredRows=filteredRows.filter(function(r){
-              if(r.label.toLowerCase().indexOf(_isq2)>=0)return true;
-              var cd=itemVendorCodes(selLine[0],r.key,r.sub,null,false);
-              return !!cd&&cd.join(' ').toLowerCase().indexOf(_isq2)>=0;
+          /* ===== v18.76 修正18⑤: 各倉庫タブも「全倉庫一覧」とまったく同じ並びにする =====
+             従来は structRowsAll の順で組み立て、扉を最後にまとめていたため、倉庫ボタンを押すと
+             アイテムの並び方が変わっていた（依頼18⑤）。並び順の出所を buildUniRows() に一本化し、
+             アイテム名も全倉庫一覧と同じ「アイテム」列＋「色/サイズ」列の2列に分ける。
+             ※区分（サイズ部材/オプション/鍵）の見出し行は、全倉庫一覧に合わせて出さない。 */
+          var uni=buildUniRows();
+          var _q2=itemSearch[0].trim().toLowerCase();
+          var _sf2=sizeFilter[0];
+          var _sfG2=(_sf2==='3S'||_sf2==='SS')?'ss':'sml';
+          /* サイズ絞り込みボタンは構造部材表示のときだけ画面に出るため、扉(カラー別)表示では適用しない */
+          var _applySize=(viewMode[0]==='struct')&&_sf2!=='all';
+          uni.forEach(function(r){
+            if(r.isDoorTotal)return;
+            var isDoorR=!!r.isDoor;
+            /* 表示モード: 「構造部材」は扉以外、「扉(カラー別)」は扉だけ。
+               v18.46 修正４③: 構造部材でも部材フィルタが「全て」なら扉も続けて表示する。 */
+            if(isDoorR){
+              if(!(viewMode[0]==='door'||(viewMode[0]==='struct'&&partFilter[0]==='all')))return;
+            }else{
+              if(viewMode[0]==='door')return;
+              if(partFilter[0]!=='all'&&r.cat!==partFilter[0])return;
+            }
+            if(_applySize){
+              if(isDoorR){if(r.doorSub!==_sf2&&r.grp!==_sfG2)return;}
+              else if(r.sub||r.grp){if(r.sub!==_sf2&&r.sub!==_sfG2&&r.grp!==_sfG2)return;}
+            }
+            /* v18.70 修正16④: アイテム名だけでなく請求書の商品コードでも探せる */
+            if(_q2){
+              var hit=(r._grpItem||'').toLowerCase().indexOf(_q2)>=0;
+              if(!hit){
+                var cd=itemVendorCodes(selLine[0],isDoorR?r.dk:r.key,isDoorR?r.doorSub:r.sub,isDoorR?r.color:null,isDoorR);
+                hit=!!cd&&cd.join(' ').toLowerCase().indexOf(_q2)>=0;
+              }
+              if(!hit)return;
+            }
+            var stk,hld;
+            if(isDoorR){stk=gd(selLine[0],w,r.color,r.doorSub,r.dk);hld=ghd(selLine[0],w,r.color,r.doorSub,r.dk);}
+            else if(r.sub!==undefined){stk=gs(selLine[0],w,r.key,r.sub);hld=gh(selLine[0],w,r.key,r.sub);}
+            else{stk=gs(selLine[0],w,r.key);hld=gh(selLine[0],w,r.key);}
+            exRows.push({isDoor:isDoorR,item:r.item||'',variant:r.variant||'',stk:stk,hld:hld,av:stk-hld,row:r});
+          });
+          /* v18.46 修正５①と同じ扱い: 絞り込みでグループ先頭行が落ちたらアイテム名を復元する */
+          (function(){
+            var seenG={};
+            exRows.forEach(function(x){
+              var g=(x.row&&x.row._grpItem)||'';
+              if(!g||seenG[g])return;
+              seenG[g]=true;
+              if(!x.item)x.item=g;
             });
-          }
-          if(viewMode[0]==='struct'||viewMode[0]==='door'){
-            /* Structure parts */
-            if(viewMode[0]==='struct'){
-              var lastCat='';
-              filteredRows.forEach(function(row){
-                if(row.cat!==lastCat){
-                  var catObj=catOrder.find(function(c){return c.cat===row.cat;});
-                  exRows.push({type:'catHeader',label:catObj?catObj.label:row.cat});
-                  lastCat=row.cat;
-                }
-                var stk=row.sub!==undefined?gs(selLine[0],w,row.key,row.sub):gs(selLine[0],w,row.key);
-                var hld=row.sub!==undefined?gh(selLine[0],w,row.key,row.sub):gh(selLine[0],w,row.key);
-                exRows.push({type:'struct',label:row.label,stk:stk,hld:hld,av:stk-hld,row:row});
-              });
-            }
-            /* Door section
-               v18.46 修正４③: 個別倉庫でも扉在庫が見えるようにする。従来は「扉(カラー別)」に切り替えないと扉行が
-               一切出ず、各倉庫タブでは「扉自体が無い」ように見えていた（全倉庫一覧は常に扉行を含んでいる）。
-               構造部材表示でも、部材フィルタが「全て」のときは扉セクションを続けて表示する。 */
-            if(viewMode[0]==='door'||(viewMode[0]==='struct'&&partFilter[0]==='all')){
-              /* v18.46 修正４⑤: 受発注色の扉（アイボリー・グレー）は在庫が無くても全サイズの行を表示する。
-                 v18.55 修正９②: 受発注色に限らず全色を常時表示するようになったため、この色限定の指定は不要になった
-                 （「受発注」表記は従来どおり色見出しに残る）。 */
-              /* v18.46: 扉セクションにも在庫表と同じサイズフィルタ・アイテム名検索を効かせる
-                 （構造部材と並べて出すようになったため、検索時に扉だけ絞り込まれず残るのを防ぐ） */
-              var _dsq=itemSearch[0].trim().toLowerCase();
-              /* サイズ絞り込みボタンは構造部材表示のときだけ画面に出るため、扉(カラー別)表示では適用しない */
-              var _dsf=viewMode[0]==='struct'?sizeFilter[0]:'all';
-              /* v18.48 修正６①: SSα(SSA)の扉も表示対象に含める（扉なしのSSWのみ除外） */
-              var doorSizeList=sizes.filter(function(s){
-                if(!isDoorSize(s))return false;
-                if(_dsf==='all')return true;
-                return s===_dsf;
-              });
-              /* v18.55 修正９②: 個別倉庫でも「全倉庫一覧と同じ品揃え」を在庫の有無にかかわらず表示する。
-                 従来は在庫0の色・サイズを丸ごと落としていたため、例えば尼高では
-                 「扉〈ホタ〉パステルピンクのSとLしか出ない」という見え方になり、
-                 その倉庫にその部材の行が存在しないのか在庫0なのか区別できなかった。
-                 全倉庫一覧(uniRows)は常に 全色×全サイズ の行を持つので、そちらに合わせる。
-                 ★ホタ扉にXLの在庫行が無いのは全倉庫一覧と同じ（XLホタは取扱なし）。
-                   ただし過去データでXLホタに数量が入っている場合だけは消さずに残す。 */
-              colors.forEach(function(c){
-                if(!doorSizeList.length)return;
-                var hitDoor=!_dsq||('扉　'+c.l).toLowerCase().indexOf(_dsq)>=0;
-                var hitHota=!_dsq||('扉〈ホタ〉'+c.l).toLowerCase().indexOf(_dsq)>=0;
-                if(hitDoor){
-                  exRows.push({type:'colorHeader',label:'扉　'+c.l,color:c});
-                  doorSizeList.forEach(function(s){
-                    var stk=gd(selLine[0],w,c.v,s,'door');
-                    var hld=ghd(selLine[0],w,c.v,s,'door');
-                    exRows.push({type:'door',label:s,stk:stk,hld:hld,av:stk-hld,color:c,size:s,dk:'door'});
-                  });
-                }
-                /* Hota doors */
-                if(hitHota){
-                  var hotaSizes=doorSizeList.filter(function(s){
-                    if(s!=='XL')return true;
-                    return gd(selLine[0],w,c.v,s,'doorH')>0||ghd(selLine[0],w,c.v,s,'doorH')>0;
-                  });
-                  if(hotaSizes.length){
-                    exRows.push({type:'colorHeader',label:'扉〈ホタ〉'+c.l,color:c,isHota:true});
-                    hotaSizes.forEach(function(s){
-                      var stk=gd(selLine[0],w,c.v,s,'doorH');
-                      var hld=ghd(selLine[0],w,c.v,s,'doorH');
-                      exRows.push({type:'door',label:s,stk:stk,hld:hld,av:stk-hld,color:c,size:s,dk:'doorH'});
-                    });
-                  }
-                }
-              });
-            }
-          }
+          })();
           return h('table',{className:'tbl'},
             h('thead',null,h('tr',null,
               h('th',{style:{width:200}},'アイテム'),
@@ -11578,172 +12003,32 @@ function PartsPage(p){
               h('th',{style:{width:50}},'')
             )),
             h('tbody',null,exRows.map(function(r,i){
-              if(r.type==='catHeader')return h('tr',{key:'ch-'+i},h('td',{colSpan:6,style:{background:'#E0F2FE',fontWeight:700,fontSize:10,color:'#0369A1',padding:'4px 8px'}},r.label));
-              if(r.type==='colorHeader')return h('tr',{key:'clh-'+i},h('td',{colSpan:6,style:{background:r.isHota?'#FEF3C7':'#F0FDF4',fontWeight:700,fontSize:10,padding:'4px 8px'}},
-                r.color?h('span',null,h('span',{style:{display:'inline-block',width:12,height:12,borderRadius:2,background:r.color.x,verticalAlign:'middle',marginRight:6}}),r.label,r.color.order?h('span',{style:{fontSize:7,color:'#DC2626',marginLeft:4}},'受発注'):null):r.label
-              ));
-              if(r.type==='struct')return h('tr',{key:'s-'+i},
+              var rr=r.row;
+              var isGrp=!!r.item;
+              return h('tr',{key:'x-'+i,style:{background:(isGrp&&r.isDoor)?'#FAFFF5':''}},
+                h('td',{style:{fontWeight:isGrp?700:400}},r.item,
+                  (rr.colorObj&&isGrp)?h('span',{style:{display:'inline-block',width:12,height:12,borderRadius:2,background:rr.colorObj.x,verticalAlign:'middle',marginLeft:6}}):null,
+                  (rr.colorObj&&rr.colorObj.order&&isGrp)?h('span',{style:{fontSize:8,color:'#DC2626',marginLeft:4}},'受発注'):null),
                 /* v18.68 修正15①: 在庫限り部材（シリンダー錠カム長各種）はバッジで明示する */
-                h('td',{style:{fontWeight:600}},r.label,isDiscontinuedKey(r.row&&r.row.key)?h('span',{style:{fontSize:7,fontWeight:700,color:'#7C2D12',background:'#FEE2E2',border:'1px solid #FCA5A5',borderRadius:3,padding:'0 3px',marginLeft:4},title:DISCONTINUED_NOTE},'在庫限り'):null,
+                h('td',{style:{fontSize:11}},r.variant,
+                  isDiscontinuedKey(rr.key)?h('span',{style:{display:'block',fontSize:7,fontWeight:700,color:'#7C2D12',background:'#FEE2E2',border:'1px solid #FCA5A5',borderRadius:3,padding:'0 3px',marginTop:1},title:DISCONTINUED_NOTE},'在庫限り'):null,
                   /* v18.70 修正16④: コード表示ON のときだけ3社の商品コードを出す */
-                  showCodes[0]?codeLine(itemVendorCodes(selLine[0],r.row&&r.row.key,r.row&&r.row.sub,null,false)):null),h('td',null,''),
+                  showCodes[0]?codeLine(itemVendorCodes(selLine[0],r.isDoor?rr.dk:rr.key,r.isDoor?rr.doorSub:rr.sub,r.isDoor?rr.color:null,r.isDoor)):null),
                 h('td',{style:{textAlign:'right',fontSize:11}},fm(r.stk)),
                 h('td',{style:{textAlign:'right',fontSize:11,color:r.hld>0?'#D97706':'var(--g400)'}},r.hld>0?fm(r.hld):'-'),
                 h('td',{style:{textAlign:'right',fontWeight:700,fontSize:11,color:r.av<=0?'#DC2626':r.av<=10?'#D97706':'#065F46'}},fm(r.av)),
                 /* v18.55 修正９③: 選択中の倉庫(w)を渡し、その倉庫の数量だけ編集できるモーダルを開く */
-                h('td',null,h('button',{className:'btn btn-xs btn-ol',onClick:function(){startEdit(r.row.label,selLine[0],r.row.key,r.row.sub,false,null,w);}},'編集'))
+                h('td',null,h('button',{className:'btn btn-xs btn-ol',onClick:function(){
+                  if(r.isDoor)startEdit((rr.dk==='doorH'?'扉〈ホタ〉':'扉 ')+(rr.colorObj?rr.colorObj.l:''),selLine[0],rr.dk,rr.doorSub,true,rr.color,w);
+                  else startEdit(rr._grpItem||rr.item||rr.variant,selLine[0],rr.key,rr.sub,false,null,w);
+                }},'編集'))
               );
-              if(r.type==='door')return h('tr',{key:'d-'+i},
-                h('td',null,''),h('td',{style:{fontWeight:500}},r.label,
-                  showCodes[0]?codeLine(itemVendorCodes(selLine[0],r.dk,r.size,r.color&&r.color.v,true)):null),
-                h('td',{style:{textAlign:'right',fontSize:11}},fm(r.stk)),
-                h('td',{style:{textAlign:'right',fontSize:11,color:r.hld>0?'#D97706':'var(--g400)'}},r.hld>0?fm(r.hld):'-'),
-                h('td',{style:{textAlign:'right',fontWeight:700,fontSize:11,color:r.av<=0?'#DC2626':r.av<=10?'#D97706':'#065F46'}},fm(r.av)),
-                h('td',null,h('button',{className:'btn btn-xs btn-ol',onClick:function(){startEdit((r.dk==='doorH'?'扉〈ホタ〉':'扉 ')+r.color.l,selLine[0],r.dk,r.size,true,r.color.v,w);}},'編集'))
-              );
-              return null;
             }))
           );
         })():
         /* ===== All warehouses unified view (CSV layout) ===== */
         (function(){
-          /* Build unified rows: アイテム | 色 | 入り数 | 各倉庫(実在庫|仮押さえ|使える数) */
-          var uniRows=[];
-          var iGet=function(k,s){if(!IRISU[k])return'';if(typeof IRISU[k]==='number')return IRISU[k];if(s&&IRISU[k][s])return IRISU[k][s];return'';};
-          var szList=sizes.filter(function(s){return s!=='SSA'&&s!=='SSW';});
-          /* v18.48 修正６①: 扉だけは SSα(SSA) の在庫行を持つため、扉用のサイズ一覧を別に用意する */
-          var szDoor=sizes.filter(isDoorSize);
-          /* === CSV順序準拠 === */
-          /* 1. 上下共通ボード */
-          uniRows.push({item:'上下共通ボード',variant:'SMLXL共通グレー',key:'top',sub:'sml',irisu:iGet('top','sml'),grp:'sml'});
-          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'top',sub:'ss',irisu:iGet('top','ss'),grp:'ss'});
-          /* 2. ベースボード (グレー/ブラック別表示) */
-          uniRows.push({item:'ベースボード',variant:'SMLXL共通（グレー）',key:'base',sub:'sml',irisu:iGet('base','sml'),grp:'sml',color2:'gy'});
-          uniRows.push({item:'',variant:'SMLXL共通（ブラック）',key:'base_bk',sub:'sml',irisu:iGet('base','sml'),grp:'sml',color2:'bk'});
-          uniRows.push({item:'',variant:'SS・3S共通（グレー）',key:'base',sub:'ss',irisu:iGet('base','ss'),grp:'ss',color2:'gy'});
-          uniRows.push({item:'',variant:'SS・3S共通（ブラック）',key:'base_bk',sub:'ss',irisu:iGet('base','ss'),grp:'ss',color2:'bk'});
-          /* 3. サイドボード - S, M, L, SS, 3S order */
-          ['S','M','L','SS','3S'].filter(function(s){return szList.indexOf(s)>=0;}).forEach(function(s,i){
-            uniRows.push({item:i===0?'サイドボード':'',variant:s+'(グレー)',key:'side',sub:s,irisu:iGet('side',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});
-          });
-          /* 4. バックボード - S, M, L, SS, 3S order */
-          ['S','M','L','SS','3S'].filter(function(s){return szList.indexOf(s)>=0;}).forEach(function(s,i){
-            uniRows.push({item:i===0?'バックボード':'',variant:s+'(グレー)',key:'back',sub:s,irisu:iGet('back',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});
-          });
-          /* 5. 扉（色別: 各色→ホタ→次の色） */
-          colors.forEach(function(c){
-            /* 通常扉 */
-            ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
-              uniRows.push({item:i===0?'扉　'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iGet('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
-            });
-            /* ホタ扉 (XLなし) */
-            ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
-              uniRows.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iGet('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
-            });
-          });
-          /* 6. 棚板 (色別に在庫独立) */
-          uniRows.push({item:'棚板',variant:'SMLXL共通（ブラック）',key:'shelf_bk',sub:'sml',irisu:iGet('shelf','sml'),grp:'sml',color2:'bk'});
-          uniRows.push({item:'',variant:'SMLXL共通（グレー）',key:'shelf',sub:'sml',irisu:iGet('shelf','sml'),grp:'sml',color2:'gy'});
-          uniRows.push({item:'',variant:'SS(ブラック)',key:'shelf_bk',sub:'ss',irisu:iGet('shelf','ss'),grp:'ss',color2:'bk'});
-          uniRows.push({item:'',variant:'SS(グレー)',key:'shelf',sub:'ss',irisu:iGet('shelf','ss'),grp:'ss',color2:'gy'});
-          /* 7. 上下ジョイント */
-          uniRows.push({item:'上下ジョイント',variant:'SMLXL共通(ブラック)',key:'vj',sub:'sml',irisu:iGet('vj','sml'),grp:'sml'});
-          uniRows.push({item:'',variant:'SS・3S共通(ブラック)',key:'vj',sub:'ss',irisu:iGet('vj','ss'),grp:'ss'});
-          /* 8. ハンガーパイプ
-             v18.46 修正５⑩: 同じ在庫キー(hanger)で「ブラック」「グレー」の2行を出していたため、
-             実在庫は1つなのに黒とグレーへ同じ数が二重表示されていた。日本製の取扱はブラックのみのため1行に統合。 */
-          uniRows.push({item:'ハンガーパイプ',variant:'ブラック',key:'hanger',irisu:iGet('hanger')});
-          /* 9. コネクター
-             v18.46 修正５⑩: XL・SSとも取扱はグレーのみ（ブラックは無い）。同上の二重表示を解消し、グレー1行に統合。 */
-          uniRows.push({item:'コネクター',variant:'XLグレー',key:'connector',sub:'XL',irisu:iGet('connector','XL'),grp:'sml'});
-          uniRows.push({item:'',variant:'SSグレー',key:'connector',sub:'SS',irisu:iGet('connector','SS'),grp:'ss'});
-          /* 10. アンカー穴キャップ (色別 sub で独立トラッキング) */
-          uniRows.push({item:'アンカー穴キャップ',variant:'ブラック',key:'anchorCap',sub:'bk',irisu:iGet('anchorCap','bk')});
-          uniRows.push({item:'',variant:'グレー',key:'anchorCap',sub:'gy',irisu:iGet('anchorCap','gy')});
-          /* 11. トップジョイント */
-          uniRows.push({item:'トップジョイント',variant:'クローバー🍀',key:'topJoint',irisu:iGet('topJoint')});
-          uniRows.push({item:'',variant:'葉っぱ🍂',key:'topJointLeaf',irisu:iGet('topJointLeaf')});/* v18.72 修正17㉒: 葉っぱは独立在庫キー(topJointLeaf)。従来はクローバーと同じキーで数量が連動していた */
-          /* 12. サイドジョイント
-             v18.46 修正５⑩: 取扱はグレーのみ（ブラックは無い）。同一在庫キーの黒/グレー二重表示を解消しグレー1行に統合。 */
-          uniRows.push({item:'サイドジョイント',variant:'SMLXL共通グレー',key:'sj',sub:'sml',irisu:iGet('sj','sml'),grp:'sml'});
-          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'sj',sub:'ss',irisu:iGet('sj','ss'),grp:'ss'});
-          /* 13. トッテ */
-          uniRows.push({item:'トッテ',variant:'新',key:'totte',irisu:iGet('totte')});
-          /* 14. ダイヤル錠 */
-          /* v18.40 修正１⑥: 廃番の旧型H110/H111(旧)は在庫表から削除 */
-          uniRows.push({item:'ダイヤル錠',variant:'H110',key:'dialH110new',irisu:iGet('dialH110new')});
-          uniRows.push({item:'',variant:'H111',key:'dialH111new',irisu:iGet('dialH111new')});
-          /* v18.72 修正17②の回答: H112(自由式)は取扱終了のため在庫表から削除 */
-          /* v14.5 C7: 実在庫を持つ旧キーを画面にも表示（Excelと項目一致） */
-          uniRows.push({item:'',variant:'DST',key:'dialDST',irisu:iGet('dialDST')});
-          /* 17. 南京錠 */
-          uniRows.push({item:'南京錠',variant:'',key:'padlock',irisu:iGet('padlock')});
-          /* 18. シリンダー錠 */
-          uniRows.push({item:'シリンダー錠',variant:'(2本キー)カム長スタンダード',key:'cylinderLongStd',irisu:iGet('cylinderLongStd')});
-          uniRows.push({item:'',variant:'(2本キー)カム長Fマスター',key:'cylinderLongF',irisu:iGet('cylinderLongF')});
-          uniRows.push({item:'',variant:'(2本キー)カム長Bマスター',key:'cylinderLongB',irisu:iGet('cylinderLongB')});
-          uniRows.push({item:'',variant:'(2本キー)カム短スタンダード',key:'cylinderShortStd',irisu:iGet('cylinderShortStd')});
-          uniRows.push({item:'',variant:'(2本キー)カム短Fマスター',key:'cylinderShortF',irisu:iGet('cylinderShortF')});
-          uniRows.push({item:'',variant:'(2本キー)カム短Bマスター',key:'cylinderShortB',irisu:iGet('cylinderShortB')});
-          uniRows.push({item:'',variant:'(2本キー)カム短Cマスター',key:'cylinderShortC',irisu:iGet('cylinderShortC')});
-          /* v18.44 修正３⑥: 受注発注のカム短Dマスター/カム短Lマスターをシリンダー錠グループへ追加
-             （在庫キーは既存の cylinderDMaster/cylinderLMaster を継続使用。下部にあった単独行「シリンダー Dマスター/Lマスター」はここへ統合） */
-          uniRows.push({item:'',variant:'(2本キー)カム短Dマスター',key:'cylinderDMaster',irisu:iGet('cylinderDMaster')});
-          uniRows.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
-          uniRows.push({item:'',variant:'内筒交換錠',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
-          uniRows.push({item:'',variant:'内筒交換用予備',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
-          /* v14.5 C7: 実在庫を持つ旧キー（無印・マスター組）を画面にも表示（Excelと項目一致） */
-          uniRows.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iGet('coinReturn')});
-          /* v16: レール新方式（在庫4商品） */
-          uniRows.push({item:'SMLXL共通サイドレール',variant:'',key:'railSideSML',irisu:iGet('railSideSML')});
-          uniRows.push({item:'SMLXL共通バックレール',variant:'',key:'railBackSML',irisu:iGet('railBackSML')});
-          uniRows.push({item:'SS・3S共通サイドレール',variant:'',key:'railSideSS',irisu:iGet('railSideSS')});
-          uniRows.push({item:'SS・3S共通バックレール',variant:'',key:'railBackSS',irisu:iGet('railBackSS')});
-          /* 20. ジョイントネジ (3種を独立キーで分離トラッキング) */
-          uniRows.push({item:'ジョイントネジ',variant:'SMLXL共通ブラック',key:'jointScrew_sml_bk',irisu:''});
-          uniRows.push({item:'',variant:'SS・3S共通ブラック',key:'jointScrew_ss_bk',irisu:''});
-          uniRows.push({item:'',variant:'SS・3S共通グレー',key:'jointScrew_ss_gy',irisu:''});
-          /* 21. 目隠しネジ (色別キー分離) */
-          uniRows.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
-          uniRows.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
-          /* 22. ドアポケット */
-          uniRows.push({item:'ドアポケット',variant:'ブラック',key:'doorPocket',irisu:''});
-          /* v14.8 #4: 「扉すべて」合算行を廃止（個別の色別扉行は上部に表示済み） */
-          /* v14.2: 26-30. シリンダーマスター（5種） v14.5 C7: 入数をIRISUから取得しExcelと統一 */
-          uniRows.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iGet('dialOpnus')});
-          /* v18.44 修正３⑥: シリンダー Dマスター/Lマスターの単独行は上のシリンダー錠グループ（(2本キー)カム短D/Lマスター）へ統合済み */
-          /* v14.2: 31-34. ダイヤル錠検索キー（4種） */
-          uniRows.push({item:'ダイヤル錠検索キー H110',variant:'',key:'dialKeyH110',irisu:iGet('dialKeyH110')});
-          uniRows.push({item:'ダイヤル錠検索キー H111',variant:'',key:'dialKeyH111',irisu:iGet('dialKeyH111')});
-          uniRows.push({item:'ダイヤル錠検索キー D003',variant:'',key:'dialKeyD003',irisu:iGet('dialKeyD003')});
-          uniRows.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:iGet('dialKeyD018')});
-          uniRows.push({item:'ダイヤル錠検索キー DST',variant:'',key:'dialKeyDST',irisu:iGet('dialKeyDST')});/* v18.68 修正15⑥ */
-          /* v14.2: 35-39. ヒンジカバー・ネームプレート系 */
-          uniRows.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:iGet('hingeCoverSML')});
-          uniRows.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iGet('hingeCoverSS')});
-          uniRows.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iGet('namePlateCoverSML')});
-          uniRows.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iGet('namePlateCoverSS')});
-          uniRows.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iGet('namePlatePaper')});
-          /* v14.2: 40-42. 3桁ダイヤル南京錠（3種） */
-          uniRows.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iGet('padlockGreen')});
-          uniRows.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iGet('padlockBlack')});
-          uniRows.push({item:'',variant:'レッド',key:'padlockRed',irisu:iGet('padlockRed')});
-          /* v14.2: 43. カスタム追加項目（localStorage `lec_custom_parts`から読み込み） */
-          try{
-            var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');
-            cp.forEach(function(it,ii){
-              uniRows.push({item:ii===0?'＋カスタム部材':'',variant:it.label,key:it.key,irisu:it.irisu||'',isCustom:true});
-            });
-          }catch(e){}
-          /* v18.40 修正１⑤: アイテム名検索用に、空欄('')になっている継続行にも直前のアイテム名を引き継がせてタグ付け。
-             これによりグループ単位（＝同じアイテムの色・サイズ違い全体）でヒット判定でき、一致した行は色・サイズを全表示できる */
-          (function(){
-            var lastItem='';
-            uniRows.forEach(function(r){
-              if(r.item)lastItem=r.item;
-              r._grpItem=lastItem;
-            });
-          })();
+          var uniRows=buildUniRows();/* v18.76 修正18⑤: 並び順は buildUniRows() に集約（各倉庫タブと共通） */
           /* Apply size filter */
           if(sizeFilter[0]!=='all'){
             var sf3=sizeFilter[0];var sfG3=(sf3==='3S'||sf3==='SS')?'ss':'sml';
