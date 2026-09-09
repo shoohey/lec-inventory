@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.76（修正18: Sαレール・Sα部材の絞込・複数倉庫の送料・在庫表の並び・扉色未定を既定）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.77（修正19: 台数・ベース入力の段数・高さ表記・在庫のサイズ順）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -448,6 +448,18 @@ var SIZES=[
   {v:'SSW',l:'SSWサイズ',p:16600,code:'MYPL-E-SSW',grp:'ss',ssw:true,dim:'',dimIn:''}
 ];
 var LINE_SIZES={jp01:['S','M','L','XL','3S','SS'],jp2:['S','M','L','XL','3S','SS','SSA','SSW'],tw:['S','M','L','XL','3S','SS'],sa:['S']};
+/* ===== v18.77 修正19②: 在庫の一覧・Excelでサイズを並べる順 =====
+   LINE_SIZES は商品選択のサイズ順（…XL・3S・SS）で、これをそのまま在庫の並びに使っていたため
+   日付指定Excelでは「SSの前に3S」が出ていた。在庫表の画面（buildUniRows）は S・M・L・SS・3S 順なので、
+   在庫の表示・出力はこの順（S・M・L・XL・SS・3S・SSα・SSW）へ統一する。
+   ★LINE_SIZES 自体は商品選択のサイズ順なので触らない（サイズ選択の並びを変えないため）。 */
+var SIZE_DISP_ORDER=['S','M','L','XL','SS','3S','SSA','SSW'];
+function sizesInDispOrder(arr){
+  return (arr||[]).slice().sort(function(a,b){
+    var ia=SIZE_DISP_ORDER.indexOf(a),ib=SIZE_DISP_ORDER.indexOf(b);
+    return (ia<0?99:ia)-(ib<0?99:ib);
+  });
+}
 /* v18.48 修正６①: 扉のサイズ一覧。
    SSα(SSA)は本体部材こそ SS＋3S の組合せで作る（＝サイド/バックボードに SSA の在庫行は無い）が、
    扉は SSα 専用のものが全色そろって在庫として存在する。従来は SSA を扉の表示からも一律に除外していたため、
@@ -1578,6 +1590,27 @@ function lineSpecLabel(l,x){
   }
   if(l&&l.inputMode==='direct')return l.type==='personal'?('台数指定 '+(l.qty||lineUnits(l))+'台'+(lineBaseCount(l)!==(l.qty||lineUnits(l))?'・ベース'+lineBaseCount(l)+'枚':'')):('台数指定・ベース'+((l&&l.islands)||0)+'枚');
   return ((l&&l.islands)||0)+'列'+x+((l&&l.tiers)||0)+'段';
+}
+/* ===== v18.77 修正19①: 台数・ベース数で入力した明細の構成表記 =====
+   見積書の商品名称の上（列×段入力の【3列3段】と同じ位置）へ【Sサイズ3段済み(H：1105mm)】を出す。
+   ・段数 ＝ 台数 ÷ ベースの数（割り切れないときは一番高い列に合わせて切上げ）
+   ・高さ ＝ 本体の外寸H × 段数 ＋ ベースボードの外寸H（ベース無しの明細はベース分を足さない）
+   外寸はサイズ表(SIZES.dim/dimPer)・SA_DIM・BASE_DIMS の1か所だけを見ているので、
+   ★寸法を直すときはそちらを直せばこの表記も自動で追従する。 */
+function dimHeightMM(d){var m=/H(\d+(?:\.\d+)?)mm/.exec(d||'');return m?parseFloat(m[1]):0;}
+function lineBodyHeightMM(l){
+  if(!l)return 0;
+  if(l.line==='sa')return dimHeightMM(SA_DIM);/* v18.72 修正17⑮: SαはSサイズの在庫キーを流用しているので専用外寸 */
+  return dimHeightMM(sizeDimOf(l.size,l.type));
+}
+function lineStackLabel(l){
+  var n=lineUnits(l),b=lineBaseCount(l);
+  if(!(n>0)||!(b>0))return '';
+  var t=Math.ceil(n/b);
+  var body=lineBodyHeightMM(l);
+  if(!(body>0))return '';/* 外寸を持たないサイズ(SSW等)は高さを出せないので表記しない */
+  var baseH=(l&&l.hasBase===false)?0:dimHeightMM(baseDimOf(l));
+  return sizeLabel(l.line,l.size)+t+'段済み(H：'+Math.round(body*t+baseH)+'mm)';
 }
 /* v18.32 要望⑥: 日本製Ver.2はXL扉の取扱なし（XL扉は台湾製のみ。パーツ単品追加で台湾製XL扉を選択する運用） */
 function isJp2XLDoorBlocked(line,size){return line==='jp2'&&size==='XL';}
@@ -5395,8 +5428,15 @@ function buildQuoteRows(order){
     /* 修正17①: 単価欄は「本体＋棚板＋鍵」を合算した1台あたりの金額、金額欄はその×台数。 */
     var unitAll=qty>0?Math.round(amt2/qty):uPrice;
     if(qty>0)amt2=unitAll*qty;
-    /* 修正17⑯: 台数指定(direct)の明細は商品名称の上の【…】行を出さない（列×段指定は従来どおり出す） */
-    var cfgNote=(ln.inputMode==='direct')?'':('【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':''));
+    /* 修正17⑯: 台数指定(direct)の明細は商品名称の上に【3列3段】を出さない。
+       v18.77 修正19①: 代わりに【Sサイズ3段済み(H：1105mm)】を同じ位置へ出す（段数=台数÷ベース数） */
+    var cfgNote;
+    if(ln.inputMode==='direct'){
+      var stackLbl=lineStackLabel(ln);
+      cfgNote=stackLbl?('【'+stackLbl+'】'):'';
+    }else{
+      cfgNote='【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':'');
+    }
     /* v18.62 修正12⑤: 備考欄には選択したサイズの外寸を自動反映する（行ごとの手入力があればそちら優先） */
     rows.push({rkey:'L'+ln.id,code:codeDisp(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:qty,unit:'台',price:unitAll,amount:amt2,tax:'10%(外)',
       configNote:cfgNote,colorNote:colorNote,remark:rowRemark(order,'L'+ln.id,lineDimRemark(ln))});
@@ -11245,8 +11285,10 @@ function PartsPage(p){
     {label:'棚板(SS/3S・グレー)',key:'shelf',sub:'ss',cat:'option',color2:'gy'},
     {label:'棚板(SS/3S・ブラック)',key:'shelf_bk',sub:'ss',cat:'option',color2:'bk'}
   ];
-  sizes.forEach(function(s){if(s!=='SSA'&&s!=='SSW')structRowsAll.push({label:'サイドボード('+s+')',key:'side',sub:s,cat:'size'});});
-  sizes.forEach(function(s){if(s!=='SSA'&&s!=='SSW')structRowsAll.push({label:'バックボード('+s+')',key:'back',sub:s,cat:'size'});});
+  /* v18.77 修正19②: サイド/バックボードの並びを在庫表の画面（buildUniRows）と同じ S・M・L・SS・3S 順にする */
+  var _szDisp=sizesInDispOrder(sizes);
+  _szDisp.forEach(function(s){if(s!=='SSA'&&s!=='SSW')structRowsAll.push({label:'サイドボード('+s+')',key:'side',sub:s,cat:'size'});});
+  _szDisp.forEach(function(s){if(s!=='SSA'&&s!=='SSW')structRowsAll.push({label:'バックボード('+s+')',key:'back',sub:s,cat:'size'});});
   structRowsAll=structRowsAll.concat([
     {label:'上下ジョイント(SML)',key:'vj',sub:'sml',cat:'option'},
     {label:'上下ジョイント(SS/3S)',key:'vj',sub:'ss',cat:'option'},
@@ -14460,7 +14502,7 @@ function PartsPage(p){
                 });
                 /* 扉も追加 */
                 var dColors=(LINE_COLORS[lnObj.id]||[]).filter(function(c){return !c.und;});
-                var dSizes=LINE_SIZES[lnObj.id]||[];
+                var dSizes=sizesInDispOrder(LINE_SIZES[lnObj.id]||[]);/* v18.77 修正19②: 扉も S・M・L・XL・SS・3S 順へ */
                 ['door','doorH'].forEach(function(dk){
                   dColors.forEach(function(c){
                     dSizes.forEach(function(sz3){
@@ -14493,7 +14535,7 @@ function PartsPage(p){
                 /* v14.2 Codex P3対応: カスタム部材は structRowsAll に既にマージ済みのため再追加しない */
                 /* 扉資産 */
                 var dColors=(LINE_COLORS[lnObj.id]||[]).filter(function(c){return !c.und;});
-                var dSizes=LINE_SIZES[lnObj.id]||[];
+                var dSizes=sizesInDispOrder(LINE_SIZES[lnObj.id]||[]);/* v18.77 修正19②: 扉も S・M・L・XL・SS・3S 順へ */
                 ['door','doorH'].forEach(function(dk){
                   dColors.forEach(function(c){
                     dSizes.forEach(function(sz3){
