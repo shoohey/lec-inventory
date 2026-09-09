@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.80（修正20①の追加: 出荷指示書の便種を出力時に選択・引取りは新柏のみ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.81（修正21: 出荷指示書の便分割・尼高札幌の品番・列段の外寸表記・見積金額の書式）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1610,7 +1610,33 @@ function lineStackLabel(l){
   var body=lineBodyHeightMM(l);
   if(!(body>0))return '';/* 外寸を持たないサイズ(SSW等)は高さを出せないので表記しない */
   var baseH=(l&&l.hasBase===false)?0:dimHeightMM(baseDimOf(l));
-  return sizeLabel(l.line,l.size)+t+'段積み(H：'+Math.round(body*t+baseH)+'mm)';
+  /* v18.81 修正21⑤: 区切りを「：」にして 【Sサイズ2段積み：H755mm】 の書式へ（依頼21⑤の例） */
+  return sizeLabel(l.line,l.size)+t+'段積み：H'+Math.round(body*t+baseH)+'mm';
+}
+/* ===== v18.81 修正21③: 列×段で入力した明細の【列段：外寸】表記 =====
+   ★島が1つ・ブロックが1つのときだけ出す（複数島／1島でも複数ブロックのときは【…】行を出さない）。
+   　ユーザー指定: 複数構成は外寸を1つに決められないため表記しない。
+   外寸は「その列数と段数での合計」:
+     W = 単体のW × 列数 ／ D = 単体のD ／ H = 単体のH × 段数 ＋ ベースボードのH（ベース無しは足さない）
+   高さの考え方は lineStackLabel()（台数・ベース入力）と揃えてある。 */
+function dimPartsOf(d){
+  var m=/W(\d+(?:\.\d+)?)×D(\d+(?:\.\d+)?)×H(\d+(?:\.\d+)?)mm/.exec(d||'');
+  return m?{w:parseFloat(m[1]),d:parseFloat(m[2]),h:parseFloat(m[3])}:null;
+}
+function lineBodyDim(l){
+  if(!l)return null;
+  if(l.line==='sa')return dimPartsOf(SA_DIM);/* v18.72 修正17⑮: SαはSサイズの在庫キーを流用しているので専用外寸 */
+  return dimPartsOf(sizeDimOf(l.size,l.type));
+}
+function lineGridDimLabel(l){
+  if(!l)return '';
+  if(l.blocks&&l.blocks.length>1)return '';/* 1島でもブロックが複数なら出さない */
+  var cols=parseInt(l.islands,10)||0,tiers=parseInt(l.tiers,10)||0;
+  if(!(cols>0&&tiers>0))return '';/* tiers=0 は複数ブロック／台数指定の保存形式 */
+  var bd=lineBodyDim(l);
+  if(!bd)return '';/* 外寸を持たないサイズ（SSW等）は表記しない */
+  var baseH=(l.hasBase===false)?0:dimHeightMM(baseDimOf(l));
+  return cols+'列'+tiers+'段：W'+Math.round(bd.w*cols)+'×D'+Math.round(bd.d)+'×H'+Math.round(bd.h*tiers+baseH)+'mm';
 }
 /* v18.32 要望⑥: 日本製Ver.2はXL扉の取扱なし（XL扉は台湾製のみ。パーツ単品追加で台湾製XL扉を選択する運用） */
 function isJp2XLDoorBlocked(line,size){return line==='jp2'&&size==='XL';}
@@ -4606,7 +4632,49 @@ var PART_CODE_MAP_SA={
    3社から届く請求書の突き合わせにこのコードを使う。
    ★金額は含まないので公開リポジトリに置いても問題ない（単価は従来どおりクラウドのみ）。
    値は [尼高, 新柏, 八木熊]。空文字は「その会社にはコードが無い」。 */
-var VENDOR_CODE_LABELS=['尼高','新柏','八木熊'];
+/* ===== v18.81 修正21②: 尼高札幌（札幌倉庫）の商品コード =====
+   出典: 尼高【札幌】出荷指示書_サンプル.xlsx の「商品コード」シート（2026-09-09提供・110行）。
+   既存の ITEM_CODES は [尼高,新柏,八木熊] の3社ぶんの配列なので、札幌だけ★別マップに持ち、
+   itemVendorCodes() が4社目として足す（90行超のリテラルを1つずつ書き換えずに済む）。
+   キーの作り方は ITEM_CODES / ITEM_CODES_DOOR と同じ。★サンプルのSSSは在庫キーの3Sのこと。
+   スマホポケット(HEP-0126)・持ち帰り用袋(HEP-0128)は在庫アイテムが無いので入れていない。
+   シリンダー錠(HEP-0113「２本キータイプ」)はカム長/カム短の別があり1対1で決まらないため保留。 */
+var ITEM_CODES_SAPPORO={
+  'top|sml':'HEP-0002','top|ss':'HEP-0004',
+  'base_bk|sml':'HEP-0005','base|sml':'HEP-0006','base_bk|ss':'HEP-0007','base|ss':'HEP-0008',
+  'side|S':'HEP-0010','side|M':'HEP-0012','side|L':'HEP-0014','side|SS':'HEP-0016','side|3S':'HEP-0018',
+  'back|S':'HEP-0020','back|M':'HEP-0022','back|L':'HEP-0024','back|SS':'HEP-0026','back|3S':'HEP-0028',
+  'shelf_bk|sml':'HEP-0091','shelf_bk|ss':'HEP-0092','shelf|ss':'HEP-0129',
+  'vj|sml':'HEP-0093','vj|ss':'HEP-0094',
+  'hanger|':'HEP-0095',
+  'connector|XL':'HEP-0098','connector|SS':'HEP-0100',
+  'anchorCap|bk':'HEP-0101','anchorCap|gy':'HEP-0102',
+  'topJoint|':'HEP-0103','topJointLeaf|':'HEP-0104',
+  'sj|sml':'HEP-0106','sj|ss':'HEP-0108',
+  'totte|':'HEP-0109',
+  'dialH110new|':'HEP-0110','dialH111new|':'HEP-0111',
+  'padlock|':'HEP-0112',
+  'railSideSML|':'HEP-0115','railSideSS|':'HEP-0117','railBackSML|':'HEP-0119','railBackSS|':'HEP-0121',
+  'jointScrew_sml_bk|':'HEP-0122','jointScrew_ss_bk|':'HEP-0123',
+  'capScrew_gy|':'HEP-0125'
+};
+var ITEM_CODES_DOOR_SAPPORO={
+  'door|pb|S':'HEP-0029','door|pb|M':'HEP-0030','door|pb|L':'HEP-0031','door|pb|XL':'HEP-0032','door|pb|SS':'HEP-0033','door|pb|3S':'HEP-0034',
+  'doorH|pb|S':'HEP-0035','doorH|pb|M':'HEP-0036','doorH|pb|L':'HEP-0037','doorH|pb|SS':'HEP-0038',
+  'door|pg|S':'HEP-0039','door|pg|M':'HEP-0040','door|pg|L':'HEP-0041','door|pg|XL':'HEP-0042','door|pg|SS':'HEP-0043','door|pg|3S':'HEP-0044',
+  'doorH|pg|S':'HEP-0045','doorH|pg|M':'HEP-0046','doorH|pg|L':'HEP-0047','doorH|pg|SS':'HEP-0048',
+  'door|pp|S':'HEP-0049','door|pp|M':'HEP-0050','door|pp|L':'HEP-0051','door|pp|XL':'HEP-0052','door|pp|SS':'HEP-0053','door|pp|3S':'HEP-0054',
+  'doorH|pp|S':'HEP-0055','doorH|pp|M':'HEP-0056','doorH|pp|L':'HEP-0057','doorH|pp|SS':'HEP-0058',
+  'door|py|S':'HEP-0059','door|py|M':'HEP-0060','door|py|L':'HEP-0061','door|py|XL':'HEP-0062','door|py|SS':'HEP-0063','door|py|3S':'HEP-0064',
+  'doorH|py|S':'HEP-0065','doorH|py|M':'HEP-0066','doorH|py|L':'HEP-0067','doorH|py|SS':'HEP-0068',
+  'door|pbr|S':'HEP-0069','door|pbr|M':'HEP-0070','door|pbr|L':'HEP-0071','door|pbr|XL':'HEP-0072','door|pbr|SS':'HEP-0073','door|pbr|3S':'HEP-0074',
+  'doorH|pbr|S':'HEP-0075','doorH|pbr|M':'HEP-0076','doorH|pbr|L':'HEP-0077','doorH|pbr|SS':'HEP-0078',
+  'door|iv|S':'HEP-0079','door|iv|M':'HEP-0080','door|iv|L':'HEP-0081','door|iv|SS':'HEP-0082',
+  'doorH|gy|M':'HEP-0083',
+  'door|gy|S':'HEP-0084','door|gy|M':'HEP-0085','door|gy|L':'HEP-0086',
+  'door|bk|S':'HEP-0087','door|bk|M':'HEP-0088','door|bk|L':'HEP-0089','door|bk|SS':'HEP-0090'
+};
+var VENDOR_CODE_LABELS=['尼高','新柏','八木熊','尼高札幌'];/* v18.81 修正21②: 尼高札幌を4社目として追加 */
 var ITEM_CODES={
   'top|sml':['TopBoard-G','TBG2','01703000'],
   'top|ss':['SS-TopBoard-G','SSTBG2','01857600'],
@@ -4714,11 +4782,24 @@ var ITEM_CODES_DOOR_V1={
 };
 /* 在庫アイテム → 3社の商品コード。戻り値 [尼高,新柏,八木熊] または null */
 function itemVendorCodes(lineId,key,sub,color,isDoor){
+  var base,sap;
   if(isDoor){
     var m=(lineId==='jp01')?ITEM_CODES_DOOR_V1:ITEM_CODES_DOOR;
-    return m[key+'|'+(color||'')+'|'+(sub||'')]||null;
+    var dk=key+'|'+(color||'')+'|'+(sub||'');
+    base=m[dk]||null;
+    sap=ITEM_CODES_DOOR_SAPPORO[dk]||'';
+  }else{
+    base=ITEM_CODES[key+'|'+(sub||'')]||ITEM_CODES[key+'|']||null;
+    sap=ITEM_CODES_SAPPORO[key+'|'+(sub||'')]||ITEM_CODES_SAPPORO[key+'|']||'';
   }
-  return ITEM_CODES[key+'|'+(sub||'')]||ITEM_CODES[key+'|']||null;
+  /* v18.81 修正21②: 尼高札幌のコードを4社目として足す。3社側にコードが無くても札幌にあれば返す */
+  if(!base)return sap?['','','',sap]:null;
+  return [base[0]||'',base[1]||'',base[2]||'',sap];
+}
+/* v18.81 修正21②: 尼高札幌の商品コードだけを引く（出荷指示書の品番列で使う） */
+function sapporoItemCode(key,sub,color,isDoor){
+  if(isDoor)return ITEM_CODES_DOOR_SAPPORO[key+'|'+(color||'')+'|'+(sub||'')]||'';
+  return ITEM_CODES_SAPPORO[key+'|'+(sub||'')]||ITEM_CODES_SAPPORO[key+'|']||'';
 }
 /* 表示・検索用の文字列（「尼高 Base-G ／ 新柏 BG2 ／ 八木熊 01856700」） */
 function itemVendorCodeText(codes){
@@ -5430,12 +5511,15 @@ function buildQuoteRows(order){
     if(qty>0)amt2=unitAll*qty;
     /* 修正17⑯: 台数指定(direct)の明細は商品名称の上に【3列3段】を出さない。
        v18.77 修正19①: 代わりに【Sサイズ3段積み(H：1105mm)】を同じ位置へ出す（段数=台数÷ベース数） */
+    /* v18.81 修正21③: 列×段入力は「島1つ・ブロック1つ」のときだけ【2列3段：W…×D…×H…】を出す。
+       複数島／1島でも複数ブロックのときは外寸を1つに決められないので【…】行ごと出さない。 */
     var cfgNote;
     if(ln.inputMode==='direct'){
       var stackLbl=lineStackLabel(ln);
       cfgNote=stackLbl?('【'+stackLbl+'】'):'';
     }else{
-      cfgNote='【'+lineSpecLabel(ln,'')+'】'+(sq>0?' 棚板'+sq+'枚含':'');
+      var gridLbl=lineGridDimLabel(ln);
+      cfgNote=gridLbl?('【'+gridLbl+'】'+(sq>0?' 棚板'+sq+'枚含':'')):'';
     }
     /* v18.62 修正12⑤: 備考欄には選択したサイズの外寸を自動反映する（行ごとの手入力があればそちら優先） */
     rows.push({rkey:'L'+ln.id,code:codeDisp(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:qty,unit:'台',price:unitAll,amount:amt2,tax:'10%(外)',
@@ -5580,14 +5664,38 @@ function shipperBlock(order){
   var i=SHIPPER_INFO[nm];
   return i?(nm+'　'+i.postal+' '+i.addr+'　TEL: '+i.tel):nm;
 }
-/* ===== v18.79 修正20②: 出荷指示書（新様式）の部材行 =====
+/* ===== v18.79 修正20② / v18.81 修正21①②: 出荷指示書（新様式）の部材行 =====
    新柏の「出荷指示書原本」Excel に合わせ、部材ごとに 名称／入数／出荷総数／出荷箱数／出荷バラ を出す。
    ★行は「その案件で実際に出す部材だけ」（数量0の行は出さない・ユーザー指定）。原本の定型リストは再現しない。
    ★箱数・バラは入数マスタ(IRISU)から計算する: 箱数=floor(総数÷入数) / バラ=総数−箱数×入数。
-   部分解放(_partialReleases)・予備パーツ・✎様式手修正 の反映は従来の「部材内訳」と同じ扱いにしている。
+   部分解放(_partialReleases)・予備パーツ・✎様式手修正 の反映は従来の「部材内訳」と同じ扱い。
    ★出荷指示書の中身を直すときはこの関数だけを直せばよい（印刷HTMLと画面プレビューが共通で使う）。 */
-function buildShipRows(order){
-  var groups=[],totalBox=0,baraKinds=0,anyEdit=false;
+/* ===== v18.81 修正21①: 出荷指示書を便（トラック）ごとに分けて出す =====
+   1案件でトラックが複数台になるとき、1便目に積む部材を指定すると★残りは自動で最終便に回る
+   （合計が合っているかを人が確かめなくて済むようにするのが狙い・依頼21①）。
+   保存先は order.shipSplit = {n:便数, alloc:{行ID:[1便の数, 2便の数, …(最終便の1つ前まで)]}}。
+   ★最終便は必ず「総数 − 入力済みの合計」で自動計算する（allocには持たせない）。
+   行ID(rid)は「明細の並び順|在庫キー|サブ|色」。明細が違えば同じ部材でも別行として振り分けられる。 */
+/* v18.81 修正21①: 全便を1回の印刷でまとめて出す（便ごとに改ページ）。
+   各便のHTMLの <body> の中身だけを取り出して1枚目の後ろへ継ぎ足す。 */
+function shipAllLegsHTML(order){
+  var n=shipLegCount(order);
+  if(n<=1)return generateQuoteHTML(order,'shipping').html;
+  var first=generateQuoteHTML(order,'shipping',0).html;
+  var rest='';
+  for(var i=1;i<n;i++){
+    var m=/<body>([\s\S]*)<\/body>/.exec(generateQuoteHTML(order,'shipping',i).html);
+    rest+='<div style="page-break-before:always;break-before:page"></div>'+(m?m[1]:'');
+  }
+  return first.replace('</body>',rest+'</body>');
+}
+function shipLegCount(order){
+  var n=parseInt(order&&order.shipSplit&&order.shipSplit.n,10);
+  return (n>1&&n<=9)?n:1;
+}
+/* legIndex: 省略=案件の全量（従来どおり） / 0以上=その便のぶんだけ */
+function buildShipRows(order,legIndex){
+  var groups=[],anyEdit=false;
   var prSubH={},prDoorH={};
   (order._partialReleases||[]).forEach(function(r){
     var ln_=r.line||'_';
@@ -5596,19 +5704,14 @@ function buildShipRows(order){
   });
   var spPool=spareBomPool(order);
   var sePool=shipEditPool(order);
-  function mkRow(label,qty,key,sub,note,edited){
-    /* 在庫キーが分からない行（様式手修正だけで足された行など）は入数が引けないので箱数・バラは空欄にする */
-    if(!key)return {label:label,irisu:'',qty:qty,boxes:'',bara:'',note:note||'',edited:!!edited};
-    var iri=getIrisu(key,sub);
-    if(!(iri>0))iri=1;
-    var box=Math.floor(qty/iri),bara=qty-box*iri;
-    totalBox+=box;if(bara>0)baraKinds++;
+  function mkRow(label,qty,key,sub,note,edited,color,isDoor){
     if(edited)anyEdit=true;
-    return {label:label,irisu:iri,qty:qty,boxes:box,bara:bara,note:note||'',edited:!!edited};
+    return {label:label,qty:qty,note:note||'',edited:!!edited,
+            key:key||'',sub:sub||'',color:color||'',isDoor:!!isDoor};
   }
   (order.lines||[]).forEach(function(ln){
     if(ln.isFreeInput){
-      groups.push({title:'[自由入力] '+ln.name,rows:[{label:ln.name,irisu:'',qty:ln.qty,boxes:'',bara:'',note:(ln.unit||'個'),edited:false}]});
+      groups.push({title:'[自由入力] '+ln.name,rows:[mkRow(ln.name,ln.qty,'','',(ln.unit||'個'),false)]});
       return;
     }
     var bom,title;
@@ -5667,20 +5770,67 @@ function buildShipRows(order){
         if(se.qty!=null){b.qty=se.qty;note='';edited=true;}
       }
       if(!(b.qty>0))return;
-      rows.push(mkRow(lbl,b.qty,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,note,edited));
+      rows.push(mkRow(lbl,b.qty,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,note,edited,b.isDoor?b.color:'',b.isDoor));
     });
     if(rows.length)groups.push({title:title,rows:rows});
   });
   /* 明細に同じ部材が無かった予備パーツ／様式手修正で足した部材は、独立した行として足す */
   var extra=[];
-  spareRest(spPool).forEach(function(s){extra.push(mkRow(s.label||s.key||'',s.qty,s.key,s.sub,'予備パーツ',false));});
+  spareRest(spPool).forEach(function(s){extra.push(mkRow(s.label||s.key||'',s.qty,s.key,s.sub,'予備パーツ',false,s.color,(s.key==='door'||s.key==='doorH')));});
   shipEditRest(sePool).forEach(function(s){extra.push(mkRow(s.label,s.qty,s.key,s.sub,'',true));});
   if(extra.length)groups.push({title:'追加分',rows:extra});
-  return {groups:groups,totalBoxes:totalBox,baraKinds:baraKinds,edited:anyEdit};
+
+  /* ---- 行ID を振り、便ごとの数量へ置き換える ---- */
+  var legs=shipLegCount(order);
+  var alloc=(order&&order.shipSplit&&order.shipSplit.alloc)||{};
+  groups.forEach(function(g,gi){
+    g.rows.forEach(function(r){
+      r.rid=gi+'|'+r.key+'|'+r.sub+'|'+r.color;
+      r.total=r.qty;/* その行の総数（分割前）。分割画面で残りを出すのに使う */
+      if(legs>1&&legIndex!=null){
+        var a=alloc[r.rid]||[];
+        var used=0,mine=0;
+        for(var i=0;i<legs-1;i++){
+          var v=Math.max(0,parseInt(a[i],10)||0);
+          if(used+v>r.total)v=Math.max(0,r.total-used);/* 総数を超える指定は切り詰める */
+          used+=v;
+          if(i===legIndex)mine=v;
+        }
+        if(legIndex===legs-1)mine=Math.max(0,r.total-used);/* ★最終便は残り */
+        r.qty=mine;
+      }
+    });
+  });
+  /* ---- 入数・箱数・バラを確定（便ごとの数量に対して計算する） ---- */
+  var totalBox=0,baraKinds=0;
+  groups.forEach(function(g){
+    g.rows.forEach(function(r){
+      if(!r.key){r.irisu='';r.boxes='';r.bara='';r.code='';return;}
+      var iri=getIrisu(r.key,r.sub);
+      if(!(iri>0))iri=1;
+      r.irisu=iri;
+      r.boxes=Math.floor(r.qty/iri);
+      r.bara=r.qty-r.boxes*iri;
+      totalBox+=r.boxes;if(r.bara>0)baraKinds++;
+      /* v18.81 修正21②: 尼高札幌（札幌倉庫）の出荷指示書だけ品番を出すので、行に持たせておく */
+      r.code=sapporoItemCode(r.key,r.sub,r.color,r.isDoor);
+    });
+  });
+  /* 便ごとに出すときは、その便で0になった行・空になった明細は載せない */
+  if(legs>1&&legIndex!=null){
+    groups=groups.map(function(g){return {title:g.title,rows:g.rows.filter(function(r){return r.qty>0;})};})
+                 .filter(function(g){return g.rows.length>0;});
+  }
+  return {groups:groups,totalBoxes:totalBox,baraKinds:baraKinds,edited:anyEdit,
+          legs:legs,legIndex:(legs>1&&legIndex!=null)?legIndex:null,
+          /* v18.81 修正21②: 札幌倉庫から出す案件は品番列を出す */
+          showCode:(function(){try{return orderWhs(order).indexOf('sapporo')>=0;}catch(e){return (order&&order.wh)==='sapporo';}})()};
 }
 
 /* ========== QUOTE/INVOICE/DELIVERY/RECEIPT HTML GENERATION ========== */
-function generateQuoteHTML(order,docType){
+/* legIndex（v18.81 修正21①）: 出荷指示書を便ごとに分けて出すときの便番号（0始まり）。
+   省略すると従来どおり案件の全量で1枚出す。 */
+function generateQuoteHTML(order,docType,legIndex){
   docType=docType||'quote';
   var cust=CUSTS.find(function(c){return c.id===order.cid;});
   var DOC_CFG={
@@ -5708,6 +5858,10 @@ function generateQuoteHTML(order,docType){
   }
   if(isShipping&&shippingFormat){
     cfg=Object.assign({},cfg,{title:'出荷指示書【'+shippingFormat+'】'});
+  }
+  /* v18.81 修正21①: 便で分けて出すときは表題に「(1便／全2便)」を付けて取り違えを防ぐ */
+  if(isShipping&&legIndex!=null&&shipLegCount(order)>1){
+    cfg=Object.assign({},cfg,{title:cfg.title+'（'+(legIndex+1)+'便／全'+shipLegCount(order)+'便）'});
   }
   /* v18.72 修正17: 明細行は buildQuoteRows() に集約（画面プレビューと同一のロジック） */
   var _q=buildQuoteRows(order);
@@ -5787,7 +5941,7 @@ function generateQuoteHTML(order,docType){
     if(order.shippingNotes)html+='<div style="grid-column:1/3"><b>その他連絡事項:</b> '+order.shippingNotes+'</div>';
   }
   html+='</div>';
-  if(!isReceipt&&!isShipping){html+='<div style="font-size:16px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+': &yen;'+fm(total)+'</div>';}
+  if(!isReceipt&&!isShipping){html+='<div style="font-size:16px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+'：　&yen;'+fm(total)+'</div>';}
   if(isShipping){
     /* Shipping: show quote number only, no item detail table */
     html+='<div style="margin:8px 0;padding:6px 10px;border:1px solid #ccc;background:#f9f9f9;font-size:10px"><b>見積№:</b> '+order.no+'</div>';
@@ -5813,25 +5967,31 @@ function generateQuoteHTML(order,docType){
   html+='</tbody></table>';
   /* v18.37 修正箇所2: 商品備考は全帳票から廃止（明細各行の備考欄へ移行） */
   if(isShipping){
-    /* ===== v18.79 修正20②: 出荷指示書の部材表（新様式） =====
+    /* ===== v18.79 修正20② / v18.81 修正21①②: 出荷指示書の部材表（新様式） =====
        旧様式（部材名と数量だけの表）は破棄し、新柏の「出荷指示書原本」Excelと同じ
-       「名称／入数／出荷総数／出荷箱数／出荷バラ」の5列にした。
+       「名称／入数／出荷総数／出荷箱数／出荷バラ」の列にした。
+       v18.81: 尼高札幌（札幌倉庫）だけ先頭に「品番」列が付く（sr.showCode）。
+       　　　　便で分けているときは その便のぶんだけを出す（legIndex は generateQuoteHTML の第3引数）。
        ★行の組み立ては buildShipRows() の1か所だけ（画面プレビューも同じものを使う）。 */
-    var sr=buildShipRows(order);
-    html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材</div>';
+    var sr=buildShipRows(order,legIndex);
+    var nCol=sr.showCode?6:5;
+    html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材'
+      +(sr.legIndex!=null?('　<span style="color:#B45309">'+(sr.legIndex+1)+'便 ／ 全'+sr.legs+'便</span>'):'')+'</div>';
     if(sr.edited)html+='<div style="font-size:8px;color:#975a16;margin:2px 0">✎ =「出荷指示書(様式)の手修正」で指定した内容を反映しています</div>';
-    html+='<table><thead><tr><th>名称</th><th style="width:45px">入数</th><th style="width:55px">出荷総数</th><th style="width:55px">出荷箱数</th><th style="width:55px">出荷バラ</th></tr></thead><tbody>';
+    html+='<table><thead><tr>'+(sr.showCode?'<th style="width:65px">品番</th>':'')
+      +'<th>名称</th><th style="width:45px">入数</th><th style="width:55px">出荷総数</th><th style="width:55px">出荷箱数</th><th style="width:55px">出荷バラ</th></tr></thead><tbody>';
     sr.groups.forEach(function(g){
-      html+='<tr style="background:#f0f0f0"><td colspan="5" style="font-weight:700;font-size:9px">'+g.title+'</td></tr>';
+      html+='<tr style="background:#f0f0f0"><td colspan="'+nCol+'" style="font-weight:700;font-size:9px">'+g.title+'</td></tr>';
       g.rows.forEach(function(r){
-        html+='<tr><td>'+r.label+(r.edited?' ✎':'')+(r.note?' <span style="font-size:7px;color:#975a16">('+r.note+')</span>':'')+'</td>'
+        html+='<tr>'+(sr.showCode?('<td style="font-size:8px">'+(r.code||'')+'</td>'):'')
+          +'<td>'+r.label+(r.edited?' ✎':'')+(r.note?' <span style="font-size:7px;color:#975a16">('+r.note+')</span>':'')+'</td>'
           +'<td class="c">'+(r.irisu===''?'':fm(r.irisu))+'</td>'
           +'<td class="c" style="font-weight:700">'+fm(r.qty)+'</td>'
           +'<td class="c">'+(r.boxes===''?'':fm(r.boxes))+'</td>'
           +'<td class="c">'+(r.bara===''?'':fm(r.bara))+'</td></tr>';
       });
     });
-    if(!sr.groups.length)html+='<tr><td colspan="5" style="text-align:center;color:#999">出荷する部材がありません</td></tr>';
+    if(!sr.groups.length)html+='<tr><td colspan="'+nCol+'" style="text-align:center;color:#999">出荷する部材がありません</td></tr>';
     html+='</tbody></table>';
     html+='<div style="margin-top:4px;font-size:11px;font-weight:700">正箱数： '+fm(sr.totalBoxes)+' 箱'+(sr.baraKinds>0?('　＋　バラ '+sr.baraKinds+'種'):'')+'</div>';
   }
@@ -9522,7 +9682,7 @@ function QuotePreview(p){
         isShipping?h('div',{style:{gridColumn:'1/3'}},h('b',null,'荷送人: '),shipperBlock(o)):null,
         isShipping&&o.shippingNotes?h('div',{style:{gridColumn:'1/3'}},h('b',null,'その他連絡事項: '),o.shippingNotes):null
       ),
-      !isReceipt&&!isShipping?h('div',{style:{fontSize:16,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+': \u00A5'+fm(total)):null,
+      !isReceipt&&!isShipping?h('div',{style:{fontSize:16,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+'\uFF1A\u3000\u00A5'+fm(total)):null,/* v18.81 \u4FEE\u6B6321\u2463: \u300C\u898B\u7A4D\u91D1\u984D\uFF1A\u3000\uFFE5\u2026\u300D\u3068\u30B9\u30DA\u30FC\u30B9\u3092\u7A7A\u3051\u308B\uFF08\u5370\u5237\u7248\u3068\u540C\u3058\uFF09 */
       isShipping?
         h('div',{style:{margin:'8px 0',padding:'6px 10px',border:'1px solid #ccc',background:'#f9f9f9',fontSize:10}},h('b',null,'見積№: '),o.no):
       isReceipt?
@@ -9563,27 +9723,31 @@ function QuotePreview(p){
             return els;
           })))
         ),
-      /* v18.37 修正箇所2: 商品備考は全帳票から廃止（明細各行の備考欄へ移行） */
-      /* ===== v18.79 修正20②: 画面プレビューの出荷指示書も新様式 =====
-         印刷用HTMLと同じ buildShipRows() を使うので、両者がずれることはない。 */
+      /* ===== v18.79 修正20② / v18.81 修正21①②: 画面プレビューの出荷指示書 =====
+         印刷用HTMLと同じ buildShipRows() を使うので、両者がずれることはない。
+         v18.81: 尼高札幌（札幌倉庫）だけ「品番」列が付き、便で分けていれば その便のぶんを出す。 */
       isShipping?(function(){
-        var sr=buildShipRows(o);
+        var sr=buildShipRows(o,p.legIndex);
+        var nCol=sr.showCode?6:5;
         var th=function(w){return Object.assign({},cs,{background:'#f0f0f0',fontWeight:600},w?{width:w}:{});};
         var ctd=Object.assign({},cs,{textAlign:'center'});
         return h('div',{style:{marginTop:12}},
-          h('div',{style:{fontSize:11,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'出荷部材'),
+          h('div',{style:{fontSize:11,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'出荷部材',
+            sr.legIndex!=null?h('span',{style:{color:'#B45309',marginLeft:8}},(sr.legIndex+1)+'便 ／ 全'+sr.legs+'便'):null),
           sr.edited?h('div',{style:{fontSize:8,color:'#975a16',margin:'2px 0'}},'✎ =「出荷指示書(様式)の手修正」で指定した内容を反映しています'):null,
           h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'4px 0'}},
             h('thead',null,h('tr',null,
+              sr.showCode?h('th',{style:th(65)},'品番'):null,
               h('th',{style:th()},'名称'),h('th',{style:th(45)},'入数'),h('th',{style:th(55)},'出荷総数'),
               h('th',{style:th(55)},'出荷箱数'),h('th',{style:th(55)},'出荷バラ')
             )),
             h('tbody',null,(function(){
               var out=[];
               sr.groups.forEach(function(g,gi){
-                out.push(h('tr',{key:'sg'+gi,style:{background:'#f0f0f0'}},h('td',{colSpan:5,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},g.title)));
+                out.push(h('tr',{key:'sg'+gi,style:{background:'#f0f0f0'}},h('td',{colSpan:nCol,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},g.title)));
                 g.rows.forEach(function(r,ri){
                   out.push(h('tr',{key:'sg'+gi+'r'+ri},
+                    sr.showCode?h('td',{style:Object.assign({},cs,{fontSize:8})},r.code||''):null,
                     h('td',{style:cs},r.label+(r.edited?' ✎':''),r.note?h('span',{style:{fontSize:7,color:'#975a16'}},'（'+r.note+'）'):null),
                     h('td',{style:ctd},r.irisu===''?'':fm(r.irisu)),
                     h('td',{style:Object.assign({},ctd,{fontWeight:700})},fm(r.qty)),
@@ -9591,7 +9755,7 @@ function QuotePreview(p){
                     h('td',{style:ctd},r.bara===''?'':fm(r.bara))));
                 });
               });
-              if(!out.length)out.push(h('tr',{key:'sgnone'},h('td',{colSpan:5,style:Object.assign({},ctd,{color:'#999'})},'出荷する部材がありません')));
+              if(!out.length)out.push(h('tr',{key:'sgnone'},h('td',{colSpan:nCol,style:Object.assign({},ctd,{color:'#999'})},'出荷する部材がありません')));
               return out;
             })())
           ),
@@ -9685,6 +9849,8 @@ function OrdersPage(p){
   var shipModal=us(null);/* order to show shipping modal for */
   /* v18.79 修正20②: 案件管理の操作欄「📄帳票」で開く帳票選択モーダル（受注確定以降の案件） */
   var docPick=us(null);
+  /* v18.81 修正21①: 出荷指示書を便（トラック）ごとに分ける設定モーダル {no,n,alloc,tab} */
+  var splitModal=us(null);
   var shipEditModal=us(null);/* v18.28: 出荷指示書(様式)の手入力修正モーダル {order,autoHv,name,phone,postal,address,delivery,rows:[{ri,iri,name,auto,label,qty}]} */
   var shipForm=us({shipToName:'',shipToPostal:'',shipToAddress:'',shipToPhone:'',shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:'',shipNo:''});
   /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
@@ -10868,6 +11034,138 @@ function OrdersPage(p){
         )
       );
     })():null,
+    /* ===== v18.81 修正21①: 出荷指示書を便（トラック）ごとに分ける設定 =====
+       ★最終便は常に「総数 − 入力済みの合計」の自動計算なので、合計が合っているかを人が確かめる必要がない。
+       「明細ごと」タブは部材の数量をまとめて埋めるための入力手段で、実体は「部材ごと」の数量と同じ
+       （order.shipSplit.alloc）。タブを行き来しても値は保たれる。 */
+    splitModal[0]?(function(){
+      var so=ORDERS.find(function(x){return x.no===splitModal[0].no;});
+      if(!so)return null;
+      var st=splitModal[0],legs=st.n,alloc=st.alloc;
+      var sr=buildShipRows(so);/* 分割前の全量 */
+      function upd(patch){splitModal[1](Object.assign({},splitModal[0],patch));}
+      function setAlloc(rid,li,v){
+        var a=(alloc[rid]||[]).slice();
+        while(a.length<legs-1)a.push(0);
+        a[li]=Math.max(0,parseInt(v,10)||0);
+        var na=Object.assign({},alloc);na[rid]=a;upd({alloc:na});
+      }
+      /* その行の全量を li 便へ入れる（li=最終便なら全て空にして残り＝全量にする） */
+      function dumpRow(r,li){
+        var a=[];for(var i=0;i<legs-1;i++)a.push(i===li?r.total:0);
+        var na=Object.assign({},alloc);na[r.rid]=a;upd({alloc:na});
+      }
+      function dumpGroup(g,li){
+        var na=Object.assign({},alloc);
+        g.rows.forEach(function(r){var a=[];for(var i=0;i<legs-1;i++)a.push(i===li?r.total:0);na[r.rid]=a;});
+        upd({alloc:na});
+      }
+      /* 画面表示用: その行の各便の数量（最終便は残り） */
+      function legQty(r,li){
+        var a=alloc[r.rid]||[],used=0,mine=0;
+        for(var i=0;i<legs-1;i++){
+          var v=Math.max(0,parseInt(a[i],10)||0);
+          if(used+v>r.total)v=Math.max(0,r.total-used);
+          used+=v;if(i===li)mine=v;
+        }
+        return (li===legs-1)?Math.max(0,r.total-used):mine;
+      }
+      /* その明細が1つの便に収まっていれば その便番号、部材ごとに分かれていれば null */
+      function groupLeg(g){
+        var found=null;
+        for(var i=0;i<g.rows.length;i++){
+          var r=g.rows[i],mine=null;
+          for(var li=0;li<legs;li++){if(legQty(r,li)===r.total){mine=li;break;}}
+          if(mine===null)return null;
+          if(found===null)found=mine;else if(found!==mine)return null;
+        }
+        return found;
+      }
+      var cell={border:'1px solid var(--g200)',padding:'3px 5px',fontSize:10};
+      var hd=function(w,warn){return Object.assign({},cell,{background:warn?'#FEF3C7':'var(--g50)',fontWeight:700},w?{width:w}:{});};
+      return h(Modal,{show:true,title:'🚚 出荷指示書を便ごとに分ける — '+so.no,w:860,onClose:function(){splitModal[1](null);},
+        footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
+          h('button',{className:'btn btn-ol',onClick:function(){splitModal[1](null);}},'キャンセル'),
+          h('button',{className:'btn btn-gn',onClick:function(){
+            var lo=liveOrder(so);
+            if(!lo){p.toast('案件が見つかりません');return;}
+            if(legs<=1){delete lo.shipSplit;}
+            else{lo.shipSplit={n:legs,alloc:alloc};}
+            saveOrders();cloudSave(p.userName);p.bump&&p.bump();
+            splitModal[1](null);
+            p.toast(legs<=1?'分割を解除しました':('出荷指示書を'+legs+'便に分けました'));
+          }},'保存')
+        )},
+        h('div',{style:{padding:4}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:8,flexWrap:'wrap'}},
+            h('span',{style:{fontSize:10,fontWeight:700,color:'var(--g500)'}},'便数（トラック台数）'),
+            h('select',{className:'inp',style:{width:130,fontSize:11},value:legs,onChange:function(e){upd({n:parseInt(e.target.value,10)||1});}},
+              [1,2,3,4,5].map(function(v){return h('option',{key:v,value:v},v===1?'分割しない':(v+'便'));})),
+            legs>1?h('div',{style:{display:'flex',gap:2}},
+              [['line','明細ごと'],['part','部材ごと']].map(function(t){
+                return h('button',{key:t[0],className:'btn btn-xs'+(st.tab===t[0]?' btn-nv':''),onClick:function(){upd({tab:t[0]});}},t[1]);
+              })):null,
+            legs>1?h('span',{style:{fontSize:9,color:'var(--g400)'}},'※'+legs+'便（最後の便）は「残り」を自動計算します'):null
+          ),
+          legs<=1?h('div',{style:{padding:16,textAlign:'center',color:'var(--g500)',fontSize:11}},'「分割しない」＝従来どおり1枚で出します。保存すると分割の指定は消えます。'):
+          (st.tab==='line'?
+            /* --- 明細ごと: その明細の部材をまるごと1つの便へ --- */
+            h('table',{style:{width:'100%',borderCollapse:'collapse'}},
+              h('thead',null,h('tr',null,
+                h('th',{style:Object.assign({},hd(),{textAlign:'left'})},'明細'),
+                h('th',{style:hd(60)},'部材数'),
+                h('th',{style:hd(320)},'どの便に積むか'))),
+              h('tbody',null,sr.groups.map(function(g,gi){
+                var cur=groupLeg(g);
+                return h('tr',{key:'lg'+gi},
+                  h('td',{style:cell},g.title),
+                  h('td',{style:Object.assign({},cell,{textAlign:'center'})},g.rows.length+'行'),
+                  h('td',{style:cell},
+                    h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
+                      Array.apply(null,{length:legs}).map(function(_,li){
+                        return h('button',{key:'b'+li,className:'btn btn-xs'+(cur===li?' btn-nv':''),onClick:function(){dumpGroup(g,li);}},(li+1)+'便');
+                      }),
+                      cur===null?h('span',{style:{fontSize:9,color:'#B45309'}},'※部材ごとに分かれています'):null)));
+              }))
+            ):
+            /* --- 部材ごと: 行ごとに数量を入れる。最終便は残りを表示するだけ --- */
+            h('div',{className:'scy',style:{maxHeight:'52vh'}},
+            h('table',{style:{width:'100%',borderCollapse:'collapse'}},
+              h('thead',null,h('tr',null,
+                h('th',{style:Object.assign({},hd(),{textAlign:'left'})},'名称'),
+                h('th',{style:hd(55)},'総数'),
+                Array.apply(null,{length:legs}).map(function(_,li){
+                  return h('th',{key:'h'+li,style:hd(80,li===legs-1)},(li+1)+'便'+(li===legs-1?'（残り）':''));
+                }),
+                h('th',{style:hd(110)},'まとめて'))),
+              h('tbody',null,(function(){
+                var out=[];
+                sr.groups.forEach(function(g,gi){
+                  out.push(h('tr',{key:'g'+gi,style:{background:'var(--g100)'}},h('td',{colSpan:legs+3,style:Object.assign({},cell,{fontWeight:700,fontSize:9})},g.title)));
+                  g.rows.forEach(function(r,ri){
+                    out.push(h('tr',{key:'g'+gi+'r'+ri},
+                      h('td',{style:cell},r.label),
+                      h('td',{style:Object.assign({},cell,{textAlign:'center',fontWeight:700})},fm(r.total)),
+                      Array.apply(null,{length:legs}).map(function(_,li){
+                        if(li===legs-1)return h('td',{key:'q'+li,style:Object.assign({},cell,{textAlign:'center',fontWeight:700,background:'#FEF3C7'})},fm(legQty(r,li)));
+                        return h('td',{key:'q'+li,style:cell},
+                          h('input',{className:'inp',type:'number',min:0,max:r.total,style:{textAlign:'center',fontSize:11,padding:'1px 2px'},
+                            value:legQty(r,li),onChange:function(e){setAlloc(r.rid,li,e.target.value);}}));
+                      }),
+                      h('td',{style:cell},h('div',{style:{display:'flex',gap:2,flexWrap:'wrap'}},
+                        Array.apply(null,{length:legs}).map(function(_,li){
+                          return h('button',{key:'d'+li,className:'btn btn-xs',style:{padding:'1px 5px',fontSize:9},title:'この部材を全部'+(li+1)+'便へ',onClick:function(){dumpRow(r,li);}},String(li+1));
+                        }))))
+                    );
+                  });
+                });
+                return out;
+              })())
+            ))
+          )
+        )
+      );
+    })():null,
     /* ===== v18.79 修正20②: 帳票の個別出力モーダル =====
        案件管理の操作欄「📄帳票」から開く。5帳票とも generateQuoteHTML(order, docType) の1か所で作っている。
        出荷指示書は v18.79 で新様式（名称／入数／出荷総数／出荷箱数／出荷バラ）に差し替え済み。 */
@@ -10904,7 +11202,27 @@ function OrdersPage(p){
                 h('option',{value:'charter'},'チャーター便'),
                 canPickup(docPick[0])?h('option',{value:'pickup'},'引取り'):null),
               canPickup(docPick[0])?null:h('span',{style:{fontSize:8,color:'var(--g400)'}},'※引取りは新柏倉庫の案件のみ')
-            ):null);
+            ):null,
+            /* ===== v18.81 修正21①: 便（トラック）ごとに分けて出す =====
+               1案件でトラックが複数台になる案件用。分割の設定と、便ごとの印刷ボタンをここに出す。
+               「全便まとめて」と「便を選んで1枚ずつ」の両方を出す（ユーザー指定）。 */
+            d[0]==='shipping'?(function(){
+              var legs=shipLegCount(docPick[0]);
+              return h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'}},
+                h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
+                  title:'1案件でトラックが複数台になるとき、便ごとに積む部材を指定して出荷指示書を分けます',
+                  onClick:function(){
+                    var o0=docPick[0],ss=o0.shipSplit||{};
+                    splitModal[1]({no:o0.no,n:shipLegCount(o0),alloc:JSON.parse(JSON.stringify(ss.alloc||{})),tab:'line'});
+                  }},'🚚 便に分ける'+(legs>1?('（現在 '+legs+'便）'):'')),
+                legs>1?h('button',{className:'btn btn-xs btn-gn',style:{fontWeight:700},title:'全便ぶんを1回の印刷でまとめて出します（便ごとに改ページ）',
+                  onClick:function(){if(!openPrintWindow(shipAllLegsHTML(docPick[0])))p.toast('ポップアップを許可してください');}},'全'+legs+'便まとめて印刷'):null,
+                legs>1?[].concat.apply([],[Array.apply(null,{length:legs}).map(function(_,li){
+                  return h('button',{key:'leg'+li,className:'btn btn-xs',title:(li+1)+'便ぶんだけを出します',
+                    onClick:function(){var q=generateQuoteHTML(docPick[0],'shipping',li);if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');}},(li+1)+'便');
+                })]):null
+              );
+            })():null);
         })
       )
     ):null,
