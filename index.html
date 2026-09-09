@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.78（修正19①の再修正: 段積み表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.79（修正20: 送料枠のはみ出し・帳票の個別出力・出荷指示書の新様式・発注書付見積書）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5508,6 +5508,162 @@ function quoteSubjectOf(order){
   return productName(npl[0].line)+' '+npl.map(function(fl){return sizeLabel(fl.line,fl.size)+lineTypeLabel(fl)+' '+fm(fl.qty||lineUnits(fl))+'台';}).join('／');
 }
 
+/* ===== v18.79 修正20②: 帳票の日付欄は「案件の日付」を使う（ユーザー指定） =====
+   従来はどの帳票も出力したその日(tdSlash())が入っていた。
+   納品書・物品受領書・請求書はサンプル帳票のとおり納品日を入れる（請求日＝納品日）。
+   見積書・出荷指示書は従来どおり出力日。案件に納品予定日が無ければ出力日へフォールバックする。 */
+function docDateOf(order,docType){
+  if(docType==='delivery'||docType==='receipt'||docType==='invoice'){
+    var d=(order&&order.deliveryDate)||'';
+    if(d)return String(d).replace(/-/g,'/');
+  }
+  return tdSlash();
+}
+/* ===== v18.79 修正20③: 見積書の下部に付ける「発注書」欄 =====
+   サンプル「発注書付見積書.pdf」の様式。見積書の基本フォームは変えず、この欄だけを下に足す。
+   ★見積書本体と発注書の両方に出る金額は税込合計。★出す/出さないは order.withPO の1か所で決まる。 */
+function purchaseOrderHTML(order,total){
+  var s='<div style="margin-top:18px;border-top:2px dashed #999;padding-top:10px">';
+  s+='<div style="font-size:9.5px;margin-bottom:8px">御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。</div>';
+  s+='<div style="text-align:center;font-size:17px;font-weight:700;letter-spacing:10px;margin-bottom:10px">発 注 書</div>';
+  s+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
+  s+='<div style="font-size:12px;font-weight:700">株式会社LEC 御中</div>';
+  s+='<div style="font-size:10px;line-height:2">';
+  s+='<div>発注日:&emsp;<span style="display:inline-block;min-width:120px;border-bottom:1px solid #333">&nbsp;</span></div>';
+  s+='<div>発注する見積No:&emsp;<b>'+order.no+'</b></div>';
+  s+='</div></div>';
+  s+='<div style="display:flex;align-items:baseline;gap:20px;margin-bottom:14px">';
+  s+='<div style="font-size:15px;font-weight:900">発注金額: &yen;'+fm(total)+'</div>';
+  s+='<div style="font-size:10px">上記見積内容を発注いたします。</div></div>';
+  s+='<table style="margin-top:4px"><tbody><tr>';
+  s+='<td style="width:22%;background:#f0f0f0;font-weight:700;font-size:10px">御発注者名</td><td style="height:52px">&nbsp;</td>';
+  s+='<td style="width:8%;text-align:center;font-size:9px;color:#666">印</td>';
+  s+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:10px">御担当者名</td><td>&nbsp;</td>';
+  s+='</tr></tbody></table></div>';
+  return s;
+}
+/* ===== v18.79 修正20②: 出荷指示書（新様式）の便種・荷送人 =====
+   原本Excelは「混載便　or　チャーター便　or　引取り」を並べて手で丸を付ける様式。
+   案件の送付方法(order.shipMethod)が決まっていればその1つを太字＋下線にし、未選択なら3つとも素で出す。 */
+function shipMethodMarks(order){
+  var m=(order&&order.shipMethod)||'';
+  var pick=(m==='mix')?'混載便':(m==='charter')?'チャーター便':'';
+  return ['混載便','チャーター便','引取り'].map(function(x){
+    return (x===pick)?('<b style="text-decoration:underline">'+x+'</b>'):x;
+  }).join('　or　');
+}
+/* 荷送人の住所・TEL（原本Excelの荷送人4社ブロックと同じ内容）。手入力の荷送人は名前だけ出す */
+var SHIPPER_INFO={
+  '株式会社LEC':{postal:'〒120-0005',addr:'東京都足立区綾瀬7-4-1',tel:'03-5849-5563'},
+  '(株)LEC':{postal:'〒120-0005',addr:'東京都足立区綾瀬7-4-1',tel:'03-5849-5563'},
+  '㈱プラロッカー':{postal:'〒121-0055',addr:'東京都足立区加平1-19-10',tel:'03-6721-7491'},
+  'プラスチックロッカー㈱':{postal:'〒116-0001',addr:'東京都荒川区町屋1-9-7',tel:'03-5856-0603'},
+  '㈱グローバル':{postal:'〒116-0001',addr:'東京都荒川区町屋1-5-3',tel:'03-5849-5755'}
+};
+function shipperBlock(order){
+  var nm=(order&&order.shipper)||'株式会社LEC';
+  var i=SHIPPER_INFO[nm];
+  return i?(nm+'　'+i.postal+' '+i.addr+'　TEL: '+i.tel):nm;
+}
+/* ===== v18.79 修正20②: 出荷指示書（新様式）の部材行 =====
+   新柏の「出荷指示書原本」Excel に合わせ、部材ごとに 名称／入数／出荷総数／出荷箱数／出荷バラ を出す。
+   ★行は「その案件で実際に出す部材だけ」（数量0の行は出さない・ユーザー指定）。原本の定型リストは再現しない。
+   ★箱数・バラは入数マスタ(IRISU)から計算する: 箱数=floor(総数÷入数) / バラ=総数−箱数×入数。
+   部分解放(_partialReleases)・予備パーツ・✎様式手修正 の反映は従来の「部材内訳」と同じ扱いにしている。
+   ★出荷指示書の中身を直すときはこの関数だけを直せばよい（印刷HTMLと画面プレビューが共通で使う）。 */
+function buildShipRows(order){
+  var groups=[],totalBox=0,baraKinds=0,anyEdit=false;
+  var prSubH={},prDoorH={};
+  (order._partialReleases||[]).forEach(function(r){
+    var ln_=r.line||'_';
+    if(r.isDoor){var kk=ln_+'|'+r.key+'|'+(r.color||'')+'|'+(r.doorSub||'');prDoorH[kk]=(prDoorH[kk]||0)+r.released;}
+    else{var k2=ln_+'|'+r.key+'|'+(r.sub||'');prSubH[k2]=(prSubH[k2]||0)+r.released;}
+  });
+  var spPool=spareBomPool(order);
+  var sePool=shipEditPool(order);
+  function mkRow(label,qty,key,sub,note,edited){
+    /* 在庫キーが分からない行（様式手修正だけで足された行など）は入数が引けないので箱数・バラは空欄にする */
+    if(!key)return {label:label,irisu:'',qty:qty,boxes:'',bara:'',note:note||'',edited:!!edited};
+    var iri=getIrisu(key,sub);
+    if(!(iri>0))iri=1;
+    var box=Math.floor(qty/iri),bara=qty-box*iri;
+    totalBox+=box;if(bara>0)baraKinds++;
+    if(edited)anyEdit=true;
+    return {label:label,irisu:iri,qty:qty,boxes:box,bara:bara,note:note||'',edited:!!edited};
+  }
+  (order.lines||[]).forEach(function(ln){
+    if(ln.isFreeInput){
+      groups.push({title:'[自由入力] '+ln.name,rows:[{label:ln.name,irisu:'',qty:ln.qty,boxes:'',bara:'',note:(ln.unit||'個'),edited:false}]});
+      return;
+    }
+    var bom,title;
+    if(ln.isPartOnly){
+      bom=[];
+      if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub,color:ln.color});}
+      else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
+      else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+      title='[パーツ単品]';
+    }else{
+      bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
+      var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
+      var colorName=(ln.type==='open'||!co)?'':co.l;
+      title=productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'');
+    }
+    /* 扉は色別に展開、非扉はそのまま */
+    var expandedB=[];
+    bom.forEach(function(b){
+      if(b.isDoor){
+        var origBd=(ln.colorBreakdown&&ln.colorBreakdown.length>0)?ln.colorBreakdown:[{color:b.color||ln.color,qty:b.qty}];
+        origBd.forEach(function(dc){
+          if(!(dc.qty>0))return;
+          expandedB.push({key:b.key,qty:dc.qty,label:b.label,isDoor:true,doorSub:b.doorSub||ln.size,color:dc.color});
+        });
+      }else{
+        expandedB.push({key:b.key,sub:b.sub,qty:b.qty,label:b.label,isDoor:false});
+      }
+    });
+    var rows=[];
+    expandedB.forEach(function(b){
+      var note='';
+      if(b.isDoor){
+        var pk=ln.line+'|'+b.key+'|'+(b.color||'')+'|'+(b.doorSub||'');
+        if(prDoorH[pk]>0){var d=Math.min(b.qty,prDoorH[pk]);b.qty-=d;prDoorH[pk]-=d;note='部分解放 -'+d;}
+        else if(prDoorH[pk]<0){b.qty+=(-prDoorH[pk]);note='数量編集 +'+(-prDoorH[pk]);prDoorH[pk]=0;}
+      }else if(b.sub!==undefined){
+        var pk2=ln.line+'|'+b.key+'|'+(b.sub||'');
+        if(prSubH[pk2]>0){var dd=Math.min(b.qty,prSubH[pk2]);b.qty-=dd;prSubH[pk2]-=dd;note='部分解放 -'+dd;}
+        else if(prSubH[pk2]<0){b.qty+=(-prSubH[pk2]);note='数量編集 +'+(-prSubH[pk2]);prSubH[pk2]=0;}
+      }else{
+        var pk3=ln.line+'|'+b.key+'|';
+        if(prSubH[pk3]>0){var ddd=Math.min(b.qty,prSubH[pk3]);b.qty-=ddd;prSubH[pk3]-=ddd;note='部分解放 -'+ddd;}
+        else if(prSubH[pk3]<0){b.qty+=(-prSubH[pk3]);note='数量編集 +'+(-prSubH[pk3]);prSubH[pk3]=0;}
+      }
+      /* v18.56 確認項目②: 予備パーツを同じ行へ足し込む（内訳は分けない） */
+      b.qty+=spareTake(spPool,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,b.isDoor?b.color:null);
+      var lbl=b.label;
+      if(b.isDoor){
+        var cObj=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===b.color;});
+        if(cObj)lbl+=' '+cObj.l;
+      }
+      /* v18.59 修正10③(b): ✎様式手修正（品名書換・数量指示）を最優先で適用する */
+      var se=shipEditTake(sePool,b,ln),edited=false;
+      if(se){
+        if(se.label){lbl=se.label;edited=true;}
+        if(se.qty!=null){b.qty=se.qty;note='';edited=true;}
+      }
+      if(!(b.qty>0))return;
+      rows.push(mkRow(lbl,b.qty,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,note,edited));
+    });
+    if(rows.length)groups.push({title:title,rows:rows});
+  });
+  /* 明細に同じ部材が無かった予備パーツ／様式手修正で足した部材は、独立した行として足す */
+  var extra=[];
+  spareRest(spPool).forEach(function(s){extra.push(mkRow(s.label||s.key||'',s.qty,s.key,s.sub,'予備パーツ',false));});
+  shipEditRest(sePool).forEach(function(s){extra.push(mkRow(s.label,s.qty,s.key,s.sub,'',true));});
+  if(extra.length)groups.push({title:'追加分',rows:extra});
+  return {groups:groups,totalBoxes:totalBox,baraKinds:baraKinds,edited:anyEdit};
+}
+
 /* ========== QUOTE/INVOICE/DELIVERY/RECEIPT HTML GENERATION ========== */
 function generateQuoteHTML(order,docType){
   docType=docType||'quote';
@@ -5588,7 +5744,8 @@ function generateQuoteHTML(order,docType){
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
   if(!isShipping)html+='<div><b>件名:</b> '+subject+'</div>';
   html+='<div><b>担当者:</b> '+salesP+'</div>';
-  html+='<div><b>'+cfg.dateLabel+':</b> '+tdSlash()+'</div><div><b>伝票コード:</b> '+slipCode+'</div>';
+  /* v18.79 修正20②: 日付欄は案件の日付（納品書・受領書・請求書＝納品日）。見積書・出荷指示書は出力日 */
+  html+='<div><b>'+cfg.dateLabel+':</b> '+docDateOf(order,docType)+'</div><div><b>伝票コード:</b> '+slipCode+'</div>';
   /* v18.37 修正箇所2③: 納期・有効期限は選択肢マスタ＋自由入力の保存値を反映 */
   if(docType==='quote'){html+='<div><b>納期:</b> '+deliveryTermOf(order)+'</div><div><b>有効期限:</b> '+validUntilOf(order)+'</div>';}
   if(isShipping){
@@ -5607,8 +5764,12 @@ function generateQuoteHTML(order,docType){
     if(shv.postal)html+='<div><b>配送先〒:</b> '+shv.postal+em('postal')+'</div>';
     if(shv.address)html+='<div><b>配送先住所:</b> '+shv.address+em('address')+'</div>';
     if(shv.phone)html+='<div><b>配送先TEL:</b> '+shv.phone+em('phone')+'</div>';
-    if(order.shipper)html+='<div><b>荷送人:</b> '+order.shipper+'</div>';
-    if(shv.delivery)html+='<div><b>納品希望日:</b> '+shv.delivery+em('delivery')+'</div>';
+    /* v18.79 修正20②: 原本Excelの「荷受人」「納品日時」「便種」「その他連絡事項」を追加（新様式） */
+    html+='<div><b>荷受人:</b> '+(shv.name||(cust?cust.name:''))+' 様</div>';
+    html+='<div><b>納品日時:</b> '+(shv.delivery||'')+em('delivery')+'</div>';
+    html+='<div style="grid-column:1/3"><b>便種:</b> '+shipMethodMarks(order)+'</div>';
+    html+='<div style="grid-column:1/3"><b>荷送人:</b> '+shipperBlock(order)+'</div>';
+    if(order.shippingNotes)html+='<div style="grid-column:1/3"><b>その他連絡事項:</b> '+order.shippingNotes+'</div>';
   }
   html+='</div>';
   if(!isReceipt&&!isShipping){html+='<div style="font-size:16px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+': &yen;'+fm(total)+'</div>';}
@@ -5637,97 +5798,27 @@ function generateQuoteHTML(order,docType){
   html+='</tbody></table>';
   /* v18.37 修正箇所2: 商品備考は全帳票から廃止（明細各行の備考欄へ移行） */
   if(isShipping){
-    /* BOM detail table for shipping instruction
-       v14.3 Codex P1対応: _partialReleases を BOM 数量から差し引いて表示する */
-    var prSubH={},prDoorH={};
-    (order._partialReleases||[]).forEach(function(r){
-      var ln_=r.line||'_';
-      if(r.isDoor){var kk=ln_+'|'+r.key+'|'+(r.color||'')+'|'+(r.doorSub||'');prDoorH[kk]=(prDoorH[kk]||0)+r.released;}
-      else{var k2=ln_+'|'+r.key+'|'+(r.sub||'');prSubH[k2]=(prSubH[k2]||0)+r.released;}
-    });
-    /* v18.56 修正９の確認項目②: 予備パーツも合算した数量で出す（予備とそれ以外は区別しない） */
-    var spPoolH=spareBomPool(order);
-    /* v18.59 修正10③(b): ✎様式手修正の品名書換・数量をこの部材内訳へ反映する */
-    var sePoolH=shipEditPool(order);
-    html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">部材内訳</div>';
-    if(hasShipEdit(order))html+='<div style="font-size:8px;color:#975a16;margin:2px 0">✎ =「出荷指示書(様式)の手修正」で指定した内容を反映しています</div>';
-    html+='<table><thead><tr><th>部材名</th><th style="width:60px">数量</th></tr></thead><tbody>';
-    order.lines.forEach(function(ln){
-      if(ln.isFreeInput){
-        html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">[自由入力] '+ln.name+'</td></tr>';
-        html+='<tr><td>'+ln.name+'</td><td class="c">'+ln.qty+' '+(ln.unit||'個')+'</td></tr>';
-        return;
-      }
-      var bom;
-      if(ln.isPartOnly){
-        bom=[];
-        if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub,color:ln.color});}
-        else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-        else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
-        html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">[パーツ単品]</td></tr>';
-      }else{
-        bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
-        var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-        var colorName=(ln.type==='open'||!co)?'':co.l;
-        html+='<tr style="background:#f0f0f0"><td colspan="2" style="font-weight:700;font-size:9px">'+productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'')+'</td></tr>';
-      }
-      /* 扉は色別に展開、非扉はそのまま。部分解放を差し引く */
-      var expandedB=[];
-      bom.forEach(function(b){
-        if(b.isDoor){
-          var origBd=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
-          origBd.forEach(function(dc){
-            if(dc.qty<=0)return;
-            expandedB.push({key:b.key,qty:dc.qty,label:b.label,isDoor:true,doorSub:b.doorSub||ln.size,color:dc.color});
-          });
-        }else{
-          expandedB.push({key:b.key,sub:b.sub,qty:b.qty,label:b.label,isDoor:false});
-        }
-      });
-      var co2_=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-      expandedB.forEach(function(b){
-        /* 部分解放を差し引く */
-        var releasedNote='';
-        if(b.isDoor){
-          var pk=ln.line+'|'+b.key+'|'+(b.color||'')+'|'+(b.doorSub||'');
-          if(prDoorH[pk]>0){var d=Math.min(b.qty,prDoorH[pk]);b.qty-=d;prDoorH[pk]-=d;releasedNote=' (部分解放 -'+d+')';}
-          else if(prDoorH[pk]<0){b.qty+=(-prDoorH[pk]);releasedNote=' (数量編集 +'+(-prDoorH[pk])+')';prDoorH[pk]=0;}
-        }else if(b.sub!==undefined){
-          var pk2=ln.line+'|'+b.key+'|'+(b.sub||'');
-          if(prSubH[pk2]>0){var dd=Math.min(b.qty,prSubH[pk2]);b.qty-=dd;prSubH[pk2]-=dd;releasedNote=' (部分解放 -'+dd+')';}
-          else if(prSubH[pk2]<0){b.qty+=(-prSubH[pk2]);releasedNote=' (数量編集 +'+(-prSubH[pk2])+')';prSubH[pk2]=0;}
-        }else{
-          var pk3=ln.line+'|'+b.key+'|';
-          if(prSubH[pk3]>0){var ddd=Math.min(b.qty,prSubH[pk3]);b.qty-=ddd;prSubH[pk3]-=ddd;releasedNote=' (部分解放 -'+ddd+')';}
-          else if(prSubH[pk3]<0){b.qty+=(-prSubH[pk3]);releasedNote=' (数量編集 +'+(-prSubH[pk3])+')';prSubH[pk3]=0;}
-        }
-        /* v18.56 確認項目②: 同じ部材の予備パーツをこの行の数量へ足し込む（内訳は分けない） */
-        b.qty+=spareTake(spPoolH,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,b.isDoor?b.color:null);
-        var lbl=b.label;
-        if(b.isDoor){
-          var cObj=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===b.color;});
-          if(cObj)lbl+=' '+cObj.l;
-        }
-        /* v18.59 修正10③(b): 様式手修正（品名書換・数量指示）を最優先で適用する */
-        var seH=shipEditTake(sePoolH,b,ln);
-        var editMark='';
-        if(seH){
-          if(seH.label){lbl=seH.label;editMark=' ✎';}
-          if(seH.qty!=null){b.qty=seH.qty;releasedNote='';editMark=' ✎';}
-        }
-        if(b.qty<=0)return;
-        html+='<tr><td>'+lbl+releasedNote+editMark+'</td><td class="c">'+b.qty+'</td></tr>';
+    /* ===== v18.79 修正20②: 出荷指示書の部材表（新様式） =====
+       旧様式（部材名と数量だけの表）は破棄し、新柏の「出荷指示書原本」Excelと同じ
+       「名称／入数／出荷総数／出荷箱数／出荷バラ」の5列にした。
+       ★行の組み立ては buildShipRows() の1か所だけ（画面プレビューも同じものを使う）。 */
+    var sr=buildShipRows(order);
+    html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材</div>';
+    if(sr.edited)html+='<div style="font-size:8px;color:#975a16;margin:2px 0">✎ =「出荷指示書(様式)の手修正」で指定した内容を反映しています</div>';
+    html+='<table><thead><tr><th>名称</th><th style="width:45px">入数</th><th style="width:55px">出荷総数</th><th style="width:55px">出荷箱数</th><th style="width:55px">出荷バラ</th></tr></thead><tbody>';
+    sr.groups.forEach(function(g){
+      html+='<tr style="background:#f0f0f0"><td colspan="5" style="font-weight:700;font-size:9px">'+g.title+'</td></tr>';
+      g.rows.forEach(function(r){
+        html+='<tr><td>'+r.label+(r.edited?' ✎':'')+(r.note?' <span style="font-size:7px;color:#975a16">('+r.note+')</span>':'')+'</td>'
+          +'<td class="c">'+(r.irisu===''?'':fm(r.irisu))+'</td>'
+          +'<td class="c" style="font-weight:700">'+fm(r.qty)+'</td>'
+          +'<td class="c">'+(r.boxes===''?'':fm(r.boxes))+'</td>'
+          +'<td class="c">'+(r.bara===''?'':fm(r.bara))+'</td></tr>';
       });
     });
-    /* v18.56 確認項目②: 見積明細に同じ部材が無かった予備パーツは、行として追加する（予備の注記は付けない） */
-    spareRest(spPoolH).forEach(function(s){
-      html+='<tr><td>'+(s.label||s.key||'')+'</td><td class="c">'+s.qty+'</td></tr>';
-    });
-    /* v18.59 修正10③(b): 明細に無い部材を様式手修正で足した分は、行として追加する */
-    shipEditRest(sePoolH).forEach(function(s){
-      html+='<tr><td>'+s.label+' ✎</td><td class="c">'+s.qty+'</td></tr>';
-    });
+    if(!sr.groups.length)html+='<tr><td colspan="5" style="text-align:center;color:#999">出荷する部材がありません</td></tr>';
     html+='</tbody></table>';
+    html+='<div style="margin-top:4px;font-size:11px;font-weight:700">正箱数： '+fm(sr.totalBoxes)+' 箱'+(sr.baraKinds>0?('　＋　バラ '+sr.baraKinds+'種'):'')+'</div>';
   }
   if(!isReceipt&&!isShipping){
     html+='<div class="tot-box">';
@@ -5737,6 +5828,10 @@ function generateQuoteHTML(order,docType){
     /* v18.46 修正５⑪: 常に0だった「8%軽減対」「非課税対象」の行は不要のため見積フォーマットから削除 */
     html+='<div class="trow sub"><span>10%対象&emsp;&yen;'+fm(subtotal)+'</span><span>(税)&emsp;&yen;'+fm(tax10)+'</span></div></div>';
   }
+  /* ===== v18.79 修正20③: 発注書付見積書 =====
+   　見積書の基本フォームはそのままで、下部に発注書欄を足す。
+   　既定は「見積書のみ」で、見積書作成画面のチェック（order.withPO）を入れた案件だけ発注書欄が付く。 */
+  if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
   html+='<div style="margin-top:16px;font-size:9px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
   else if(isReceipt){html+='上記の通り受領致しました。<br><br>受領日:　　　　　　受領者（署名）:　　　　　　　　　　';}
@@ -5744,19 +5839,23 @@ function generateQuoteHTML(order,docType){
     /* v18.59 修正10③(b): 文末の配送先・納品希望日にも ✎様式手修正 を反映する */
     var shv2=shipEditHeader(order,cust);
     html+='上記の通り出荷を指示します。<br>出荷元: '+orderWhLabel(order)+'<br>配送先: '+(shv2.address||shv2.name||'');
-    if(order.shipper)html+='<br>荷送人: '+order.shipper;
-    if(shv2.delivery)html+='<br>納品希望日: '+shv2.delivery;
-    if(order.shippingNotes)html+='<br>備考: '+order.shippingNotes;
-    /* Approval stamp area (3 persons) */
-    html+='<div style="margin-top:16px;display:flex;justify-content:flex-end;gap:0">';
-    for(var ai=0;ai<3;ai++){
-      html+='<div style="width:80px;border:1px solid #333;text-align:center;'+(ai>0?'border-left:none;':'')+'">';
-      html+='<div style="font-size:8px;font-weight:600;padding:2px;border-bottom:1px solid #333;background:#f0f0f0">確認者'+(ai+1)+'</div>';
-      html+='<div style="height:60px;"></div>';
-      html+='<div style="font-size:7px;border-top:1px solid #ddd;padding:2px;color:#666">日付: /  /</div>';
-      html+='</div>';
-    }
-    html+='</div>';
+    if(shv2.delivery)html+='<br>納品日時: '+shv2.delivery;
+    html+='<br>荷送人: '+shipperBlock(order);
+    html+='<br>※お客様直送の為、綺麗な箱でお願いします。　※発送後に送り状を弊社までメールをお願いします。';
+    if(order.shippingNotes)html+='<br>その他連絡事項: '+order.shippingNotes;
+    /* ===== v18.79 修正20②: ＜社内確認欄＞（原本Excel Q33-Y40 と同じ項目） =====
+       旧様式の「確認者1〜3」の判子欄は破棄し、原本のとおり
+       事務確認／営業確認／出荷依頼（北・東・西・本・KE）／チャーター依頼／人工依頼／その他外注／伝票 にした。 */
+    html+='<div style="margin-top:12px;font-size:9px;font-weight:700">＜社内確認欄＞</div>';
+    html+='<table style="width:auto;margin-top:2px;font-size:8.5px"><tbody>';
+    html+='<tr><td style="width:70px;background:#f0f0f0;font-weight:600">事務確認</td><td style="width:70px">&nbsp;</td>';
+    html+='<td style="width:70px;background:#f0f0f0;font-weight:600">営業確認</td><td style="width:70px">&nbsp;</td>';
+    html+='<td style="width:70px;background:#f0f0f0;font-weight:600">出荷依頼</td><td style="width:150px">北 ／ 東 ／ 西 ／ 本 ／ KE</td></tr>';
+    html+='<tr><td style="background:#f0f0f0;font-weight:600">チャーター依頼</td><td colspan="5">無 ・ 有（　　　　　　　　　　）</td></tr>';
+    html+='<tr><td style="background:#f0f0f0;font-weight:600">人工依頼</td><td colspan="5">無 ・ 有（　　　　　　　　　　）</td></tr>';
+    html+='<tr><td style="background:#f0f0f0;font-weight:600">その他外注</td><td colspan="5">無 ・ 有（　　　　　　　　　　）</td></tr>';
+    html+='<tr><td style="background:#f0f0f0;font-weight:600">伝票</td><td colspan="5">同梱 ・ 郵送 ・ 持参　　送付日：　　　／　　　</td></tr>';
+    html+='</tbody></table>';
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
@@ -5797,7 +5896,7 @@ function generateExcel(order,docType){
   /* v18.33 要望⑮: 出荷指示書Excelには件名を出さない（HTMLと同挙動） */
   if(docType!=='shipping')wsData.push(['件名',q.subject,'','担当者',exSalesP]);
   else wsData.push(['','','','担当者',exSalesP]);
-  wsData.push([cfg.dateLabel,tdSlash(),'','伝票コード',q.slipCode]);
+  wsData.push([cfg.dateLabel,docDateOf(order,docType),'','伝票コード',q.slipCode]);
   /* v18.37 修正箇所2③: 納期・有効期限・受渡地はHTML版と同じ保存値／既定値を使う */
   if(docType==='quote'){
     wsData.push(['納期',deliveryTermOf(order),'','有効期限',validUntilOf(order)]);
@@ -8817,8 +8916,18 @@ function InvPage(p){
       )
     ):null,
     showQuote[0]&&quoteOrder[0]?h(Modal,{show:true,title:'見積書作成 — '+quoteOrder[0].no,w:900,onClose:function(){showQuote[1](false);},
-      footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+      footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},
         h('button',{className:'btn btn-ol',onClick:function(){showQuote[1](false);}},'閉じる'),
+        /* v18.79 修正20③: 既定は「見積書のみ」。ここにチェックを入れた案件だけ発注書付の見積書になる（order.withPO） */
+        h('label',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--nv)',cursor:'pointer',marginLeft:'auto'},
+          title:'見積書の基本フォームはそのままで、下部に発注書欄（発注日・発注する見積No・発注金額・御発注者名/御担当者名）を付けて出力します'},
+          h('input',{type:'checkbox',checked:!!quoteOrder[0].withPO,onChange:function(e){
+            var v=e.target.checked;
+            quoteOrder[1](Object.assign({},quoteOrder[0],{withPO:v}));
+            var idx=ORDERS.findIndex(function(x){return x.no===quoteOrder[0].no;});
+            if(idx>=0){ORDERS[idx].withPO=v;saveOrders();cloudSave(p.userName);}
+          }}),
+          '発注書付にする'),
         h('button',{className:'btn btn-gn',onClick:function(){printQuote(quoteOrder[0],'quote');}},'見積書印刷')
       )},
       h('div',{style:{padding:10}},
@@ -9370,7 +9479,7 @@ function QuotePreview(p){
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2px 16px',fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
         !isShipping?h('div',null,h('b',null,'件名: '),subject):null,
         h('div',null,h('b',null,'担当者: '),salesP2),
-        h('div',null,h('b',null,cfg.dateLabel+': '),tdSlash()),
+        h("div",null,h("b",null,cfg.dateLabel+": "),docDateOf(o,dt)),
         h('div',null,h('b',null,'伝票コード: '),slipCode),
         /* v18.37 修正箇所2③: 納期・有効期限は選択肢マスタ＋自由入力の保存値を反映 */
         dt==='quote'?h('div',null,h('b',null,'納期: '),deliveryTermOf(o)):null,
@@ -9385,8 +9494,16 @@ function QuotePreview(p){
         isShipping&&shvP.postal?h('div',null,h('b',null,'配送先〒: '),shvP.postal+(shvP.edited.postal?' ✎':'')):null,
         isShipping&&shvP.address?h('div',null,h('b',null,'配送先住所: '),shvP.address+(shvP.edited.address?' ✎':'')):null,
         isShipping&&shvP.phone?h('div',null,h('b',null,'配送先TEL: '),shvP.phone+(shvP.edited.phone?' ✎':'')):null,
-        isShipping&&o.shipper?h('div',null,h('b',null,'荷送人: '),o.shipper):null,
-        isShipping&&shvP.delivery?h('div',null,h('b',null,'納品希望日: '),shvP.delivery+(shvP.edited.delivery?' ✎':'')):null
+        /* v18.79 修正20②: 原本Excelの「荷受人」「納品日時」「便種」「その他連絡事項」を追加（新様式） */
+        isShipping?h('div',null,h('b',null,'荷受人: '),(shvP.name||(cust?cust.name:''))+' 様'):null,
+        isShipping?h('div',null,h('b',null,'納品日時: '),(shvP.delivery||'')+(shvP.edited.delivery?' ✎':'')):null,
+        isShipping?h('div',{style:{gridColumn:'1/3'}},h('b',null,'便種: '),
+          ['混載便','チャーター便','引取り'].map(function(x,xi){
+            var pick=(o.shipMethod==='mix')?'混載便':(o.shipMethod==='charter')?'チャーター便':'';
+            return h('span',{key:x},xi>0?'　or　':'',h('span',{style:x===pick?{fontWeight:700,textDecoration:'underline'}:null},x));
+          })):null,
+        isShipping?h('div',{style:{gridColumn:'1/3'}},h('b',null,'荷送人: '),shipperBlock(o)):null,
+        isShipping&&o.shippingNotes?h('div',{style:{gridColumn:'1/3'}},h('b',null,'その他連絡事項: '),o.shippingNotes):null
       ),
       !isReceipt&&!isShipping?h('div',{style:{fontSize:16,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+': \u00A5'+fm(total)):null,
       isShipping?
@@ -9430,66 +9547,40 @@ function QuotePreview(p){
           })))
         ),
       /* v18.37 修正箇所2: 商品備考は全帳票から廃止（明細各行の備考欄へ移行） */
-      isShipping?h('div',{style:{marginTop:12}},
-        h('div',{style:{fontSize:11,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'部材内訳'),
-        /* v18.59 修正10③(b): ✎様式手修正が保存されている案件は、反映済みであることを明示する */
-        hasShipEdit(o)?h('div',{style:{fontSize:8,color:'#975a16',margin:'2px 0'}},'✎ =「出荷指示書(様式)の手修正」で指定した内容を反映しています'):null,
-        h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'4px 0'}},
-          h('thead',null,h('tr',null,
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},'部材名'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:60})},'数量')
-          )),
-          /* v18.56 修正９の確認項目②: 予備パーツも合算した数量で表示する（予備とそれ以外は区別しない） */
-          h('tbody',null,(function(){
-            var spPoolP=spareBomPool(o);
-            /* v18.59 修正10③(b): ✎様式手修正の品名書換・数量をこの部材内訳へ反映する */
-            var sePoolP=shipEditPool(o);
-            var rows=[].concat.apply([],o.lines.map(function(ln,li){
-            if(ln.isFreeInput){
-              return[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},'[自由入力] '+ln.name)),
-                h('tr',{key:'bom-'+li+'-0'},h('td',{style:cs},ln.name),h('td',{style:Object.assign({},cs,{textAlign:'center'})},ln.qty+' '+(ln.unit||'個')))];
-            }
-            var bom,hdrText;
-            if(ln.isPartOnly){
-              bom=[];
-              if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
-              else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-              else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
-              hdrText='[パーツ単品]';
-            }else{
-              bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
-              var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-              var colorName=(ln.type==='open'||!co)?'':co.l;
-              hdrText=productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'');
-            }
-            var co3_=(LINE_COLORS[ln.line]||[]).find(function(cc){return cc.v===ln.color;});
-            var els=[h('tr',{key:'bom-hdr-'+li,style:{background:'#f0f0f0'}},h('td',{colSpan:2,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},hdrText))];
-            bom.forEach(function(b,bi){
-              var lbl_=b.label;if(b.isDoor&&co3_)lbl_+=' '+co3_.l;
-              var q_=b.qty+spareTake(spPoolP,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,b.isDoor?(b.color||ln.color):null);
-              /* v18.59 修正10③(b): 様式手修正（品名書換・数量指示）を最優先で適用する */
-              var seP=shipEditTake(sePoolP,b,ln),mk_='';
-              if(seP){
-                if(seP.label){lbl_=seP.label;mk_=' ✎';}
-                if(seP.qty!=null){q_=seP.qty;mk_=' ✎';}
-              }
-              if(q_<=0)return;/* 数量0の手修正＝その部材は出荷しない（様式Excelと同じ挙動） */
-              els.push(h('tr',{key:'bom-'+li+'-'+bi},h('td',{style:cs},lbl_+mk_),h('td',{style:Object.assign({},cs,{textAlign:'center'})},q_)));
-            });
-            return els;
-            }));
-            /* 見積明細に同じ部材が無かった予備パーツは行として追加する */
-            spareRest(spPoolP).forEach(function(s,si){
-              rows.push(h('tr',{key:'bom-sp-'+si},h('td',{style:cs},s.label||s.key||''),h('td',{style:Object.assign({},cs,{textAlign:'center'})},s.qty)));
-            });
-            /* v18.59 修正10③(b): 明細に無い部材を様式手修正で足した分は行として追加する */
-            shipEditRest(sePoolP).forEach(function(s,si){
-              rows.push(h('tr',{key:'bom-se-'+si},h('td',{style:cs},s.label+' ✎'),h('td',{style:Object.assign({},cs,{textAlign:'center'})},s.qty)));
-            });
-            return rows;
-          })())
-        )
-      ):null,
+      /* ===== v18.79 修正20②: 画面プレビューの出荷指示書も新様式 =====
+         印刷用HTMLと同じ buildShipRows() を使うので、両者がずれることはない。 */
+      isShipping?(function(){
+        var sr=buildShipRows(o);
+        var th=function(w){return Object.assign({},cs,{background:'#f0f0f0',fontWeight:600},w?{width:w}:{});};
+        var ctd=Object.assign({},cs,{textAlign:'center'});
+        return h('div',{style:{marginTop:12}},
+          h('div',{style:{fontSize:11,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'出荷部材'),
+          sr.edited?h('div',{style:{fontSize:8,color:'#975a16',margin:'2px 0'}},'✎ =「出荷指示書(様式)の手修正」で指定した内容を反映しています'):null,
+          h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'4px 0'}},
+            h('thead',null,h('tr',null,
+              h('th',{style:th()},'名称'),h('th',{style:th(45)},'入数'),h('th',{style:th(55)},'出荷総数'),
+              h('th',{style:th(55)},'出荷箱数'),h('th',{style:th(55)},'出荷バラ')
+            )),
+            h('tbody',null,(function(){
+              var out=[];
+              sr.groups.forEach(function(g,gi){
+                out.push(h('tr',{key:'sg'+gi,style:{background:'#f0f0f0'}},h('td',{colSpan:5,style:Object.assign({},cs,{fontWeight:700,fontSize:9})},g.title)));
+                g.rows.forEach(function(r,ri){
+                  out.push(h('tr',{key:'sg'+gi+'r'+ri},
+                    h('td',{style:cs},r.label+(r.edited?' ✎':''),r.note?h('span',{style:{fontSize:7,color:'#975a16'}},'（'+r.note+'）'):null),
+                    h('td',{style:ctd},r.irisu===''?'':fm(r.irisu)),
+                    h('td',{style:Object.assign({},ctd,{fontWeight:700})},fm(r.qty)),
+                    h('td',{style:ctd},r.boxes===''?'':fm(r.boxes)),
+                    h('td',{style:ctd},r.bara===''?'':fm(r.bara))));
+                });
+              });
+              if(!out.length)out.push(h('tr',{key:'sgnone'},h('td',{colSpan:5,style:Object.assign({},ctd,{color:'#999'})},'出荷する部材がありません')));
+              return out;
+            })())
+          ),
+          h('div',{style:{marginTop:4,fontSize:11,fontWeight:700}},'正箱数： '+fm(sr.totalBoxes)+' 箱'+(sr.baraKinds>0?('　＋　バラ '+sr.baraKinds+'種'):''))
+        );
+      })():null,
       !isReceipt&&!isShipping?h('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:8}},
         h('div',{style:{width:280,border:'1px solid #999'}},
           h('div',{style:{display:'flex',justifyContent:'space-between',padding:'3px 10px',borderBottom:'1px solid #ddd'}},h('span',null,'税抜合計'),h('span',null,'\u00A5'+fm(subtotal))),
@@ -9500,18 +9591,51 @@ function QuotePreview(p){
              v18.46 では印刷用HTML(generateQuoteHTML)とExcel出力の2箇所しか消せておらず、見積書作成画面のプレビューには表示されたままだった。 */
         )
       ):null,
+      /* ===== v18.79 修正20③: 発注書付にチェックが入っている案件はプレビューにも発注書欄を出す ===== */
+      (dt==='quote'&&o.withPO)?h('div',{style:{marginTop:18,borderTop:'2px dashed #999',paddingTop:10}},
+        h('div',{style:{fontSize:9.5,marginBottom:8}},'御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。'),
+        h('div',{style:{textAlign:'center',fontSize:17,fontWeight:700,letterSpacing:10,marginBottom:10}},'発 注 書'),
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}},
+          h('div',{style:{fontSize:12,fontWeight:700}},'株式会社LEC 御中'),
+          h('div',{style:{fontSize:10,lineHeight:2}},
+            h('div',null,'発注日:　',h('span',{style:{display:'inline-block',minWidth:120,borderBottom:'1px solid #333'}},' ')),
+            h('div',null,'発注する見積No:　',h('b',null,o.no)))),
+        h('div',{style:{display:'flex',alignItems:'baseline',gap:20,marginBottom:14}},
+          h('div',{style:{fontSize:15,fontWeight:900}},'発注金額: \u00A5'+fm(total)),
+          h('div',{style:{fontSize:10}},'上記見積内容を発注いたします。')),
+        h('table',{style:{width:'100%',borderCollapse:'collapse'}},h('tbody',null,h('tr',null,
+          h('td',{style:Object.assign({},cs,{width:'22%',background:'#f0f0f0',fontWeight:700,fontSize:10})},'御発注者名'),
+          h('td',{style:Object.assign({},cs,{height:52})},' '),
+          h('td',{style:Object.assign({},cs,{width:'8%',textAlign:'center',fontSize:9,color:'#666'})},'印'),
+          h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:10})},'御担当者名'),
+          h('td',{style:cs},' '))))
+      ):null,
       h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',h('br'),h('br'),'受領日:　　　　　　受領者（署名）:　　　　　　　　　　'):null,
         isShipping?h('div',null,
-          /* v18.59 修正10③(b): 文末の配送先・納品希望日にも ✎様式手修正 を反映する（上部の宛先欄と食い違わないように） */
-          h('div',null,'上記の通り出荷を指示します。',h('br'),'出荷元: '+orderWhLabel(o),h('br'),'配送先: '+(shvP.address||shvP.name||''),o.shipper?h('span',null,h('br'),'荷送人: '+o.shipper):null,shvP.delivery?h('span',null,h('br'),'納品希望日: '+shvP.delivery):null,o.shippingNotes?h('span',null,h('br'),'備考: '+o.shippingNotes):null),
-          h('div',{style:{marginTop:12,display:'flex',justifyContent:'flex-end',gap:0}},
-            [0,1,2].map(function(ai){return h('div',{key:ai,style:{width:70,border:'1px solid #333',textAlign:'center',borderLeft:ai>0?'none':'1px solid #333'}},
-              h('div',{style:{fontSize:7,fontWeight:600,padding:2,borderBottom:'1px solid #333',background:'#f0f0f0'}},'確認者'+(ai+1)),
-              h('div',{style:{height:45}}),
-              h('div',{style:{fontSize:6,borderTop:'1px solid #ddd',padding:2,color:'#666'}},'日付: /  /')
-            );})
+          /* v18.59 修正10③(b): 文末の配送先・納品日時にも ✎様式手修正 を反映する（上部の宛先欄と食い違わないように） */
+          h('div',null,'上記の通り出荷を指示します。',h('br'),'出荷元: '+orderWhLabel(o),h('br'),'配送先: '+(shvP.address||shvP.name||''),
+            shvP.delivery?h('span',null,h('br'),'納品日時: '+shvP.delivery):null,
+            h('span',null,h('br'),'荷送人: '+shipperBlock(o)),
+            h('span',null,h('br'),'※お客様直送の為、綺麗な箱でお願いします。　※発送後に送り状を弊社までメールをお願いします。'),
+            o.shippingNotes?h('span',null,h('br'),'その他連絡事項: '+o.shippingNotes):null),
+          /* ===== v18.79 修正20②: ＜社内確認欄＞（原本Excel と同じ項目。旧「確認者1〜3」の判子欄は破棄） ===== */
+          h('div',{style:{marginTop:12}},
+            h('div',{style:{fontSize:9,fontWeight:700}},'＜社内確認欄＞'),
+            h('table',{style:{borderCollapse:'collapse',marginTop:2,fontSize:8.5}},
+              h('tbody',null,
+                h('tr',null,
+                  h('td',{style:Object.assign({},cs,{width:70,background:'#f0f0f0',fontWeight:600})},'事務確認'),h('td',{style:Object.assign({},cs,{width:70})},' '),
+                  h('td',{style:Object.assign({},cs,{width:70,background:'#f0f0f0',fontWeight:600})},'営業確認'),h('td',{style:Object.assign({},cs,{width:70})},' '),
+                  h('td',{style:Object.assign({},cs,{width:70,background:'#f0f0f0',fontWeight:600})},'出荷依頼'),h('td',{style:Object.assign({},cs,{width:150})},'北 ／ 東 ／ 西 ／ 本 ／ KE')),
+                [['チャーター依頼','無 ・ 有（　　　　　　　　　　）'],['人工依頼','無 ・ 有（　　　　　　　　　　）'],
+                 ['その他外注','無 ・ 有（　　　　　　　　　　）'],['伝票','同梱 ・ 郵送 ・ 持参　　送付日：　　　／　　　']].map(function(r){
+                  return h('tr',{key:r[0]},
+                    h('td',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},r[0]),
+                    h('td',{colSpan:5,style:cs},r[1]));
+                })
+              ))
           )
         ):null,
         /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（上部の欄には残る） */
@@ -9542,6 +9666,8 @@ function OrdersPage(p){
   /* v18.46 修正４④/修正５③: 並び替え。既定は納品予定日の近い順（修正５③） */
   var sortKey=us('delivery');
   var shipModal=us(null);/* order to show shipping modal for */
+  /* v18.79 修正20②: 案件管理の操作欄「📄帳票」で開く帳票選択モーダル（受注確定以降の案件） */
+  var docPick=us(null);
   var shipEditModal=us(null);/* v18.28: 出荷指示書(様式)の手入力修正モーダル {order,autoHv,name,phone,postal,address,delivery,rows:[{ri,iri,name,auto,label,qty}]} */
   var shipForm=us({shipToName:'',shipToPostal:'',shipToAddress:'',shipToPhone:'',shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:'',shipNo:''});
   /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
@@ -9898,6 +10024,12 @@ function OrdersPage(p){
                 p.requestRepeat(o);
                 p.setTab&&p.setTab('inv');
               }},'🔁 コピー再発注'),
+              /* v18.79 修正20②: 受注確定以降は操作欄から5帳票を個別に出力できる。
+                 ボタンを5つ並べると操作欄が横長になるため、1つのボタン→選択モーダルにしている（ユーザー指定）。
+                 従来の「受注確定→詳細→出荷指示」で出荷指示書が出る運用はそのまま残している。 */
+              (['受注確定','出荷指示','出荷完了','納品完了'].indexOf(o.status)>=0)?h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2,fontWeight:700},
+                title:'この案件の帳票（見積書・出荷指示書・請求書・物品受領書・納品書）を出力します',
+                onClick:function(){docPick[1](o);}},'📄帳票'):null,
               /* v18.46 修正５⑤: 登録済み案件の修正。仮押さえ在庫を一度解除してから在庫確認・見積画面へ内容を読み込み、
                  修正後に改めて仮押さえすると同じ案件番号へ上書きされる（作成日・起票者は引き継ぐ）。
                  出荷指示以降はSTKを消費済みで、戻すには差し戻し操作が必要なため対象外にしている。 */
@@ -10239,7 +10371,10 @@ function OrdersPage(p){
                 h('span',{style:{color:'#B45309'}},'倉庫ごとの内訳（'+_whsAll.length+'か所出し）'),
                 h('span',{style:{fontWeight:400,color:'var(--g400)',marginLeft:6,fontSize:9}},'※倉庫ごとに別便になるため、それぞれの荷物で運賃表を引いて合算しています')),
               h('div',{style:{fontSize:10,marginBottom:4}},h('b',null,'行先: '),(cust.pref||'')+(cust.city||'')),
-              h('table',{className:'tbl',style:{fontSize:9}},
+              /* v18.79 修正20①: 倉庫別の内訳は8列あり .tbl th{white-space:nowrap} で枠より広くなるため、
+                 この表だけ横スクロールの箱に入れて枠からはみ出さないようにする（依頼20①） */
+              h('div',{style:{overflowX:'auto',maxWidth:'100%'}},
+              h('table',{className:'tbl',style:{fontSize:9,minWidth:640}},
                 h('thead',null,h('tr',null,
                   h('th',null,'倉庫'),h('th',null,'運賃表'),h('th',null,'距離/地域'),h('th',null,'課金重量・箱数'),
                   h('th',{style:{textAlign:'right'}},'地別運賃'),h('th',{style:{textAlign:'right'}},'諸経費'),
@@ -10263,7 +10398,7 @@ function OrdersPage(p){
                     h('td',{style:{textAlign:'right'}},'¥'+fm(f.genka)),
                     h('td',{style:{textAlign:'right',fontWeight:700,color:'#276749'}},'¥'+fm(f.quoted)));
                 }))
-              ),
+              )),
               h('div',{style:{marginTop:4,display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}},
                 h('span',{style:{fontWeight:700,color:'#276749',fontSize:11}},'合計 見積運賃: ¥'+fm(legTotal)+(legNG?'（試算できた倉庫のみ）':'')),
                 h('span',null,h('b',null,'この案件の送料欄: '),o.shipping?'¥'+fm(o.shipping):'-'),
@@ -10713,6 +10848,28 @@ function OrdersPage(p){
         )
       );
     })():null,
+    /* ===== v18.79 修正20②: 帳票の個別出力モーダル =====
+       案件管理の操作欄「📄帳票」から開く。5帳票とも generateQuoteHTML(order, docType) の1か所で作っている。
+       出荷指示書は v18.79 で新様式（名称／入数／出荷総数／出荷箱数／出荷バラ）に差し替え済み。 */
+    docPick[0]?h(Modal,{show:true,title:'📄 帳票の出力 — '+docPick[0].no,w:460,onClose:function(){docPick[1](null);},
+      footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
+        h('button',{className:'btn btn-ol',onClick:function(){docPick[1](null);}},'閉じる'))},
+      h('div',{style:{padding:4}},
+        h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.7}},
+          (function(){var c=CUSTS.find(function(x){return x.id===docPick[0].cid;});return c?c.name:'';})(),
+          h('br'),'出したい帳票を選ぶと印刷用のウィンドウが開きます。'),
+        [['quote','見積書','この案件の内容で御見積書を出します（発注書付にするかは見積書作成画面のチェックで切り替えます）'],
+         ['shipping','出荷指示書','倉庫向け。部材ごとに 入数／出荷総数／出荷箱数／出荷バラ を出します'],
+         ['invoice','請求書','請求日は案件の納品予定日。振込先・支払案内付き'],
+         ['receipt','物品受領書','金額欄なし。商品コード／商品名称／数量／単位／備考と受領欄'],
+         ['delivery','納品書','納品日は案件の納品予定日']].map(function(d){
+          return h('button',{key:d[0],className:'btn',style:{display:'block',width:'100%',textAlign:'left',marginBottom:5,padding:'7px 10px'},
+            onClick:function(){openQuote(docPick[0],d[0]);}},
+            h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]),
+            h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},d[2]));
+        })
+      )
+    ):null,
     /* Shipping instruction modal */
     /* v18.28 顧客要望: 出荷指示書(様式)の手入力修正モーダル。空欄=自動値。保存内容は order.shipEdit に永続化され全端末へ同期 */
     shipEditModal[0]?h(Modal,{show:true,title:'✎ 出荷指示書(様式)の手修正 — '+shipEditModal[0].order.no,w:680,onClose:function(){shipEditModal[1](null);},
