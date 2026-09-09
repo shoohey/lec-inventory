@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.79（修正20: 送料枠のはみ出し・帳票の個別出力・出荷指示書の新様式・発注書付見積書）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.80（修正20①の追加: 出荷指示書の便種を出力時に選択・引取りは新柏のみ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5545,9 +5545,24 @@ function purchaseOrderHTML(order,total){
 /* ===== v18.79 修正20②: 出荷指示書（新様式）の便種・荷送人 =====
    原本Excelは「混載便　or　チャーター便　or　引取り」を並べて手で丸を付ける様式。
    案件の送付方法(order.shipMethod)が決まっていればその1つを太字＋下線にし、未選択なら3つとも素で出す。 */
+/* ===== v18.80 修正20①の追加: 出荷指示書の便種は出力時に選べる =====
+   「引取り」は★新柏倉庫から出す案件でだけ選べる（ユーザー指定。他倉庫は引取りの運用が無い）。
+   選んだ内容は order.shipDocMode に保存する（''=案件の送付方法(order.shipMethod)どおり）。
+   ★便種の判定はこの2つの関数だけを見る（帳票・画面プレビュー・出荷指示モーダルが共通で使う）。 */
+var PICKUP_WH='kashiwa';/* 新柏倉庫 */
+function canPickup(order){
+  try{return orderWhs(order).indexOf(PICKUP_WH)>=0;}catch(e){return (order&&order.wh)===PICKUP_WH;}
+}
+/* 出荷指示書に印字する便種を1つ返す。'mix'|'charter'|'pickup'|'' */
+function shipDocMode(order){
+  var m=(order&&order.shipDocMode)||'';
+  if(m==='pickup'&&!canPickup(order))m='';/* 倉庫が新柏から変わったら引取りは無効に戻す */
+  if(m)return m;
+  return (order&&order.shipMethod)||'';
+}
 function shipMethodMarks(order){
-  var m=(order&&order.shipMethod)||'';
-  var pick=(m==='mix')?'混載便':(m==='charter')?'チャーター便':'';
+  var m=shipDocMode(order);
+  var pick=(m==='mix')?'混載便':(m==='charter')?'チャーター便':(m==='pickup')?'引取り':'';
   return ['混載便','チャーター便','引取り'].map(function(x){
     return (x===pick)?('<b style="text-decoration:underline">'+x+'</b>'):x;
   }).join('　or　');
@@ -9499,7 +9514,9 @@ function QuotePreview(p){
         isShipping?h('div',null,h('b',null,'納品日時: '),(shvP.delivery||'')+(shvP.edited.delivery?' ✎':'')):null,
         isShipping?h('div',{style:{gridColumn:'1/3'}},h('b',null,'便種: '),
           ['混載便','チャーター便','引取り'].map(function(x,xi){
-            var pick=(o.shipMethod==='mix')?'混載便':(o.shipMethod==='charter')?'チャーター便':'';
+            /* v18.80: 便種の判定は shipDocMode() の1か所（出力時に選んだ便種を優先） */
+            var m=shipDocMode(o);
+            var pick=(m==='mix')?'混載便':(m==='charter')?'チャーター便':(m==='pickup')?'引取り':'';
             return h('span',{key:x},xi>0?'　or　':'',h('span',{style:x===pick?{fontWeight:700,textDecoration:'underline'}:null},x));
           })):null,
         isShipping?h('div',{style:{gridColumn:'1/3'}},h('b',null,'荷送人: '),shipperBlock(o)):null,
@@ -9796,7 +9813,7 @@ function OrdersPage(p){
       var c=CUSTS.find(function(x){return x.id===order.cid;});
       /* v17.1 要望25: エンド納品先があれば配送先に優先セット（無ければ顧客情報） */
       var eu=order.endUser&&(order.endUser.name||order.endUser.address)?order.endUser:null;
-      shipForm[1]({shipToName:eu?eu.name:(c?c.name:''),shipToPostal:eu&&eu.postal?eu.postal:(c&&c.postal?c.postal:''),shipToAddress:eu&&eu.address?eu.address:(c?c.pref+(c.city||''):''),shipToPhone:eu&&eu.phone?eu.phone:(c&&c.phone?c.phone:''),shipper:'株式会社LEC',shipperCustom:'',deliveryDate:order.deliveryDate||'',shippingNotes:order.shippingNotes||'',shipNo:order.shipNo||''});/* v18.44 修正３④: 仮押さえのみ登録時に入力した納品予定日を初期表示（従来は常に空欄で上書きされていた） */
+      shipForm[1]({shipToName:eu?eu.name:(c?c.name:''),shipToPostal:eu&&eu.postal?eu.postal:(c&&c.postal?c.postal:''),shipToAddress:eu&&eu.address?eu.address:(c?c.pref+(c.city||''):''),shipToPhone:eu&&eu.phone?eu.phone:(c&&c.phone?c.phone:''),shipper:'株式会社LEC',shipperCustom:'',deliveryDate:order.deliveryDate||'',shippingNotes:order.shippingNotes||'',shipNo:order.shipNo||'',docMode:order.shipDocMode||''});/* v18.44 修正３④: 仮押さえのみ登録時に入力した納品予定日を初期表示（従来は常に空欄で上書きされていた） */
       shipModal[1](order);
       return;
     }
@@ -9850,6 +9867,9 @@ function OrdersPage(p){
     order.deliveryDate=sf.deliveryDate;
     order.shippingNotes=sf.shippingNotes;
     order.shipNo=sf.shipNo||'';
+    /* v18.80 修正20①の追加: 出荷指示書に印字する便種（空=案件の送付方法どおり）。
+       「引取り」は新柏倉庫の案件でのみ選べる（選択肢を出す側で制御・shipDocMode() でも念のため再判定） */
+    order.shipDocMode=sf.docMode||'';
     /* v18.76 修正18③: 出荷指示を2回押すと在庫が二重に引かれる。既に引いている案件は必ず確認を挟む
        （v18.68 修正15⑧ で直したステータスの取りこぼしと同じ場面で起きていた事故の再発防止）。 */
     if(stockConsumedState(order)!=='none'){
@@ -10863,10 +10883,28 @@ function OrdersPage(p){
          ['invoice','請求書','請求日は案件の納品予定日。振込先・支払案内付き'],
          ['receipt','物品受領書','金額欄なし。商品コード／商品名称／数量／単位／備考と受領欄'],
          ['delivery','納品書','納品日は案件の納品予定日']].map(function(d){
-          return h('button',{key:d[0],className:'btn',style:{display:'block',width:'100%',textAlign:'left',marginBottom:5,padding:'7px 10px'},
-            onClick:function(){openQuote(docPick[0],d[0]);}},
-            h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]),
-            h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},d[2]));
+          return h('div',{key:d[0]},
+            h('button',{className:'btn',style:{display:'block',width:'100%',textAlign:'left',marginBottom:5,padding:'7px 10px'},
+              onClick:function(){openQuote(docPick[0],d[0]);}},
+              h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]),
+              h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},d[2])),
+            /* v18.80 修正20①の追加: 出荷指示書は出力する前に便種を選べる。
+               「引取り」は★新柏倉庫から出す案件でだけ選択肢に出す（ユーザー指定）。 */
+            d[0]==='shipping'?h('div',{style:{display:'flex',alignItems:'center',gap:6,margin:'-2px 0 8px 10px'}},
+              h('span',{style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'便種'),
+              h('select',{className:'inp',style:{fontSize:10,padding:'2px 4px',width:230},value:docPick[0].shipDocMode||'',
+                onChange:function(e){
+                  var v=e.target.value;
+                  docPick[1](Object.assign({},docPick[0],{shipDocMode:v}));
+                  var lo=liveOrder(docPick[0]);
+                  if(lo){lo.shipDocMode=v;saveOrders();cloudSave(p.userName);p.bump&&p.bump();}
+                }},
+                h('option',{value:''},'案件の送付方法どおり（'+((docPick[0].shipMethod==='mix')?'混載便':(docPick[0].shipMethod==='charter')?'チャーター便':'未選択')+'）'),
+                h('option',{value:'mix'},'混載便'),
+                h('option',{value:'charter'},'チャーター便'),
+                canPickup(docPick[0])?h('option',{value:'pickup'},'引取り'):null),
+              canPickup(docPick[0])?null:h('span',{style:{fontSize:8,color:'var(--g400)'}},'※引取りは新柏倉庫の案件のみ')
+            ):null);
         })
       )
     ):null,
@@ -10989,6 +11027,18 @@ function OrdersPage(p){
             shipForm[0].shipper==='その他（手入力）'?h('input',{className:'inp',value:shipForm[0].shipperCustom,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipperCustom=e.target.value;shipForm[1](f);},placeholder:'荷送人名を入力',style:{marginTop:4}}):null
           ),
           h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'納品希望日'),h('input',{className:'inp',type:'date',value:shipForm[0].deliveryDate,onChange:function(e){var f=Object.assign({},shipForm[0]);f.deliveryDate=e.target.value;shipForm[1](f);}}))
+        ),
+        /* v18.80 修正20①の追加: 出荷指示書に印字する便種。
+           「引取り」は★新柏倉庫から出す案件でだけ選択肢に出す（ユーザー指定）。
+           判定は shipDocMode()/canPickup() の1か所に集約している。 */
+        h('div',{style:{marginBottom:6}},
+          h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'便種（出荷指示書に印字）'),
+          h('select',{className:'inp',value:shipForm[0].docMode||'',onChange:function(e){var f=Object.assign({},shipForm[0]);f.docMode=e.target.value;shipForm[1](f);}},
+            h('option',{value:''},'案件の送付方法どおり（'+((shipModal[0].shipMethod==='mix')?'混載便':(shipModal[0].shipMethod==='charter')?'チャーター便':'未選択')+'）'),
+            h('option',{value:'mix'},'混載便'),
+            h('option',{value:'charter'},'チャーター便'),
+            canPickup(shipModal[0])?h('option',{value:'pickup'},'引取り'):null),
+          canPickup(shipModal[0])?null:h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:2}},'※「引取り」は新柏倉庫から出す案件でのみ選べます')
         ),
         h('div',{style:{marginBottom:4}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'出荷備考'),h('textarea',{className:'inp',value:shipForm[0].shippingNotes,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shippingNotes=e.target.value;shipForm[1](f);},rows:2,style:{resize:'vertical'}}))
       )
