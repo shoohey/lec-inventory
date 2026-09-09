@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.82（修正21②の追加: 持ち帰り用袋を新設・ドアポケット/シリンダー錠カム短の品番紐づけ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.83（ドアポケットの入数を108に修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1252,7 +1252,10 @@ var IRISU={
   searchKey:100,masterKey:100,
   padlock:150,
   cylinder:100,cylinderLongStd:100,cylinderLongF:100,cylinderLongB:100,cylinderShortStd:100,cylinderShortF:100,cylinderShortB:100,cylinderShortC:100,cylinderExchange:100,cylinderExchangeSpare:100,cylinderMaster:50,
-  coinReturn:50,railSideSML:1,railBackSML:1,railSideSS:1,railBackSS:1,jointScrew:1,capScrew:1,doorPocket:1,carryBag:100,/* v18.82 修正21②の追加: 持ち帰り用袋の入数（尼高札幌の商品コード表 HEP-0128 より100枚/箱） */
+  coinReturn:50,railSideSML:1,railBackSML:1,railSideSS:1,railBackSS:1,jointScrew:1,capScrew:1,/* v18.83: ドアポケットの入数は★108（2026-09-09 ユーザー回答）。従来 1 のままだったため
+   出荷指示書の箱数が「数量そのまま」になり、送料の箱数・諸経費も過大に出ていた。
+   ※尼高札幌の商品コード表には72とあるが、正は108（新柏の出荷指示書原本と同じ）。 */
+doorPocket:108,carryBag:100,/* v18.82 修正21②の追加: 持ち帰り用袋の入数（尼高札幌の商品コード表 HEP-0128 より100枚/箱） */
   railLong:100,railShort:50,/* v18.76 修正18①: Sαレールの入数（出荷指示書 台湾製Sα の LONG RAIL=100 / SHORT RAIL=50） */
   /* v14.2: 新規21項目の入数デフォルト */
   dialOpnus:50,cylinderFMaster:50,cylinderBMaster:50,cylinderCMaster:50,cylinderDMaster:50,cylinderLMaster:50,
