@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.81（修正21: 出荷指示書の便分割・尼高札幌の品番・列段の外寸表記・見積金額の書式）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.82（修正21②の追加: 持ち帰り用袋を新設・ドアポケット/シリンダー錠カム短の品番紐づけ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1052,6 +1052,8 @@ var PART_ADD_DEFS=[
   {k:'topJoint',l:'トップジョイント（クローバー）'},
   {k:'topJointLeaf',l:'トップジョイント（葉っぱ）'},
   {k:'doorPocket',l:'ドアポケット'},
+  /* v18.82 修正21②の追加: 持ち帰り用袋（ユーザー指示で新設。尼高札幌の商品コード HEP-0128・入数100） */
+  {k:'carryBag',l:'持ち帰り用袋'},
   {k:'jointScrew_sml_bk',l:'ジョイントネジ（SMLXL・ブラック）'},
   {k:'jointScrew_ss_bk',l:'ジョイントネジ（SS・3S・ブラック）'},
   {k:'jointScrew_ss_gy',l:'ジョイントネジ（SS・3S・グレー）'},
@@ -1140,7 +1142,7 @@ var PART_LABELS={
   jointScrew:'ジョイントネジ',jointScrew_sml_bk:'ジョイントネジ(SMLXL・ブラック)',jointScrew_ss_bk:'ジョイントネジ(SS・3S・ブラック)',jointScrew_ss_gy:'ジョイントネジ(SS・3S・グレー)',
   capScrew:'目隠しネジ',capScrew_bk:'目隠しネジ(ブラック)',capScrew_gy:'目隠しネジ(グレー)',
   anchorCap:'アンカー穴キャップ',
-  topJoint:'トップジョイント（クローバー）',topJointLeaf:'トップジョイント（葉っぱ）',doorPocket:'ドアポケット',/* v18.72 修正17㉒: クローバー／葉っぱは別在庫 */
+  topJoint:'トップジョイント（クローバー）',topJointLeaf:'トップジョイント（葉っぱ）',doorPocket:'ドアポケット',carryBag:'持ち帰り用袋',/* v18.82 修正21②の追加 *//* v18.72 修正17㉒: クローバー／葉っぱは別在庫 */
   nameplate:'ネームプレート',namePaper:'ネーム厚紙',numLabel:'番号シール',
   magnet:'マグネット',hook:'フック',
   searchKey:'検索キー',masterKey:'マスターキー',
@@ -1250,7 +1252,7 @@ var IRISU={
   searchKey:100,masterKey:100,
   padlock:150,
   cylinder:100,cylinderLongStd:100,cylinderLongF:100,cylinderLongB:100,cylinderShortStd:100,cylinderShortF:100,cylinderShortB:100,cylinderShortC:100,cylinderExchange:100,cylinderExchangeSpare:100,cylinderMaster:50,
-  coinReturn:50,railSideSML:1,railBackSML:1,railSideSS:1,railBackSS:1,jointScrew:1,capScrew:1,doorPocket:1,
+  coinReturn:50,railSideSML:1,railBackSML:1,railSideSS:1,railBackSS:1,jointScrew:1,capScrew:1,doorPocket:1,carryBag:100,/* v18.82 修正21②の追加: 持ち帰り用袋の入数（尼高札幌の商品コード表 HEP-0128 より100枚/箱） */
   railLong:100,railShort:50,/* v18.76 修正18①: Sαレールの入数（出荷指示書 台湾製Sα の LONG RAIL=100 / SHORT RAIL=50） */
   /* v14.2: 新規21項目の入数デフォルト */
   dialOpnus:50,cylinderFMaster:50,cylinderBMaster:50,cylinderCMaster:50,cylinderDMaster:50,cylinderLMaster:50,
@@ -1289,7 +1291,7 @@ var BOX_WEIGHT={
   searchKey:1.0,masterKey:1.0,
   padlock:5.0,
   cylinder:3.0,cylinderLongStd:3.0,cylinderLongF:3.0,cylinderLongB:3.0,cylinderShortStd:3.0,cylinderShortF:3.0,cylinderShortB:3.0,cylinderShortC:3.0,cylinderExchange:3.0,cylinderExchangeSpare:3.0,cylinderMaster:3.0,
-  coinReturn:3.0,railSideSML:1.5,railBackSML:1.0,railSideSS:1.5,railBackSS:1.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0,
+  coinReturn:3.0,railSideSML:1.5,railBackSML:1.0,railSideSS:1.5,railBackSS:1.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0,carryBag:1.0,/* v18.82 修正21②の追加: 箱重量は暫定1.0kg（実測が分かれば在庫項目マスタで変更可） */
   railLong:1.5,railShort:1.0/* v18.76 修正18① */
 };
 var MISC_FEE=325;
@@ -4581,6 +4583,11 @@ var PART_CODE_MAP={
   'hanger|':['MYPL-E-HP-B','ハンガーパイプ（黒）'],
   'hangerPipe|':['MYPL-E-HP-B','ハンガーパイプ（黒）'],
   'doorPocket|':['MYPL-E-DP','ドアポケット黒（SML）'],
+  /* v18.82 修正21②の追加: 持ち帰り用袋。単価表に無かったので F00147 を新規採番した
+     （F00144-146 と同じ扱い。社内の正式コードがあれば差し替える）。
+     ★金額は index.html に書かない。N: の マスタ＿販売単価・原価.csv へ追記済みなので
+     　見積書作成画面の「単価マスタ取込」で取り込むまで0円のままになる。 */
+  'carryBag|':['F00147','持ち帰り用袋'],
   'anchorCap|':['MYPL-E-AC-G','ベースボード用　アンカー穴キャップ（グレー）'],
   'hingeCoverSML|':['F00129','ヒンジキャップ（SML用）'],'hingeCoverSS|':['F00130','ヒンジキャップ（SS/３S用）'],
   'namePlatePaper|':['F00116','ネーム用厚紙/100枚'],'namePlateCoverSML|':['F00109','ネームプレートカバー'],
@@ -4656,7 +4663,14 @@ var ITEM_CODES_SAPPORO={
   'padlock|':'HEP-0112',
   'railSideSML|':'HEP-0115','railSideSS|':'HEP-0117','railBackSML|':'HEP-0119','railBackSS|':'HEP-0121',
   'jointScrew_sml_bk|':'HEP-0122','jointScrew_ss_bk|':'HEP-0123',
-  'capScrew_gy|':'HEP-0125'
+  'capScrew_gy|':'HEP-0125',
+  /* v18.82 修正21②の追加（ユーザー回答で3件とも解決）:
+     ・スマホポケット(HEP-0126) は「ドアポケット」のこと
+     ・持ち帰り用袋(HEP-0128) は在庫アイテムを新設した（carryBag）
+     ・シリンダー錠(HEP-0113) は★カム短のみ（カム長には付けない） */
+  'doorPocket|':'HEP-0126',
+  'carryBag|':'HEP-0128',
+  'cylinderShortStd|':'HEP-0113','cylinderShortF|':'HEP-0113','cylinderShortB|':'HEP-0113','cylinderShortC|':'HEP-0113'
 };
 var ITEM_CODES_DOOR_SAPPORO={
   'door|pb|S':'HEP-0029','door|pb|M':'HEP-0030','door|pb|L':'HEP-0031','door|pb|XL':'HEP-0032','door|pb|SS':'HEP-0033','door|pb|3S':'HEP-0034',
@@ -11857,6 +11871,7 @@ function PartsPage(p){
     {label:'目隠しネジ(ブラック)',key:'capScrew_bk',cat:'option'},
     {label:'目隠しネジ(グレー)',key:'capScrew_gy',cat:'option'},
     {label:'ドアポケット',key:'doorPocket',cat:'option'},
+    {label:'持ち帰り用袋',key:'carryBag',cat:'option'},/* v18.82 修正21②の追加 */
     /* v14 C21: 新規部材21種類 */
     {label:'ダイヤル錠（オプナス）',key:'dialOpnus',cat:'lock'},
     {label:'シリンダー錠(2本キー)カム短Dマスター',key:'cylinderDMaster',cat:'lock',alias:['シリンダー Dマスター']},
@@ -12032,6 +12047,7 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
           /* 22. ドアポケット */
           uniRows.push({item:'ドアポケット',variant:'ブラック',key:'doorPocket',irisu:''});
+          uniRows.push({item:'持ち帰り用袋',variant:'',key:'carryBag',irisu:iGet('carryBag')});/* v18.82 修正21②の追加 */
           /* v14.8 #4: 「扉すべて」合算行を廃止（個別の色別扉行は上部に表示済み） */
           /* v14.2: 26-30. シリンダーマスター（5種） v14.5 C7: 入数をIRISUから取得しExcelと統一 */
           uniRows.push({item:'ダイヤル錠（オプナス）',variant:'',key:'dialOpnus',irisu:iGet('dialOpnus')});
@@ -12439,6 +12455,7 @@ function PartsPage(p){
               snapRows.push({item:'ダイヤル錠検索キー D018',key:'dialKeyD018'});
               snapRows.push({item:'ダイヤル錠検索キー DST',key:'dialKeyDST'});/* v18.68 修正15⑥ */
               snapRows.push({item:'ドアポケット',key:'doorPocket'});
+              snapRows.push({item:'持ち帰り用袋',key:'carryBag'});/* v18.82 修正21②の追加 */
               snapRows.push({item:'トップジョイント（クローバー）',key:'topJoint'});
               snapRows.push({item:'トップジョイント（葉っぱ）',key:'topJointLeaf'});/* v18.72 修正17㉒ */
               snapRows.push({item:'ヒンジカバー SML共通',key:'hingeCoverSML'});
@@ -12810,6 +12827,7 @@ function PartsPage(p){
         uniR.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:iG('dialKeyD018')});
         uniR.push({item:'ダイヤル錠検索キー DST',variant:'',key:'dialKeyDST',irisu:iG('dialKeyDST')});/* v18.68 修正15⑥ */
         uniR.push({item:'ドアポケット',variant:'',key:'doorPocket',irisu:iG('doorPocket')});
+        uniR.push({item:'持ち帰り用袋',variant:'',key:'carryBag',irisu:iG('carryBag')});/* v18.82 修正21②の追加 */
         uniR.push({item:'トップジョイント',variant:'クローバー',key:'topJoint',irisu:iG('topJoint')});
         uniR.push({item:'',variant:'葉っぱ',key:'topJointLeaf',irisu:iG('topJointLeaf')});/* v18.72 修正17㉒ */
         uniR.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:iG('hingeCoverSML')});
@@ -13155,6 +13173,7 @@ function PartsPage(p){
         uniR.push({item:'ダイヤル錠検索キー D018',variant:'',key:'dialKeyD018',irisu:iG('dialKeyD018')});
         uniR.push({item:'ダイヤル錠検索キー DST',variant:'',key:'dialKeyDST',irisu:iG('dialKeyDST')});/* v18.68 修正15⑥ */
         uniR.push({item:'ドアポケット',variant:'',key:'doorPocket',irisu:iG('doorPocket')});
+        uniR.push({item:'持ち帰り用袋',variant:'',key:'carryBag',irisu:iG('carryBag')});/* v18.82 修正21②の追加 */
         uniR.push({item:'トップジョイント',variant:'クローバー',key:'topJoint',irisu:iG('topJoint')});
         uniR.push({item:'',variant:'葉っぱ',key:'topJointLeaf',irisu:iG('topJointLeaf')});/* v18.72 修正17㉒ */
         uniR.push({item:'ヒンジカバー SML共通',variant:'',key:'hingeCoverSML',irisu:iG('hingeCoverSML')});
