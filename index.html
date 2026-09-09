@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.77（修正19: 台数・ベース入力の段数・高さ表記・在庫のサイズ順）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.78（修正19①の再修正: 段積み表記）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1592,7 +1592,7 @@ function lineSpecLabel(l,x){
   return ((l&&l.islands)||0)+'列'+x+((l&&l.tiers)||0)+'段';
 }
 /* ===== v18.77 修正19①: 台数・ベース数で入力した明細の構成表記 =====
-   見積書の商品名称の上（列×段入力の【3列3段】と同じ位置）へ【Sサイズ3段済み(H：1105mm)】を出す。
+   見積書の商品名称の上（列×段入力の【3列3段】と同じ位置）へ【Sサイズ3段積み(H：1105mm)】を出す。
    ・段数 ＝ 台数 ÷ ベースの数（割り切れないときは一番高い列に合わせて切上げ）
    ・高さ ＝ 本体の外寸H × 段数 ＋ ベースボードの外寸H（ベース無しの明細はベース分を足さない）
    外寸はサイズ表(SIZES.dim/dimPer)・SA_DIM・BASE_DIMS の1か所だけを見ているので、
@@ -1610,7 +1610,7 @@ function lineStackLabel(l){
   var body=lineBodyHeightMM(l);
   if(!(body>0))return '';/* 外寸を持たないサイズ(SSW等)は高さを出せないので表記しない */
   var baseH=(l&&l.hasBase===false)?0:dimHeightMM(baseDimOf(l));
-  return sizeLabel(l.line,l.size)+t+'段済み(H：'+Math.round(body*t+baseH)+'mm)';
+  return sizeLabel(l.line,l.size)+t+'段積み(H：'+Math.round(body*t+baseH)+'mm)';
 }
 /* v18.32 要望⑥: 日本製Ver.2はXL扉の取扱なし（XL扉は台湾製のみ。パーツ単品追加で台湾製XL扉を選択する運用） */
 function isJp2XLDoorBlocked(line,size){return line==='jp2'&&size==='XL';}
@@ -5429,7 +5429,7 @@ function buildQuoteRows(order){
     var unitAll=qty>0?Math.round(amt2/qty):uPrice;
     if(qty>0)amt2=unitAll*qty;
     /* 修正17⑯: 台数指定(direct)の明細は商品名称の上に【3列3段】を出さない。
-       v18.77 修正19①: 代わりに【Sサイズ3段済み(H：1105mm)】を同じ位置へ出す（段数=台数÷ベース数） */
+       v18.77 修正19①: 代わりに【Sサイズ3段積み(H：1105mm)】を同じ位置へ出す（段数=台数÷ベース数） */
     var cfgNote;
     if(ln.inputMode==='direct'){
       var stackLbl=lineStackLabel(ln);
