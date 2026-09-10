@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.89（修正25 便種の既定・シート別編集・出荷部材のみ記載）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.90（送料計算の距離判定を修正 住所の部分一致・県代表都市）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -3201,9 +3201,22 @@ function yamatoFreightCost(tableKey,destPref,boxes,boxSize){
   var genka=rate*boxCount;
   return {rate:rate,region:region,boxCount:boxCount,boxSize:boxSize,genka:genka,quoted:markupCeil(genka)};
 }
+/* ===== v18.90 送料計算の修正1: 行先は「市区町村名」だけで突合する =====
+   【事故】顧客の市区町村欄に番地まで入っている案件（例「深谷市上野台３６９番地」）で、
+   　　　　運賃表の行先「上野市」が★住所の途中に部分一致して 150km と判定されていた。
+   　　　　本来は 尼高→深谷 = 650km。運賃が 5,720 → 2,920 と過少になっていた（2026-09-10 ユーザー報告）。
+   【対処】突合の前に住所から市区町村名を取り出す。都道府県を落として、最初の「市/区/町/村」までを市名とみなす。
+   　　　　これで番地・字名の部分に運賃表の地名が紛れ込んでも一致しなくなる。 */
+function destCityToken(s){
+  var t=String(s||'').trim();
+  if(!t)return '';
+  t=t.replace(/^(東京都|北海道|京都府|大阪府|.{2,3}県)/,'');/* 都道府県を落とす（神奈川県=4文字にも対応） */
+  var m=/^([^0-9０-９]{1,10}?[市区町村])/.exec(t);/* 郡は市町村の手前なので「大里郡寄居町」も丸ごと取れる */
+  return (m?m[1]:t).trim();
+}
 function destFindDistance(tableKey,destCity){
   var t=effRT(tableKey);if(!t||!t.cities)return null;/* v18.30: アップロード運賃表を優先 */
-  var dcRaw=String(destCity||'').trim();
+  var dcRaw=destCityToken(destCity);
   var dc=dcRaw.replace(/[市区町村郡]/g,'').trim();if(!dc)return null;
   var dists=Object.keys(t.cities).map(Number).sort(function(a,b){return a-b;});
   /* v18.33 要望⑨バグ修正: (a)「郡山」→「山」等の1文字化で無関係行先（和歌山・市川・町田…）に誤マッチし
@@ -3301,20 +3314,42 @@ var PREF_KM={'北海道':1100,'青森県':710,'岩手県':540,'宮城県':360,'�
 '福岡県':1080,'佐賀県':1130,'長崎県':1230,'熊本県':1180,'大分県':1130,'宮崎県':1300,'鹿児島県':1380,'沖縄県':null};
 /* 行先→距離km。v18.30: misshu(新柏第一貨物2026.9)にも行先都市リストが付いたため全表とも都市一致を最優先。
    misshuで都市が引けない時のみ都道府県暫定表(PREF_KM)へフォールバック(approx=true)。 */
+/* ===== v18.90 送料計算の修正2: 運賃表に載っていない市は「その県の代表都市」で引く =====
+   【事故】新柏発(misshu)は市が引けないと都道府県の暫定表(PREF_KM)へ落ちていたが、
+   　　　　PREF_KM は★東京(本社)発の距離なので新柏発では使えない（埼玉県=30km）。
+   　　　　深谷市の案件で 30km(暫定) と出て、運賃が 15,180（本来は 100km/14,810）になっていた。
+   【対処】市が引けないときは、その都道府県の代表都市（県庁所在地・運賃表が行先として載せている都市）を
+   　　　　★同じ運賃表の中で引く。運賃表そのものの距離データを使うので、発倉庫ごとに正しい距離になる。
+   　　　　例: 埼玉県 → さいたま … misshu では 100km / r5_amago では 650km。
+   　　　　（2026-09-10 ユーザー提示の正解「柏 100KM / 尼高 650KM」と一致することを確認済み）
+   ★PREF_KM は最後の保険としてのみ残す（代表都市も引けないとき）。 */
+var PREF_MAIN_CITY={'北海道':'札幌','青森県':'青森','岩手県':'盛岡','宮城県':'仙台','秋田県':'秋田','山形県':'山形','福島県':'福島',
+'茨城県':'水戸','栃木県':'宇都宮','群馬県':'前橋','埼玉県':'さいたま','千葉県':'千葉','東京都':'東京','神奈川県':'横浜',
+'新潟県':'新潟','富山県':'富山','石川県':'金沢','福井県':'福井','山梨県':'甲府','長野県':'長野','岐阜県':'岐阜',
+'静岡県':'静岡','愛知県':'名古屋','三重県':'津','滋賀県':'大津','京都府':'京都','大阪府':'大阪','兵庫県':'神戸','奈良県':'奈良','和歌山県':'和歌山',
+'鳥取県':'鳥取','島根県':'松江','岡山県':'岡山','広島県':'広島','山口県':'山口',
+'徳島県':'徳島','香川県':'高松','愛媛県':'松山','高知県':'高知',
+'福岡県':'福岡','佐賀県':'佐賀','長崎県':'長崎','熊本県':'熊本','大分県':'大分','宮崎県':'宮崎','鹿児島県':'鹿児島','沖縄県':'那覇'};
 function destDistanceFor(tableKey,destCity,destPref){
   var d=destCity?destFindDistance(tableKey,destCity):null;
   if(d!=null)return {km:d,approx:false};
-  /* v18.34 ⑨-7: 尼高/札幌表でも市名が引けない場合、都道府県名を運賃表の地名トークン（都内/埼玉/群馬 等）に
-     読み替えて再検索する（各表の実データで解決するため距離の推定値は使わない）。それでも不明なら従来どおり判定不可 */
-  if((tableKey==='r5_amago'||tableKey==='r6_sapporo')&&destPref){
-    var tok={'東京都':'東京２３区','大阪府':'大阪','京都府':'京都','北海道':'札幌'}[destPref]||String(destPref).replace(/[都道府県]$/,'');/* 東京は尼高表の実表記に合わせる */
-    var d2=destFindDistance(tableKey,tok);
-    if(d2!=null)return {km:d2,approx:true};
+  if(destPref){
+    /* その県の代表都市で引く（運賃表の実データで解決する） */
+    var main=PREF_MAIN_CITY[destPref];
+    if(main){
+      var d2=destFindDistance(tableKey,main);
+      if(d2!=null)return {km:d2,approx:true,viaPref:destPref,viaCity:main};
+    }
+    /* v18.34 ⑨-7: それでも駄目なら県名そのもの（尼高表の「都内/埼玉/群馬」等の表記に対応） */
+    var tok=String(destPref).replace(/[都道府県]$/,'');
+    var d3=destFindDistance(tableKey,tok);
+    if(d3!=null)return {km:d3,approx:true,viaPref:destPref,viaCity:tok};
   }
   if(tableKey==='misshu'){
+    /* 最後の保険。★PREF_KM は東京(本社)発の暫定値なので、ここまで来たら数字は目安でしかない */
     var km=destPref?effPrefKm(destPref):undefined;
     if(km===null)return null;/* 沖縄等 */
-    if(km!=null)return {km:km,approx:true};
+    if(km!=null)return {km:km,approx:true,rough:true};
   }
   return null;
 }
@@ -3474,6 +3509,10 @@ function calcShipWeight(order){
     var all=shipWeightOfAgg(aggregateOrderBOM(order));
     units=all.boxes>0?Math.min(units,Math.ceil(units*(boxes/all.boxes))):0;
   }
+  /* ★予備箱は1箱=30kgとして箱数にも重量にも算入する（v18.33 要望⑨のまま）。
+     2026-09-10 のユーザー報告で「新柏ぶんは700kg（＝予備箱を除いた実部材693.75kg）が正しい」と読める一方、
+     同じ報告の「尼高150kg」は予備箱込み(155kg)でないと成立しない（除くと125kg＝140kg区分で運賃が変わる）ため、
+     ★重量の扱いは変更していない。ユーザー確認待ち（作業メモ v18.90 の節を参照）。 */
   var extra=shipExtraBoxes(units);
   boxes+=extra;aw+=extra*30;vw+=extra*30;
   aw=Math.round(aw*1000)/1000;vw=Math.round(vw*1000)/1000;
