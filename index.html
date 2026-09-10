@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.86（修正23 出荷指示の画面統一・便種4種・連絡事項の定型文）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.87（修正23⑧の再修正 帳票をA4実寸で出力・印刷後のウィンドウを閉じる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6049,14 +6049,21 @@ function generateQuoteHTML(order,docType,legIndex){
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+cfg.title+' '+order.no+'</title>';
   html+='<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">';
   /* v18.33 要望⑫: A4印刷を考慮したフォントバランス調整（本文10.5px・表9.5px・見出し8.5px） */
-  /* ===== v18.86 修正23⑧: 印刷プレビューが縮小されるのを防ぐ =====
-     計測では帳票の中身はA4の印刷可能幅に収まっており、はみ出しは0だった。
-     それでも縮小されるのは、レイアウト幅が「ポップアップ窓の幅(800px)」基準になり
-     用紙幅と食い違うため。★用紙の実寸(mm)でレイアウト幅を固定して食い違いを無くす。
-     余白も 15mm/12mm → 12mm/10mm に詰めて、紙面に対して文字が小さく見えないようにした。 */
-  html+='<style>@page{size:A4 portrait;margin:12mm 10mm}*{margin:0;padding:0;box-sizing:border-box}';
-  html+='html{width:190mm}';/* A4 210mm − 左右余白10mm×2 */
-  html+='body{font-family:"Noto Sans JP",sans-serif;width:190mm;margin:0 auto;padding:20px 0;font-size:10.5px;color:#222;line-height:1.65}';
+  /* ===== v18.86 修正23⑧ → v18.87 で作り直し: 印刷プレビューで用紙全体が小さく表示される =====
+     v18.86 では「レイアウト幅をmmで固定」したが解消しなかった。
+     【原因の見立て】@page に余白を持たせると、Chrome は「用紙のページボックス(210mm)」と
+     「プリンタの印刷可能領域」の折り合いを付けるために★ページ全体を縮小することがある。
+     【対応】@page の余白を 0 にして★ページボックス＝A4そのものにし、余白は .sheet の padding で作る。
+     　　　　これで Chrome 側に縮尺を決める余地が無くなり、A4用紙なら 1:1 で出る。
+     　　　　画面（ポップアップ窓）でもA4の紙がそのまま見える。
+     ★それでも小さい場合は Chrome の印刷ダイアログの「詳細設定 → 拡大縮小」が
+     　「用紙に合わせる」になっている（ブラウザ側の設定・ユーザーごとに記憶される）。 */
+  html+='<style>@page{size:A4 portrait;margin:0}*{margin:0;padding:0;box-sizing:border-box}';
+  html+='html,body{background:#fff}';
+  html+='body{font-family:"Noto Sans JP",sans-serif;font-size:10.5px;color:#222;line-height:1.65}';
+  /* .sheet ＝ A4用紙そのもの。内側の padding が印刷余白になる */
+  html+='.sheet{width:210mm;min-height:297mm;padding:12mm 10mm;margin:0 auto;background:#fff}';
+  html+='@media screen{html,body{background:#e8e8e8;padding:12px 0}.sheet{box-shadow:0 2px 12px rgba(0,0,0,.25)}}';
   html+='table{width:100%;border-collapse:collapse;margin:8px 0;font-size:9.5px}th,td{border:1px solid #999;padding:3px 6px}';
   html+='th{background:#f0f0f0;font-weight:600;text-align:center;font-size:8.5px;white-space:nowrap}td.r{text-align:right}td.c{text-align:center}';
   /* v18.72 修正17⑯: 構成行(【1列2段】等)は border-left/right を消していたため、印刷すると
@@ -6067,7 +6074,9 @@ function generateQuoteHTML(order,docType,legIndex){
   html+='.tot-box{margin-left:auto;width:300px;font-size:10px;border:1px solid #999;margin-top:8px}';
   html+='.trow{display:flex;justify-content:space-between;padding:3px 10px;border-bottom:1px solid #ddd}';
   html+='.trow.main{font-size:13px;font-weight:900;background:#f8f8f8;border-bottom:2px solid #333}.trow.sub{font-size:8px;color:#666}';
-  html+='@media print{html,body{width:auto;margin:0}body{padding:0}}</style></head><body>';
+  /* 印刷時は「紙が何枚も続く」形にするので min-height は外す（末尾に空白ページが出るのを防ぐ） */
+  html+='@media print{html,body{background:#fff;padding:0}.sheet{min-height:0;box-shadow:none}}';
+  html+='</style></head><body><div class="sheet">';
   html+='<div style="text-align:right"><span style="font-size:22px;font-weight:700;letter-spacing:4px;border-bottom:3px solid #222;padding-bottom:4px;display:inline-block">'+cfg.title+'</span></div>';
   /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない（他の帳票は従来どおり） */
   if(isShipping)html+='<div style="margin-bottom:12px"></div>';
@@ -6227,7 +6236,7 @@ function generateQuoteHTML(order,docType,legIndex){
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
   html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（記載場所は従来と同一） */
-  html+='</div></body></html>';
+  html+='</div></div></body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
   return{html:html,subtotal:subtotal,tax:tax10,total:total,rows:rows,subject:subject,slipCode:slipCode};
 }
 
@@ -6517,11 +6526,28 @@ function mergeHeldDeep(tgt,src){
   return tgt;
 }
 /* v14.5 E1: ポップアップを安全に開く。ブロック時は false を返し、呼び出し側の在庫保存等を妨げない */
+/* ===== v18.87 修正23の再修正: 印刷ダイアログを閉じたあとに素の帳票ウィンドウが残る =====
+   従来は window.open した窓に帳票を書いて print() を呼ぶだけだったため、
+   印刷ダイアログで「キャンセル」を押すと★その後ろに隠れていた帳票ウィンドウが出てきていた
+   （ユーザー報告「キャンセルボタンを押すともう1枚プレビューが出てくる」）。
+   → afterprint（印刷実行・キャンセルのどちらでも発火）でウィンドウを閉じる。
+   ★閉じるのを少し遅らせるのは、閉じるのが早すぎると印刷ジョブが取り消される端末があるため。
+   afterprint が来ない環境のために、ユーザーが自分で閉じられる状態はそのまま残る（強制はしない）。 */
 function openPrintWindow(html){
   var w;
-  try{w=window.open('','_blank','width=800,height=1000');}catch(e){w=null;}
+  try{w=window.open('','_blank','width=980,height=1100,scrollbars=yes,resizable=yes');}catch(e){w=null;}
   if(!w)return false;
-  try{w.document.write(html);w.document.close();setTimeout(function(){try{w.print();}catch(e){}},500);}catch(e){return false;}
+  try{
+    w.document.write(html);w.document.close();
+    try{
+      w.onafterprint=function(){setTimeout(function(){try{w.close();}catch(e){}},400);};
+      if(w.matchMedia){
+        var mq=w.matchMedia('print');
+        if(mq&&mq.addListener)mq.addListener(function(m){if(!m.matches)setTimeout(function(){try{w.close();}catch(e){}},400);});
+      }
+    }catch(e){}
+    setTimeout(function(){try{w.print();}catch(e){}},500);
+  }catch(e){return false;}
   return true;
 }
 
