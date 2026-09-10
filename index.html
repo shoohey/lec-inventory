@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.84（修正22 帳票のステータス別出力・出荷指示書の様式変更）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.85（修正22の確認事項と追加修正 出荷指示書の項目配置・荷送人表記）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1203,7 +1203,9 @@ var DOC_TYPE_LABELS={quote:'見積書',shipping:'出荷指示書',invoice:'請�
 var DOCS_BY_STATUS={
   '見積作成':['quote'],
   '仮押さえ':['quote'],
-  '受注確定':DOC_TYPES_ALL,
+  /* v18.85 修正22の確認事項1: 受注確定は★見積書と請求書の2帳票（ユーザー回答 2026-09-10）。
+     v18.84 では v18.79 からの5帳票をそのまま残していたが、回答により2帳票へ絞った。 */
+  '受注確定':['quote','invoice'],
   '出荷指示':DOC_TYPES_ALL,
   '出荷完了':DOC_TYPES_ALL,
   '納品完了':DOC_TYPES_ALL
@@ -1476,7 +1478,10 @@ function orderWhLabel(order,short){
    出荷指示書は倉庫会社へ出す紙なので、宛名は倉庫の運営会社になる（依頼22③）。
    郵便番号・住所・電話・顧客コードは出さない（★宛名のみ・ユーザー指定）。
    ここに無い倉庫（本社・第一・第二・関西＝弊社の倉庫）は WH_MAP の倉庫名をそのまま宛名にする。
-   ★複数倉庫から出す案件は倉庫名を並べる（1案件1枚のまま。便で分けるのは修正21①の shipSplit）。 */
+   ★複数倉庫から出す案件は倉庫名を並べる（1案件1枚のまま。便で分けるのは修正21①の shipSplit）。
+   v18.85 修正22の確認事項3（ユーザー回答 2026-09-10）:
+   ★WH_COMPANY に無い倉庫（本社・第一・第二・関西＝弊社の倉庫）は「倉庫名でOK。御中は不要」。
+   　＝倉庫会社名のときだけ「　御中」を付ける。敬称の有無もこの関数の中で決める。 */
 var WH_COMPANY={
   kashiwa:'新柏倉庫株式会社',
   amago:'尼高運輸株式会社',
@@ -1485,7 +1490,10 @@ var WH_COMPANY={
 function shipDocAddressee(order){
   var ws=orderWhs(order);
   if(!ws.length)return '';
-  return ws.map(function(w){return WH_COMPANY[w]||((WH_MAP[w]||{}).n||w);}).join('　／　');
+  return ws.map(function(w){
+    var co=WH_COMPANY[w];
+    return co?(co+'　御中'):(((WH_MAP[w]||{}).n)||w);/* 弊社倉庫は倉庫名のみ・御中なし */
+  }).join('　／　');
 }
 function gs(line,wh,key,sub){
   if(isCommonStockKey(key)){
@@ -2612,7 +2620,12 @@ function shipEditHeader(order,cust){
     consignee:(cust&&cust.contactPerson)?(cust.contactPerson+' '+((cust.honorific||'様'))):'',
     staff:(order&&order.salesPersonOverride)||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝',
     slip:'出荷-'+((order&&order.no)||''),
+    /* v18.85 修正22の確認事項4: 出荷指示日を戻した（ユーザー回答「出荷指示日は追加して」）。
+       自動値は出力日（docDateOf の 'shipping' と同じ）。★手修正できる。 */
+    shipDate:tdSlash(),
     shipper:shipperName,
+    shipperName:shipperParts(shipperName).name,
+    shipperDetail:shipperParts(shipperName).detail,
     shipperText:shipperBlock(order),
     notes:(order&&order.shippingNotes)||'',
     edited:{}
@@ -2625,11 +2638,13 @@ function shipEditHeader(order,cust){
   if(se.consignee){hv.consignee=se.consignee;hv.edited.consignee=true;}
   if(se.staff){hv.staff=se.staff;hv.edited.staff=true;}
   if(se.slip){hv.slip=se.slip;hv.edited.slip=true;}
+  if(se.shipDate){hv.shipDate=se.shipDate;hv.edited.shipDate=true;}
   if(se.shipper){
     hv.shipper=se.shipper;hv.edited.shipper=true;
     /* 手修正の荷送人も SHIPPER_INFO に住所があれば併記する（無ければ名前だけ） */
-    var si=SHIPPER_INFO[se.shipper];
-    hv.shipperText=si?(se.shipper+'　'+si.postal+' '+si.addr+'　TEL: '+si.tel):se.shipper;
+    var sp=shipperParts(se.shipper);
+    hv.shipperName=sp.name;hv.shipperDetail=sp.detail;
+    hv.shipperText=sp.detail?(sp.name+'　'+sp.detail):sp.name;
   }
   if(se.notes){hv.notes=se.notes;hv.edited.notes=true;}
   return hv;
@@ -2637,7 +2652,7 @@ function shipEditHeader(order,cust){
 /* 案件に✎手修正が保存されているか（帳票に注記を出すかの判定） */
 function hasShipEdit(order){
   var se=(order&&order.shipEdit)||{};
-  return !!(se.name||se.postal||se.address||se.phone||se.delivery||se.consignee||se.staff||se.slip||se.shipper||se.notes||(se.rows&&Object.keys(se.rows).length));
+  return !!(se.name||se.postal||se.address||se.phone||se.delivery||se.consignee||se.staff||se.slip||se.shipDate||se.shipper||se.notes||(se.rows&&Object.keys(se.rows).length));
 }
 /* v18.28: 出荷指示書は 2026-07-08 受領の5シート正本（出荷指示書フォーマット_5シート.xlsx, 全セル突合済み）を正とする。
    旧v18.26 fix（別ファイル『出荷指示書フォーマット.xlsx』基準の SML A40=レールセット/L40=400・Q24同梱物文言）は正本と逆行するため撤去。
@@ -5734,15 +5749,25 @@ function shipMethodMarks(order){
 /* 荷送人の住所・TEL（原本Excelの荷送人4社ブロックと同じ内容）。手入力の荷送人は名前だけ出す
    v18.84 修正22⑤: 選択肢に「日本ロッカー販売」を追加（依頼書の5社）。
    ★日本ロッカー販売の住所・TELは未受領のため名前だけを印字する。受領したらここへ1行足せばよい。 */
+/* ===== v18.85 修正22の追加修正: 荷送人の会社名を正式表記へ（ユーザー指定 2026-09-10） =====
+   ㈱プラロッカー → 株式会社プラロッカー ／ プラスチックロッカー㈱ → プラスチックロッカー株式会社 ／
+   ㈱グローバル → 株式会社グローバル ／ 日本ロッカー販売株式会社 を追加（住所・TEL受領済み）。
+   ★旧表記のキーは残す（既存案件の order.shipper に旧表記が保存されているため）。
+   　旧キーには name を持たせて★印字は必ず新表記になるようにしている。 */
 var SHIPPER_INFO={
   '株式会社LEC':{postal:'〒120-0005',addr:'東京都足立区綾瀬7-4-1',tel:'03-5849-5563'},
-  '(株)LEC':{postal:'〒120-0005',addr:'東京都足立区綾瀬7-4-1',tel:'03-5849-5563'},
-  '㈱プラロッカー':{postal:'〒121-0055',addr:'東京都足立区加平1-19-10',tel:'03-6721-7491'},
-  'プラスチックロッカー㈱':{postal:'〒116-0001',addr:'東京都荒川区町屋1-9-7',tel:'03-5856-0603'},
-  '㈱グローバル':{postal:'〒116-0001',addr:'東京都荒川区町屋1-5-3',tel:'03-5849-5755'}
+  '(株)LEC':{name:'株式会社LEC',postal:'〒120-0005',addr:'東京都足立区綾瀬7-4-1',tel:'03-5849-5563'},
+  '株式会社プラロッカー':{postal:'〒121-0055',addr:'東京都足立区加平1-19-10',tel:'03-6721-7491'},
+  '㈱プラロッカー':{name:'株式会社プラロッカー',postal:'〒121-0055',addr:'東京都足立区加平1-19-10',tel:'03-6721-7491'},
+  'プラスチックロッカー株式会社':{postal:'〒116-0001',addr:'東京都荒川区町屋1-9-7',tel:'03-5856-0603'},
+  'プラスチックロッカー㈱':{name:'プラスチックロッカー株式会社',postal:'〒116-0001',addr:'東京都荒川区町屋1-9-7',tel:'03-5856-0603'},
+  '株式会社グローバル':{postal:'〒116-0001',addr:'東京都荒川区町屋1-5-3',tel:'03-5849-5755'},
+  '㈱グローバル':{name:'株式会社グローバル',postal:'〒116-0001',addr:'東京都荒川区町屋1-5-3',tel:'03-5849-5755'},
+  '日本ロッカー販売株式会社':{postal:'〒120-0005',addr:'東京都足立区綾瀬7-4-1',tel:'03-6804-3290'},
+  '日本ロッカー販売':{name:'日本ロッカー販売株式会社',postal:'〒120-0005',addr:'東京都足立区綾瀬7-4-1',tel:'03-6804-3290'}
 };
 /* v18.84 修正22⑤: 荷送人のプルダウン（依頼書の並び）。★出荷指示モーダルと✎手修正で共通に使う */
-var SHIPPER_CHOICES=['株式会社LEC','㈱プラロッカー','プラスチックロッカー㈱','㈱グローバル','日本ロッカー販売'];
+var SHIPPER_CHOICES=['株式会社LEC','株式会社プラロッカー','プラスチックロッカー株式会社','株式会社グローバル','日本ロッカー販売株式会社'];
 /* v18.84 修正22⑤: 連絡事項のプルダウン選択肢（＋自由入力）。依頼書の3文をそのまま持つ。
    ★文言を足す/直すときはここだけを直す（✎手修正・出荷指示モーダルの両方が参照する）。 */
 var SHIP_NOTE_OPTIONS=[
@@ -5750,10 +5775,18 @@ var SHIP_NOTE_OPTIONS=[
   '発送後に送り状を弊社までメールをお願いします。',
   '納品日時欄記載の日時に有限会社ダイレクト様が引取りにお伺い致します。'
 ];
-function shipperBlock(order){
-  var nm=(order&&order.shipper)||'株式会社LEC';
+/* ===== v18.85 修正22の追加修正: 荷送人は「会社名」と「住所以降」を別の行に分けて返す =====
+   依頼「住所以降は改行して記載。会社名の先頭に合わせる」。帳票側は
+   ラベル「荷送人:」の右に name／detail を2行で積む（＝2行目が会社名の先頭に揃う）。
+   ★印字する会社名は SHIPPER_INFO の name（旧表記で保存された案件も新表記で出る）。 */
+function shipperParts(name){
+  var nm=name||'株式会社LEC';
   var i=SHIPPER_INFO[nm];
-  return i?(nm+'　'+i.postal+' '+i.addr+'　TEL: '+i.tel):nm;
+  return {name:(i&&i.name)||nm,detail:i?(i.postal+'　'+i.addr+'　TEL: '+i.tel):''};
+}
+function shipperBlock(order){
+  var pp=shipperParts((order&&order.shipper)||'株式会社LEC');
+  return pp.detail?(pp.name+'　'+pp.detail):pp.name;
 }
 /* ===== v18.84 修正22②: 出荷指示書の表題は「配送部材のタイプ」＝製品ライン =====
    従来は様式の種別（SML用／SS用／Sα用／台湾用）を出していたが、
@@ -5996,7 +6029,8 @@ function generateQuoteHTML(order,docType,legIndex){
   html+='<div style="width:52%;border-left:3px solid #222;padding:8px 12px;font-size:10px;line-height:1.8">';
   if(isShipping){
     /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（郵便番号・住所・電話・顧客コードは出さない） */
-    html+='<div style="font-size:14px;font-weight:700">'+shipDocAddressee(order)+'　御中</div>';
+    /* v18.85 修正22の確認事項3: 「御中」の有無は shipDocAddressee() が倉庫ごとに決める */
+    html+='<div style="font-size:14px;font-weight:700">'+shipDocAddressee(order)+'</div>';
   }else{
     html+='<div style="font-size:14px;font-weight:700;margin-bottom:4px">'+(cust?cust.name:'')+' 御中</div>';
     /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ移動。先方担当者（ご担当）は見積書から削除 */
@@ -6015,27 +6049,39 @@ function generateQuoteHTML(order,docType,legIndex){
   if(order.showRepName)html+='<div style="font-size:10px;font-weight:600;margin-bottom:2px">'+(order.repName||REP_NAME_DEFAULT)+'</div>';
   /* v18.33 要望⑬: 弊社担当者名の重複を削除（伝票コード上部の欄に統一） */
   html+='〒120-0005<br>東京都足立区綾瀬7-4-1<br>TEL. 03-5849-5563&emsp;FAX. 03-5849-5564<br>登録番号:T4040001077220</div></div>';
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
   if(isShipping){
-    /* ===== v18.84 修正22⑤: 出荷指示書の記載項目を依頼書の並びどおりに入れ替えた =====
-       納品先名／荷受人／納品先住所／納品先電話番号／納品日時／便種／荷送人／担当者／伝票コード／連絡事項。
-       ★従来あった「出荷指示日」「出荷元倉庫」「受渡地」「エンド納品先」「出荷№」はこの一覧に無いため出さない
+    /* ===== v18.84 修正22⑤ ／ v18.85 修正22の追加修正: 出荷指示書の記載項目と配置 =====
+       左側: 納品先名／荷受人／納品先住所／納品先電話番号／納品日時／便種
+       右側: 荷送人／担当者／出荷指示日／伝票コード／連絡事項     ★依頼書の「項目記載箇所」どおり。
+       ★左右2列に振り分けるため、他帳票の grid（行方向に流す）ではなく flex の2カラムにしている。
+       ★「出荷元倉庫」「受渡地」「エンド納品先」「出荷№」は依頼書の一覧に無いので出さない
        　（出荷元倉庫は修正22③で宛名になった／受渡地・エンド納品先は納品先住所と重複）。
+       　出荷指示日は確認事項4のユーザー回答により復活させた。
        ★全項目が ✎ 出荷指示書の手修正（order.shipEdit）で上書きできる。手修正した項目には ✎ を付ける。
        　値の出所は shipEditHeader() の1か所（印刷用HTMLと画面プレビューが同じものを使う）。 */
     var shv=shipEditHeader(order,cust);
     var em=function(k){return shv.edited[k]?' ✎':'';};
+    html+='<div style="display:flex;gap:20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
+    html+='<div style="flex:1;min-width:0">';
     html+='<div><b>納品先名:</b> '+(shv.name||'')+em('name')+'</div>';
     html+='<div><b>荷受人:</b> '+(shv.consignee||'')+em('consignee')+'</div>';
-    html+='<div style="grid-column:1/3"><b>納品先住所:</b> '+(shv.postal?'〒'+shv.postal+'　':'')+(shv.address||'')+em('postal')+em('address')+'</div>';
+    html+='<div><b>納品先住所:</b> '+(shv.postal?'〒'+shv.postal+'　':'')+(shv.address||'')+em('postal')+em('address')+'</div>';
     html+='<div><b>納品先電話番号:</b> '+(shv.phone||'')+em('phone')+'</div>';
     html+='<div><b>納品日時:</b> '+(shv.delivery||'')+em('delivery')+'</div>';
     html+='<div><b>便種:</b> '+shipMethodMarks(order)+'</div>';
+    html+='</div><div style="flex:1;min-width:0">';
+    /* v18.85: 荷送人は「会社名／住所以降」を2行にし、2行目を会社名の先頭に揃える（依頼どおり）。
+       ★ここに ✎ は付けない（ユーザー指定「荷送人電話番号右側のペンのアイコン削除」）。 */
+    html+='<div style="display:flex;gap:4px"><b style="white-space:nowrap">荷送人:</b>'
+      +'<span>'+(shv.shipperName||'')+(shv.shipperDetail?('<br>'+shv.shipperDetail):'')+'</span></div>';
     html+='<div><b>担当者:</b> '+(shv.staff||'')+em('staff')+'</div>';
-    html+='<div style="grid-column:1/3"><b>荷送人:</b> '+(shv.shipperText||'')+em('shipper')+'</div>';
+    html+='<div><b>出荷指示日:</b> '+(shv.shipDate||'')+em('shipDate')+'</div>';
     html+='<div><b>伝票コード:</b> '+(shv.slip||'')+em('slip')+'</div>';
-    html+='<div style="grid-column:1/3"><b>連絡事項:</b> '+String(shv.notes||'').split('\n').join('<br>')+'</div>';
+    html+='<div style="display:flex;gap:4px"><b style="white-space:nowrap">連絡事項:</b>'
+      +'<span>'+String(shv.notes||'').split('\n').join('<br>')+'</span></div>';
+    html+='</div></div>';
   }else{
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
     html+='<div><b>件名:</b> '+subject+'</div>';
     html+='<div><b>担当者:</b> '+salesP+'</div>';
     /* v18.79 修正20②: 日付欄は案件の日付（納品書・受領書・請求書＝納品日）。見積書は出力日 */
@@ -6046,8 +6092,8 @@ function generateQuoteHTML(order,docType,legIndex){
     html+='<div><b>受渡地:</b> '+deliveryPlaceOf(order,cust)+'</div>';
     if(order.endUser&&(order.endUser.name||order.endUser.address)){html+='<div style="grid-column:1/3"><b>エンド納品先:</b> '+(order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')+'</div>';}
     if(docType==='quote'||docType==='invoice'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
+    html+='</div>';
   }
-  html+='</div>';
   if(!isReceipt&&!isShipping){html+='<div style="font-size:16px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+'：　&yen;'+fm(total)+'</div>';}
   if(isShipping){
     /* Shipping: show quote number only, no item detail table */
@@ -6119,21 +6165,10 @@ function generateQuoteHTML(order,docType,legIndex){
   else if(isReceipt){html+='上記の通り受領致しました。<br><br>受領日:　　　　　　受領者（署名）:　　　　　　　　　　';}
   else if(isShipping){
     /* v18.84 修正22⑤: 記載項目は上のヘッダー欄に集約したので、文末の配送先・納品日時・荷送人の
-       重複表示は廃止した。定型の ※2文も「連絡事項」のプルダウン選択肢へ移した（SHIP_NOTE_OPTIONS）。 */
-    html+='上記の通り出荷を指示します。';
-    /* ===== v18.79 修正20②: ＜社内確認欄＞（原本Excel Q33-Y40 と同じ項目） =====
-       旧様式の「確認者1〜3」の判子欄は破棄し、原本のとおり
-       事務確認／営業確認／出荷依頼（北・東・西・本・KE）／チャーター依頼／人工依頼／その他外注／伝票 にした。 */
-    html+='<div style="margin-top:12px;font-size:9px;font-weight:700">＜社内確認欄＞</div>';
-    html+='<table style="width:auto;margin-top:2px;font-size:8.5px"><tbody>';
-    html+='<tr><td style="width:70px;background:#f0f0f0;font-weight:600">事務確認</td><td style="width:70px">&nbsp;</td>';
-    html+='<td style="width:70px;background:#f0f0f0;font-weight:600">営業確認</td><td style="width:70px">&nbsp;</td>';
-    html+='<td style="width:70px;background:#f0f0f0;font-weight:600">出荷依頼</td><td style="width:150px">北 ／ 東 ／ 西 ／ 本 ／ KE</td></tr>';
-    html+='<tr><td style="background:#f0f0f0;font-weight:600">チャーター依頼</td><td colspan="5">無 ・ 有（　　　　　　　　　　）</td></tr>';
-    html+='<tr><td style="background:#f0f0f0;font-weight:600">人工依頼</td><td colspan="5">無 ・ 有（　　　　　　　　　　）</td></tr>';
-    html+='<tr><td style="background:#f0f0f0;font-weight:600">その他外注</td><td colspan="5">無 ・ 有（　　　　　　　　　　）</td></tr>';
-    html+='<tr><td style="background:#f0f0f0;font-weight:600">伝票</td><td colspan="5">同梱 ・ 郵送 ・ 持参　　送付日：　　　／　　　</td></tr>';
-    html+='</tbody></table>';
+       重複表示は廃止した。定型の ※2文も「連絡事項」のプルダウン選択肢へ移した（SHIP_NOTE_OPTIONS）。
+       v18.85 修正22の追加修正: 文言を「出荷を指示します」→「出荷をお願いします。」へ。
+       ★＜社内確認欄＞（事務確認・営業確認・出荷依頼…）は「不要。削除」の指示により廃止した。 */
+    html+='上記の通り出荷をお願いします。';
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
@@ -9735,7 +9770,7 @@ function QuotePreview(p){
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}},
         h('div',{style:{width:'52%',borderLeft:'3px solid #222',padding:'8px 12px',lineHeight:1.8}},
           /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（印刷用HTMLと同じ） */
-          isShipping?h('div',{style:{fontSize:14,fontWeight:700}},shipDocAddressee(o)+'　御中'):
+          isShipping?h('div',{style:{fontSize:14,fontWeight:700}},shipDocAddressee(o)):
           h('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},cust?cust.name+' 御中':''),
           /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ。先方担当者（ご担当）は削除 */
           isShipping?null:h('div',{style:{fontSize:9}},cust&&cust.postal?'〒'+cust.postal:''),
@@ -9756,23 +9791,31 @@ function QuotePreview(p){
           h('div',null,'登録番号:T4040001077220')/* v18.33 要望⑬: 担当者は伝票コード上部の欄に統一 */
         )
       ),
-      /* v18.84 修正22⑤: 出荷指示書のヘッダー項目は依頼書の並び（印刷用HTMLと同じ内容・同じ出所）。
-         出荷指示日・出荷元倉庫・受渡地・エンド納品先・出荷№は出荷指示書には出さない。 */
-      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2px 16px',fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
-        isShipping?[
-          h('div',{key:'sn'},h('b',null,'納品先名: '),(shvP.name||'')+(shvP.edited.name?' ✎':'')),
-          h('div',{key:'sc'},h('b',null,'荷受人: '),(shvP.consignee||'')+(shvP.edited.consignee?' ✎':'')),
-          h('div',{key:'sa',style:{gridColumn:'1/3'}},h('b',null,'納品先住所: '),(shvP.postal?'〒'+shvP.postal+'　':'')+(shvP.address||'')+((shvP.edited.postal||shvP.edited.address)?' ✎':'')),
-          h('div',{key:'sp'},h('b',null,'納品先電話番号: '),(shvP.phone||'')+(shvP.edited.phone?' ✎':'')),
-          h('div',{key:'sd'},h('b',null,'納品日時: '),(shvP.delivery||'')+(shvP.edited.delivery?' ✎':'')),
+      /* v18.85 修正22の追加修正: 出荷指示書のヘッダーは★左右2列（印刷用HTMLと同じ並び・同じ出所）。
+         左=納品先名/荷受人/納品先住所/納品先電話番号/納品日時/便種、
+         右=荷送人/担当者/出荷指示日/伝票コード/連絡事項。出荷元倉庫・受渡地・エンド納品先・出荷№は出さない。 */
+      isShipping?h('div',{style:{display:'flex',gap:16,fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
+        h('div',{style:{flex:1,minWidth:0}},
+          h('div',null,h('b',null,'納品先名: '),(shvP.name||'')+(shvP.edited.name?' ✎':'')),
+          h('div',null,h('b',null,'荷受人: '),(shvP.consignee||'')+(shvP.edited.consignee?' ✎':'')),
+          h('div',null,h('b',null,'納品先住所: '),(shvP.postal?'〒'+shvP.postal+'　':'')+(shvP.address||'')+((shvP.edited.postal||shvP.edited.address)?' ✎':'')),
+          h('div',null,h('b',null,'納品先電話番号: '),(shvP.phone||'')+(shvP.edited.phone?' ✎':'')),
+          h('div',null,h('b',null,'納品日時: '),(shvP.delivery||'')+(shvP.edited.delivery?' ✎':'')),
           /* v18.84 修正22④: 便種は該当の1つだけ。判定は shipDocMode()（出力時に選んだ便種を優先） */
-          h('div',{key:'sm'},h('b',null,'便種: '),shipMethodMarks(o)),
-          h('div',{key:'st'},h('b',null,'担当者: '),(shvP.staff||'')+(shvP.edited.staff?' ✎':'')),
-          h('div',{key:'ss',style:{gridColumn:'1/3'}},h('b',null,'荷送人: '),(shvP.shipperText||'')+(shvP.edited.shipper?' ✎':'')),
-          h('div',{key:'sl'},h('b',null,'伝票コード: '),(shvP.slip||'')+(shvP.edited.slip?' ✎':'')),
-          h('div',{key:'sno',style:{gridColumn:'1/3'}},h('b',null,'連絡事項: '),
-            String(shvP.notes||'').split('\n').map(function(t,ti){return h('div',{key:ti},t);}))
-        ]:[
+          h('div',null,h('b',null,'便種: '),shipMethodMarks(o))
+        ),
+        h('div',{style:{flex:1,minWidth:0}},
+          /* v18.85: 荷送人は会社名／住所以降の2行。★✎ は付けない（ユーザー指定） */
+          h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'荷送人:'),
+            h('span',null,shvP.shipperName||'',shvP.shipperDetail?h('div',null,shvP.shipperDetail):null)),
+          h('div',null,h('b',null,'担当者: '),(shvP.staff||'')+(shvP.edited.staff?' ✎':'')),
+          h('div',null,h('b',null,'出荷指示日: '),(shvP.shipDate||'')+(shvP.edited.shipDate?' ✎':'')),
+          h('div',null,h('b',null,'伝票コード: '),(shvP.slip||'')+(shvP.edited.slip?' ✎':'')),
+          h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'連絡事項:'),
+            h('span',null,String(shvP.notes||'').split('\n').map(function(t,ti){return h('div',{key:ti},t);})))
+        )
+      ):h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2px 16px',fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
+        [
           h('div',{key:'q1'},h('b',null,'件名: '),subject),
           h('div',{key:'q2'},h('b',null,'担当者: '),salesP2),
           h('div',{key:'q3'},h('b',null,cfg.dateLabel+': '),docDateOf(o,dt)),
@@ -9897,28 +9940,10 @@ function QuotePreview(p){
       h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',h('br'),h('br'),'受領日:　　　　　　受領者（署名）:　　　　　　　　　　'):null,
-        isShipping?h('div',null,
-          /* v18.84 修正22⑤: 記載項目は上のヘッダー欄に集約。文末の重複表示と定型の ※2文は廃止
-             （※2文は「連絡事項」のプルダウン選択肢 SHIP_NOTE_OPTIONS へ移動した） */
-          h('div',null,'上記の通り出荷を指示します。'),
-          /* ===== v18.79 修正20②: ＜社内確認欄＞（原本Excel と同じ項目。旧「確認者1〜3」の判子欄は破棄） ===== */
-          h('div',{style:{marginTop:12}},
-            h('div',{style:{fontSize:9,fontWeight:700}},'＜社内確認欄＞'),
-            h('table',{style:{borderCollapse:'collapse',marginTop:2,fontSize:8.5}},
-              h('tbody',null,
-                h('tr',null,
-                  h('td',{style:Object.assign({},cs,{width:70,background:'#f0f0f0',fontWeight:600})},'事務確認'),h('td',{style:Object.assign({},cs,{width:70})},' '),
-                  h('td',{style:Object.assign({},cs,{width:70,background:'#f0f0f0',fontWeight:600})},'営業確認'),h('td',{style:Object.assign({},cs,{width:70})},' '),
-                  h('td',{style:Object.assign({},cs,{width:70,background:'#f0f0f0',fontWeight:600})},'出荷依頼'),h('td',{style:Object.assign({},cs,{width:150})},'北 ／ 東 ／ 西 ／ 本 ／ KE')),
-                [['チャーター依頼','無 ・ 有（　　　　　　　　　　）'],['人工依頼','無 ・ 有（　　　　　　　　　　）'],
-                 ['その他外注','無 ・ 有（　　　　　　　　　　）'],['伝票','同梱 ・ 郵送 ・ 持参　　送付日：　　　／　　　']].map(function(r){
-                  return h('tr',{key:r[0]},
-                    h('td',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},r[0]),
-                    h('td',{colSpan:5,style:cs},r[1]));
-                })
-              ))
-          )
-        ):null,
+        /* v18.84 修正22⑤: 記載項目は上のヘッダー欄に集約。文末の重複表示と定型の ※2文は廃止
+           （※2文は「連絡事項」のプルダウン選択肢 SHIP_NOTE_OPTIONS へ移動した）。
+           v18.85 修正22の追加修正: 文言を「出荷をお願いします。」へ。＜社内確認欄＞は不要のため削除。 */
+        isShipping?h('div',null,'上記の通り出荷をお願いします。'):null,
         /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（上部の欄には残る） */
         dt==='delivery'?h('div',null,'上記の通り納品致しましたのでご査収ください。'):null,
         /* v18.37 修正箇所2⑥: 全体備考は入力内容と連動し、改行のまま箇条書き表示（記載場所は従来と同一） */
@@ -10178,7 +10203,7 @@ function OrdersPage(p){
     });
     shipEditModal[1]({order:o,autoHv:autoHv,noTpl:!tpl,
       name:se.name||'',phone:se.phone||'',postal:se.postal||'',address:se.address||'',delivery:se.delivery||'',
-      consignee:se.consignee||'',staff:se.staff||'',slip:se.slip||'',shipper:se.shipper||'',notes:se.notes||'',
+      consignee:se.consignee||'',staff:se.staff||'',slip:se.slip||'',shipDate:se.shipDate||'',shipper:se.shipper||'',notes:se.notes||'',
       docMode:o.shipDocMode||'',rows:rows});
   }
 
@@ -11374,7 +11399,7 @@ function OrdersPage(p){
           });
           var se2={};
           /* v18.84 修正22⑤: ヘッダー項目は依頼書の10項目ぶん。空欄＝自動値なので保存しない */
-          ['name','phone','postal','address','delivery','consignee','staff','slip','shipper','notes'].forEach(function(k){
+          ['name','phone','postal','address','delivery','consignee','staff','slip','shipDate','shipper','notes'].forEach(function(k){
             var v=String(m0[k]||'').trim();
             if(v)se2[k]=v;
           });
@@ -11428,6 +11453,8 @@ function OrdersPage(p){
         ),
         h('div',{style:{display:'flex',gap:4,marginBottom:6}},
           fld('staff','担当者',m0.autoHv.staff||'',{flex:1}),
+          /* v18.85 修正22の確認事項4: 出荷指示日（既定は出力日）。手修正できる */
+          fld('shipDate','出荷指示日（例: 2026/09/10）',m0.autoHv.shipDate||'',{flex:1}),
           fld('slip','伝票コード',m0.autoHv.slip||'',{flex:1})
         ),
         /* v18.84 修正22⑤: 連絡事項は「プルダウンで定型文を挿入 ＋ 自由入力」（依頼書の3文） */
