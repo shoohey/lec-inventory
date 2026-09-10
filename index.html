@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.85（修正22の確認事項と追加修正 出荷指示書の項目配置・荷送人表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.86（修正23 出荷指示の画面統一・便種4種・連絡事項の定型文）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5731,10 +5731,24 @@ var PICKUP_WH='kashiwa';/* 新柏倉庫 */
 function canPickup(order){
   try{return orderWhs(order).indexOf(PICKUP_WH)>=0;}catch(e){return (order&&order.wh)===PICKUP_WH;}
 }
-/* 出荷指示書に印字する便種を1つ返す。'mix'|'charter'|'pickup'|'' */
+/* ===== v18.86 修正23④: 便種は 混載便／チャーター便／引取り／持参 の4種 =====
+   「持参」を新設し、「引取り」の★新柏倉庫限定という制限は外した（依頼22-23④で
+   引取りが「追加する項目」として並べ直されたため。v18.80 の新柏限定はここで解除）。
+   ★便種は出荷指示書にしか影響しない。送料の金額(order.shipping)も送料行の名称(order.shipMethod)も
+   　この値では一切変わらない（依頼23④の「その他の帳票及び金額には一切影響しないように」）。 */
+var SHIP_METHODS=[
+  {v:'mix',l:'混載便'},
+  {v:'charter',l:'チャーター便'},
+  {v:'pickup',l:'引取り'},
+  {v:'bring',l:'持参'}
+];
+function shipMethodLabel(v){
+  var m=SHIP_METHODS.find(function(x){return x.v===v;});
+  return m?m.l:'';
+}
+/* 出荷指示書に印字する便種を1つ返す。'mix'|'charter'|'pickup'|'bring'|'' */
 function shipDocMode(order){
   var m=(order&&order.shipDocMode)||'';
-  if(m==='pickup'&&!canPickup(order))m='';/* 倉庫が新柏から変わったら引取りは無効に戻す */
   if(m)return m;
   return (order&&order.shipMethod)||'';
 }
@@ -5743,8 +5757,7 @@ function shipDocMode(order){
    該当の1つだけを書く形に変更（依頼22④）。判定は従来どおり shipDocMode() の1か所。
    ★戻り値はプレーンテキスト（印刷用HTMLと画面プレビューが同じものを使う）。 */
 function shipMethodMarks(order){
-  var m=shipDocMode(order);
-  return (m==='mix')?'混載便':(m==='charter')?'チャーター便':(m==='pickup')?'引取り':'（未選択）';
+  return shipMethodLabel(shipDocMode(order))||'（未選択）';
 }
 /* 荷送人の住所・TEL（原本Excelの荷送人4社ブロックと同じ内容）。手入力の荷送人は名前だけ出す
    v18.84 修正22⑤: 選択肢に「日本ロッカー販売」を追加（依頼書の5社）。
@@ -5768,13 +5781,42 @@ var SHIPPER_INFO={
 };
 /* v18.84 修正22⑤: 荷送人のプルダウン（依頼書の並び）。★出荷指示モーダルと✎手修正で共通に使う */
 var SHIPPER_CHOICES=['株式会社LEC','株式会社プラロッカー','プラスチックロッカー株式会社','株式会社グローバル','日本ロッカー販売株式会社'];
-/* v18.84 修正22⑤: 連絡事項のプルダウン選択肢（＋自由入力）。依頼書の3文をそのまま持つ。
-   ★文言を足す/直すときはここだけを直す（✎手修正・出荷指示モーダルの両方が参照する）。 */
-var SHIP_NOTE_OPTIONS=[
-  'お客様直送の為、綺麗な箱でお願いします。',
-  '発送後に送り状を弊社までメールをお願いします。',
-  '納品日時欄記載の日時に有限会社ダイレクト様が引取りにお伺い致します。'
-];
+/* ===== v18.86 修正23⑥: 連絡事項の定型文は「便種ごと」に切り替える =====
+   便種を選び直すとプルダウンの選択肢が入れ替わる（依頼書の4区分そのまま）。
+   ★文言を足す/直すときはここだけを直す。便種が未選択のときは全部の文言を重複なしで出す。 */
+var SHIP_NOTE_OPTIONS_BY_MODE={
+  mix:[
+    '請求書・納品書・物品受領書・ダイヤル錠・検索キー資料・組み立て資料、保証書の同梱をお願いします。',
+    'お客様直送の為、綺麗な箱でお願いします。',
+    '発送後に送り状を弊社までメールをお願いします。',
+    '予備分になります。'
+  ],
+  charter:[
+    'お客様直送の為、綺麗な箱でお願いします。',
+    'チャーター便発注書№K26-○○○○分になります。',
+    '発送後に箱数と、ドライバー様のご連絡先等をメールにてお知らせください。',
+    '予備分になります。'
+  ],
+  pickup:[
+    '納品日時欄記載の日時に有限会社ダイレクト様が引取りにお伺い致します。',
+    '弊社天野が引き取りに伺います。',
+    '予備分になります。'
+  ],
+  bring:[
+    '請求書・納品書・物品受領書・ダイヤル錠・検索キー資料・組み立て資料、保証書の同梱をお願いします。',
+    'レールセット、補修部材Ver.1or2（スライドレバー、押さえ、Iピン、Lピン、カラー、トッテプレート、ベースシール、ダイヤル錠ラッチ）も持参ください。'
+  ]
+};
+function shipNoteOptions(mode){
+  var a=SHIP_NOTE_OPTIONS_BY_MODE[mode];
+  if(a)return a.slice();
+  /* 便種が未選択のときは全区分の文言を重複なしで並べる */
+  var out=[];
+  SHIP_METHODS.forEach(function(m){
+    (SHIP_NOTE_OPTIONS_BY_MODE[m.v]||[]).forEach(function(s){if(out.indexOf(s)<0)out.push(s);});
+  });
+  return out;
+}
 /* ===== v18.85 修正22の追加修正: 荷送人は「会社名」と「住所以降」を別の行に分けて返す =====
    依頼「住所以降は改行して記載。会社名の先頭に合わせる」。帳票側は
    ラベル「荷送人:」の右に name／detail を2行で積む（＝2行目が会社名の先頭に揃う）。
@@ -6007,8 +6049,14 @@ function generateQuoteHTML(order,docType,legIndex){
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+cfg.title+' '+order.no+'</title>';
   html+='<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">';
   /* v18.33 要望⑫: A4印刷を考慮したフォントバランス調整（本文10.5px・表9.5px・見出し8.5px） */
-  html+='<style>@page{size:A4;margin:15mm 12mm}*{margin:0;padding:0;box-sizing:border-box}';
-  html+='body{font-family:"Noto Sans JP",sans-serif;padding:20px 25px;font-size:10.5px;color:#222;line-height:1.65}';
+  /* ===== v18.86 修正23⑧: 印刷プレビューが縮小されるのを防ぐ =====
+     計測では帳票の中身はA4の印刷可能幅に収まっており、はみ出しは0だった。
+     それでも縮小されるのは、レイアウト幅が「ポップアップ窓の幅(800px)」基準になり
+     用紙幅と食い違うため。★用紙の実寸(mm)でレイアウト幅を固定して食い違いを無くす。
+     余白も 15mm/12mm → 12mm/10mm に詰めて、紙面に対して文字が小さく見えないようにした。 */
+  html+='<style>@page{size:A4 portrait;margin:12mm 10mm}*{margin:0;padding:0;box-sizing:border-box}';
+  html+='html{width:190mm}';/* A4 210mm − 左右余白10mm×2 */
+  html+='body{font-family:"Noto Sans JP",sans-serif;width:190mm;margin:0 auto;padding:20px 0;font-size:10.5px;color:#222;line-height:1.65}';
   html+='table{width:100%;border-collapse:collapse;margin:8px 0;font-size:9.5px}th,td{border:1px solid #999;padding:3px 6px}';
   html+='th{background:#f0f0f0;font-weight:600;text-align:center;font-size:8.5px;white-space:nowrap}td.r{text-align:right}td.c{text-align:center}';
   /* v18.72 修正17⑯: 構成行(【1列2段】等)は border-left/right を消していたため、印刷すると
@@ -6019,9 +6067,11 @@ function generateQuoteHTML(order,docType,legIndex){
   html+='.tot-box{margin-left:auto;width:300px;font-size:10px;border:1px solid #999;margin-top:8px}';
   html+='.trow{display:flex;justify-content:space-between;padding:3px 10px;border-bottom:1px solid #ddd}';
   html+='.trow.main{font-size:13px;font-weight:900;background:#f8f8f8;border-bottom:2px solid #333}.trow.sub{font-size:8px;color:#666}';
-  html+='@media print{body{padding:0}}</style></head><body>';
+  html+='@media print{html,body{width:auto;margin:0}body{padding:0}}</style></head><body>';
   html+='<div style="text-align:right"><span style="font-size:22px;font-weight:700;letter-spacing:4px;border-bottom:3px solid #222;padding-bottom:4px;display:inline-block">'+cfg.title+'</span></div>';
-  html+='<div style="text-align:right;font-size:10px;color:#444;margin-bottom:16px">'+cfg.subtitle+'</div>';
+  /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない（他の帳票は従来どおり） */
+  if(isShipping)html+='<div style="margin-bottom:12px"></div>';
+  else html+='<div style="text-align:right;font-size:10px;color:#444;margin-bottom:16px">'+cfg.subtitle+'</div>';
   /* v18.72 修正17⑧ ／ v18.73 追加修正⑧: 弊社（株式会社LEC）の欄は★見積書の右側に置き、
      ★お客様名より下の行から始まるように上に余白を入れる。文字は左揃え。
      （v18.72 では「お客様情報の直ぐ下」に置いたが、右側へ戻してほしいとの指示） */
@@ -6048,7 +6098,9 @@ function generateQuoteHTML(order,docType,legIndex){
   /* v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記する） */
   if(order.showRepName)html+='<div style="font-size:10px;font-weight:600;margin-bottom:2px">'+(order.repName||REP_NAME_DEFAULT)+'</div>';
   /* v18.33 要望⑬: 弊社担当者名の重複を削除（伝票コード上部の欄に統一） */
-  html+='〒120-0005<br>東京都足立区綾瀬7-4-1<br>TEL. 03-5849-5563&emsp;FAX. 03-5849-5564<br>登録番号:T4040001077220</div></div>';
+  /* v18.86 修正23⑪: 出荷指示書は右上の登録番号（インボイス番号）を出さない */
+  html+='〒120-0005<br>東京都足立区綾瀬7-4-1<br>TEL. 03-5849-5563&emsp;FAX. 03-5849-5564'
+    +(isShipping?'':'<br>登録番号:T4040001077220')+'</div></div>';
   if(isShipping){
     /* ===== v18.84 修正22⑤ ／ v18.85 修正22の追加修正: 出荷指示書の記載項目と配置 =====
        左側: 納品先名／荷受人／納品先住所／納品先電話番号／納品日時／便種
@@ -6060,7 +6112,9 @@ function generateQuoteHTML(order,docType,legIndex){
        ★全項目が ✎ 出荷指示書の手修正（order.shipEdit）で上書きできる。手修正した項目には ✎ を付ける。
        　値の出所は shipEditHeader() の1か所（印刷用HTMLと画面プレビューが同じものを使う）。 */
     var shv=shipEditHeader(order,cust);
-    var em=function(k){return shv.edited[k]?' ✎':'';};
+    /* v18.86 修正23⑨: 手修正の ✎（ペン）アイコンは★完全に出さない（ユーザー指定）。
+       手修正されているかどうかは shv.edited に残っているが、帳票には印字しない。 */
+    var em=function(){return '';};
     html+='<div style="display:flex;gap:20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
     html+='<div style="flex:1;min-width:0">';
     html+='<div><b>納品先名:</b> '+(shv.name||'')+em('name')+'</div>';
@@ -6130,14 +6184,14 @@ function generateQuoteHTML(order,docType,legIndex){
     var nCol=sr.showCode?6:5;
     html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材'
       +(sr.legIndex!=null?('　<span style="color:#B45309">'+(sr.legIndex+1)+'便 ／ 全'+sr.legs+'便</span>'):'')+'</div>';
-    if(sr.edited)html+='<div style="font-size:8px;color:#975a16;margin:2px 0">✎ =「出荷指示書(様式)の手修正」で指定した内容を反映しています</div>';
+    /* v18.86 修正23⑨: ✎ の注記行と行末の ✎ は廃止（手修正の内容はそのまま反映される） */
     html+='<table><thead><tr>'+(sr.showCode?'<th style="width:65px">品番</th>':'')
       +'<th>名称</th><th style="width:45px">入数</th><th style="width:55px">出荷総数</th><th style="width:55px">出荷箱数</th><th style="width:55px">出荷バラ</th></tr></thead><tbody>';
     sr.groups.forEach(function(g){
       html+='<tr style="background:#f0f0f0"><td colspan="'+nCol+'" style="font-weight:700;font-size:9px">'+g.title+'</td></tr>';
       g.rows.forEach(function(r){
         html+='<tr>'+(sr.showCode?('<td style="font-size:8px">'+(r.code||'')+'</td>'):'')
-          +'<td>'+r.label+(r.edited?' ✎':'')+(r.note?' <span style="font-size:7px;color:#975a16">('+r.note+')</span>':'')+'</td>'
+          +'<td>'+r.label+(r.note?' <span style="font-size:7px;color:#975a16">('+r.note+')</span>':'')+'</td>'
           +'<td class="c">'+(r.irisu===''?'':fm(r.irisu))+'</td>'
           +'<td class="c" style="font-weight:700">'+fm(r.qty)+'</td>'
           +'<td class="c">'+(r.boxes===''?'':fm(r.boxes))+'</td>'
@@ -6394,7 +6448,9 @@ function generateExcel(order,docType){
 /* ========== SHARED COMPONENTS ========== */
 function Modal(p){
   if(!p.show)return null;
-  return h('div',{className:'mbg',onClick:function(){if(p.onClose)p.onClose();}},
+  /* v18.86 修正23⑦: モーダルの上に別のモーダルを重ねるとき用に z-index を指定できるようにした
+     （「🚚 便に分ける」が「📄 帳票の出力」の後ろに隠れて出てこなかったため）。 */
+  return h('div',{className:'mbg',style:p.zi?{zIndex:p.zi}:null,onClick:function(){if(p.onClose)p.onClose();}},
     h('div',{className:'mdl',style:{maxWidth:p.w||700},onClick:function(e){e.stopPropagation();}},
       h('div',{className:'mh'},h('h2',null,p.title||''),h('button',{className:'mx',onClick:p.onClose},'×')),
       h('div',{className:'mb'},p.children),
@@ -9757,7 +9813,8 @@ function QuotePreview(p){
   var tabStyle=function(k){return{padding:'4px 12px',fontSize:10,fontWeight:dt===k?700:400,cursor:'pointer',border:'1px solid #ccc',borderBottom:dt===k?'2px solid var(--nv)':'1px solid #ccc',background:dt===k?'#fff':'#f5f5f5',color:dt===k?'var(--nv)':'#666',borderRadius:'4px 4px 0 0',marginRight:2};};
 
   return h('div',{style:{fontSize:10.5,lineHeight:1.65}},/* v18.34 ⑫追随: 印刷版(10.5px/1.65)と一致 */
-    h('div',{style:{display:'flex',marginBottom:12,borderBottom:'1px solid #ccc'}},
+    /* v18.86 修正23③: 出荷指示書の手修正画面に埋め込むときはタブを出さない（hideTabs） */
+    p.hideTabs?null:h('div',{style:{display:'flex',marginBottom:12,borderBottom:'1px solid #ccc'}},
       h('button',{style:tabStyle('quote'),onClick:function(){docType[1]('quote');}},'御見積書'),
       h('button',{style:tabStyle('shipping'),onClick:function(){docType[1]('shipping');}},'出荷指示書')
     ),
@@ -9765,7 +9822,8 @@ function QuotePreview(p){
       h('div',{style:{textAlign:'right',marginBottom:4}},
         h('span',{style:{fontSize:20,fontWeight:700,letterSpacing:4,borderBottom:'3px solid #222',paddingBottom:4,display:'inline-block'}},cfg.title)
       ),
-      h('div',{style:{textAlign:'right',fontSize:9,color:'#444',marginBottom:14}},cfg.subtitle),
+      /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない */
+      isShipping?h('div',{style:{marginBottom:10}}):h('div',{style:{textAlign:'right',fontSize:9,color:'#444',marginBottom:14}},cfg.subtitle),
       /* v18.72 修正17⑧ ／ v18.73 追加修正⑧: 弊社の欄は見積書の右側・お客様名より下の行から（印刷用HTMLと同じ） */
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}},
         h('div',{style:{width:'52%',borderLeft:'3px solid #222',padding:'8px 12px',lineHeight:1.8}},
@@ -9788,29 +9846,31 @@ function QuotePreview(p){
           o.showRepName?h('div',{style:{fontSize:10,fontWeight:600,marginBottom:2}},o.repName||REP_NAME_DEFAULT):null,
           h('div',null,'〒120-0005'),h('div',null,'東京都足立区綾瀬7-4-1'),
           h('div',null,'TEL. 03-5849-5563  FAX. 03-5849-5564'),
-          h('div',null,'登録番号:T4040001077220')/* v18.33 要望⑬: 担当者は伝票コード上部の欄に統一 */
+          /* v18.86 修正23⑪: 出荷指示書は登録番号を出さない。v18.33 要望⑬: 担当者は伝票コード上部の欄に統一 */
+          isShipping?null:h('div',null,'登録番号:T4040001077220')
         )
       ),
       /* v18.85 修正22の追加修正: 出荷指示書のヘッダーは★左右2列（印刷用HTMLと同じ並び・同じ出所）。
          左=納品先名/荷受人/納品先住所/納品先電話番号/納品日時/便種、
          右=荷送人/担当者/出荷指示日/伝票コード/連絡事項。出荷元倉庫・受渡地・エンド納品先・出荷№は出さない。 */
       isShipping?h('div',{style:{display:'flex',gap:16,fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
+        /* v18.86 修正23⑨: 手修正の ✎（ペン）アイコンは★完全に出さない（印刷用HTMLと同じ） */
         h('div',{style:{flex:1,minWidth:0}},
-          h('div',null,h('b',null,'納品先名: '),(shvP.name||'')+(shvP.edited.name?' ✎':'')),
-          h('div',null,h('b',null,'荷受人: '),(shvP.consignee||'')+(shvP.edited.consignee?' ✎':'')),
-          h('div',null,h('b',null,'納品先住所: '),(shvP.postal?'〒'+shvP.postal+'　':'')+(shvP.address||'')+((shvP.edited.postal||shvP.edited.address)?' ✎':'')),
-          h('div',null,h('b',null,'納品先電話番号: '),(shvP.phone||'')+(shvP.edited.phone?' ✎':'')),
-          h('div',null,h('b',null,'納品日時: '),(shvP.delivery||'')+(shvP.edited.delivery?' ✎':'')),
+          h('div',null,h('b',null,'納品先名: '),shvP.name||''),
+          h('div',null,h('b',null,'荷受人: '),shvP.consignee||''),
+          h('div',null,h('b',null,'納品先住所: '),(shvP.postal?'〒'+shvP.postal+'　':'')+(shvP.address||'')),
+          h('div',null,h('b',null,'納品先電話番号: '),shvP.phone||''),
+          h('div',null,h('b',null,'納品日時: '),shvP.delivery||''),
           /* v18.84 修正22④: 便種は該当の1つだけ。判定は shipDocMode()（出力時に選んだ便種を優先） */
           h('div',null,h('b',null,'便種: '),shipMethodMarks(o))
         ),
         h('div',{style:{flex:1,minWidth:0}},
-          /* v18.85: 荷送人は会社名／住所以降の2行。★✎ は付けない（ユーザー指定） */
+          /* v18.85: 荷送人は会社名／住所以降の2行 */
           h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'荷送人:'),
             h('span',null,shvP.shipperName||'',shvP.shipperDetail?h('div',null,shvP.shipperDetail):null)),
-          h('div',null,h('b',null,'担当者: '),(shvP.staff||'')+(shvP.edited.staff?' ✎':'')),
-          h('div',null,h('b',null,'出荷指示日: '),(shvP.shipDate||'')+(shvP.edited.shipDate?' ✎':'')),
-          h('div',null,h('b',null,'伝票コード: '),(shvP.slip||'')+(shvP.edited.slip?' ✎':'')),
+          h('div',null,h('b',null,'担当者: '),shvP.staff||''),
+          h('div',null,h('b',null,'出荷指示日: '),shvP.shipDate||''),
+          h('div',null,h('b',null,'伝票コード: '),shvP.slip||''),
           h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'連絡事項:'),
             h('span',null,String(shvP.notes||'').split('\n').map(function(t,ti){return h('div',{key:ti},t);})))
         )
@@ -9894,7 +9954,8 @@ function QuotePreview(p){
                 g.rows.forEach(function(r,ri){
                   out.push(h('tr',{key:'sg'+gi+'r'+ri},
                     sr.showCode?h('td',{style:Object.assign({},cs,{fontSize:8})},r.code||''):null,
-                    h('td',{style:cs},r.label+(r.edited?' ✎':''),r.note?h('span',{style:{fontSize:7,color:'#975a16'}},'（'+r.note+'）'):null),
+                    /* v18.86 修正23⑨: ✎ は出さない */
+                    h('td',{style:cs},r.label,r.note?h('span',{style:{fontSize:7,color:'#975a16'}},'（'+r.note+'）'):null),
                     h('td',{style:ctd},r.irisu===''?'':fm(r.irisu)),
                     h('td',{style:Object.assign({},ctd,{fontWeight:700})},fm(r.qty)),
                     h('td',{style:ctd},r.boxes===''?'':fm(r.boxes)),
@@ -9971,13 +10032,15 @@ function OrdersPage(p){
   var showBom=us(false);/* v18.58 修正10①: 案件詳細の「部材内訳」を開いているか（案件詳細を開き直すたびに閉じる） */
   /* v18.46 修正４④/修正５③: 並び替え。既定は納品予定日の近い順（修正５③） */
   var sortKey=us('delivery');
-  var shipModal=us(null);/* order to show shipping modal for */
-  /* v18.79 修正20②: 案件管理の操作欄「📄帳票」で開く帳票選択モーダル（受注確定以降の案件） */
+  /* v18.79 修正20②: 案件管理の操作欄「📄帳票」で開く帳票選択モーダル */
   var docPick=us(null);
   /* v18.81 修正21①: 出荷指示書を便（トラック）ごとに分ける設定モーダル {no,n,alloc,tab} */
   var splitModal=us(null);
-  var shipEditModal=us(null);/* v18.28: 出荷指示書(様式)の手入力修正モーダル {order,autoHv,name,phone,postal,address,delivery,rows:[{ri,iri,name,auto,label,qty}]} */
-  var shipForm=us({shipToName:'',shipToPostal:'',shipToAddress:'',shipToPhone:'',shipper:'株式会社LEC',shipperCustom:'',deliveryDate:'',shippingNotes:'',shipNo:''});
+  /* v18.28 → v18.86 修正23②: 出荷指示書の記載内容モーダル。
+     ★「📄帳票 → ✎ 記載内容の手修正」と「ステータスの出荷指示」の両方がこの1画面に統一されている
+     （ship:true のときだけフッターが「出荷指示書発行」になり在庫を引く）。
+     旧「出荷指示」モーダル(shipModal/shipForm)は廃止した。 */
+  var shipEditModal=us(null);
   /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
   var kw=us('');
   /* v18.55 修正９④: 予備パーツ管理。対象案件・追加フォーム・返却入力（行ごと）。
@@ -10100,12 +10163,11 @@ function OrdersPage(p){
       order.shippedDate=String(sd||'').trim();
     }
     if(ns==='出荷指示'){
-      /* Show shipping modal instead of immediately processing */
-      var c=CUSTS.find(function(x){return x.id===order.cid;});
-      /* v17.1 要望25: エンド納品先があれば配送先に優先セット（無ければ顧客情報） */
-      var eu=order.endUser&&(order.endUser.name||order.endUser.address)?order.endUser:null;
-      shipForm[1]({shipToName:eu?eu.name:(c?c.name:''),shipToPostal:eu&&eu.postal?eu.postal:(c&&c.postal?c.postal:''),shipToAddress:eu&&eu.address?eu.address:(c?c.pref+(c.city||''):''),shipToPhone:eu&&eu.phone?eu.phone:(c&&c.phone?c.phone:''),shipper:'株式会社LEC',shipperCustom:'',deliveryDate:order.deliveryDate||'',shippingNotes:order.shippingNotes||'',shipNo:order.shipNo||'',docMode:order.shipDocMode||''});/* v18.44 修正３④: 仮押さえのみ登録時に入力した納品予定日を初期表示（従来は常に空欄で上書きされていた） */
-      shipModal[1](order);
+      /* ===== v18.86 修正23②: 出荷指示の遷移先を「✎ 記載内容の手修正」画面に統一した =====
+         従来はここで専用の「出荷指示」モーダル(shipModal)を開いていたが、
+         📄帳票 →「✎ 記載内容の手修正」と同じ画面へ寄せる（ユーザー指定）。
+         この画面のフッターに「出荷指示書発行」を出し、そこで在庫の引き落としとステータス変更を行う。 */
+      openShipEdit(order,true);
       return;
     }
     order.status=ns;
@@ -10140,8 +10202,14 @@ function OrdersPage(p){
     broadcastOrderUpdate(p.userName||'',order.no+' 差し戻し→'+target);
     detail[1](null);saveAll();p.bump&&p.bump();
   }
+  /* ===== v18.86 修正23②: 「✎ 記載内容の手修正」画面から出荷指示を確定する =====
+     旧「出荷指示」モーダル(shipModal)の confirmShipOrder をこちらへ移した。
+     入力内容の保存は applyShipEdit()、在庫の引き落としと出荷指示書の発行は従来どおり。 */
   function confirmShipOrder(){
-    var order=liveOrder(shipModal[0]);if(!order||!order.no)return;/* v18.68 修正15⑧ */
+    var m0=shipEditModal[0];if(!m0)return;
+    if(p.isReadOnly){p.toast('読み取り専用モード中は出荷指示できません');return;}
+    var order=applyShipEdit(m0);
+    if(!order||!order.no)return;/* v18.68 修正15⑧ */
     /* v18.31: 扉色未定(und)が残ったまま出荷すると、扉が出荷指示書に載らず在庫消費もされない。確定前に警告 */
     var hasUnd=(order.lines||[]).some(function(l){
       if(l.isFreeInput)return false;
@@ -10152,15 +10220,6 @@ function OrdersPage(p){
       return l.color==='und'&&!l.noDoor;
     });
     if(hasUnd&&!confirm('扉色が「未定」のままの明細があります。\nこのまま出荷すると扉は出荷指示書に記載されず、扉在庫も消費されません。\n（扉色を確定するには「✏ 案件修正」から色を選び直してください）\n\nこのまま出荷確定しますか？'))return;
-    var sf=shipForm[0];
-    order.shipTo={name:sf.shipToName,postal:sf.shipToPostal,address:sf.shipToAddress,phone:sf.shipToPhone};
-    order.shipper=sf.shipper==='その他（手入力）'?sf.shipperCustom:sf.shipper;
-    order.deliveryDate=sf.deliveryDate;
-    order.shippingNotes=sf.shippingNotes;
-    order.shipNo=sf.shipNo||'';
-    /* v18.80 修正20①の追加: 出荷指示書に印字する便種（空=案件の送付方法どおり）。
-       「引取り」は新柏倉庫の案件でのみ選べる（選択肢を出す側で制御・shipDocMode() でも念のため再判定） */
-    order.shipDocMode=sf.docMode||'';
     /* v18.76 修正18③: 出荷指示を2回押すと在庫が二重に引かれる。既に引いている案件は必ず確認を挟む
        （v18.68 修正15⑧ で直したステータスの取りこぼしと同じ場面で起きていた事故の再発防止）。 */
     if(stockConsumedState(order)!=='none'){
@@ -10172,7 +10231,7 @@ function OrdersPage(p){
     /* v14.5 E1: 在庫消費の永続化・同期を「印刷ウィンドウより先に」確実に実行（ポップアップブロックでデータが失われないように） */
     saveAll();
     broadcastOrderUpdate(p.userName||'',order.no+' 出荷指示');
-    shipModal[1](null);detail[1](null);p.bump&&p.bump();
+    shipEditModal[1](null);detail[1](null);p.bump&&p.bump();
     var q=generateQuoteHTML(order,'shipping');
     if(openPrintWindow(q.html)){p.toast('出荷指示書発行: '+order.no);}
     else{p.toast('出荷指示書を発行しました（'+order.no+'）。印刷ウィンドウはポップアップブロックのため開けませんでした。ブラウザのポップアップを許可してください');}
@@ -10187,7 +10246,7 @@ function OrdersPage(p){
      納品日時・便種・荷送人・担当者・伝票コード・連絡事項）と部材行の品名/数量をまとめて手修正できる。
      ★様式テンプレ（部材行の元ネタ）が引けない案件でもヘッダー項目は直せるように、
      　テンプレ未判定でも中断せず部材行だけ空にして開く（v18.83以前はここで toast して開かなかった）。 */
-  function openShipEdit(o){
+  function openShipEdit(o,shipMode){
     /* v18.49 修正６⑨: 納品完了の案件は内容を編集できない */
     if(isOrderLocked(o)){p.toast('納品完了の案件は編集できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
     var tpl=SHIP_TEMPLATES[shipTemplateKey(o)];
@@ -10202,9 +10261,58 @@ function OrdersPage(p){
       return {ri:rw[0],iri:rw[1]||0,name:rw[2],auto:auto,label:ro.label||'',qty:(ro.qty!=null&&ro.qty!=='')?String(ro.qty):''};
     });
     shipEditModal[1]({order:o,autoHv:autoHv,noTpl:!tpl,
+      /* v18.86 修正23②: ship=true のときは「出荷指示」から来た＝保存時に在庫を引いて出荷指示書を出す */
+      ship:!!shipMode,
       name:se.name||'',phone:se.phone||'',postal:se.postal||'',address:se.address||'',delivery:se.delivery||'',
       consignee:se.consignee||'',staff:se.staff||'',slip:se.slip||'',shipDate:se.shipDate||'',shipper:se.shipper||'',notes:se.notes||'',
+      /* 納品予定日は案件の実データ（請求書・納品書の日付にも使う）。旧「出荷指示」モーダルの入力欄をここへ移した */
+      deliveryDate:o.deliveryDate||'',
       docMode:o.shipDocMode||'',rows:rows});
+  }
+  /* ===== v18.86 修正23②: ✎ 記載内容の手修正 の内容を案件へ書き戻す =====
+     戻り値は保存後の order。★保存先は order.shipEdit（手修正）と order.shipDocMode（便種）と
+     order.deliveryDate（納品予定日）の3つだけ。他は触らない。 */
+  function applyShipEdit(m0){
+    var o2=liveOrder(m0.order)||m0.order;
+    var rowsOv={};
+    (m0.rows||[]).forEach(function(r2){
+      var e2={};
+      if(r2.label&&r2.label.trim())e2.label=r2.label.trim();
+      if(r2.qty!==''&&!isNaN(parseInt(r2.qty))&&parseInt(r2.qty)>=0)e2.qty=parseInt(r2.qty);
+      if(e2.label!==undefined||e2.qty!==undefined)rowsOv[r2.ri]=e2;
+    });
+    var se2={};
+    ['name','phone','postal','address','delivery','consignee','staff','slip','shipDate','shipper','notes'].forEach(function(k){
+      var v=String(m0[k]||'').trim();
+      if(v)se2[k]=v;
+    });
+    if(Object.keys(rowsOv).length)se2.rows=rowsOv;
+    if(Object.keys(se2).length)o2.shipEdit=se2;else delete o2.shipEdit;
+    o2.shipDocMode=m0.docMode||'';
+    o2.deliveryDate=m0.deliveryDate||'';
+    /* 荷送人は帳票の自動値にも使うので案件側にも持たせる（手修正が入っていればそれを正とする） */
+    if(se2.shipper)o2.shipper=se2.shipper;
+    return o2;
+  }
+  /* プレビュー用に「まだ保存していない入力内容」を反映した案件のコピーを作る（修正23③） */
+  function shipEditPreviewOrder(m0){
+    var se={},rowsOv={};
+    ['name','phone','postal','address','delivery','consignee','staff','slip','shipDate','shipper','notes'].forEach(function(k){
+      var v=String(m0[k]||'').trim();if(v)se[k]=v;
+    });
+    (m0.rows||[]).forEach(function(r2){
+      var e2={};
+      if(r2.label&&r2.label.trim())e2.label=r2.label.trim();
+      if(r2.qty!==''&&!isNaN(parseInt(r2.qty))&&parseInt(r2.qty)>=0)e2.qty=parseInt(r2.qty);
+      if(e2.label!==undefined||e2.qty!==undefined)rowsOv[r2.ri]=e2;
+    });
+    if(Object.keys(rowsOv).length)se.rows=rowsOv;
+    return Object.assign({},m0.order,{
+      shipEdit:Object.keys(se).length?se:null,
+      shipDocMode:m0.docMode||'',
+      deliveryDate:m0.deliveryDate||'',
+      shipper:se.shipper||m0.order.shipper||'株式会社LEC'
+    });
   }
 
   return h('div',{className:'page'+(p.tab==='orders'?' show':'')},
@@ -10406,13 +10514,9 @@ function OrdersPage(p){
               h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'見積外の予備パーツの持ち出し・持ち帰りを登録します',onClick:function(){
                 spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:o.wh||WH_IDS[0]}));spareSet[1]({units:1,wh:o.wh||WH_IDS[0],note:''});spareBulkWh[1](o.wh||'');/* v18.68 修正15④ */spareModal[1](liveOrder(o));
               }},'🧰 予備パーツ'+((o.spareParts||[]).length?'('+(o.spareParts||[]).length+')':'')),
-              /* v18.28 顧客要望: 出荷指示書を手入力で修正（納品先・納品日・品名書換・数量）。案件の order.shipEdit へ保存。
-                 v18.59 修正10③(b): 反映先を「📄 出荷指示書」(印刷用HTML／画面プレビュー)へ変更した。
-                 v18.84 修正22⑤: 依頼書の記載項目（荷受人・担当者・伝票コード・荷送人・連絡事項）も手修正できるようにし、
-                   モーダルを開く処理は openShipEdit() に切り出した（📄帳票モーダルからも開けるようにするため）。 */
-              h('button',{className:'btn btn-xs btn-ol',style:Object.assign({marginLeft:2,fontWeight:700},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
-                title:isOrderLocked(o)?'納品完了の案件は編集できません（ステータスを差し戻してから操作してください）':'出荷指示書の記載内容（納品先・荷受人・納品日時・荷送人・担当者・伝票コード・連絡事項・部材の品名/数量）を手入力で修正し、案件に保存します',
-                onClick:function(){openShipEdit(o);}},'✎ 出荷指示書の手修正'),
+              /* v18.86 修正23①: 操作欄の「✎ 出荷指示書の手修正」ボタンは削除した。
+                 「📄帳票」→ 出荷指示書の「✎ 記載内容の手修正」から開けるようになったため（ユーザー指定）。
+                 モーダル本体と openShipEdit() は生きている（📄帳票 と 出荷指示 の両方から呼ぶ）。 */
               /* 一覧から直接削除 */
               h('button',{className:'btn btn-xs btn-rd',style:Object.assign({marginLeft:2,background:'#991B1B'},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
                 title:isOrderLocked(o)?'納品完了の案件は削除できません（ステータスを差し戻してから操作してください）':'この案件を削除します',onClick:function(){
@@ -11221,7 +11325,8 @@ function OrdersPage(p){
       }
       var cell={border:'1px solid var(--g200)',padding:'3px 5px',fontSize:10};
       var hd=function(w,warn){return Object.assign({},cell,{background:warn?'#FEF3C7':'var(--g50)',fontWeight:700},w?{width:w}:{});};
-      return h(Modal,{show:true,title:'🚚 出荷指示書を便ごとに分ける — '+so.no,w:860,onClose:function(){splitModal[1](null);},
+      /* v18.86 修正23⑦: 「📄 帳票の出力」より後ろに隠れないよう手前に出す（zi） */
+      return h(Modal,{show:true,zi:260,title:'🚚 出荷指示書を便ごとに分ける — '+so.no,w:860,onClose:function(){splitModal[1](null);},
         footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
           h('button',{className:'btn btn-ol',onClick:function(){splitModal[1](null);}},'キャンセル'),
           h('button',{className:'btn btn-gn',onClick:function(){
@@ -11329,23 +11434,8 @@ function OrdersPage(p){
               onClick:function(){openQuote(docPick[0],d[0]);}},
               h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]),
               h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},d[2])),
-            /* v18.80 修正20①の追加: 出荷指示書は出力する前に便種を選べる。
-               「引取り」は★新柏倉庫から出す案件でだけ選択肢に出す（ユーザー指定）。 */
-            d[0]==='shipping'?h('div',{style:{display:'flex',alignItems:'center',gap:6,margin:'-2px 0 8px 10px'}},
-              h('span',{style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'便種'),
-              h('select',{className:'inp',style:{fontSize:10,padding:'2px 4px',width:230},value:docPick[0].shipDocMode||'',
-                onChange:function(e){
-                  var v=e.target.value;
-                  docPick[1](Object.assign({},docPick[0],{shipDocMode:v}));
-                  var lo=liveOrder(docPick[0]);
-                  if(lo){lo.shipDocMode=v;saveOrders();cloudSave(p.userName);p.bump&&p.bump();}
-                }},
-                h('option',{value:''},'案件の送付方法どおり（'+((docPick[0].shipMethod==='mix')?'混載便':(docPick[0].shipMethod==='charter')?'チャーター便':'未選択')+'）'),
-                h('option',{value:'mix'},'混載便'),
-                h('option',{value:'charter'},'チャーター便'),
-                canPickup(docPick[0])?h('option',{value:'pickup'},'引取り'):null),
-              canPickup(docPick[0])?null:h('span',{style:{fontSize:8,color:'var(--g400)'}},'※引取りは新柏倉庫の案件のみ')
-            ):null,
+            /* v18.86 修正23⑤: 帳票の出力画面から便種のプルダウンは削除した。
+               便種は「✎ 記載内容の手修正」画面で変更する（ユーザー指定）。 */
             /* ===== v18.81 修正21①: 便（トラック）ごとに分けて出す =====
                1案件でトラックが複数台になる案件用。分割の設定と、便ごとの印刷ボタンをここに出す。
                「全便まとめて」と「便を選んで1枚ずつ」の両方を出す（ユーザー指定）。 */
@@ -11376,40 +11466,31 @@ function OrdersPage(p){
     ):null,
     /* Shipping instruction modal */
     /* v18.28 顧客要望: 出荷指示書(様式)の手入力修正モーダル。空欄=自動値。保存内容は order.shipEdit に永続化され全端末へ同期 */
-    shipEditModal[0]?h(Modal,{show:true,title:'✎ 出荷指示書の手修正 — '+shipEditModal[0].order.no,w:680,onClose:function(){shipEditModal[1](null);},
+    /* ===== v18.86 修正23②: 出荷指示の遷移先もこの画面に統一した =====
+       ship=true（ステータスの「出荷指示」から来た）のときはフッターが「出荷指示書発行」になり、
+       保存に加えて在庫の引き落とし・ステータス変更・出荷指示書の印刷まで行う。 */
+    shipEditModal[0]?h(Modal,{show:true,w:900,
+      title:(shipEditModal[0].ship?'🚚 出荷指示 — ':'✎ 出荷指示書の記載内容 — ')+shipEditModal[0].order.no,
+      onClose:function(){shipEditModal[1](null);},
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){shipEditModal[1](null);}},'キャンセル'),
         h('button',{className:'btn btn-ol',title:'この案件の手修正をすべて消して自動値に戻す',onClick:function(){
           if(p.isReadOnly){p.toast('読み取り専用モード中は変更できません');return;}
-          var o3=shipEditModal[0].order;
+          var o3=liveOrder(shipEditModal[0].order)||shipEditModal[0].order;
           if(!o3.shipEdit){shipEditModal[1](null);return;}
           delete o3.shipEdit;saveAll();
-          broadcastOrderUpdate(p.userName||'',o3.no+' 出荷指示書(様式)の手修正をクリア');
+          broadcastOrderUpdate(p.userName||'',o3.no+' 出荷指示書の手修正をクリア');
           p.toast('手修正をクリアしました（自動値に戻ります）');shipEditModal[1](null);p.bump&&p.bump();
         }},'自動値に戻す'),
-        h('button',{className:'btn btn-rd',onClick:function(){
+        shipEditModal[0].ship
+        ?h('button',{className:'btn btn-rd',onClick:confirmShipOrder},'出荷指示書発行')
+        :h('button',{className:'btn btn-rd',onClick:function(){
           if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
-          var m0=shipEditModal[0];var o2=m0.order;
-          var rowsOv={};
-          m0.rows.forEach(function(r2){
-            var e2={};
-            if(r2.label&&r2.label.trim())e2.label=r2.label.trim();
-            if(r2.qty!==''&&!isNaN(parseInt(r2.qty))&&parseInt(r2.qty)>=0)e2.qty=parseInt(r2.qty);
-            if(e2.label!==undefined||e2.qty!==undefined)rowsOv[r2.ri]=e2;
-          });
-          var se2={};
-          /* v18.84 修正22⑤: ヘッダー項目は依頼書の10項目ぶん。空欄＝自動値なので保存しない */
-          ['name','phone','postal','address','delivery','consignee','staff','slip','shipDate','shipper','notes'].forEach(function(k){
-            var v=String(m0[k]||'').trim();
-            if(v)se2[k]=v;
-          });
-          if(Object.keys(rowsOv).length)se2.rows=rowsOv;
-          if(Object.keys(se2).length)o2.shipEdit=se2;else delete o2.shipEdit;
-          /* 便種は帳票モーダル・出荷指示モーダルと同じ order.shipDocMode に保存する（★保存先を増やさない） */
-          o2.shipDocMode=m0.docMode||'';
+          var m0=shipEditModal[0];
+          var o2=applyShipEdit(m0);
           saveAll();
           broadcastOrderUpdate(p.userName||'',o2.no+' 出荷指示書を手修正');
-          p.toast(Object.keys(se2).length?'手修正を保存しました（出荷指示書の出力に反映されます）':'手修正なし（自動値のまま）');
+          p.toast(o2.shipEdit?'手修正を保存しました（出荷指示書の出力に反映されます）':'手修正なし（自動値のまま）');
           shipEditModal[1](null);p.bump&&p.bump();
         }},'保存'))},
       (function(){
@@ -11420,11 +11501,33 @@ function OrdersPage(p){
           return h('div',{style:style||{flex:1}},h('label',{style:FLBL},label),
             h('input',{className:'inp',value:m0[k]||'',placeholder:ph||'',onChange:function(e){var o={};o[k]=e.target.value;set(o);}}));
         }
+        /* v18.86 修正23⑥: 連絡事項の定型文は「いま選んでいる便種」に応じて入れ替える */
+        var noteOpts=shipNoteOptions(m0.docMode||m0.order.shipMethod||'');
         return h('div',null,
-        /* v18.84 修正22⑤: 依頼書の記載項目（10項目）をすべて手修正できるようにした */
-        h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'空欄の項目は自動値（顧客/エンド納品先・案件の担当営業・在庫計算の数量）が使われます。入力した項目だけが出荷指示書に ✎ 付きで反映され、案件に保存されて全端末で共有されます。',
-          h('span',{style:{color:'#975a16'}},'※数量を 0 にするとその部材は出荷指示書に載りません。')),
+        /* v18.84 修正22⑤: 依頼書の記載項目をすべて手修正できるようにした */
+        h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'空欄の項目は自動値（顧客/エンド納品先・案件の担当営業・在庫計算の数量）が使われます。入力した内容は案件に保存され、全端末で共有されます（帳票にペンのマークは付きません）。',
+          h('span',{style:{color:'#975a16'}},'※数量を 0 にするとその部材は出荷指示書に載りません。'),
+          m0.ship?h('div',{style:{color:'#991B1B',fontWeight:700,marginTop:3}},'※「出荷指示書発行」を押すと、この内容で在庫を引き落としてステータスを「出荷指示」にします。'):null),
         h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6,borderBottom:'1px solid var(--g200)',paddingBottom:4}},'記載内容（空欄=自動）'),
+        /* v18.86 修正23②: 旧「出荷指示」モーダルにあった納品先の一括セットをここへ移した */
+        h('div',{style:{display:'flex',gap:4,marginBottom:6,alignItems:'flex-end'}},
+          h('div',{style:{flex:1}},h('label',{style:FLBL},'納品先をまとめて入れる'),
+            h('select',{className:'inp',value:'',onChange:function(e){
+              var v=e.target.value;if(!v)return;
+              var c2=CUSTS.find(function(x){return x.id===m0.order.cid;});
+              var eu2=m0.order.endUser||{};
+              if(v==='customer'&&c2)set({name:c2.name||'',postal:c2.postal||'',address:(c2.pref||'')+(c2.city||''),phone:c2.phone||''});
+              else if(v==='enduser')set({name:eu2.name||'',postal:eu2.postal||'',address:eu2.address||'',phone:eu2.phone||''});
+              else{var dl=DEALERS.find(function(d){return d.id===v;});if(dl)set({name:dl.name,postal:dl.postal,address:dl.address,phone:dl.phone});}
+            }},
+              h('option',{value:''},'（選んで反映）'),
+              h('option',{value:'customer'},'顧客情報を使用'),
+              (m0.order.endUser&&(m0.order.endUser.name||m0.order.endUser.address))?h('option',{value:'enduser'},'エンド納品先（この案件）'):null,
+              DEALERS.map(function(dl){return h('option',{key:dl.id,value:dl.id},'代理店: '+dl.name);}))),
+          /* 納品予定日は案件の実データ（請求書・納品書の日付にも使う）。旧「出荷指示」モーダルの欄をここへ移した */
+          h('div',{style:{flex:1}},h('label',{style:FLBL},'納品予定日（請求書・納品書の日付にも使います）'),
+            h('input',{className:'inp',type:'date',value:m0.deliveryDate||'',onChange:function(e){set({deliveryDate:e.target.value});}}))
+        ),
         h('div',{style:{display:'flex',gap:4,marginBottom:6}},
           fld('name','納品先名（顧客名）',m0.autoHv.name||'',{flex:2}),
           fld('consignee','荷受人（顧客担当者名）',m0.autoHv.consignee||'',{flex:2})
@@ -11438,18 +11541,22 @@ function OrdersPage(p){
           fld('delivery','納品日時（例: 2026/07/15 午前中）',m0.autoHv.delivery||'',{flex:2})
         ),
         h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-          /* v18.80/v18.84: 便種は order.shipDocMode（帳票モーダル・出荷指示モーダルと同じ保存先） */
-          h('div',{style:{flex:1}},h('label',{style:FLBL},'便種'),
+          /* v18.86 修正23④: 便種は 混載便／チャーター便／引取り／持参 の4種。倉庫による制限は無い。
+             保存先は order.shipDocMode（★出荷指示書だけに効く。送料・他の帳票は変わらない）。 */
+          h('div',{style:{flex:1}},h('label',{style:FLBL},'便種（出荷指示書のみに反映）'),
             h('select',{className:'inp',value:m0.docMode||'',onChange:function(e){set({docMode:e.target.value});}},
-              h('option',{value:''},'案件の送付方法どおり（'+((m0.order.shipMethod==='mix')?'混載便':(m0.order.shipMethod==='charter')?'チャーター便':'未選択')+'）'),
-              h('option',{value:'mix'},'混載便'),
-              h('option',{value:'charter'},'チャーター便'),
-              canPickup(m0.order)?h('option',{value:'pickup'},'引取り'):null)),
-          /* v18.84 修正22⑤: 荷送人は依頼書の5社から選ぶ（住所・TELは SHIPPER_INFO から自動で併記） */
-          h('div',{style:{flex:1}},h('label',{style:FLBL},'荷送人'),
-            h('select',{className:'inp',value:m0.shipper||'',onChange:function(e){set({shipper:e.target.value});}},
-              h('option',{value:''},'自動（'+(m0.autoHv.shipper||'株式会社LEC')+'）'),
-              SHIPPER_CHOICES.map(function(s){return h('option',{key:s,value:s},s);})))
+              h('option',{value:''},'案件の送付方法どおり（'+(shipMethodLabel(m0.order.shipMethod)||'未選択')+'）'),
+              SHIP_METHODS.map(function(x){return h('option',{key:x.v,value:x.v},x.l);}))),
+          /* v18.86 修正23⑫: 荷送人もプルダウン選択＋自由入力にした（5社以外を書ける） */
+          h('div',{style:{flex:2}},h('label',{style:FLBL},'荷送人（選択＋自由入力）'),
+            h('div',{style:{display:'flex',gap:4}},
+              h('select',{className:'inp',style:{flex:1},value:(SHIPPER_CHOICES.indexOf(m0.shipper||'')>=0?m0.shipper:''),
+                onChange:function(e){set({shipper:e.target.value});}},
+                h('option',{value:''},'自動 / 自由入力（'+(m0.autoHv.shipper||'株式会社LEC')+'）'),
+                SHIPPER_CHOICES.map(function(s){return h('option',{key:s,value:s},s);})),
+              h('input',{className:'inp',style:{flex:1},value:m0.shipper||'',placeholder:m0.autoHv.shipper||'株式会社LEC',
+                title:'一覧に無い荷送人はここへ直接入力できます（住所・TELが登録されている会社は自動で併記されます）',
+                onChange:function(e){set({shipper:e.target.value});}})))
         ),
         h('div',{style:{display:'flex',gap:4,marginBottom:6}},
           fld('staff','担当者',m0.autoHv.staff||'',{flex:1}),
@@ -11457,19 +11564,20 @@ function OrdersPage(p){
           fld('shipDate','出荷指示日（例: 2026/09/10）',m0.autoHv.shipDate||'',{flex:1}),
           fld('slip','伝票コード',m0.autoHv.slip||'',{flex:1})
         ),
-        /* v18.84 修正22⑤: 連絡事項は「プルダウンで定型文を挿入 ＋ 自由入力」（依頼書の3文） */
+        /* v18.86 修正23⑥: 連絡事項は「プルダウンで定型文を挿入 ＋ 自由入力」。
+           選択肢は★いま選んでいる便種のものだけに切り替わる（SHIP_NOTE_OPTIONS_BY_MODE）。 */
         h('div',{style:{marginBottom:6}},
           h('div',{style:{display:'flex',alignItems:'flex-end',gap:6,marginBottom:2}},
             h('label',{style:FLBL},'連絡事項'),
-            h('select',{className:'inp',value:'',style:{fontSize:10,padding:'2px 4px',maxWidth:360},
+            h('select',{className:'inp',value:'',style:{fontSize:10,padding:'2px 4px',maxWidth:460},
               onChange:function(e){
                 var v=e.target.value;if(!v)return;
                 var cur=String(m0.notes||m0.autoHv.notes||'');
                 if(cur.split('\n').indexOf(v)<0)cur=cur?(cur+'\n'+v):v;
                 set({notes:cur});
               }},
-              h('option',{value:''},'定型文を選んで追加…'),
-              SHIP_NOTE_OPTIONS.map(function(s){return h('option',{key:s,value:s},s);}))
+              h('option',{value:''},'定型文を選んで追加…（'+(shipMethodLabel(m0.docMode||m0.order.shipMethod)||'便種未選択')+'）'),
+              noteOpts.map(function(s){return h('option',{key:s,value:s},s);}))
           ),
           h('textarea',{className:'inp',value:m0.notes||'',placeholder:m0.autoHv.notes||'（自由入力。プルダウンから定型文を追加できます）',rows:3,style:{resize:'vertical'},
             onChange:function(e){set({notes:e.target.value});}})
@@ -11489,92 +11597,18 @@ function OrdersPage(p){
             );
           }))
         )),
-        h('div',{style:{fontSize:9,color:'var(--g500)',marginTop:6}},'※使っていない行の品名を書き換えれば、リストに無い商品も出荷指示書に載せられます（正本の入力ガイドと同じ運用）。手修正数量に0を入れるとその行は載りません。箱数・バラは入数マスタから自動計算されます。')
+        h('div',{style:{fontSize:9,color:'var(--g500)',marginTop:6}},'※使っていない行の品名を書き換えれば、リストに無い商品も出荷指示書に載せられます（正本の入力ガイドと同じ運用）。手修正数量に0を入れるとその行は載りません。箱数・バラは入数マスタから自動計算されます。'),
+        /* ===== v18.86 修正23③: 見積書作成画面と同じく、下へスクロールすればプレビューが見られる =====
+           入力した内容をその場で反映するため、保存前の値を載せた案件のコピー(shipEditPreviewOrder)を渡す。
+           ★出荷指示書だけを見せたいので QuotePreview のタブは隠す（hideTabs）。 */
+        h('div',{style:{marginTop:14,borderTop:'2px dashed var(--g200)',paddingTop:10}},
+          h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6}},'📄 出荷指示書プレビュー（入力内容がそのまま反映されます）'),
+          h(QuotePreview,{order:shipEditPreviewOrder(m0),docType:'shipping',hideTabs:true})
+        )
         );
       })()
     ):null,
-    shipModal[0]?h(Modal,{show:true,title:'出荷指示 — '+shipModal[0].no,w:550,onClose:function(){shipModal[1](null);},
-      footer:h('div',{style:{display:'flex',gap:6}},
-        h('button',{className:'btn btn-ol',onClick:function(){shipModal[1](null);}},'キャンセル'),
-        h('button',{className:'btn btn-rd',onClick:confirmShipOrder},'出荷指示書発行'))},
-      h('div',null,
-        h('div',{style:{marginBottom:8}},
-          h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'出荷№'),
-          h('input',{className:'inp',value:shipForm[0].shipNo,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipNo=e.target.value;shipForm[1](f);},placeholder:'例: S-2026-001',style:{width:200}})
-        ),
-        h('div',{style:{fontSize:11,fontWeight:700,marginBottom:8,borderBottom:'1px solid var(--g200)',paddingBottom:4}},'出荷先情報'),
-        h('div',{style:{marginBottom:6}},
-          h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'出荷先選択'),
-          h('select',{className:'inp',value:'manual',onChange:function(e){
-            var f=Object.assign({},shipForm[0]);
-            if(e.target.value==='manual'){return;}
-            if(e.target.value==='customer'){
-              var c2=CUSTS.find(function(x){return x.id===shipModal[0].cid;});
-              if(c2){f.shipToName=c2.name;f.shipToPostal=c2.postal||'';f.shipToAddress=c2.pref+(c2.city||'');f.shipToPhone=c2.phone||'';shipForm[1](f);}
-              return;
-            }
-            if(e.target.value==='enduser'){
-              var eu2=shipModal[0].endUser||{};
-              f.shipToName=eu2.name||'';f.shipToPostal=eu2.postal||'';f.shipToAddress=eu2.address||'';f.shipToPhone=eu2.phone||'';shipForm[1](f);
-              return;
-            }
-            var dl=DEALERS.find(function(d){return d.id===e.target.value;});
-            if(dl){f.shipToName=dl.name;f.shipToPostal=dl.postal;f.shipToAddress=dl.address;f.shipToPhone=dl.phone;shipForm[1](f);}
-          }},
-            h('option',{value:'manual'},'手入力'),
-            (shipModal[0]&&shipModal[0].endUser&&(shipModal[0].endUser.name||shipModal[0].endUser.address))?h('option',{value:'enduser'},'エンド納品先（この案件）'):null,
-            h('option',{value:'customer'},'顧客情報を使用'),
-            DEALERS.map(function(dl){return h('option',{key:dl.id,value:dl.id},'代理店: '+dl.name);})
-          )
-        ),
-        h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-          h('div',{style:{flex:2}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'出荷先名'),h('input',{className:'inp',value:shipForm[0].shipToName,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipToName=e.target.value;shipForm[1](f);}})),
-          h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'郵便番号'),h('input',{className:'inp',value:shipForm[0].shipToPostal,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipToPostal=e.target.value;shipForm[1](f);}}))
-        ),
-        h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'住所'),h('input',{className:'inp',value:shipForm[0].shipToAddress,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipToAddress=e.target.value;shipForm[1](f);}})),
-        h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'電話番号'),h('input',{className:'inp',value:shipForm[0].shipToPhone,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipToPhone=e.target.value;shipForm[1](f);},style:{width:200}})),
-        h('div',{style:{fontSize:11,fontWeight:700,marginBottom:8,marginTop:12,borderBottom:'1px solid var(--g200)',paddingBottom:4}},'荷送人・納品日'),
-        h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-          h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'荷送人'),
-            /* v18.84 修正22⑤: 荷送人は依頼書の5社を先頭に並べる（従来の代理店・手入力も残す） */
-            h('select',{className:'inp',value:shipForm[0].shipper,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipper=e.target.value;shipForm[1](f);}},
-              SHIPPER_CHOICES.map(function(s){return h('option',{key:s,value:s},s);}),
-              DEALERS.map(function(dl){return h('option',{key:dl.id,value:dl.name},'代理店: '+dl.name);}),
-              h('option',{value:'その他（手入力）'},'その他（手入力）')
-            ),
-            shipForm[0].shipper==='その他（手入力）'?h('input',{className:'inp',value:shipForm[0].shipperCustom,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shipperCustom=e.target.value;shipForm[1](f);},placeholder:'荷送人名を入力',style:{marginTop:4}}):null
-          ),
-          h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'納品希望日'),h('input',{className:'inp',type:'date',value:shipForm[0].deliveryDate,onChange:function(e){var f=Object.assign({},shipForm[0]);f.deliveryDate=e.target.value;shipForm[1](f);}}))
-        ),
-        /* v18.80 修正20①の追加: 出荷指示書に印字する便種。
-           「引取り」は★新柏倉庫から出す案件でだけ選択肢に出す（ユーザー指定）。
-           判定は shipDocMode()/canPickup() の1か所に集約している。 */
-        h('div',{style:{marginBottom:6}},
-          h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'便種（出荷指示書に印字）'),
-          h('select',{className:'inp',value:shipForm[0].docMode||'',onChange:function(e){var f=Object.assign({},shipForm[0]);f.docMode=e.target.value;shipForm[1](f);}},
-            h('option',{value:''},'案件の送付方法どおり（'+((shipModal[0].shipMethod==='mix')?'混載便':(shipModal[0].shipMethod==='charter')?'チャーター便':'未選択')+'）'),
-            h('option',{value:'mix'},'混載便'),
-            h('option',{value:'charter'},'チャーター便'),
-            canPickup(shipModal[0])?h('option',{value:'pickup'},'引取り'):null),
-          canPickup(shipModal[0])?null:h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:2}},'※「引取り」は新柏倉庫から出す案件でのみ選べます')
-        ),
-        /* v18.84 修正22⑤: 出荷備考＝出荷指示書の「連絡事項」。プルダウンで定型文を追加できる（＋自由入力） */
-        h('div',{style:{marginBottom:4}},
-          h('div',{style:{display:'flex',alignItems:'flex-end',gap:6,marginBottom:2}},
-            h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'連絡事項（出荷指示書に印字）'),
-            h('select',{className:'inp',value:'',style:{fontSize:10,padding:'2px 4px',maxWidth:340},onChange:function(e){
-              var v=e.target.value;if(!v)return;
-              var f=Object.assign({},shipForm[0]);
-              var cur=String(f.shippingNotes||'');
-              if(cur.split('\n').indexOf(v)<0)cur=cur?(cur+'\n'+v):v;
-              f.shippingNotes=cur;shipForm[1](f);
-            }},
-              h('option',{value:''},'定型文を選んで追加…'),
-              SHIP_NOTE_OPTIONS.map(function(s){return h('option',{key:s,value:s},s);}))
-          ),
-          h('textarea',{className:'inp',value:shipForm[0].shippingNotes,onChange:function(e){var f=Object.assign({},shipForm[0]);f.shippingNotes=e.target.value;shipForm[1](f);},rows:3,style:{resize:'vertical'}}))
-      )
-    ):null
+    null
   );
 }
 
