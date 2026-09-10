@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.87（修正23⑧の再修正 帳票をA4実寸で出力・印刷後のウィンドウを閉じる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.88（修正24 顧客一覧の表示・出荷指示書を倉庫別/タイプ別に分割）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1487,8 +1487,9 @@ var WH_COMPANY={
   amago:'尼高運輸株式会社',
   sapporo:'尼高運輸株式会社 札幌営業所'
 };
-function shipDocAddressee(order){
-  var ws=orderWhs(order);
+function shipDocAddressee(order,onlyWh){
+  /* v18.88 修正24③: 倉庫ごとに分けて出すときは、その倉庫だけを宛名にする */
+  var ws=onlyWh?[onlyWh]:orderWhs(order);
   if(!ws.length)return '';
   return ws.map(function(w){
     var co=WH_COMPANY[w];
@@ -5835,7 +5836,8 @@ function shipperBlock(order){
    依頼22②により製品ライン名（例: 出荷指示書【日本製 Ver.2】）にする。
    ★扉だけ別ライン（v18.70 bomDoorLine）の案件は両方のラインを並べる（実際に出す部材が2ライン分あるため）。
    ★ライン名の出所は LINES の name の1か所（他画面の表記と自動で揃う）。 */
-function shipDocLineLabel(order){
+/* この案件に出てくる製品ライン（＝配送部材のタイプ）の一覧。並びは明細の順 */
+function shipDocLines(order){
   var ids=[];
   function add(id){if(id&&ids.indexOf(id)<0)ids.push(id);}
   ((order&&order.lines)||[]).forEach(function(l){
@@ -5843,11 +5845,54 @@ function shipDocLineLabel(order){
     add(l.line);
     add(l.doorLine);/* v18.70/v18.71: 扉だけ別ラインで押さえている明細 */
   });
+  return ids;
+}
+function lineName(id){
+  var m=LINES.find(function(x){return x.id===id;});
+  return m?m.name:(id||'');
+}
+/* onlyLine を渡すとそのラインだけの表記になる（v18.88 修正24④のタイプ別出力用） */
+function shipDocLineLabel(order,onlyLine){
+  if(onlyLine)return lineName(onlyLine);
+  var ids=shipDocLines(order);
   if(!ids.length)return '';
-  return ids.map(function(id){
-    var m=LINES.find(function(x){return x.id===id;});
-    return m?m.name:id;
-  }).join('／');
+  return ids.map(lineName).join('／');
+}
+/* ===== v18.88 修正24③④: この案件で出すべき出荷指示書の一覧 =====
+   倉庫が複数／製品ラインが複数なら、その組合せごとに1枚ずつ出す。
+   ★中身が0行になる組合せは返さない（例: 新柏にはVer.2しか無い、尼高にはSαしか無い）。
+   1枚で足りる案件は [{wh:'',line:'',...}] を1件だけ返す（従来と同じ挙動）。 */
+function shipDocSplits(order){
+  var whs=[];try{whs=orderWhs(order);}catch(e){whs=[];}
+  var lines=shipDocLines(order);
+  if(whs.length<2&&lines.length<2)return [{wh:'',line:'',label:'',rows:null}];
+  var ws=whs.length>1?whs:[''];
+  var ls=lines.length>1?lines:[''];
+  var out=[];
+  ws.forEach(function(w){
+    ls.forEach(function(l){
+      var sr;try{sr=buildShipRows(order,null,{wh:w,line:l});}catch(e){sr=null;}
+      var n=0;if(sr)sr.groups.forEach(function(g){n+=g.rows.length;});
+      if(!n)return;
+      var lab=[];
+      if(w)lab.push(((WH_MAP[w]||{}).n)||w);
+      if(l)lab.push(lineName(l));
+      out.push({wh:w,line:l,label:lab.join(' ／ '),rows:n});
+    });
+  });
+  return out.length?out:[{wh:'',line:'',label:'',rows:null}];
+}
+/* 分割ぶんを1回の印刷でまとめて出す（1枚ごとに改ページ）。v18.88 修正24③④ */
+function shipAllSplitsHTML(order){
+  var sp=shipDocSplits(order);
+  if(sp.length<=1)return generateQuoteHTML(order,'shipping').html;
+  var first=generateQuoteHTML(order,'shipping',null,sp[0]).html;
+  var rest='';
+  for(var i=1;i<sp.length;i++){
+    var m=/<body>([\s\S]*)<\/body>/.exec(generateQuoteHTML(order,'shipping',null,sp[i]).html);
+    rest+='<div style="page-break-before:always;break-before:page"></div>'+(m?m[1]:'');
+  }
+  return first.replace('</body>',rest+'</body>');
 }
 /* ===== v18.79 修正20② / v18.81 修正21①②: 出荷指示書（新様式）の部材行 =====
    新柏の「出荷指示書原本」Excel に合わせ、部材ごとに 名称／入数／出荷総数／出荷箱数／出荷バラ を出す。
@@ -5878,8 +5923,16 @@ function shipLegCount(order){
   var n=parseInt(order&&order.shipSplit&&order.shipSplit.n,10);
   return (n>1&&n<=9)?n:1;
 }
-/* legIndex: 省略=案件の全量（従来どおり） / 0以上=その便のぶんだけ */
-function buildShipRows(order,legIndex){
+/* ===== v18.88 修正24③④: 出荷指示書を「倉庫ごと」「部材のタイプ（製品ライン）ごと」に分けて出す =====
+   ③ 複数倉庫から出す案件は倉庫ごとに1枚。どの部材がどの倉庫から出るかは
+   　 aggregateOrderBOMByWh(order,wh)（仮押さえ台帳 _actualHeld._wh が出所）で決まる。
+   　 ★行を先頭から順にその倉庫の在庫量まで消化する（同じ部材が複数明細にあっても合計は合う）。
+   ④ 製品ラインが複数ある案件（Ver.2 と Sα など）はラインごとに1枚。行の line は明細の line
+   　 （扉だけ別ラインの行は doorLine）。ラインを持たない行（自由入力・追加分）は★先頭のラインの紙に載せる。
+   scope: {wh:'倉庫ID', line:'ラインID'} 省略/空なら従来どおり全部で1枚。
+   legIndex: 省略=全量 / 0以上=その便のぶんだけ（便分割は scope の中で効く）。 */
+function buildShipRows(order,legIndex,scope){
+  scope=scope||{};
   var groups=[],anyEdit=false;
   var prSubH={},prDoorH={};
   (order._partialReleases||[]).forEach(function(r){
@@ -5955,22 +6008,56 @@ function buildShipRows(order,legIndex){
         if(se.qty!=null){b.qty=se.qty;note='';edited=true;}
       }
       if(!(b.qty>0))return;
-      rows.push(mkRow(lbl,b.qty,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,note,edited,b.isDoor?b.color:'',b.isDoor));
+      var nr=mkRow(lbl,b.qty,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,note,edited,b.isDoor?b.color:'',b.isDoor);
+      /* v18.88 修正24④: どの製品ラインの部材か（扉だけ別ラインの行は doorLine） */
+      nr.line=b.isDoor?(ln.doorLine||ln.line||''):(ln.line||'');
+      rows.push(nr);
     });
-    if(rows.length)groups.push({title:title,rows:rows});
+    if(rows.length)groups.push({title:title,rows:rows,line:(ln.line||'')});
   });
   /* 明細に同じ部材が無かった予備パーツ／様式手修正で足した部材は、独立した行として足す */
   var extra=[];
   spareRest(spPool).forEach(function(s){extra.push(mkRow(s.label||s.key||'',s.qty,s.key,s.sub,'予備パーツ',false,s.color,(s.key==='door'||s.key==='doorH')));});
   shipEditRest(sePool).forEach(function(s){extra.push(mkRow(s.label,s.qty,s.key,s.sub,'',true));});
-  if(extra.length)groups.push({title:'追加分',rows:extra});
+  if(extra.length)groups.push({title:'追加分',rows:extra,line:''});
+
+  /* ---- v18.88 修正24③④: 倉庫／製品ラインで絞る ----
+     ★行IDは「絞る前の並び順」で決めるので、gi をここで固定してから絞る
+     （絞り方が変わっても便分割の割り当て(alloc)がズレないようにするため）。 */
+  groups.forEach(function(g,gi){g.gi=gi;g.rows.forEach(function(r){r.gi=gi;});});
+  if(scope.line){
+    var firstLine=shipDocLines(order)[0]||'';
+    groups=groups.map(function(g){
+      return {gi:g.gi,title:g.title,line:g.line,rows:g.rows.filter(function(r){
+        /* ラインを持たない行（自由入力・追加分）は先頭のラインの紙に載せる */
+        return r.line?(r.line===scope.line):(scope.line===firstLine);
+      })};
+    }).filter(function(g){return g.rows.length>0;});
+  }
+  if(scope.wh){
+    var whPool;try{whPool=aggregateOrderBOMByWh(order,scope.wh);}catch(e){whPool=null;}
+    if(whPool){
+      groups=groups.map(function(g){
+        return {gi:g.gi,title:g.title,line:g.line,rows:g.rows.filter(function(r){
+          if(!r.key)return true;/* 在庫キーが無い行（自由入力）は倉庫で分けられないので残す */
+          var k=r.key+'|'+(r.sub||'')+'|'+(r.color||'');
+          var avail=whPool[k]||0;
+          if(avail<=0){r.qty=0;return false;}
+          var take=Math.min(r.qty,avail);
+          whPool[k]=avail-take;
+          r.qty=take;
+          return take>0;
+        })};
+      }).filter(function(g){return g.rows.length>0;});
+    }
+  }
 
   /* ---- 行ID を振り、便ごとの数量へ置き換える ---- */
   var legs=shipLegCount(order);
   var alloc=(order&&order.shipSplit&&order.shipSplit.alloc)||{};
-  groups.forEach(function(g,gi){
+  groups.forEach(function(g){
     g.rows.forEach(function(r){
-      r.rid=gi+'|'+r.key+'|'+r.sub+'|'+r.color;
+      r.rid=r.gi+'|'+r.key+'|'+r.sub+'|'+r.color;
       r.total=r.qty;/* その行の総数（分割前）。分割画面で残りを出すのに使う */
       if(legs>1&&legIndex!=null){
         var a=alloc[r.rid]||[];
@@ -6008,15 +6095,22 @@ function buildShipRows(order,legIndex){
   }
   return {groups:groups,totalBoxes:totalBox,baraKinds:baraKinds,edited:anyEdit,
           legs:legs,legIndex:(legs>1&&legIndex!=null)?legIndex:null,
-          /* v18.81 修正21②: 札幌倉庫から出す案件は品番列を出す */
-          showCode:(function(){try{return orderWhs(order).indexOf('sapporo')>=0;}catch(e){return (order&&order.wh)==='sapporo';}})()};
+          scopeWh:scope.wh||'',scopeLine:scope.line||'',
+          /* v18.81 修正21②: 札幌倉庫から出す案件は品番列を出す。
+             v18.88 修正24③: 倉庫ごとに分けているときは★その紙の倉庫が札幌かどうかで判定する。 */
+          showCode:(function(){
+            try{return scope.wh?(scope.wh==='sapporo'):(orderWhs(order).indexOf('sapporo')>=0);}
+            catch(e){return (order&&order.wh)==='sapporo';}
+          })()};
 }
 
 /* ========== QUOTE/INVOICE/DELIVERY/RECEIPT HTML GENERATION ========== */
 /* legIndex（v18.81 修正21①）: 出荷指示書を便ごとに分けて出すときの便番号（0始まり）。
-   省略すると従来どおり案件の全量で1枚出す。 */
-function generateQuoteHTML(order,docType,legIndex){
+   scope（v18.88 修正24③④）: {wh:'倉庫ID', line:'ラインID'} 倉庫ごと／タイプごとに分けて出すときの絞り込み。
+   どちらも省略すると従来どおり案件の全量で1枚出す。 */
+function generateQuoteHTML(order,docType,legIndex,scope){
   docType=docType||'quote';
+  scope=scope||{};
   var cust=CUSTS.find(function(c){return c.id===order.cid;});
   var DOC_CFG={
     quote:{title:'御見積書',subtitle:'下記のとおり御見積申し上げます。',amountLabel:'見積金額',slipPrefix:'見積',dateLabel:'見積日'},
@@ -6029,8 +6123,8 @@ function generateQuoteHTML(order,docType,legIndex){
   var isReceipt=docType==='receipt';
   var isShipping=docType==='shipping';
   /* v18.84 修正22②: 表題の【…】は配送部材のタイプ＝製品ライン（例:【日本製 Ver.2】）。
-     従来の様式種別（SML用／SS用等）からの変更。判定は shipDocLineLabel() の1か所。 */
-  var shippingFormat=isShipping?shipDocLineLabel(order):'';
+     v18.88 修正24④: タイプごとに分けて出すときは★その紙のタイプだけを書く。 */
+  var shippingFormat=isShipping?shipDocLineLabel(order,scope.line):'';
   if(isShipping&&shippingFormat){
     cfg=Object.assign({},cfg,{title:'出荷指示書【'+shippingFormat+'】'});
   }
@@ -6088,8 +6182,9 @@ function generateQuoteHTML(order,docType,legIndex){
   html+='<div style="width:52%;border-left:3px solid #222;padding:8px 12px;font-size:10px;line-height:1.8">';
   if(isShipping){
     /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（郵便番号・住所・電話・顧客コードは出さない） */
-    /* v18.85 修正22の確認事項3: 「御中」の有無は shipDocAddressee() が倉庫ごとに決める */
-    html+='<div style="font-size:14px;font-weight:700">'+shipDocAddressee(order)+'</div>';
+    /* v18.85 修正22の確認事項3: 「御中」の有無は shipDocAddressee() が倉庫ごとに決める
+       v18.88 修正24③: 倉庫ごとに分けて出すときは★その倉庫だけを宛名にする */
+    html+='<div style="font-size:14px;font-weight:700">'+shipDocAddressee(order,scope.wh)+'</div>';
   }else{
     html+='<div style="font-size:14px;font-weight:700;margin-bottom:4px">'+(cust?cust.name:'')+' 御中</div>';
     /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ移動。先方担当者（ご担当）は見積書から削除 */
@@ -6189,9 +6284,14 @@ function generateQuoteHTML(order,docType,legIndex){
        v18.81: 尼高札幌（札幌倉庫）だけ先頭に「品番」列が付く（sr.showCode）。
        　　　　便で分けているときは その便のぶんだけを出す（legIndex は generateQuoteHTML の第3引数）。
        ★行の組み立ては buildShipRows() の1か所だけ（画面プレビューも同じものを使う）。 */
-    var sr=buildShipRows(order,legIndex);
+    var sr=buildShipRows(order,legIndex,scope);
     var nCol=sr.showCode?6:5;
+    /* v18.88 修正24③④: 倉庫／タイプで分けて出している紙は、どのぶんかを見出しに書く */
+    var scopeNote=[];
+    if(sr.scopeWh)scopeNote.push(((WH_MAP[sr.scopeWh]||{}).n)||sr.scopeWh+'ぶん');
+    if(sr.scopeLine)scopeNote.push(lineName(sr.scopeLine)+'ぶん');
     html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材'
+      +(scopeNote.length?('　<span style="color:#1e3a5f">'+scopeNote.join(' ／ ')+'</span>'):'')
       +(sr.legIndex!=null?('　<span style="color:#B45309">'+(sr.legIndex+1)+'便 ／ 全'+sr.legs+'便</span>'):'')+'</div>';
     /* v18.86 修正23⑨: ✎ の注記行と行末の ✎ は廃止（手修正の内容はそのまま反映される） */
     html+='<table><thead><tr>'+(sr.showCode?'<th style="width:65px">品番</th>':'')
@@ -7523,9 +7623,12 @@ function CustPage(p){
         ),
         /* v18.52 修正７①-3: 法人名の下にフリガナを表示（検索対象にもなっている） */
         h('td',null,c.name,c.kana?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},c.kana):null),
-        h('td',{style:{fontSize:9}},c.attr||''),
+        /* ===== v18.88 修正24①②: 顧客一覧の 属性／〒／TEL =====
+           ① 「温浴施設」など4文字の属性が折り返して2行になっていた → nowrap で1行に固定。
+           ② フォントが 9px で他の列（.tbl td = 15px）より小さかった → 指定を外して他の列と揃える。 */
+        h('td',{style:{whiteSpace:'nowrap'}},c.attr||''),
         h('td',null,c.pref),h('td',null,c.city||''),
-        h('td',{style:{fontSize:9}},c.postal||''),h('td',{style:{fontSize:9}},c.phone||''),
+        h('td',{style:{whiteSpace:'nowrap'}},c.postal||''),h('td',{style:{whiteSpace:'nowrap'}},c.phone||''),
         /* v18.52 修正７①-1: 先方担当者は敬称付きで表示する */
         h('td',null,(c.contactPerson||'')+(c.contactPerson&&c.honorific?' '+c.honorific:'')),
         /* v18.53: 弊社担当はアカウント名の表記に揃えて表示する */
@@ -11455,11 +11558,29 @@ function OrdersPage(p){
          ['delivery','納品書','納品日は案件の納品予定日']].filter(function(d){
           return docsForStatus(docPick[0].status).indexOf(d[0])>=0;
         }).map(function(d){
+          /* v18.88 修正24③④: 倉庫が複数／部材のタイプが複数の案件は、出荷指示書が複数枚になる */
+          var dsp=(d[0]==='shipping')?shipDocSplits(docPick[0]):[];
+          var multi=dsp.length>1;
           return h('div',{key:d[0]},
             h('button',{className:'btn',style:{display:'block',width:'100%',textAlign:'left',marginBottom:5,padding:'7px 10px'},
-              onClick:function(){openQuote(docPick[0],d[0]);}},
-              h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]),
-              h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},d[2])),
+              onClick:function(){
+                if(multi){if(!openPrintWindow(shipAllSplitsHTML(docPick[0])))p.toast('ポップアップを許可してください');return;}
+                openQuote(docPick[0],d[0]);
+              }},
+              h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]+(multi?('（全'+dsp.length+'枚）'):'')),
+              h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},
+                multi?('倉庫／部材のタイプごとに '+dsp.length+' 枚に分かれます（'+dsp.map(function(s){return s.label;}).join('・')+'）。押すと全'+dsp.length+'枚をまとめて印刷します'):d[2])),
+            /* 1枚ずつ出したいとき用のボタン（倉庫ごと／タイプごと） */
+            multi?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 8px 10px'}},
+              h('span',{style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:'),
+              dsp.map(function(s,si){
+                return h('button',{key:'sp'+si,className:'btn btn-xs',title:s.label+' の出荷指示書だけを出します（'+s.rows+'行）',
+                  onClick:function(){
+                    var q=generateQuoteHTML(docPick[0],'shipping',null,s);
+                    if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');
+                  }},s.label);
+              })
+            ):null,
             /* v18.86 修正23⑤: 帳票の出力画面から便種のプルダウンは削除した。
                便種は「✎ 記載内容の手修正」画面で変更する（ユーザー指定）。 */
             /* ===== v18.81 修正21①: 便（トラック）ごとに分けて出す =====
