@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.94（修正26⑨ 失注ステータスと失注タブ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.95（修正26③ 請求書を複数枚に分けて出す）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5761,6 +5761,115 @@ function quoteSubjectOf(order){
   return productName(npl[0].line)+' '+npl.map(function(fl){return sizeLabel(fl.line,fl.size)+lineTypeLabel(fl)+' '+fm(fl.qty||lineUnits(fl))+'台';}).join('／');
 }
 
+/* ===== v18.95 修正26③: 1案件の請求書を複数枚に分けて出す =====
+   顧客の予算の都合で請求金額を分ける運用のための機能。依頼どおり2通りの分け方に対応する。
+   　(1) 項目ごとの振り分け … 本体はAの請求書、送料・作業費はBの請求書
+   　(2) 1項目を分ける     … 本体100万円のうち60万をA・40万をB（★金額でも台数でも分けられる）
+   ★合計がズレないように、どの分け方でも★最後の紙が必ず「残り」を受け持つ（便に分ける＝修正21①と同じ）。
+   　入力が全体を超えたら自動で切り詰め、切り詰めたことは警告として返す。
+   ★分け方の保存先は order.invSplit の1か所。行の指定キーは buildQuoteRows() の rkey。
+   　（rkey は明細の並べ替えや値引き行の増減があっても対応が取れるように振られている） */
+var INV_SPLIT_MAX=5;
+function invSplitOf(order){
+  var s=(order&&order.invSplit)||{};
+  return {n:Math.max(1,Math.min(INV_SPLIT_MAX,parseInt(s.n)||1)),alloc:s.alloc||{}};
+}
+function invSplitCount(order){return invSplitOf(order).n;}
+/* 金額のある行だけが分割の対象（見出しだけの行は対象外） */
+function invRowSplittable(r){return !!r&&r.amount!==''&&r.amount!=null&&!isNaN(parseInt(r.amount));}
+/* 台数で分けられるのは「数量が2以上で単価がある行」だけ（1式の送料などは金額でしか分けられない） */
+function invRowQtySplittable(r){
+  return invRowSplittable(r)&&(parseInt(r.qty)||0)>1&&r.price!==''&&r.price!=null&&!isNaN(parseInt(r.price));
+}
+/* 請求書の枚数ぶんの明細を作る。戻り値 {sheets:[{index,rows,subtotal,tax,total}], warns:[]} */
+function buildInvoiceSheets(order){
+  var q=buildQuoteRows(order);
+  var sp=invSplitOf(order),n=sp.n,warns=[];
+  var sheets=[];
+  for(var i=0;i<n;i++)sheets.push({index:i,rows:[],subtotal:0,tax:0,total:0});
+  (q.rows||[]).forEach(function(r){
+    var a=sp.alloc[r.rkey]||{};
+    var amt=parseInt(r.amount)||0;
+    /* 分割しない行（既定）＝指定された1枚に丸ごと載せる。未指定なら1枚目 */
+    if(n<=1||!a.mode||a.mode==='whole'||!invRowSplittable(r)){
+      var k=Math.max(0,Math.min(n-1,parseInt(a.sheet)||0));
+      sheets[k].rows.push(Object.assign({},r));
+      return;
+    }
+    var si,v,used=0,shares=[];
+    if(a.mode==='qty'&&invRowQtySplittable(r)){
+      var tq=parseInt(r.qty)||0;
+      for(si=0;si<n-1;si++){
+        v=Math.max(0,parseInt((a.q||{})[si])||0);
+        if(used+v>tq){v=Math.max(0,tq-used);warns.push('「'+r.name+'」の割当が全体（'+tq+(r.unit||'')+'）を超えたため切り詰めました');}
+        shares[si]=v;used+=v;
+      }
+      shares[n-1]=Math.max(0,tq-used);/* ★最後の紙が残りを受け持つ */
+      var amtUsed=0;
+      shares.forEach(function(sq,k2){
+        if(sq<=0)return;
+        var rowAmt=(k2===n-1)?(amt-amtUsed):((parseInt(r.price)||0)*sq);
+        if(k2!==n-1)amtUsed+=rowAmt;
+        var rr=Object.assign({},r,{qty:sq,amount:rowAmt});
+        rr.remark=invSplitRemark(r.remark,'分割請求: 全'+fm(parseInt(r.qty)||0)+(r.unit||'')+'のうち'+fm(sq)+(r.unit||''));
+        sheets[k2].rows.push(rr);
+      });
+      return;
+    }
+    /* 金額で分ける。値引き行（マイナス）も同じ向き・同じ絶対値の範囲に収める */
+    var lo=Math.min(0,amt),hi=Math.max(0,amt);
+    for(si=0;si<n-1;si++){
+      v=parseInt((a.a||{})[si])||0;
+      var cv=Math.max(lo-used,Math.min(hi-used,v));
+      if(cv!==v)warns.push('「'+r.name+'」の割当が全体（¥'+fm(amt)+'）を超えたため切り詰めました');
+      shares[si]=cv;used+=cv;
+    }
+    shares[n-1]=amt-used;/* ★最後の紙が残りを受け持つ */
+    shares.forEach(function(sa,k3){
+      if(sa===0)return;
+      /* 金額で分けた行は数量・単価が意味を持たないので空欄にし、備考で全体額が分かるようにする */
+      var rr2=Object.assign({},r,{qty:'',unit:'',price:'',amount:sa});
+      rr2.remark=invSplitRemark(r.remark,'分割請求: 全体 ¥'+fm(amt)+' のうち');
+      sheets[k3].rows.push(rr2);
+    });
+  });
+  sheets.forEach(function(s){
+    s.subtotal=s.rows.reduce(function(t,r){return t+(parseInt(r.amount)||0);},0);
+    s.tax=Math.floor(s.subtotal*0.1);
+    s.total=s.subtotal+s.tax;
+  });
+  return {sheets:sheets,warns:warns};
+}
+function invSplitRemark(base,add){
+  var b=String(base||'').trim();
+  return b?(b+'　'+add):add;
+}
+/* ===== 修正26③ のチェック機能 =====
+   依頼「明細を分ける事によって合計金額の相違や、必要項目の記載漏れが発生しないようにチェック機能」。
+   ★税抜合計は必ず一致する作りだが、検算して不一致なら error として出す（作りが壊れた時に気付けるように）。
+   ★消費税は請求書ごとに計算するので、税込合計は1枚で出したときと数円ずれることがある。これは warn。 */
+function invSplitCheck(order){
+  var q=buildQuoteRows(order);
+  var whole={subtotal:q.subtotal,tax:Math.floor(q.subtotal*0.1)};
+  whole.total=whole.subtotal+whole.tax;
+  var b=buildInvoiceSheets(order),sheets=b.sheets,n=sheets.length;
+  var errors=[],warns=b.warns.slice();
+  var sumSub=sheets.reduce(function(t,s){return t+s.subtotal;},0);
+  var sumTotal=sheets.reduce(function(t,s){return t+s.total;},0);
+  if(sumSub!==whole.subtotal)errors.push('税抜合計が一致しません（分割 ¥'+fm(sumSub)+' ／ 案件 ¥'+fm(whole.subtotal)+'）');
+  if(n>1){
+    sheets.forEach(function(s,i){
+      if(!s.rows.length)errors.push((i+1)+'枚目に載せる項目がありません（振り分けを見直してください）');
+      else if(s.subtotal===0)warns.push((i+1)+'枚目の請求金額が0円です');
+    });
+    var missing=(q.rows||[]).filter(function(r){
+      return sheets.every(function(s){return !s.rows.some(function(x){return x.rkey===r.rkey;});});
+    });
+    if(missing.length)errors.push('どの請求書にも載っていない項目があります: '+missing.map(function(r){return r.name;}).join('／'));
+    if(sumTotal!==whole.total)warns.push('消費税は請求書ごとに計算するため、税込合計が1枚で出したときと ¥'+fm(sumTotal-whole.total)+' ずれます');
+  }
+  return {n:n,ok:errors.length===0,errors:errors,warns:warns,sheets:sheets,whole:whole,sumSub:sumSub,sumTotal:sumTotal};
+}
 /* ===== v18.79 修正20②: 帳票の日付欄は「案件の日付」を使う（ユーザー指定） =====
    従来はどの帳票も出力したその日(tdSlash())が入っていた。
    納品書・物品受領書・請求書はサンプル帳票のとおり納品日を入れる（請求日＝納品日）。
@@ -6017,6 +6126,18 @@ function shipDocSplits(order){
   return out.length?out:[{wh:'',line:'',label:'',rows:null}];
 }
 /* 分割ぶんを1回の印刷でまとめて出す（1枚ごとに改ページ）。v18.88 修正24③④ */
+/* v18.95 修正26③: 分けた請求書を全枚数まとめて1回で印刷する（紙ごとに改ページ） */
+function invAllSheetsHTML(order){
+  var n=invSplitCount(order);
+  if(n<=1)return generateQuoteHTML(order,'invoice').html;
+  var first=generateQuoteHTML(order,'invoice',null,{invSheet:0}).html;
+  var rest='';
+  for(var i=1;i<n;i++){
+    var m=/<body>([\s\S]*)<\/body>/.exec(generateQuoteHTML(order,'invoice',null,{invSheet:i}).html);
+    rest+='<div style="page-break-before:always;break-before:page"></div>'+(m?m[1]:'');
+  }
+  return first.replace('</body>',rest+'</body>');
+}
 function shipAllSplitsHTML(order){
   var sp=shipDocSplits(order);
   if(sp.length<=1)return generateQuoteHTML(order,'shipping').html;
@@ -6302,12 +6423,25 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var _q=buildQuoteRows(order);
   var rows=_q.rows,subtotal=_q.subtotal;
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
+  /* ===== v18.95 修正26③: 請求書を複数枚に分けているときは、その紙のぶんだけを出す =====
+     ★金額（税抜合計・消費税・税込合計）もその紙のぶんに差し替える。合計の整合は
+     　buildInvoiceSheets() が「最後の紙が残りを受け持つ」形で保証している。 */
+  var invSheetIdx=null;
+  if(docType==='invoice'&&invSplitCount(order)>1){
+    var _in=invSplitCount(order);
+    invSheetIdx=Math.max(0,Math.min(_in-1,parseInt(scope.invSheet)||0));
+    var _is=buildInvoiceSheets(order).sheets[invSheetIdx];
+    rows=_is.rows;subtotal=_is.subtotal;tax10=_is.tax;total=_is.total;
+    cfg=Object.assign({},cfg,{title:cfg.title+'（'+(invSheetIdx+1)+'／全'+_in+'枚）'});
+  }
   var subject=quoteSubjectOf(order);
   var payTerms=order.paymentTerms||'前払い（銀行振り込み）';
   var slipCode=cfg.slipPrefix+'-'+order.no;
   /* v18.93 修正26②⑤: 請求書・物品受領書・納品書は記載内容を ✎ で手修正できる（空欄=自動値）。
      ★この3帳票の記載値は必ず dv から取ること（order を直接読むと手修正が効かない）。 */
   var dv=isBill?docEditHeader(order,cust,docType):null;
+  /* v18.95 修正26③: 分けて出す請求書は伝票コードに枚数の枝番を付ける（手修正があればそちらが優先） */
+  if(dv&&invSheetIdx!=null&&!dv.edited.slip)dv.slip=dv.slip+'-'+(invSheetIdx+1);
 
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+cfg.title+' '+order.no+'</title>';
   html+='<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">';
@@ -10408,6 +10542,8 @@ function OrdersPage(p){
   var shipEditModal=us(null);
   /* v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル {order,docType,v,auto} */
   var docEditModal=us(null);
+  /* v18.95 修正26③: 請求書を複数枚に分ける設定モーダル {no,n,alloc} */
+  var invSplitModal=us(null);
   /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
   var kw=us('');
   /* v18.55 修正９④: 予備パーツ管理。対象案件・追加フォーム・返却入力（行ごと）。
@@ -11920,15 +12056,20 @@ function OrdersPage(p){
           /* v18.88 修正24③④: 倉庫が複数／部材のタイプが複数の案件は、出荷指示書が複数枚になる */
           var dsp=(d[0]==='shipping')?shipDocSplits(docPick[0]):[];
           var multi=dsp.length>1;
+          /* v18.95 修正26③: 請求書は「予算の都合で分ける」ために複数枚に分けられる */
+          var invN=(d[0]==='invoice')?invSplitCount(docPick[0]):1;
+          var invMulti=invN>1;
           return h('div',{key:d[0]},
             h('button',{className:'btn',style:{display:'block',width:'100%',textAlign:'left',marginBottom:5,padding:'7px 10px'},
               onClick:function(){
                 if(multi){if(!openPrintWindow(shipAllSplitsHTML(docPick[0])))p.toast('ポップアップを許可してください');return;}
+                if(invMulti){if(!openPrintWindow(invAllSheetsHTML(docPick[0])))p.toast('ポップアップを許可してください');return;}
                 openQuote(docPick[0],d[0]);
               }},
-              h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]+(multi?('（全'+dsp.length+'枚）'):'')),
+              h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]+(multi?('（全'+dsp.length+'枚）'):'')+(invMulti?('（全'+invN+'枚）'):'')),
               h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},
-                multi?('倉庫／部材のタイプごとに '+dsp.length+' 枚に分かれます（'+dsp.map(function(s){return s.label;}).join('・')+'）。押すと全'+dsp.length+'枚をまとめて印刷します'):d[2])),
+                multi?('倉庫／部材のタイプごとに '+dsp.length+' 枚に分かれます（'+dsp.map(function(s){return s.label;}).join('・')+'）。押すと全'+dsp.length+'枚をまとめて印刷します')
+                :invMulti?('請求を '+invN+' 枚に分けています。押すと全'+invN+'枚をまとめて印刷します'):d[2])),
             /* 1枚ずつ出したいとき用のボタン（倉庫ごと／タイプごと） */
             multi?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 8px 10px'}},
               h('span',{style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:'),
@@ -11942,6 +12083,23 @@ function OrdersPage(p){
             ):null,
             /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書も記載内容を手修正できる =====
                出荷指示書と同じ位置（帳票ボタンの下）に ✎ を置く。手修正が入っている帳票は印を付ける。 */
+            /* ===== v18.95 修正26③: 請求書を分ける／1枚ずつ出す ===== */
+            d[0]==='invoice'?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 6px 10px'}},
+              h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
+                title:'顧客の予算などで請求を分けるとき、項目ごと／1項目の金額・台数ごとに振り分けて複数枚に分けます',
+                onClick:function(){
+                  var o0=liveOrder(docPick[0])||docPick[0],sp=invSplitOf(o0);
+                  invSplitModal[1]({no:o0.no,n:sp.n,alloc:JSON.parse(JSON.stringify(sp.alloc||{}))});
+                }},'🧾 請求書を分ける'+(invMulti?('（現在 '+invN+'枚）'):'')),
+              invMulti?[h('span',{key:'ih',style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:')].concat(
+                Array.apply(null,{length:invN}).map(function(_,ii){
+                  return h('button',{key:'inv'+ii,className:'btn btn-xs',title:(ii+1)+'枚目だけを出します',
+                    onClick:function(){
+                      var q=generateQuoteHTML(docPick[0],'invoice',null,{invSheet:ii});
+                      if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');
+                    }},(ii+1)+'枚目');
+                })):null
+            ):null,
             (DOC_EDIT_TYPES.indexOf(d[0])>=0)?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'}},
               h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
                 title:d[1]+'の記載内容（件名・担当者・日付・伝票コード・納品先・代表者名など）を手修正します',
@@ -11979,6 +12137,136 @@ function OrdersPage(p){
         })
       )
     ):null,
+    /* ===== v18.95 修正26③: 請求書を複数枚に分ける設定モーダル =====
+       依頼の2通り（項目ごとの振り分け／1項目を金額・台数で分ける）をこの1画面で指定する。
+       ★最後の紙は必ず「残り」なので、合計が合わなくなることはない（画面にも残りを出す）。
+       ★チェック結果（合計の検算・記載漏れ・税額のズレ）は常に画面下に出す。 */
+    invSplitModal[0]?(function(){
+      var m=invSplitModal[0];
+      var o0=ORDERS.find(function(x){return x.no===m.no;})||{no:m.no,lines:[]};
+      var prevOrder=Object.assign({},o0,{invSplit:{n:m.n,alloc:m.alloc}});
+      var qrows=(buildQuoteRows(o0).rows||[]).filter(invRowSplittable);
+      var chk=invSplitCheck(prevOrder);
+      var n=m.n;
+      function setAlloc(rkey,patch){
+        var a=Object.assign({},m.alloc);
+        a[rkey]=Object.assign({},a[rkey]||{},patch);
+        invSplitModal[1](Object.assign({},m,{alloc:a}));
+      }
+      var TH={fontSize:9,fontWeight:700,color:'var(--g500)',textAlign:'left',padding:'3px 6px',borderBottom:'1px solid var(--g200)',whiteSpace:'nowrap'};
+      var TD={fontSize:10,padding:'4px 6px',borderBottom:'1px solid var(--g100)',verticalAlign:'top'};
+      return h(Modal,{show:true,w:940,title:'🧾 請求書を分ける — '+m.no,
+        onClose:function(){invSplitModal[1](null);},
+        footer:h('div',{style:{display:'flex',gap:6,alignItems:'center'}},
+          h('button',{className:'btn btn-ol',onClick:function(){invSplitModal[1](null);}},'キャンセル'),
+          !chk.ok?h('span',{style:{fontSize:10,color:'#991B1B',fontWeight:700}},'⚠ 直す点があります（保存はできます）'):null,
+          h('button',{className:'btn btn-rd',onClick:function(){
+            if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+            var o2=liveOrder({no:m.no});
+            if(!o2||!o2.no){invSplitModal[1](null);return;}
+            if(m.n<=1)delete o2.invSplit;else o2.invSplit={n:m.n,alloc:m.alloc};
+            saveAll();
+            broadcastOrderUpdate(p.userName||'',o2.no+' 請求書の分割を'+(m.n<=1?'解除':m.n+'枚に設定'));
+            p.toast(m.n<=1?'請求書の分割を解除しました':'請求書を'+m.n+'枚に分けました');
+            invSplitModal[1](null);p.bump&&p.bump();
+          }},'保存')
+        )},
+        h('div',null,
+          h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.7}},
+            '顧客の予算などで請求を分けるときに使います。項目ごとに振り分けるか、1つの項目を金額・台数で分けられます。',
+            h('br'),h('b',null,'最後の請求書が必ず「残り」を受け持つ'),'ので、分けても合計は案件の金額と一致します。'),
+          h('div',{style:{display:'flex',alignItems:'flex-end',gap:8,marginBottom:8}},
+            h('div',null,h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'請求書の枚数'),
+              h('select',{className:'inp',style:{width:150},value:String(n),onChange:function(e){
+                invSplitModal[1](Object.assign({},m,{n:Math.max(1,parseInt(e.target.value)||1)}));
+              }},
+                h('option',{value:'1'},'分割しない'),
+                [2,3,4,5].map(function(k){return h('option',{key:k,value:String(k)},k+'枚に分ける');})
+              )),
+            n>1?h('div',{style:{fontSize:10,color:'var(--g500)'}},'案件の合計 税抜 ¥'+fm(chk.whole.subtotal)+' ／ 税込 ¥'+fm(chk.whole.total)):null
+          ),
+          n<=1?h('div',{style:{fontSize:10,color:'var(--g500)',padding:'8px 0'}},'※「分割しない」のときは、これまでどおり1枚の請求書を出します。'):
+          h('div',null,
+            h('div',{style:{overflowX:'auto',border:'1px solid var(--g200)',borderRadius:6}},
+              h('table',{style:{width:'100%',borderCollapse:'collapse',minWidth:640}},
+                h('thead',null,h('tr',null,
+                  h('th',{style:TH},'項目'),h('th',{style:Object.assign({},TH,{textAlign:'right'})},'数量'),
+                  h('th',{style:Object.assign({},TH,{textAlign:'right'})},'金額'),
+                  h('th',{style:TH},'振り分け'),h('th',{style:TH},'内訳（最後の請求書が残り）')
+                )),
+                h('tbody',null,qrows.map(function(r){
+                  var a=m.alloc[r.rkey]||{};
+                  var mode=a.mode||'whole';
+                  var amt=parseInt(r.amount)||0;
+                  var canQty=invRowQtySplittable(r);
+                  if(mode==='qty'&&!canQty)mode='amount';
+                  var used=0,cells=[];
+                  for(var si=0;si<n-1;si++){
+                    (function(si){
+                      var isQ=mode==='qty';
+                      var cur=isQ?((a.q||{})[si]||''):((a.a||{})[si]||'');
+                      used+=parseInt(cur)||0;
+                      cells.push(h('span',{key:'c'+si,style:{display:'inline-flex',alignItems:'center',gap:2,marginRight:6}},
+                        h('span',{style:{fontSize:9,color:'var(--g500)'}},(si+1)+'枚目'),
+                        h('input',{className:'inp',style:{width:isQ?58:86,textAlign:'right'},value:String(cur),
+                          placeholder:isQ?'台数':'金額',
+                          onChange:function(e){
+                            var v=e.target.value.replace(/[^0-9\-]/g,'');
+                            var key=isQ?'q':'a';
+                            var cm=Object.assign({},a[key]||{});cm[si]=v;
+                            var pt={};pt[key]=cm;pt.mode=mode;
+                            setAlloc(r.rkey,pt);
+                          }})));
+                    })(si);
+                  }
+                  var rest=(mode==='qty')?((parseInt(r.qty)||0)-used):(amt-used);
+                  return h('tr',{key:r.rkey},
+                    h('td',{style:TD},r.name,
+                      r.rkey.indexOf('DISC')===0?h('span',{style:{fontSize:9,color:'#B91C1C'}},'（値引き）'):null),
+                    h('td',{style:Object.assign({},TD,{textAlign:'right',whiteSpace:'nowrap'})},(r.qty===''?'':fm(r.qty)+(r.unit||''))),
+                    h('td',{style:Object.assign({},TD,{textAlign:'right',whiteSpace:'nowrap'})},'¥'+fm(amt)),
+                    h('td',{style:TD},
+                      h('select',{className:'inp',style:{width:128,fontSize:10},
+                        value:(mode==='whole')?('w'+Math.max(0,Math.min(n-1,parseInt(a.sheet)||0))):mode,
+                        onChange:function(e){
+                          var v=e.target.value;
+                          if(v.charAt(0)==='w')setAlloc(r.rkey,{mode:'whole',sheet:parseInt(v.slice(1))||0});
+                          else setAlloc(r.rkey,{mode:v});
+                        }},
+                        Array.apply(null,{length:n}).map(function(_,k){
+                          return h('option',{key:'w'+k,value:'w'+k},(k+1)+'枚目にまとめる');
+                        }),
+                        h('option',{value:'amount'},'金額で分ける'),
+                        canQty?h('option',{value:'qty'},'台数で分ける'):null
+                      )),
+                    h('td',{style:TD},
+                      mode==='whole'?h('span',{style:{fontSize:9,color:'var(--g400)'}},'—'):
+                      h('div',null,cells,
+                        h('span',{style:{fontSize:10,fontWeight:700,color:rest<0?'#B91C1C':'#276749'}},
+                          n+'枚目（残り）: '+(mode==='qty'?(fm(rest)+(r.unit||'')):('¥'+fm(rest)))),
+                        rest<0?h('div',{style:{fontSize:9,color:'#B91C1C'}},'※全体を超えています。超えた分は自動で切り詰めます'):null))
+                  );
+                }))
+              )),
+            /* ===== チェック機能（依頼③の「アラート」） ===== */
+            h('div',{style:{marginTop:10,border:'1px solid var(--g200)',borderRadius:6,padding:'8px 10px',background:chk.errors.length?'#FEF2F2':chk.warns.length?'#FFFBEB':'#F0FDF4'}},
+              h('div',{style:{fontSize:10,fontWeight:700,marginBottom:4,color:chk.errors.length?'#991B1B':chk.warns.length?'#92400E':'#166534'}},
+                chk.errors.length?'⚠ 確認してください':chk.warns.length?'注意':'✅ 合計は一致しています'),
+              h('div',{style:{fontSize:10,marginBottom:4}},
+                chk.sheets.map(function(s,i){
+                  return h('span',{key:'s'+i,style:{marginRight:10,whiteSpace:'nowrap'}},
+                    (i+1)+'枚目: 税抜 ¥'+fm(s.subtotal)+' ／ 税込 ¥'+fm(s.total)+'（'+s.rows.length+'項目）');
+                })),
+              h('div',{style:{fontSize:10,fontWeight:700}},
+                '合計 税抜 ¥'+fm(chk.sumSub)+' ／ 案件 ¥'+fm(chk.whole.subtotal)+
+                (chk.sumSub===chk.whole.subtotal?'（一致）':'（不一致）')),
+              chk.errors.map(function(t,i){return h('div',{key:'e'+i,style:{fontSize:10,color:'#991B1B',marginTop:2}},'× '+t);}),
+              chk.warns.map(function(t,i){return h('div',{key:'w'+i,style:{fontSize:10,color:'#92400E',marginTop:2}},'※ '+t);})
+            )
+          )
+        )
+      );
+    })():null,
     /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル =====
        空欄＝自動値。保存内容は order.docEdit[帳票] に入り、全端末へ同期される。
        ★プレビューは印刷用HTMLと同じ docEditHeader() を通るので、画面と紙がズレない。 */
