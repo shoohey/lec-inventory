@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.92（修正26 帳票の記載項目・受領欄の枠・コピー再発注の修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.93（修正26②⑤ 請求書・物品受領書・納品書の記載内容を手修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5773,6 +5773,48 @@ function shipDocDeliveryText(order,cust){
     return shipEditHeader(order,c,{}).delivery||'';
   }catch(e){return order.deliveryDate||'';}
 }
+/* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容を手修正する =====
+   依頼「出荷指示書同様各項目を手修正できるようにして」。考え方は出荷指示書の ✎（order.shipEdit）と同じで、
+   ★空欄＝自動値、入力した項目だけを上書きする。
+   ★保存先は order.docEdit[帳票の種類]。帳票ごとに別々に持つ（請求書だけ宛名を変える等ができる）。
+   ★項目を増やすときは DOC_EDIT_KEYS と ✎モーダルの2か所を直すこと（印刷用HTMLと画面プレビューは
+   　この関数の戻り値しか見ていないので、この2か所だけで両方に反映される）。 */
+var DOC_EDIT_TYPES=['invoice','receipt','delivery'];
+var DOC_EDIT_KEYS=['subject','staff','date','slip','delivery','dest','payTerms'];
+function docEditFor(order,docType){
+  var m=(order&&order.docEdit)||{};
+  return m[docType]||{};
+}
+function docEditHeader(order,cust,docType){
+  var de=docEditFor(order,docType);
+  var eu=(order&&order.endUser&&(order.endUser.name||order.endUser.address))?order.endUser:null;
+  var hv={
+    subject:quoteSubjectOf(order),
+    staff:(order&&order.salesPersonOverride)||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝',
+    date:docDateOf(order,docType),
+    slip:(docType==='invoice'?'請求':'納品')+'-'+((order&&order.no)||''),
+    /* 請求書の納品日（修正26②）。出荷指示書に出ている納品日時と同じ値を既定にする */
+    delivery:shipDocDeliveryText(order,cust),
+    /* 納品先は帳票上も1行で出るので、手修正も1行の自由入力にしている */
+    dest:eu?String((eu.name||'')+(eu.postal?' 〒'+eu.postal:'')+' '+(eu.address||'')+(eu.phone?' TEL.'+eu.phone:'')).trim():'',
+    payTerms:(order&&order.paymentTerms)||'前払い（銀行振り込み）',
+    /* v18.93 修正26⑤: 代表者名は★見積書作成画面のチェック（order.showRepName）を自動で引き継ぐ。
+       帳票ごとに変えたいときだけ docEdit の showRep／repName で上書きする。 */
+    showRep:!!(order&&order.showRepName),
+    repName:(order&&order.repName)||REP_NAME_DEFAULT,
+    edited:{}
+  };
+  DOC_EDIT_KEYS.forEach(function(k){if(de[k]){hv[k]=de[k];hv.edited[k]=true;}});
+  if(de.showRep!==undefined&&de.showRep!==null&&de.showRep!==''){hv.showRep=!!de.showRep;hv.edited.showRep=true;}
+  if(de.repName){hv.repName=de.repName;hv.edited.repName=true;}
+  return hv;
+}
+/* その帳票に手修正が保存されているか（✎ボタンの表示に使う） */
+function hasDocEdit(order,docType){
+  var de=docEditFor(order,docType);
+  return DOC_EDIT_KEYS.some(function(k){return !!de[k];})
+    ||(de.showRep!==undefined&&de.showRep!==null&&de.showRep!=='')||!!de.repName;
+}
 /* ===== v18.79 修正20③: 見積書の下部に付ける「発注書」欄 =====
    サンプル「発注書付見積書.pdf」の様式。見積書の基本フォームは変えず、この欄だけを下に足す。
    ★見積書本体と発注書の両方に出る金額は税込合計。★出す/出さないは order.withPO の1か所で決まる。 */
@@ -6253,6 +6295,9 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var subject=quoteSubjectOf(order);
   var payTerms=order.paymentTerms||'前払い（銀行振り込み）';
   var slipCode=cfg.slipPrefix+'-'+order.no;
+  /* v18.93 修正26②⑤: 請求書・物品受領書・納品書は記載内容を ✎ で手修正できる（空欄=自動値）。
+     ★この3帳票の記載値は必ず dv から取ること（order を直接読むと手修正が効かない）。 */
+  var dv=isBill?docEditHeader(order,cust,docType):null;
 
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+cfg.title+' '+order.no+'</title>';
   html+='<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">';
@@ -6314,8 +6359,10 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   html+='<div style="flex:0 0 auto;text-align:left;font-size:9px;line-height:1.8;padding:0;margin-top:34px">';
   html+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">株式会社LEC</div>';
   var salesP=order.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
-  /* v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記する） */
-  if(order.showRepName)html+='<div style="font-size:10px;font-weight:600;margin-bottom:2px">'+(order.repName||REP_NAME_DEFAULT)+'</div>';
+  /* v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記する）
+     v18.93 修正26⑤: 請求書・物品受領書・納品書は帳票ごとのチェック（docEdit.showRep）でも切り替えられる。
+     　　　　　　　　 既定は見積書作成画面のチェックを自動で引き継ぐ。 */
+  if(dv?dv.showRep:order.showRepName)html+='<div style="font-size:10px;font-weight:600;margin-bottom:2px">'+(dv?dv.repName:(order.repName||REP_NAME_DEFAULT))+'</div>';
   /* v18.33 要望⑬: 弊社担当者名の重複を削除（伝票コード上部の欄に統一） */
   /* v18.86 修正23⑪: 出荷指示書は右上の登録番号（インボイス番号）を出さない */
   html+='〒120-0005<br>東京都足立区綾瀬7-4-1<br>TEL. 03-5849-5563&emsp;FAX. 03-5849-5564'
@@ -6355,10 +6402,11 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     html+='</div></div>';
   }else{
     html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
-    html+='<div><b>件名:</b> '+subject+'</div>';
-    html+='<div><b>担当者:</b> '+salesP+'</div>';
+    /* v18.93 修正26②: 3帳票は dv（✎手修正つきの値）、見積書は従来どおりの自動値 */
+    html+='<div><b>件名:</b> '+(dv?dv.subject:subject)+'</div>';
+    html+='<div><b>担当者:</b> '+(dv?dv.staff:salesP)+'</div>';
     /* v18.79 修正20②: 日付欄は案件の日付（納品書・受領書・請求書＝納品日）。見積書は出力日 */
-    html+='<div><b>'+cfg.dateLabel+':</b> '+docDateOf(order,docType)+'</div><div><b>伝票コード:</b> '+slipCode+'</div>';
+    html+='<div><b>'+cfg.dateLabel+':</b> '+(dv?dv.date:docDateOf(order,docType))+'</div><div><b>伝票コード:</b> '+(dv?dv.slip:slipCode)+'</div>';
     /* v18.37 修正箇所2③: 納期・有効期限は選択肢マスタ＋自由入力の保存値を反映 */
     if(docType==='quote'){html+='<div><b>納期:</b> '+deliveryTermOf(order)+'</div><div><b>有効期限:</b> '+validUntilOf(order)+'</div>';}
     /* ===== v18.92 修正26②④⑧: 請求書・物品受領書・納品書の記載項目 =====
@@ -6366,11 +6414,15 @@ function generateQuoteHTML(order,docType,legIndex,scope){
        ・受渡地は3帳票とも出さない（見積書は従来どおり出す）。
        ・「エンド納品先」の見出しは3帳票とも「納品先」にする（見積書は従来どおり）。
        ★3帳票をまとめて判定しているので、どれか1つだけ扱いを変えたくなったら isBill を分けること。 */
-    if(docType==='invoice')html+='<div><b>納品日:</b> '+shipDocDeliveryText(order,cust)+'</div>';
+    if(docType==='invoice')html+='<div><b>納品日:</b> '+dv.delivery+'</div>';
     /* v18.37 修正箇所2③: 受渡地は自由入力優先。未入力なら顧客住所の市区町村まで */
     if(!isBill)html+='<div><b>受渡地:</b> '+deliveryPlaceOf(order,cust)+'</div>';
-    if(order.endUser&&(order.endUser.name||order.endUser.address)){html+='<div style="grid-column:1/3"><b>'+(isBill?'納品先':'エンド納品先')+':</b> '+(order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')+'</div>';}
-    if(docType==='quote'||docType==='invoice'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
+    var destTxt=dv?dv.dest:((order.endUser&&(order.endUser.name||order.endUser.address))
+      ?((order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:''))
+      :'');
+    if(destTxt){html+='<div style="grid-column:1/3"><b>'+(isBill?'納品先':'エンド納品先')+':</b> '+destTxt+'</div>';}
+    if(docType==='quote'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
+    else if(docType==='invoice'){html+='<div><b>支払条件:</b> '+dv.payTerms+'</div>';}
     html+='</div>';
   }
   if(!isReceipt&&!isShipping){html+='<div style="font-size:16px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+'：　&yen;'+fm(total)+'</div>';}
@@ -10062,8 +10114,9 @@ function QuotePreview(p){
   var DOC_CFG={
     quote:{title:'御見積書',subtitle:'下記のとおり御見積申し上げます。',amountLabel:'見積金額',dateLabel:'見積日'},
     invoice:{title:'請求書',subtitle:'毎度ありがとうございます。下記のとおりご請求申し上げます。',amountLabel:'請求金額',dateLabel:'請求日'},
-    delivery:{title:'納品書',subtitle:'下記のとおり納品致しましたのでご査収ください。',amountLabel:'納品金額',dateLabel:'納品日'},
-    receipt:{title:'物品受領書',subtitle:'下記のとおり受領致しました。',amountLabel:'',dateLabel:'納品日'},
+    /* v18.92 修正26⑥⑦: 納品書・物品受領書は表題下の副題を出さない（印刷用HTMLと同じ） */
+    delivery:{title:'納品書',subtitle:'',amountLabel:'納品金額',dateLabel:'納品日'},
+    receipt:{title:'物品受領書',subtitle:'',amountLabel:'',dateLabel:'納品日'},
     shipping:{title:'出荷指示書',subtitle:'以下の製品の出荷を指示します。',amountLabel:'',dateLabel:'出荷指示日'}
   };
   var cfg=DOC_CFG[dt]||DOC_CFG.quote;
@@ -10074,6 +10127,10 @@ function QuotePreview(p){
   }
   var isReceipt=dt==='receipt';
   var isShipping=dt==='shipping';
+  /* v18.92/18.93 修正26②④⑤⑧: 請求書・物品受領書・納品書は記載項目の扱いを揃え、
+     ✎手修正（order.docEdit）を反映する。★印刷用HTMLと同じ docEditHeader() を使うのでズレない。 */
+  var isBillP=(dt==='invoice'||dt==='receipt'||dt==='delivery');
+  var dvP=isBillP?docEditHeader(o,cust,dt):null;
   /* v18.59 修正10③(b): 出荷指示書の宛先・納品希望日は ✎様式手修正(o.shipEdit) を反映した値を使う */
   var shvP=shipEditHeader(o,cust,p.scope);/* v18.89 修正25②: 紙ごとの手修正 */
   /* v18.72 修正17: 明細行は buildQuoteRows() に集約（印刷用HTMLと同一のロジック） */
@@ -10097,8 +10154,9 @@ function QuotePreview(p){
       h('div',{style:{textAlign:'right',marginBottom:4}},
         h('span',{style:{fontSize:20,fontWeight:700,letterSpacing:4,borderBottom:'3px solid #222',paddingBottom:4,display:'inline-block'}},cfg.title)
       ),
-      /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない */
-      isShipping?h('div',{style:{marginBottom:10}}):h('div',{style:{textAlign:'right',fontSize:9,color:'#444',marginBottom:14}},cfg.subtitle),
+      /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない
+         v18.92 修正26⑥⑦: 副題が空の帳票（納品書・物品受領書）も同じ間隔だけ空ける */
+      (isShipping||!cfg.subtitle)?h('div',{style:{marginBottom:10}}):h('div',{style:{textAlign:'right',fontSize:9,color:'#444',marginBottom:14}},cfg.subtitle),
       /* v18.72 修正17⑧ ／ v18.73 追加修正⑧: 弊社の欄は見積書の右側・お客様名より下の行から（印刷用HTMLと同じ） */
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}},
         h('div',{style:{width:'52%',borderLeft:'3px solid #222',padding:'8px 12px',lineHeight:1.8}},
@@ -10118,7 +10176,8 @@ function QuotePreview(p){
           h('div',{style:{fontSize:13,fontWeight:700,marginBottom:2}},'株式会社LEC'),
           /* v18.74 修正17の再修正⑧: 上下関係はそのまま・ブロックは右端へ（印刷用HTMLと同じ）
              v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記） */
-          o.showRepName?h('div',{style:{fontSize:10,fontWeight:600,marginBottom:2}},o.repName||REP_NAME_DEFAULT):null,
+          /* v18.93 修正26⑤: 3帳票は帳票ごとのチェック（docEdit.showRep）。既定は見積書の設定を引き継ぐ */
+          (dvP?dvP.showRep:o.showRepName)?h('div',{style:{fontSize:10,fontWeight:600,marginBottom:2}},dvP?dvP.repName:(o.repName||REP_NAME_DEFAULT)):null,
           h('div',null,'〒120-0005'),h('div',null,'東京都足立区綾瀬7-4-1'),
           h('div',null,'TEL. 03-5849-5563  FAX. 03-5849-5564'),
           /* v18.86 修正23⑪: 出荷指示書は登録番号を出さない。v18.33 要望⑬: 担当者は伝票コード上部の欄に統一 */
@@ -10151,16 +10210,28 @@ function QuotePreview(p){
         )
       ):h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2px 16px',fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
         [
-          h('div',{key:'q1'},h('b',null,'件名: '),subject),
-          h('div',{key:'q2'},h('b',null,'担当者: '),salesP2),
-          h('div',{key:'q3'},h('b',null,cfg.dateLabel+': '),docDateOf(o,dt)),
-          h('div',{key:'q4'},h('b',null,'伝票コード: '),slipCode),
+          /* v18.93 修正26②: 3帳票は dvP（✎手修正つきの値）、見積書は従来どおりの自動値 */
+          h('div',{key:'q1'},h('b',null,'件名: '),dvP?dvP.subject:subject),
+          h('div',{key:'q2'},h('b',null,'担当者: '),dvP?dvP.staff:salesP2),
+          h('div',{key:'q3'},h('b',null,cfg.dateLabel+': '),dvP?dvP.date:docDateOf(o,dt)),
+          h('div',{key:'q4'},h('b',null,'伝票コード: '),dvP?dvP.slip:slipCode),
           /* v18.37 修正箇所2③: 納期・有効期限は選択肢マスタ＋自由入力の保存値を反映 */
           dt==='quote'?h('div',{key:'q5'},h('b',null,'納期: '),deliveryTermOf(o)):null,
           dt==='quote'?h('div',{key:'q6'},h('b',null,'有効期限: '),validUntilOf(o)):null,
-          h('div',{key:'q7'},h('b',null,'受渡地: '),deliveryPlaceOf(o,cust)),/* v18.37 修正箇所2③: 自由入力優先・未入力は市区町村まで */
-          o.endUser&&(o.endUser.name||o.endUser.address)?h('div',{key:'q8',style:{gridColumn:'1/3'}},h('b',null,'エンド納品先: '),(o.endUser.name||'')+(o.endUser.postal?' 〒'+o.endUser.postal:'')+' '+(o.endUser.address||'')+(o.endUser.phone?' TEL.'+o.endUser.phone:'')):null,
-          dt==='quote'||dt==='invoice'?h('div',{key:'q9'},h('b',null,'支払条件: '),payTerms2):null
+          /* v18.92 修正26② 請求書に納品日（出荷指示書の納品日時と同じ値） */
+          dt==='invoice'?h('div',{key:'q5b'},h('b',null,'納品日: '),dvP.delivery):null,
+          /* v18.92 修正26②④⑧: 3帳票は受渡地を出さない */
+          isBillP?null:h('div',{key:'q7'},h('b',null,'受渡地: '),deliveryPlaceOf(o,cust)),/* v18.37 修正箇所2③: 自由入力優先・未入力は市区町村まで */
+          (function(){
+            var dtx=dvP?dvP.dest:((o.endUser&&(o.endUser.name||o.endUser.address))
+              ?((o.endUser.name||'')+(o.endUser.postal?' 〒'+o.endUser.postal:'')+' '+(o.endUser.address||'')+(o.endUser.phone?' TEL.'+o.endUser.phone:''))
+              :'');
+            if(!dtx)return null;
+            /* v18.92 修正26②④⑧: 3帳票は見出しを「納品先」にする */
+            return h('div',{key:'q8',style:{gridColumn:'1/3'}},h('b',null,(isBillP?'納品先: ':'エンド納品先: ')),dtx);
+          })(),
+          dt==='quote'?h('div',{key:'q9'},h('b',null,'支払条件: '),payTerms2):null,
+          dt==='invoice'?h('div',{key:'q9b'},h('b',null,'支払条件: '),dvP.payTerms):null
         ]
       ),
       !isReceipt&&!isShipping?h('div',{style:{fontSize:16,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+'\uFF1A\u3000\u00A5'+fm(total)):null,/* v18.81 \u4FEE\u6B6321\u2463: \u300C\u898B\u7A4D\u91D1\u984D\uFF1A\u3000\uFFE5\u2026\u300D\u3068\u30B9\u30DA\u30FC\u30B9\u3092\u7A7A\u3051\u308B\uFF08\u5370\u5237\u7248\u3068\u540C\u3058\uFF09 */
@@ -10276,7 +10347,15 @@ function QuotePreview(p){
       ):null,
       h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
-        dt==='receipt'?h('div',null,'上記の通り受領致しました。',h('br'),h('br'),'受領日:　　　　　　受領者（署名）:　　　　　　　　　　'):null,
+        /* v18.92 修正26④: 受領日・受領者（署名）は枠にし、枠外の下に返信のお願いを出す（印刷用HTMLと同じ） */
+        dt==='receipt'?h('div',null,'上記の通り受領致しました。',
+          h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:6}},h('tbody',null,h('tr',null,
+            h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:10,textAlign:'center'})},'受領日'),
+            h('td',{style:Object.assign({},cs,{width:'32%',height:46})},' '),
+            h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:10,textAlign:'center'})},'受領者（署名）'),
+            h('td',{style:cs},' ')))),
+          h('div',{style:{marginTop:5,fontSize:9}},'内容をご確認のうえ、FAXかメールにてご返信をお願いいたします。')
+        ):null,
         /* v18.84 修正22⑤: 記載項目は上のヘッダー欄に集約。文末の重複表示と定型の ※2文は廃止
            （※2文は「連絡事項」のプルダウン選択肢 SHIP_NOTE_OPTIONS へ移動した）。
            v18.85 修正22の追加修正: 文言を「出荷をお願いします。」へ。＜社内確認欄＞は不要のため削除。 */
@@ -10317,6 +10396,8 @@ function OrdersPage(p){
      （ship:true のときだけフッターが「出荷指示書発行」になり在庫を引く）。
      旧「出荷指示」モーダル(shipModal/shipForm)は廃止した。 */
   var shipEditModal=us(null);
+  /* v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル {order,docType,v,auto} */
+  var docEditModal=us(null);
   /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
   var kw=us('');
   /* v18.55 修正９④: 予備パーツ管理。対象案件・追加フォーム・返却入力（行ごと）。
@@ -10592,6 +10673,52 @@ function OrdersPage(p){
     o2.shipDocMode=m0.docMode||'';
     o2.deliveryDate=m0.deliveryDate||'';
     return o2;
+  }
+  /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル =====
+     出荷指示書の ✎ と同じ作り。空欄＝自動値なので、入力があった項目だけを order.docEdit へ残す。 */
+  function openDocEdit(order,docType){
+    var o=liveOrder(order)||order;
+    var c=CUSTS.find(function(x){return x.id===o.cid;});
+    var de=docEditFor(o,docType);
+    var hv=docEditHeader(o,c,docType);
+    var v={showRep:hv.showRep,repName:de.repName||''};
+    DOC_EDIT_KEYS.forEach(function(k){v[k]=de[k]||'';});
+    docEditModal[1]({order:o,docType:docType,v:v,auto:hv});
+  }
+  function docEditValues(m0){
+    var v=(m0&&m0.v)||{},de={};
+    DOC_EDIT_KEYS.forEach(function(k){
+      var s=String(v[k]==null?'':v[k]).trim();
+      if(s)de[k]=s;
+    });
+    return de;
+  }
+  function applyDocEdit(m0){
+    var o2=liveOrder(m0.order)||m0.order;
+    var v=m0.v||{};
+    var de=docEditValues(m0);
+    /* v18.93 修正26⑤: 代表者名は「見積書の設定と違うときだけ」帳票ごとの指定として残す。
+       ★同じなら残さない＝見積書のチェックを変えたら3帳票にも自動で反映される（依頼どおり）。 */
+    if(!!v.showRep!==!!o2.showRepName)de.showRep=!!v.showRep;
+    var rn=String(v.repName||'').trim();
+    if(rn&&rn!==(o2.repName||REP_NAME_DEFAULT))de.repName=rn;
+    var map=Object.assign({},o2.docEdit||{});
+    if(Object.keys(de).length)map[m0.docType]=de;else delete map[m0.docType];
+    if(Object.keys(map).length)o2.docEdit=map;else delete o2.docEdit;
+    return o2;
+  }
+  /* プレビュー用に「まだ保存していない入力内容」を反映した案件のコピーを作る */
+  function docEditPreviewOrder(m0){
+    var o2=liveOrder(m0.order)||m0.order;
+    var copy=Object.assign({},o2);
+    var de=docEditValues(m0);
+    de.showRep=!!(m0.v&&m0.v.showRep);
+    var rn=String((m0.v&&m0.v.repName)||'').trim();
+    if(rn)de.repName=rn;
+    var map=Object.assign({},copy.docEdit||{});
+    map[m0.docType]=de;
+    copy.docEdit=map;
+    return copy;
   }
   /* プレビュー用に「まだ保存していない入力内容」を反映した案件のコピーを作る（修正23③・25②） */
   function shipEditPreviewOrder(m0){
@@ -11746,6 +11873,15 @@ function OrdersPage(p){
                   }},s.label);
               })
             ):null,
+            /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書も記載内容を手修正できる =====
+               出荷指示書と同じ位置（帳票ボタンの下）に ✎ を置く。手修正が入っている帳票は印を付ける。 */
+            (DOC_EDIT_TYPES.indexOf(d[0])>=0)?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'}},
+              h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
+                title:d[1]+'の記載内容（件名・担当者・日付・伝票コード・納品先・代表者名など）を手修正します',
+                onClick:function(){var lo=liveOrder(docPick[0])||docPick[0];docPick[1](null);openDocEdit(lo,d[0]);}},
+                '✎ 記載内容の手修正'),
+              hasDocEdit(docPick[0],d[0])?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null
+            ):null,
             /* v18.86 修正23⑤: 帳票の出力画面から便種のプルダウンは削除した。
                便種は「✎ 記載内容の手修正」画面で変更する（ユーザー指定）。 */
             /* ===== v18.81 修正21①: 便（トラック）ごとに分けて出す =====
@@ -11776,6 +11912,77 @@ function OrdersPage(p){
         })
       )
     ):null,
+    /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル =====
+       空欄＝自動値。保存内容は order.docEdit[帳票] に入り、全端末へ同期される。
+       ★プレビューは印刷用HTMLと同じ docEditHeader() を通るので、画面と紙がズレない。 */
+    docEditModal[0]?(function(){
+      var m=docEditModal[0],a=m.auto||{},v=m.v||{},isInv=m.docType==='invoice';
+      /* 出荷指示書のモーダルと同じ見た目の小さいラベル（あちらの FLBL はあちらのスコープなので別に持つ） */
+      var DLBL={fontSize:8,fontWeight:600,color:'var(--g500)'};
+      function setV(patch){docEditModal[1](Object.assign({},m,{v:Object.assign({},v,patch)}));}
+      function fldD(k,label,style){
+        return h('div',{style:style||{flex:1}},h('label',{style:DLBL},label),
+          h('input',{className:'inp',value:v[k]||'',placeholder:a[k]||'',
+            onChange:function(e){var o={};o[k]=e.target.value;setV(o);}}));
+      }
+      return h(Modal,{show:true,w:900,
+        title:'✎ '+(DOC_TYPE_LABELS[m.docType]||'帳票')+'の記載内容 — '+m.order.no,
+        onClose:function(){docEditModal[1](null);},
+        footer:h('div',{style:{display:'flex',gap:6}},
+          h('button',{className:'btn btn-ol',onClick:function(){docEditModal[1](null);}},'キャンセル'),
+          h('button',{className:'btn btn-ol',title:'この帳票の手修正を消して自動値に戻す',onClick:function(){
+            if(p.isReadOnly){p.toast('読み取り専用モード中は変更できません');return;}
+            var o3=liveOrder(m.order)||m.order;
+            if(!hasDocEdit(o3,m.docType)){docEditModal[1](null);return;}
+            var map=Object.assign({},o3.docEdit||{});delete map[m.docType];
+            if(Object.keys(map).length)o3.docEdit=map;else delete o3.docEdit;
+            saveAll();
+            broadcastOrderUpdate(p.userName||'',o3.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'の手修正をクリア');
+            p.toast('手修正をクリアしました（自動値に戻ります）');docEditModal[1](null);p.bump&&p.bump();
+          }},'自動値に戻す'),
+          h('button',{className:'btn btn-rd',onClick:function(){
+            if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+            var o2=applyDocEdit(m);
+            saveAll();
+            broadcastOrderUpdate(p.userName||'',o2.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'を手修正');
+            p.toast(hasDocEdit(o2,m.docType)?'手修正を保存しました（'+(DOC_TYPE_LABELS[m.docType]||'')+'の出力に反映されます）':'手修正なし（自動値のまま）');
+            docEditModal[1](null);p.bump&&p.bump();
+          }},'保存')
+        )},
+        h('div',null,
+          h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},
+            '空欄の項目は自動値（案件・顧客の情報）が使われます。入力した内容は案件に保存され、全端末で共有されます。',
+            h('span',{style:{color:'#975a16'}},'※この画面は'+(DOC_TYPE_LABELS[m.docType]||'')+'だけに効きます（他の帳票は別々に手修正できます）。')),
+          h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6,borderBottom:'1px solid var(--g200)',paddingBottom:4}},'記載内容（空欄=自動）'),
+          h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+            fldD('subject','件名',{flex:3}),
+            fldD('staff','担当者',{flex:1})
+          ),
+          h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+            fldD('date',isInv?'請求日':'納品日',{flex:1}),
+            fldD('slip','伝票コード',{flex:1}),
+            isInv?fldD('delivery','納品日（出荷指示書の納品日時と同じ値が既定）',{flex:2}):null
+          ),
+          h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+            fldD('dest','納品先（空欄=案件のエンド納品先。登録が無ければ記載しません）',{flex:3}),
+            isInv?fldD('payTerms','支払条件',{flex:2}):null
+          ),
+          /* v18.93 修正26⑤: 会社名の下の代表者名。既定は見積書作成画面のチェックを引き継ぐ */
+          h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+            h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:600,cursor:'pointer'}},
+              h('input',{type:'checkbox',checked:!!v.showRep,onChange:function(e){setV({showRep:e.target.checked});}}),
+              '会社名（株式会社LEC）の下に代表者名を表記する'),
+            v.showRep?h('input',{className:'inp',style:{marginTop:3},value:v.repName||'',
+              placeholder:a.repName||REP_NAME_DEFAULT,
+              onChange:function(e){setV({repName:e.target.value});}}):null,
+            h('div',{style:{fontSize:9,color:'var(--g500)',marginTop:3}},
+              '既定は見積書作成画面の設定（'+(m.order.showRepName?'表記する':'表記しない')+'）です。ここで変えるとこの帳票だけに効きます。')
+          ),
+          h('div',{style:{fontSize:11,fontWeight:700,margin:'10px 0 6px',borderBottom:'1px solid var(--g200)',paddingBottom:4}},'プレビュー'),
+          h(QuotePreview,{order:docEditPreviewOrder(m),docType:m.docType,hideTabs:true})
+        )
+      );
+    })():null,
     /* Shipping instruction modal */
     /* v18.28 顧客要望: 出荷指示書(様式)の手入力修正モーダル。空欄=自動値。保存内容は order.shipEdit に永続化され全端末へ同期 */
     /* ===== v18.86 修正23②: 出荷指示の遷移先もこの画面に統一した =====
