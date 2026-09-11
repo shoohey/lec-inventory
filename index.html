@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.93（修正26②⑤ 請求書・物品受領書・納品書の記載内容を手修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.94（修正26⑨ 失注ステータスと失注タブ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1210,7 +1210,9 @@ var DOCS_BY_STATUS={
   '受注確定':['quote','invoice'],
   '出荷指示':DOC_TYPES_ALL,
   '出荷完了':DOC_TYPES_ALL,
-  '納品完了':DOC_TYPES_ALL
+  '納品完了':DOC_TYPES_ALL,
+  /* v18.94 修正26⑨: 失注した案件から出せるのは見積書だけ（金額の記録として残す） */
+  '失注':['quote']
 };
 function docsForStatus(status){
   var a=DOCS_BY_STATUS[status];
@@ -1220,7 +1222,15 @@ function docsForStatus(status){
    編集・削除をできなくする。誤操作で完了済みの実績が書き換わる/消えるのを防ぐ。
    内容を直す必要が出たときは、まずステータスを差し戻してから編集する運用。 */
 function isOrderLocked(o){return !!o&&o.status==='納品完了';}
-var STATUS_CLS={'見積作成':'bg-b','仮押さえ':'bg-o','受注確定':'bg-p','出荷指示':'bg-tl','出荷完了':'bg-y','納品完了':'bg-g'};
+/* ===== v18.94 修正26⑨: 「失注」ステータス =====
+   ★STATUS_FLOW（見積作成→…→納品完了）には入れない。あちらは indexOf で前後関係を判定している
+   　直線の進行表で、失注はそこから外れる終着点のため。ステータス名の突合はこの定数を使うこと。
+   ・失注にすると案件は「失注」タブへ移り、他のタブ（進行中の案件）には出さない。
+   ・失注にするときは確保していた在庫を必ず解放する（rollbackInventory で見積作成まで巻き戻す）。
+   ・★コピー再発注は使える（失注案件を元に別見積を作る運用があるため・依頼指定）。 */
+var STATUS_LOST='失注';
+function isLostOrder(o){return !!o&&o.status===STATUS_LOST;}
+var STATUS_CLS={'見積作成':'bg-b','仮押さえ':'bg-o','受注確定':'bg-p','出荷指示':'bg-tl','出荷完了':'bg-y','納品完了':'bg-g','失注':'bg-r'};
 
 /* ========== REGIONS & SHIPPING ========== */
 var PREFS_ALL=['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
@@ -10452,8 +10462,10 @@ function OrdersPage(p){
   /* v18.67 修正14②: 案件の担当拠点（顧客の弊社営業担当→ユーザー管理の拠点） */
   function baseOfOrder(o){return orderBaseOf(o,CUSTS.find(function(x){return x.id===o.cid;}));}
   /* v18.67 修正14②④: タブごとの件数。納品完了は 'done' タブへ集約し、拠点タブ・全案件には出さない */
-  var tabCount={all:0,honsha:0,kansai:0,done:0,nobase:0};
+  var tabCount={all:0,honsha:0,kansai:0,done:0,lost:0,nobase:0};
   ORDERS.forEach(function(o){
+    /* v18.94 修正26⑨: 失注は「失注」タブへ集約（進行中の案件一覧には出さない） */
+    if(isLostOrder(o)){tabCount.lost++;return;}
     if(o.status==='納品完了'){tabCount.done++;return;}
     tabCount.all++;
     var b=baseOfOrder(o);
@@ -10462,11 +10474,14 @@ function OrdersPage(p){
     else tabCount.nobase++;
   });
   var fl=ORDERS.filter(function(o){
-    /* v18.67 修正14④: 納品完了は「納品完了」タブだけに出す（案件一覧＝進行中の案件） */
+    /* v18.67 修正14④: 納品完了は「納品完了」タブだけに出す（案件一覧＝進行中の案件）
+       v18.94 修正26⑨: 失注も同じ扱いで「失注」タブだけに出す */
     var done=o.status==='納品完了';
-    if(baseTab[0]==='done'){if(!done)return false;}
+    var lost=isLostOrder(o);
+    if(baseTab[0]==='lost'){if(!lost)return false;}
+    else if(baseTab[0]==='done'){if(!done||lost)return false;}
     else{
-      if(done)return false;
+      if(done||lost)return false;
       /* v18.67 修正14②: 拠点タブは担当拠点で絞り込む（拠点未判定の案件は「全案件」でのみ表示） */
       if(baseTab[0]!=='all'&&baseOfOrder(o)!==baseTab[0])return false;
     }
@@ -10534,6 +10549,40 @@ function OrdersPage(p){
     /* v14 D30: 他セッションへ同期 */
     broadcastOrderUpdate(p.userName||'',order.no+' ステータス→'+ns);
     /* v18.68 修正15⑧: 一覧・在庫画面も即座に更新する（従来は p.bump が無く反映が遅れて見えることがあった） */
+    detail[1](null);saveAll();p.bump&&p.bump();
+  }
+  /* ===== v18.94 修正26⑨: 失注にする／失注から戻す =====
+     ★失注にするときは確保していた在庫を必ず解放する（見積作成まで巻き戻すのと同じ処理）。
+     　解放しないと、受注しなかった案件が倉庫の在庫を押さえ続けてしまう。
+     ★戻すときは「見積作成」へ戻す。在庫は失注時に解放済みなので、ここでは動かさない。 */
+  function markLost(order0){
+    if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
+    var order=liveOrder(order0);
+    if(isLostOrder(order))return;
+    if(isOrderLocked(order)){p.toast('納品完了の案件は失注にできません（先にステータスを差し戻してください）');return;}
+    var si=STATUS_FLOW.indexOf(order.status);
+    var eff=(si>=STATUS_FLOW.indexOf('出荷指示'))?'⚠️ この案件で出荷済みの在庫を倉庫へ戻します（在庫数が復元されます）。'
+      :(si===1||si===2)?'確保していた在庫の引当を解除します（在庫は空きに戻ります）。'
+      :'この案件は在庫を確保していないため、在庫の増減はありません。';
+    if(!confirm('案件 '+order.no+'（'+order.status+'）を「失注」にします。\n\n'+eff+'\n\n案件は「❌ 失注」タブへ移ります。\n「🔁 コピー再発注」は引き続き使えるので、この内容から別見積を作れます。\n\nよろしいですか？'))return;
+    var r=rollbackInventory(order,order.status,'見積作成');
+    order.lostFrom=order.status;/* 戻すときの参考に、どのステータスから失注したかを残す */
+    order.status=STATUS_LOST;
+    order.lostAt=td2();order.lostBy=p.userName||'';
+    var tail=(r&&r.mode==='unship_to_quote')?'（在庫を復元・引当解除）':(r&&r.mode==='release_held')?'（引当解除）':'';
+    p.toast('失注にしました: '+order.no+tail);
+    broadcastOrderUpdate(p.userName||'',order.no+' ステータス→失注');
+    detail[1](null);saveAll();p.bump&&p.bump();
+  }
+  function restoreFromLost(order0){
+    if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
+    var order=liveOrder(order0);
+    if(!isLostOrder(order))return;
+    if(!confirm('案件 '+order.no+' の失注を取り消して「見積作成」に戻します。\n\n在庫は失注にしたときに解放済みのため増減しません。\n（改めて仮押さえし直してください）\n\nよろしいですか？'))return;
+    order.status='見積作成';
+    delete order.lostAt;delete order.lostBy;delete order.lostFrom;
+    p.toast('失注を取り消しました: '+order.no+' → 見積作成');
+    broadcastOrderUpdate(p.userName||'',order.no+' 失注を取り消し');
     detail[1](null);saveAll();p.bump&&p.bump();
   }
   /* v17 要望24: ステータス差し戻し（過去ステータスへ戻す。在庫は rollbackInventory が整合的に巻き戻す） */
@@ -10749,7 +10798,9 @@ function OrdersPage(p){
       [{v:'all',l:'全案件',n:tabCount.all,t:'納品完了を除く全ての案件'},
        {v:'honsha',l:'本社',n:tabCount.honsha,t:'担当者の拠点が「本社」の案件'},
        {v:'kansai',l:'関西',n:tabCount.kansai,t:'担当者の拠点が「関西営業所」の案件'},
-       {v:'done',l:'✅ 納品完了',n:tabCount.done,t:'納品完了した案件（入金確認・総金額はこのタブに表示されます）'}
+       {v:'done',l:'✅ 納品完了',n:tabCount.done,t:'納品完了した案件（入金確認・総金額はこのタブに表示されます）'},
+       /* v18.94 修正26⑨: 納品完了タブの★右側に失注タブ（依頼どおりの並び） */
+       {v:'lost',l:'❌ 失注',n:tabCount.lost,t:'失注にした案件。コピー再発注で別見積を作れます'}
       ].map(function(t){
         var on=baseTab[0]===t.v;
         return h('button',{key:t.v,title:t.t,onClick:function(){baseTab[1](t.v);},style:{
@@ -10765,15 +10816,16 @@ function OrdersPage(p){
         '※ 拠点未判定 '+fm(tabCount.nobase)+'件は「全案件」タブにのみ表示されます'):null
     ),
     h('div',{className:'card'},
-      h('div',{className:'chd'},h('h3',null,(baseTab[0]==='done'?'納品完了':baseTab[0]==='all'?'案件管理':('案件管理 — '+orderBaseLabel(baseTab[0])))+'（'+fl.length+'/'+(baseTab[0]==='done'?tabCount.done:tabCount.all)+'件）'),
+      h('div',{className:'chd'},h('h3',null,(baseTab[0]==='done'?'納品完了':baseTab[0]==='lost'?'失注':baseTab[0]==='all'?'案件管理':('案件管理 — '+orderBaseLabel(baseTab[0])))+'（'+fl.length+'/'+(baseTab[0]==='done'?tabCount.done:baseTab[0]==='lost'?tabCount.lost:tabCount.all)+'件）'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
           /* v18.48 修正６②: 検索対象からアイテムを外し担当者を追加したため、プレースホルダの文言も差し替える */
           h('input',{className:'inp',style:{width:200},value:kw[0],onChange:function(e){kw[1](e.target.value);},placeholder:'🔍 案件番号・顧客・倉庫・担当者で検索…'}),
           /* v18.46 修正４④: ステータスは複数選択可（クリックでON/OFF）。「全て」で解除 */
           /* v18.67 修正14④: 納品完了タブは全件が「納品完了」なのでステータス絞り込みは出さない。
              他のタブでは「納品完了」を選択肢から外す（納品完了タブへ移っているため0件になる）。 */
-          baseTab[0]==='done'?null:h('button',{className:'btn btn-xs '+(filter[0].length===0?'btn-nv':'btn-ol'),onClick:function(){filter[1]([]);},title:'ステータスの絞り込みを解除'},'全て'),
-          (baseTab[0]==='done'?[]:STATUS_FLOW.filter(function(s){return s!=='納品完了';})).map(function(s){
+          /* v18.94 修正26⑨: 失注タブも全件が「失注」なので絞り込みは出さない */
+          (baseTab[0]==='done'||baseTab[0]==='lost')?null:h('button',{className:'btn btn-xs '+(filter[0].length===0?'btn-nv':'btn-ol'),onClick:function(){filter[1]([]);},title:'ステータスの絞り込みを解除'},'全て'),
+          ((baseTab[0]==='done'||baseTab[0]==='lost')?[]:STATUS_FLOW.filter(function(s){return s!=='納品完了';})).map(function(s){
             var on=filter[0].indexOf(s)>=0;
             return h('button',{key:s,className:'btn btn-xs '+(on?'btn-nv':'btn-ol'),title:'クリックで選択/解除（複数選択できます）',onClick:function(){
               filter[1](on?filter[0].filter(function(x){return x!==s;}):filter[0].concat([s]));
@@ -11336,7 +11388,22 @@ function OrdersPage(p){
               onClick:function(){if(isNext)changeStatus(detail[0],s);else if(isBack)rollbackStatus(detail[0],s);}
             },(isCurrent?'● ':isBack?'◀ ':'')+s);
           })),
-          h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:3}},'※ オレンジ=次へ進める / ◀赤枠=差し戻し（在庫も自動で巻き戻します）')
+          h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:3}},'※ オレンジ=次へ進める / ◀赤枠=差し戻し（在庫も自動で巻き戻します）'),
+          /* ===== v18.94 修正26⑨: 失注 =====
+             直線の進行表から外れる終着点なので、遷移ボタンの列とは別の行に置く。 */
+          h('div',{style:{marginTop:6,paddingTop:6,borderTop:'1px dashed var(--g200)',display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
+            isLostOrder(detail[0])
+            ?[h('span',{key:'lb',className:'bg bg-r',style:{fontWeight:700}},'❌ 失注'),
+              h('span',{key:'lt',style:{fontSize:9,color:'var(--g500)'}},
+                (detail[0].lostAt?'（'+detail[0].lostAt+(detail[0].lostBy?' '+detail[0].lostBy:'')+(detail[0].lostFrom?' ／ '+detail[0].lostFrom+'から':'')+'）':'')),
+              h('button',{key:'lr',className:'btn btn-xs btn-ol',title:'失注を取り消して「見積作成」に戻します',
+                onClick:function(){restoreFromLost(detail[0]);}},'失注を取り消す')]
+            :[h('button',{key:'lm',className:'btn btn-xs btn-rd',style:{fontWeight:700},
+                title:'この案件を失注にします（確保している在庫は解放され、失注タブへ移ります）',
+                disabled:isOrderLocked(detail[0]),
+                onClick:function(){markLost(detail[0]);}},'❌ 失注にする'),
+              h('span',{key:'lh',style:{fontSize:9,color:'var(--g400)'}},'※ 失注タブへ移ります。コピー再発注は引き続き使えます')]
+          )
         ),
         /* v18.58 修正10①: 「明細」の右に「部材内訳」ボタンを新設。押すとこの案件の部材一覧を下に表示する */
         h('div',{style:{display:'flex',alignItems:'center',gap:8}},
