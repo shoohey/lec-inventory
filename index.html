@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.95（修正26③ 請求書を複数枚に分けて出す）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.96（納品書も請求書と同じ分け方で分かれる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5770,6 +5770,12 @@ function quoteSubjectOf(order){
    ★分け方の保存先は order.invSplit の1か所。行の指定キーは buildQuoteRows() の rkey。
    　（rkey は明細の並べ替えや値引き行の増減があっても対応が取れるように振られている） */
 var INV_SPLIT_MAX=5;
+/* ===== v18.96: 分割の対象になる帳票 =====
+   ★請求書と納品書は同じ分け方で分かれ、載る項目もシンクロする（ユーザー指定 2026-09-11）。
+   　請求書が1枚なら納品書も1枚。★物品受領書は対象外＝常に1枚のまま（ユーザー指定）。
+   　設定の保存先は order.invSplit の1か所（請求書の設定画面で決め、納品書はそれに従う）。 */
+var INV_SPLIT_DOCS=['invoice','delivery'];
+function invSplitApplies(docType){return INV_SPLIT_DOCS.indexOf(docType)>=0;}
 function invSplitOf(order){
   var s=(order&&order.invSplit)||{};
   return {n:Math.max(1,Math.min(INV_SPLIT_MAX,parseInt(s.n)||1)),alloc:s.alloc||{}};
@@ -6126,14 +6132,16 @@ function shipDocSplits(order){
   return out.length?out:[{wh:'',line:'',label:'',rows:null}];
 }
 /* 分割ぶんを1回の印刷でまとめて出す（1枚ごとに改ページ）。v18.88 修正24③④ */
-/* v18.95 修正26③: 分けた請求書を全枚数まとめて1回で印刷する（紙ごとに改ページ） */
-function invAllSheetsHTML(order){
-  var n=invSplitCount(order);
-  if(n<=1)return generateQuoteHTML(order,'invoice').html;
-  var first=generateQuoteHTML(order,'invoice',null,{invSheet:0}).html;
+/* v18.95 修正26③: 分けた請求書を全枚数まとめて1回で印刷する（紙ごとに改ページ）
+   v18.96: 納品書も同じ分け方で分かれるので docType を受け取る（既定は請求書）。 */
+function invAllSheetsHTML(order,docType){
+  docType=docType||'invoice';
+  var n=invSplitApplies(docType)?invSplitCount(order):1;
+  if(n<=1)return generateQuoteHTML(order,docType).html;
+  var first=generateQuoteHTML(order,docType,null,{invSheet:0}).html;
   var rest='';
   for(var i=1;i<n;i++){
-    var m=/<body>([\s\S]*)<\/body>/.exec(generateQuoteHTML(order,'invoice',null,{invSheet:i}).html);
+    var m=/<body>([\s\S]*)<\/body>/.exec(generateQuoteHTML(order,docType,null,{invSheet:i}).html);
     rest+='<div style="page-break-before:always;break-before:page"></div>'+(m?m[1]:'');
   }
   return first.replace('</body>',rest+'</body>');
@@ -6425,9 +6433,11 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
   /* ===== v18.95 修正26③: 請求書を複数枚に分けているときは、その紙のぶんだけを出す =====
      ★金額（税抜合計・消費税・税込合計）もその紙のぶんに差し替える。合計の整合は
-     　buildInvoiceSheets() が「最後の紙が残りを受け持つ」形で保証している。 */
+     　buildInvoiceSheets() が「最後の紙が残りを受け持つ」形で保証している。
+     v18.96: ★納品書も同じ分け方で分かれる（請求書と項目がシンクロする・ユーザー指定）。
+     　　　　 対象の帳票は invSplitApplies() の1か所で決まる（物品受領書は対象外＝常に1枚）。 */
   var invSheetIdx=null;
-  if(docType==='invoice'&&invSplitCount(order)>1){
+  if(invSplitApplies(docType)&&invSplitCount(order)>1){
     var _in=invSplitCount(order);
     invSheetIdx=Math.max(0,Math.min(_in-1,parseInt(scope.invSheet)||0));
     var _is=buildInvoiceSheets(order).sheets[invSheetIdx];
@@ -12056,20 +12066,21 @@ function OrdersPage(p){
           /* v18.88 修正24③④: 倉庫が複数／部材のタイプが複数の案件は、出荷指示書が複数枚になる */
           var dsp=(d[0]==='shipping')?shipDocSplits(docPick[0]):[];
           var multi=dsp.length>1;
-          /* v18.95 修正26③: 請求書は「予算の都合で分ける」ために複数枚に分けられる */
-          var invN=(d[0]==='invoice')?invSplitCount(docPick[0]):1;
+          /* v18.95 修正26③: 請求書は「予算の都合で分ける」ために複数枚に分けられる
+             v18.96: 納品書も同じ分け方で分かれる（invSplitApplies）。物品受領書は対象外。 */
+          var invN=invSplitApplies(d[0])?invSplitCount(docPick[0]):1;
           var invMulti=invN>1;
           return h('div',{key:d[0]},
             h('button',{className:'btn',style:{display:'block',width:'100%',textAlign:'left',marginBottom:5,padding:'7px 10px'},
               onClick:function(){
                 if(multi){if(!openPrintWindow(shipAllSplitsHTML(docPick[0])))p.toast('ポップアップを許可してください');return;}
-                if(invMulti){if(!openPrintWindow(invAllSheetsHTML(docPick[0])))p.toast('ポップアップを許可してください');return;}
+                if(invMulti){if(!openPrintWindow(invAllSheetsHTML(docPick[0],d[0])))p.toast('ポップアップを許可してください');return;}
                 openQuote(docPick[0],d[0]);
               }},
               h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]+(multi?('（全'+dsp.length+'枚）'):'')+(invMulti?('（全'+invN+'枚）'):'')),
               h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},
                 multi?('倉庫／部材のタイプごとに '+dsp.length+' 枚に分かれます（'+dsp.map(function(s){return s.label;}).join('・')+'）。押すと全'+dsp.length+'枚をまとめて印刷します')
-                :invMulti?('請求を '+invN+' 枚に分けています。押すと全'+invN+'枚をまとめて印刷します'):d[2])),
+                :invMulti?((d[0]==='invoice'?'請求を ':'請求書に合わせて ')+invN+' 枚に分けています。押すと全'+invN+'枚をまとめて印刷します'):d[2])),
             /* 1枚ずつ出したいとき用のボタン（倉庫ごと／タイプごと） */
             multi?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 8px 10px'}},
               h('span',{style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:'),
@@ -12083,19 +12094,24 @@ function OrdersPage(p){
             ):null,
             /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書も記載内容を手修正できる =====
                出荷指示書と同じ位置（帳票ボタンの下）に ✎ を置く。手修正が入っている帳票は印を付ける。 */
-            /* ===== v18.95 修正26③: 請求書を分ける／1枚ずつ出す ===== */
-            d[0]==='invoice'?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 6px 10px'}},
-              h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
-                title:'顧客の予算などで請求を分けるとき、項目ごと／1項目の金額・台数ごとに振り分けて複数枚に分けます',
+            /* ===== v18.95 修正26③: 請求書を分ける／1枚ずつ出す =====
+               v18.96: 納品書も同じ分け方で分かれる。★設定は請求書側の1か所で行い、納品書は従うだけ。 */
+            invSplitApplies(d[0])?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 6px 10px'}},
+              d[0]==='invoice'
+              ?h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
+                title:'顧客の予算などで請求を分けるとき、項目ごと／1項目の金額・台数ごとに振り分けて複数枚に分けます（納品書も同じように分かれます）',
                 onClick:function(){
                   var o0=liveOrder(docPick[0])||docPick[0],sp=invSplitOf(o0);
                   invSplitModal[1]({no:o0.no,n:sp.n,alloc:JSON.parse(JSON.stringify(sp.alloc||{}))});
-                }},'🧾 請求書を分ける'+(invMulti?('（現在 '+invN+'枚）'):'')),
+                }},'🧾 請求書を分ける'+(invMulti?('（現在 '+invN+'枚）'):''))
+              :h('span',{style:{fontSize:9,color:'var(--g500)'}},
+                invMulti?'※請求書の分け方に合わせて '+invN+' 枚に分かれます（項目は請求書と同じ）'
+                        :'※請求書を分けると、納品書も同じ分け方で分かれます'),
               invMulti?[h('span',{key:'ih',style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:')].concat(
                 Array.apply(null,{length:invN}).map(function(_,ii){
                   return h('button',{key:'inv'+ii,className:'btn btn-xs',title:(ii+1)+'枚目だけを出します',
                     onClick:function(){
-                      var q=generateQuoteHTML(docPick[0],'invoice',null,{invSheet:ii});
+                      var q=generateQuoteHTML(docPick[0],d[0],null,{invSheet:ii});
                       if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');
                     }},(ii+1)+'枚目');
                 })):null
@@ -12155,7 +12171,7 @@ function OrdersPage(p){
       }
       var TH={fontSize:9,fontWeight:700,color:'var(--g500)',textAlign:'left',padding:'3px 6px',borderBottom:'1px solid var(--g200)',whiteSpace:'nowrap'};
       var TD={fontSize:10,padding:'4px 6px',borderBottom:'1px solid var(--g100)',verticalAlign:'top'};
-      return h(Modal,{show:true,w:940,title:'🧾 請求書を分ける — '+m.no,
+      return h(Modal,{show:true,w:940,title:'🧾 請求書・納品書を分ける — '+m.no,
         onClose:function(){invSplitModal[1](null);},
         footer:h('div',{style:{display:'flex',gap:6,alignItems:'center'}},
           h('button',{className:'btn btn-ol',onClick:function(){invSplitModal[1](null);}},'キャンセル'),
@@ -12167,14 +12183,16 @@ function OrdersPage(p){
             if(m.n<=1)delete o2.invSplit;else o2.invSplit={n:m.n,alloc:m.alloc};
             saveAll();
             broadcastOrderUpdate(p.userName||'',o2.no+' 請求書の分割を'+(m.n<=1?'解除':m.n+'枚に設定'));
-            p.toast(m.n<=1?'請求書の分割を解除しました':'請求書を'+m.n+'枚に分けました');
+            p.toast(m.n<=1?'請求書・納品書の分割を解除しました':'請求書と納品書を'+m.n+'枚に分けました');
             invSplitModal[1](null);p.bump&&p.bump();
           }},'保存')
         )},
         h('div',null,
           h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.7}},
             '顧客の予算などで請求を分けるときに使います。項目ごとに振り分けるか、1つの項目を金額・台数で分けられます。',
-            h('br'),h('b',null,'最後の請求書が必ず「残り」を受け持つ'),'ので、分けても合計は案件の金額と一致します。'),
+            h('br'),h('b',null,'最後の請求書が必ず「残り」を受け持つ'),'ので、分けても合計は案件の金額と一致します。',
+            /* v18.96: 納品書も同じ分け方で分かれる（ユーザー指定）。設定はこの画面の1か所だけ。 */
+            h('br'),h('b',null,'納品書もここで決めた分け方で分かれます'),'（載る項目は請求書と同じ）。物品受領書は1枚のままです。'),
           h('div',{style:{display:'flex',alignItems:'flex-end',gap:8,marginBottom:8}},
             h('div',null,h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'請求書の枚数'),
               h('select',{className:'inp',style:{width:150},value:String(n),onChange:function(e){
