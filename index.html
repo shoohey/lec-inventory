@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.91（送料計算 予備箱の重量は課金重量に含めるで確定）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.92（修正26 帳票の記載項目・受領欄の枠・コピー再発注の修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -4462,10 +4462,11 @@ function duplicateCustIds(){
 }
 
 /* ========== DEALER/AGENT MASTER (代理店マスタ) ========== */
-var DEALERS=[
-  {id:'AG001',name:'サンプル代理店A',postal:'530-0001',address:'大阪府大阪市北区梅田1-1-1',phone:'06-1234-5678',contact:'山田 太郎'},
-  {id:'AG002',name:'サンプル代理店B',postal:'150-0001',address:'東京都渋谷区神宮前1-1-1',phone:'03-9876-5432',contact:'佐藤 花子'}
-];
+/* v18.92 修正26①: 出荷指示書の記載内容画面「納品先をまとめて入れる」のプルダウンに出ていた
+   ★サンプル代理店A／サンプル代理店B（開発用のダミー）を削除した。
+   ★配列と参照側のコードは残してある。実在の代理店を載せるときはここに1行足せば
+   　プルダウンに「代理店: ○○」として出る（name/postal/address/phone を納品先へ流し込む）。 */
+var DEALERS=[];
 
 /* ========== UNIT COST MASTER (仕入れ単価マスタ) ========== */
 var UNIT_COST={
@@ -5761,6 +5762,17 @@ function docDateOf(order,docType){
   }
   return tdSlash();
 }
+/* ===== v18.92 修正26②: 請求書の「納品日」 =====
+   依頼は「出荷指示書に記載の納品日時と同日」。＝出荷指示書のヘッダーが出している値そのものを使う。
+   ★order.deliveryDate を直接読まないこと。出荷指示書側で ✎手修正（shipEdit.delivery）されていたら
+   　そちらが紙に出ている値なので、請求書もそれに合わせる必要がある。 */
+function shipDocDeliveryText(order,cust){
+  if(!order)return '';
+  try{
+    var c=cust||CUSTS.find(function(x){return x.id===order.cid;});
+    return shipEditHeader(order,c,{}).delivery||'';
+  }catch(e){return order.deliveryDate||'';}
+}
 /* ===== v18.79 修正20③: 見積書の下部に付ける「発注書」欄 =====
    サンプル「発注書付見積書.pdf」の様式。見積書の基本フォームは変えず、この欄だけを下に足す。
    ★見積書本体と発注書の両方に出る金額は税込合計。★出す/出さないは order.withPO の1か所で決まる。 */
@@ -6211,13 +6223,19 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var DOC_CFG={
     quote:{title:'御見積書',subtitle:'下記のとおり御見積申し上げます。',amountLabel:'見積金額',slipPrefix:'見積',dateLabel:'見積日'},
     invoice:{title:'請求書',subtitle:'毎度ありがとうございます。下記のとおりご請求申し上げます。',amountLabel:'請求金額',slipPrefix:'請求',dateLabel:'請求日'},
-    delivery:{title:'納品書',subtitle:'下記のとおり納品致しましたのでご査収ください。',amountLabel:'納品金額',slipPrefix:'納品',dateLabel:'納品日'},
-    receipt:{title:'物品受領書',subtitle:'下記のとおり受領致しました。',amountLabel:'',slipPrefix:'納品',dateLabel:'納品日'},
+    /* v18.92 修正26⑦: 納品書は表題下の副題（下記のとおり納品致しましたのでご査収ください。）を出さない。
+       ★文末の同じ一文はそのまま残す（依頼は「タイトル下」のみ）。 */
+    delivery:{title:'納品書',subtitle:'',amountLabel:'納品金額',slipPrefix:'納品',dateLabel:'納品日'},
+    /* v18.92 修正26⑥: 物品受領書も表題下の副題（下記のとおり受領致しました）を出さない */
+    receipt:{title:'物品受領書',subtitle:'',amountLabel:'',slipPrefix:'納品',dateLabel:'納品日'},
     shipping:{title:'出荷指示書',subtitle:'以下の製品の出荷を指示します。',amountLabel:'',slipPrefix:'出荷',dateLabel:'出荷指示日'}
   };
   var cfg=DOC_CFG[docType]||DOC_CFG.quote;
   var isReceipt=docType==='receipt';
   var isShipping=docType==='shipping';
+  /* v18.92 修正26②④⑧: 請求書・物品受領書・納品書の3帳票は記載項目の扱いを揃える
+     （受渡地を出さない／「エンド納品先」を「納品先」と書く）。見積書・出荷指示書は対象外。 */
+  var isBill=(docType==='invoice'||docType==='receipt'||docType==='delivery');
   /* v18.84 修正22②: 表題の【…】は配送部材のタイプ＝製品ライン（例:【日本製 Ver.2】）。
      v18.88 修正24④: タイプごとに分けて出すときは★その紙のタイプだけを書く。 */
   var shippingFormat=isShipping?shipDocLineLabel(order,scope.line):'';
@@ -6268,8 +6286,9 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   html+='@media print{html,body{background:#fff;padding:0}.sheet{min-height:0;box-shadow:none}}';
   html+='</style></head><body><div class="sheet">';
   html+='<div style="text-align:right"><span style="font-size:22px;font-weight:700;letter-spacing:4px;border-bottom:3px solid #222;padding-bottom:4px;display:inline-block">'+cfg.title+'</span></div>';
-  /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない（他の帳票は従来どおり） */
-  if(isShipping)html+='<div style="margin-bottom:12px"></div>';
+  /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない（他の帳票は従来どおり）
+     v18.92 修正26⑥⑦: 物品受領書・納品書も副題を空にしたので、★副題が空の帳票は同じ間隔だけ空ける。 */
+  if(isShipping||!cfg.subtitle)html+='<div style="margin-bottom:12px"></div>';
   else html+='<div style="text-align:right;font-size:10px;color:#444;margin-bottom:16px">'+cfg.subtitle+'</div>';
   /* v18.72 修正17⑧ ／ v18.73 追加修正⑧: 弊社（株式会社LEC）の欄は★見積書の右側に置き、
      ★お客様名より下の行から始まるように上に余白を入れる。文字は左揃え。
@@ -6342,9 +6361,15 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     html+='<div><b>'+cfg.dateLabel+':</b> '+docDateOf(order,docType)+'</div><div><b>伝票コード:</b> '+slipCode+'</div>';
     /* v18.37 修正箇所2③: 納期・有効期限は選択肢マスタ＋自由入力の保存値を反映 */
     if(docType==='quote'){html+='<div><b>納期:</b> '+deliveryTermOf(order)+'</div><div><b>有効期限:</b> '+validUntilOf(order)+'</div>';}
+    /* ===== v18.92 修正26②④⑧: 請求書・物品受領書・納品書の記載項目 =====
+       ・請求書に「納品日」を足す。値は★出荷指示書に記載の納品日時と同じ（shipDocDeliveryText）。
+       ・受渡地は3帳票とも出さない（見積書は従来どおり出す）。
+       ・「エンド納品先」の見出しは3帳票とも「納品先」にする（見積書は従来どおり）。
+       ★3帳票をまとめて判定しているので、どれか1つだけ扱いを変えたくなったら isBill を分けること。 */
+    if(docType==='invoice')html+='<div><b>納品日:</b> '+shipDocDeliveryText(order,cust)+'</div>';
     /* v18.37 修正箇所2③: 受渡地は自由入力優先。未入力なら顧客住所の市区町村まで */
-    html+='<div><b>受渡地:</b> '+deliveryPlaceOf(order,cust)+'</div>';
-    if(order.endUser&&(order.endUser.name||order.endUser.address)){html+='<div style="grid-column:1/3"><b>エンド納品先:</b> '+(order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')+'</div>';}
+    if(!isBill)html+='<div><b>受渡地:</b> '+deliveryPlaceOf(order,cust)+'</div>';
+    if(order.endUser&&(order.endUser.name||order.endUser.address)){html+='<div style="grid-column:1/3"><b>'+(isBill?'納品先':'エンド納品先')+':</b> '+(order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')+'</div>';}
     if(docType==='quote'||docType==='invoice'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
     html+='</div>';
   }
@@ -6419,7 +6444,18 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
   html+='<div style="margin-top:16px;font-size:9px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
-  else if(isReceipt){html+='上記の通り受領致しました。<br><br>受領日:　　　　　　受領者（署名）:　　　　　　　　　　';}
+  else if(isReceipt){
+    /* ===== v18.92 修正26④: 受領日と受領者（署名欄）は★枠を設けて書く場所を分かりやすくする =====
+       従来は「受領日:　　　　受領者（署名）:　　　」と全角スペースを並べただけだったので、
+       どこに書けばよいのか分からず、印刷すると罫線も出ていなかった。
+       ★枠の外の下に返信のお願いを1文入れる（依頼どおり枠外）。 */
+    html+='上記の通り受領致しました。';
+    html+='<table style="margin-top:6px"><tbody><tr>';
+    html+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:10px;text-align:center">受領日</td><td style="width:32%;height:46px">&nbsp;</td>';
+    html+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:10px;text-align:center">受領者（署名）</td><td>&nbsp;</td>';
+    html+='</tr></tbody></table>';
+    html+='<div style="margin-top:5px;font-size:9px">内容をご確認のうえ、FAXかメールにてご返信をお願いいたします。</div>';
+  }
   else if(isShipping){
     /* v18.84 修正22⑤: 記載項目は上のヘッダー欄に集約したので、文末の配送先・納品日時・荷送人の
        重複表示は廃止した。定型の ※2文も「連絡事項」のプルダウン選択肢へ移した（SHIP_NOTE_OPTIONS）。
@@ -8019,6 +8055,17 @@ function InvPage(p){
   ue(function(){
     var ro=p.repeatOrder;
     if(!ro)return;
+    /* ===== v18.92 修正26⑩: コピー再発注のあとに前の「案件修正モード」が残っていた =====
+       【症状】案件修正（✏）で案件Xを読み込んだあと、★同じ顧客の別案件Yで「🔁 コピー再発注」を押すと、
+       　　　　画面に「✏ 案件修正モード: X」の帯が出たままになり、そのまま仮押さえすると
+       　　　　新規採番されずに★案件Xへ上書き保存されてしまう（Yの内容でXが書き換わる）。
+       【原因】editingNo を消しているのは「顧客が変わったとき」の効果だけ（依存は selCust.id）。
+       　　　　同じ顧客の案件を続けて開くと id が変わらないので発火せず、編集対象が残っていた。
+       【対応】コピー再発注は常に新規なので、読み込みの入口で編集対象を必ず解除する。
+       ★案件修正の経路も requestRepeat → requestEdit の順で同じレンダーに入る。この効果は
+       　editOrder の効果より前に定義されているため、案件修正では直後に editingNo が入り直す。
+       　（効果の定義順を入れ替えると案件修正が壊れるので注意） */
+    editingNo[1](null);editingMeta[1](null);
     var cloned=cloneLinesForRepeat(ro.lines);
     lines[1](cloned);
     /* v18.72 修正17⑰: 案件修正・リピート発注で読み込んだとき、商品選択欄にも1件目の明細の内容を入れておく。
