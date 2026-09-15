@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.01（出荷指示書の作成者・全帳票の文字サイズとバランス）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.02（粗利計算表の原価表アップロードを削除）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5449,7 +5449,9 @@ function buildStockValuation(){
 }
 
 /* ========== v18.33 要望⑱: 粗利計算（原価マスタ＋八木熊品番紐付け） ==========
-   COST_MASTER: {品番: 原価円}。原価表はLEC側でアップロード（品番,原価のCSV/Excel。原価は企業情報のため共有ファイルには含めない運用）。
+   COST_MASTER: {品番: 原価円}。原価は企業情報のため共有ファイルには含めない運用。
+   ★v19.02: 取込口（原価表アップロード）は削除した。単価マスタが入っている間は下の BOM 積み上げまで
+     到達しないため（calcGrossProfit が masterHit で return する）。既存データとクラウド同期は残してある。
    KEY_TO_YAGI: 集計キー(key|sub|color)→八木熊品番。商品コードnew.xlsx(2026-07-23提供)の八木熊シートから採録。
    品番が無い部材（鍵類・トッテ等）と上下共通ボード品番3種の紐付け（吉野さんから後日連携）は原価未設定として集計。 */
 var COST_MASTER={};
@@ -5563,28 +5565,8 @@ function goodsSellOf(order,fallback){
     },0);
   }catch(e){return fallback;}
 }
-/* 原価表アップロード: 「品番,原価」列を含むCSV/Excel（1シート目）。ヘッダ行の「品番」「原価」を検出、無ければ 1列目=品番/最終数値列=原価 */
-function parseCostMasterAoa(aoa){
-  var res={},cnt=0;
-  var hdr=-1,ci={code:-1,cost:-1};
-  for(var r=0;r<Math.min(aoa.length,10);r++){
-    var row=aoa[r]||[];
-    row.forEach(function(x,i){var s=String(x||'');if(/品番|商品コード/.test(s)&&ci.code<0)ci.code=i;if(/原価|仕入|単価/.test(s)&&ci.cost<0)ci.cost=i;});
-    if(ci.code>=0&&ci.cost>=0){hdr=r;break;}
-  }
-  for(var rr=(hdr>=0?hdr+1:0);rr<aoa.length;rr++){
-    var rw=aoa[rr]||[];if(!rw.length)continue;
-    var code,cost;
-    if(hdr>=0){code=String(rw[ci.code]||'').trim();cost=parseFloat(rw[ci.cost]);}
-    else{
-      code=String(rw[0]||'').trim();cost=NaN;
-      for(var c2=rw.length-1;c2>=1;c2--){var v=parseFloat(rw[c2]);if(!isNaN(v)){cost=v;break;}}
-    }
-    if(!code||isNaN(cost))continue;
-    res[code]=cost;cnt++;
-  }
-  return {map:res,count:cnt};
-}
+/* v19.02: 原価表（品番,原価）のパーサ parseCostMasterAoa は、取込ボタンの削除にあわせて削除した。
+   復活させるときは git の v19.01 以前から戻すこと（呼び出し元は見積書作成画面の粗利欄だけだった）。 */
 function saveStock(){try{lsSet(LS_KEYS.stk,JSON.stringify(STK));}catch(e){console.warn('saveStock failed',e);}}
 function saveHeld(){try{lsSet(LS_KEYS.held,JSON.stringify(HELD));}catch(e){console.warn('saveHeld failed',e);}}
 function saveIncoming(){try{lsSet(LS_KEYS.incoming,JSON.stringify(INCOMING));lsSet(LS_KEYS.nextIncId,String(nextIncId));}catch(e){console.warn('saveIncoming failed',e);}}
@@ -10508,7 +10490,8 @@ function InvPage(p){
             })()
           );
         })(),
-        /* v18.33 要望⑱: 粗利計算表（本体/鍵類/ベース/棚板/トータル・この欄は印刷されません）＋原価表アップロード */
+        /* v18.33 要望⑱: 粗利計算表（本体/鍵類/ベース/棚板/トータル・この欄は印刷されません）
+           v19.02: 原価表アップロードは削除し、単価マスタ取込だけにした */
         (function(){
           var gp=calcGrossProfit(quoteOrder[0]);
           /* v18.72 修正17⑳: 粗利は「税別の全ての原価合計」と「売価合計」だけで算出する。
@@ -10518,24 +10501,13 @@ function InvPage(p){
           var CATS=[['トータル','total']];
           var thS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,background:'#f5f7fa',fontWeight:700};
           var tdS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,textAlign:'right'};
-          function onUpCost(e){
-            var f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
-            if(p.isReadOnly){p.toast('読み取り専用モード中は原価表を更新できません');return;}
-            var rd=new FileReader();
-            rd.onload=function(ev){
-              try{
-                var wb=XLSX.read(ev.target.result,{type:'array'});
-                var aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true});
-                var pr=parseCostMasterAoa(aoa);
-                if(!pr.count){p.toast('原価データを認識できませんでした（「品番」「原価」列を含むCSV/Excelをご用意ください）');return;}
-                COST_MASTER=Object.assign({},COST_MASTER,pr.map);
-                saveCostMaster();cloudSave(p.userName);
-                quoteOrder[1](Object.assign({},quoteOrder[0]));/* 再計算のための再描画 */
-                p.toast('原価マスタを取込みました: '+pr.count+'件（累計 '+Object.keys(COST_MASTER).length+'件・全端末共有）');
-              }catch(err){p.toast('原価表の読込に失敗: '+(err&&err.message||err));}
-            };
-            rd.readAsArrayBuffer(f);
-          }
+          /* ★v19.02: 「原価表アップロード」ボタン（onUpCost / parseCostMasterAoa）は削除した。
+             v18.54 で単価マスタ（商品コード別の仕入単価）が入って以降、calcGrossProfit は
+             単価マスタで原価が取れた時点で return するため、八木熊品番×COST_MASTER の
+             BOM積み上げは実質使われていなかった。誤って古い原価表を入れると別数字が出るため取込口を閉じた。
+             ★COST_MASTER 本体・localStorage・クラウド同期（lec_state.costMaster）は残してある。
+               変数ごと消すと cloudSave が costMaster:{} で上書きして既存データを消してしまうため。
+               復活させるときは git の v19.01 以前から onUpCost/parseCostMasterAoa を戻せばよい。 */
           /* v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタの取込。
              ★原価は社外秘のため index.html には持たせず、クラウド(lec_state)にだけ保存する */
           function onUpPrice(e){
@@ -10572,9 +10544,7 @@ function InvPage(p){
                 h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:onUpPrice})),
               h('span',{style:{fontSize:8,color:hasPriceMaster()?'var(--g500)':'#C53030',fontWeight:hasPriceMaster()?400:700}},
                 hasPriceMaster()?('単価マスタ: '+PRICE_MASTER.rows.length+'件'+(PRICE_MASTER.updatedAt?'（'+PRICE_MASTER.updatedAt+'）':'')):'⚠ 単価マスタ未取込（従来の暫定単価で計算中）'),
-              h('label',{className:'btn btn-xs btn-ol',style:{cursor:'pointer',fontSize:9}},'原価表アップロード（品番,原価のCSV/Excel）',
-                h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:onUpCost})),
-              h('span',{style:{fontSize:8,color:'var(--g400)'}},'原価マスタ: '+Object.keys(COST_MASTER).length+'件登録済')
+              /* v19.02: 「原価表アップロード」ボタンと「原価マスタ: N件登録済」表示はここにあったが削除（上のコメント参照） */
             ),
             h('table',{style:{borderCollapse:'collapse',width:'100%'}},
               h('thead',null,h('tr',null,h('th',{style:thS},'区分'),h('th',{style:thS},'売価'),h('th',{style:thS},'原価'),h('th',{style:thS},'粗利'),h('th',{style:thS},'粗利率'))),
@@ -10600,7 +10570,7 @@ function InvPage(p){
               (quoteOrder[0].rowUnit&&Object.keys(quoteOrder[0].rowUnit).length)?h('span',{style:{fontSize:8,fontWeight:700,color:'#975a16',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'1px 5px'}},'✎ 単価を手入力した行が '+Object.keys(quoteOrder[0].rowUnit).length+' 行あります'):null
             ),
             gp.total.missing>0?h('div',{style:{fontSize:8,color:'#975a16',marginTop:3}},'※ 品番未紐付け・原価未登録の部材が '+gp.total.missing+' 種あり、原価に含まれていません（単価マスタに商品コードが無い部材です）'):null,
-            !gp.hasCost?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'原価表（品番,原価）をアップロードすると粗利が自動計算されます。品番は八木熊の品番一覧（商品コード表）と一致させてください'):null
+            !gp.hasCost?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'単価マスタ（販売単価・原価のCSV）を取り込むと粗利が自動計算されます'):null
           );
         })(),
         h(QuotePreview,{order:quoteOrder[0],docType:'quote'})
