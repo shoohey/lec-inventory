@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.99（修正28 出荷指示書の荷受人・入数・曜日／見積書の送料備考・備考の位置・複数枚のページ表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.00（修正28の再修正 送料の備考を全帳票に・見積書プレビューの備考の位置）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -888,18 +888,9 @@ function deliveryPlanMs(order){
 
 /* v18.37 修正箇所2④: 明細の備考欄（税欄の右）は行ごとに手入力する。
    行キー(rkey)で order.rowRemarks に保持し、未入力の行は空欄のまま。 */
-var SHIP_ROW_REMARK_DEFAULT='※組立工事費別途';/* v18.99 修正28: 送料の行の備考の既定値 */
-/* v18.99 修正28: 送料の備考の既定文は★見積書だけに出す（依頼は「見積書にて」）。
-   請求書・物品受領書・納品書では、備考欄を手入力していない送料の行は従来どおり空欄にする。
-   見積書作成画面で自分で入力（既定文のまま保存も含む）した備考は、これまでどおり全帳票に出る。 */
-function rowsForDoc(rows,order,docType){
-  if(docType==='quote')return rows;
-  var rr=(order&&order.rowRemarks)||{};
-  if(Object.prototype.hasOwnProperty.call(rr,'SHIP'))return rows;
-  return (rows||[]).map(function(r){
-    return (r.rkey==='SHIP'&&r.remark===SHIP_ROW_REMARK_DEFAULT)?Object.assign({},r,{remark:''}):r;
-  });
-}
+/* v18.99 修正28: 送料の行の備考の既定値。★見積書・請求書・納品書・物品受領書のすべてに出す（明細の備考は帳票共通）。
+   v18.99 の初版では見積書だけにしていたが「請求書にも記載」との指示で全帳票へ（修正28の再修正）。 */
+var SHIP_ROW_REMARK_DEFAULT='※組立工事費別途';
 function rowRemark(order,rkey,fallback){
   var rr=(order&&order.rowRemarks)||{};
   if(Object.prototype.hasOwnProperty.call(rr,rkey))return rr[rkey]||'';
@@ -6741,7 +6732,6 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     rows=_is.rows;subtotal=_is.subtotal;tax10=_is.tax;total=_is.total;
     cfg=Object.assign({},cfg,{title:cfg.title+'（'+(invSheetIdx+1)+'／全'+_in+'枚）'});
   }
-  rows=rowsForDoc(rows,order,docType);/* v18.99 修正28: 送料の備考の既定文は見積書だけ */
   var subject=quoteSubjectOf(order);
   var payTerms=order.paymentTerms||'前払い（銀行振り込み）';
   var slipCode=cfg.slipPrefix+'-'+order.no;
@@ -10614,6 +10604,16 @@ function InvPage(p){
   );
 }
 
+/* 画面プレビューの「備考」枠（印刷用の notesBoxHTML と同じ見た目） */
+function previewNotesBox(notes){
+  return h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:8,fontSize:9}},
+    h('tbody',null,h('tr',null,
+      h('td',{style:{border:'1px solid #999',width:70,textAlign:'center',verticalAlign:'middle',padding:'6px 4px',letterSpacing:4}},'備考'),
+      h('td',{style:{border:'1px solid #999',padding:'6px 10px',lineHeight:1.7}},
+        String(notes).split('\n').map(function(t,ti2){return h('div',{key:ti2,style:{minHeight:'1.6em'}},t);}))
+    ))
+  );
+}
 /* ========== QUOTE PREVIEW (4 doc types with tabs) ========== */
 function QuotePreview(p){
   var o=p.order;
@@ -10657,7 +10657,6 @@ function QuotePreview(p){
     var _isP=buildInvoiceSheets(o).sheets[invSheetP];
     rows=_isP.rows;subtotal=_isP.subtotal;tax10=_isP.tax;total=_isP.total;
   }
-  rows=rowsForDoc(rows,o,dt);/* v18.99 修正28: 送料の備考の既定文は見積書だけ */
   var subject=quoteSubjectOf(o);
   var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
   var salesP2=orderSalesPersonRaw(o,cust)||'齋藤 勝';/* v18.97 修正27④ */
@@ -10848,6 +10847,9 @@ function QuotePreview(p){
              v18.46 では印刷用HTML(generateQuoteHTML)とExcel出力の2箇所しか消せておらず、見積書作成画面のプレビューには表示されたままだった。 */
         )
       ):null,
+      /* ===== v18.99 修正28の再修正: 発注書付の見積書は「見積内容 → 備考 → 発注書」の順（印刷用HTMLと同じ） =====
+         v18.99 では印刷用HTMLだけ直し、この画面プレビューは備考が発注書の下のままだった（ユーザー指摘「直ってない」）。 */
+      (dt==='quote'&&o.withPO&&o.notes)?h('div',{className:'qp-notes-before-po',style:{marginTop:10}},previewNotesBox(o.notes)):null,
       /* ===== v18.79 修正20③: 発注書付にチェックが入っている案件はプレビューにも発注書欄を出す ===== */
       (dt==='quote'&&o.withPO)?h('div',{style:{marginTop:18,borderTop:'2px dashed #999',paddingTop:10}},
         h('div',{style:{fontSize:9.5,marginBottom:8}},'御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。'),
@@ -10885,13 +10887,7 @@ function QuotePreview(p){
         /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（上部の欄には残る） */
         dt==='delivery'?h('div',null,'上記の通り納品致しましたのでご査収ください。'):null,
         /* v18.37 修正箇所2⑥: 全体備考は入力内容と連動し、改行のまま箇条書き表示（記載場所は従来と同一） */
-        o.notes?h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:8,fontSize:9}},
-          h('tbody',null,h('tr',null,
-            h('td',{style:{border:'1px solid #999',width:70,textAlign:'center',verticalAlign:'middle',padding:'6px 4px',letterSpacing:4}},'備考'),
-            h('td',{style:{border:'1px solid #999',padding:'6px 10px',lineHeight:1.7}},
-              String(o.notes).split('\n').map(function(t,ti2){return h('div',{key:ti2,style:{minHeight:'1.6em'}},t);}))
-          ))
-        ):null
+        (o.notes&&!(dt==='quote'&&o.withPO))?previewNotesBox(o.notes):null/* 発注書付の見積書は上（合計の下）に出している */
       )
     )
   );
