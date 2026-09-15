@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.98（修正27の再修正 トッテ井門表記・台湾製の表示・エンド納品先の見やすさ・納品予定日の変更）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.99（修正28 出荷指示書の荷受人・入数・曜日／見積書の送料備考・備考の位置・複数枚のページ表記）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -888,6 +888,18 @@ function deliveryPlanMs(order){
 
 /* v18.37 修正箇所2④: 明細の備考欄（税欄の右）は行ごとに手入力する。
    行キー(rkey)で order.rowRemarks に保持し、未入力の行は空欄のまま。 */
+var SHIP_ROW_REMARK_DEFAULT='※組立工事費別途';/* v18.99 修正28: 送料の行の備考の既定値 */
+/* v18.99 修正28: 送料の備考の既定文は★見積書だけに出す（依頼は「見積書にて」）。
+   請求書・物品受領書・納品書では、備考欄を手入力していない送料の行は従来どおり空欄にする。
+   見積書作成画面で自分で入力（既定文のまま保存も含む）した備考は、これまでどおり全帳票に出る。 */
+function rowsForDoc(rows,order,docType){
+  if(docType==='quote')return rows;
+  var rr=(order&&order.rowRemarks)||{};
+  if(Object.prototype.hasOwnProperty.call(rr,'SHIP'))return rows;
+  return (rows||[]).map(function(r){
+    return (r.rkey==='SHIP'&&r.remark===SHIP_ROW_REMARK_DEFAULT)?Object.assign({},r,{remark:''}):r;
+  });
+}
 function rowRemark(order,rkey,fallback){
   var rr=(order&&order.rowRemarks)||{};
   if(Object.prototype.hasOwnProperty.call(rr,rkey))return rr[rkey]||'';
@@ -1412,13 +1424,25 @@ var MARKUP=1.1;
 var CHARTER_KG=1000;
 var CHARTER_FEE=30000;
 
+/* ===== v18.99 修正28: 黒のベースボード／棚板（base_bk / shelf_bk）の入数・箱重量 =====
+   黒は在庫を色別キーで持っているだけで、物はグレーと同じ（入数・箱の大きさも同じ）。
+   ところが入数マスタ(IRISU)・箱重量(BOX_WEIGHT)に _bk のキーが無く、入数が「1」になっていた。
+   （QT-2026-212: 棚板ブラックSS 40枚 → 出荷指示書で入数1・40箱。正しくは入数50・0箱＋バラ40）
+   ★マスタに色違いのキーが無いときは、_bk を外した本体キーの値を使う。 */
+function _masterKeyOf(tbl,key){
+  if(tbl[key]!==undefined)return key;
+  var base=String(key||'').replace(/_bk$/,'');
+  return (base!==key&&tbl[base]!==undefined)?base:key;
+}
 function getIrisu(key,sub){
+  key=_masterKeyOf(IRISU,key);
   var o=IRISU[key];if(!o)return 1;
   if(typeof o==='number')return o;
   if(sub!==undefined&&o[sub])return o[sub];
   return o.sml||o.S||1;
 }
 function getBoxWt(key,sub){
+  key=_masterKeyOf(BOX_WEIGHT,key);/* v18.99 修正28: 黒のベース・棚板はグレーと同じ箱 */
   var o=BOX_WEIGHT[key];if(!o)return 5;
   if(typeof o==='number')return o;
   if(sub!==undefined&&o[sub])return o[sub];
@@ -2709,6 +2733,41 @@ function shipEditRest(pool){
    ・荷送人の自動値 … order.shipper（出荷指示モーダルで選んだ荷送人。既定は株式会社LEC）
    ・連絡事項の自動値 … order.shippingNotes（出荷指示モーダルの入力）
    ★出荷指示書の項目を増やすときはこの関数と ✎手修正モーダルの2か所を直す。 */
+/* ===== v18.99 修正28: 出荷指示書の荷受人は必ず「様」付き／納品日時は（曜日）付き ===== */
+function withSama(s){
+  var t=String(s||'').trim();
+  if(!t)return '';
+  if(/様$/.test(t))return t;
+  return t+' 様';
+}
+var WEEKDAY_JA=['日','月','火','水','木','金','土'];
+/* 文字列の中の最初の日付の直後に（曜日）を入れる。すでに曜日が付いていれば何もしない。
+   年の無い「9/20」「9月20日」は、案件の納品予定日の年（無ければ今年）で曜日を出す。 */
+function withWeekday(s,order){
+  var t=String(s||'');
+  if(!t)return '';
+  var m=t.match(/(\d{4})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})日?/);
+  var y,mo,d;
+  if(m){y=+m[1];mo=+m[2];d=+m[3];}
+  else{
+    m=t.match(/(\d{1,2})\s*[\/月]\s*(\d{1,2})日?/);
+    if(!m)return t;
+    var ym=String((order&&order.deliveryDate)||'').match(/^(\d{4})/);
+    y=ym?+ym[1]:new Date().getFullYear();mo=+m[1];d=+m[2];
+  }
+  var dt=new Date(y,mo-1,d);
+  if(isNaN(dt.getTime())||dt.getMonth()!==mo-1||dt.getDate()!==d)return t;
+  var end=m.index+m[0].length;
+  var after=t.slice(end);
+  if(/^\s*[（(]\s*[日月火水木金土]/.test(after))return t;/* すでに曜日がある */
+  return t.slice(0,end)+'（'+WEEKDAY_JA[dt.getDay()]+'）'+after;
+}
+/* 出荷指示書の「納品日時」欄に出す文字列（日付は 2026/09/20 形式にそろえ、曜日を付ける）。
+   ★曜日を付けるのは出荷指示書の表示だけ。請求書の納品日などに引き継ぐ値（shipEditHeader().delivery）は変えない。 */
+function shipDeliveryDisplay(text,order){
+  var t=String(text||'').replace(/^(\d{4})-(\d{2})-(\d{2})/,'$1/$2/$3');
+  return withWeekday(t,order);
+}
 function shipEditHeader(order,cust,scope){
   /* v18.89 修正25②: 倉庫別／タイプ別に分かれている紙は、その紙ぶんの手修正を使う */
   var se=shipEditFor(order,scope);
@@ -2723,7 +2782,8 @@ function shipEditHeader(order,cust,scope){
     address:st.address||(eu?eu.address:'')||(cust?(cust.pref||'')+(cust.city||''):''),
     phone:st.phone||(eu?eu.phone:'')||(cust?(cust.phone||''):''),
     delivery:(order&&order.deliveryDate)||'',
-    consignee:(cust&&cust.contactPerson)?(cust.contactPerson+' '+((cust.honorific||'様'))):'',
+    /* v18.99 修正28: 荷受人には★必ず「様」を付ける（顧客の敬称が「先生」等でも出荷指示書は様） */
+    consignee:(cust&&cust.contactPerson)?(cust.contactPerson+' 様'):'',
     staff:orderSalesPersonRaw(order,cust)||'齋藤 勝',/* v18.97 修正27④ */
     slip:'出荷-'+((order&&order.no)||''),
     /* v18.85 修正22の確認事項4: 出荷指示日を戻した（ユーザー回答「出荷指示日は追加して」）。
@@ -2742,6 +2802,7 @@ function shipEditHeader(order,cust,scope){
   if(se.phone){hv.phone=se.phone;hv.edited.phone=true;}
   if(se.delivery){hv.delivery=se.delivery;hv.edited.delivery=true;}
   if(se.consignee){hv.consignee=se.consignee;hv.edited.consignee=true;}
+  hv.consignee=withSama(hv.consignee);/* v18.99 修正28: 手修正した荷受人にも「様」を付ける */
   if(se.staff){hv.staff=se.staff;hv.edited.staff=true;}
   if(se.slip){hv.slip=se.slip;hv.edited.slip=true;}
   if(se.shipDate){hv.shipDate=se.shipDate;hv.edited.shipDate=true;}
@@ -5812,7 +5873,8 @@ function buildQuoteRows(order){
   rows=rows.concat(extraQuoteRows(order));/* 修正17⑨ */
   var ship=parseInt(order.shipping)||0;
   /* v18.62 修正12⑥: 送料行の名称は送付方法（混載／チャーター）で切り替え、手入力(shipLabel)があればそれを使う */
-  if(ship>0)rows.push({rkey:'SHIP',code:'F00063',name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP','')});
+  /* v18.99 修正28: 送料の行の備考は既定で「※組立工事費別途」（見積書作成画面の備考欄で消す・書き換えることができる） */
+  if(ship>0)rows.push({rkey:'SHIP',code:'F00063',name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP',SHIP_ROW_REMARK_DEFAULT)});
   /* v18.62 修正12②: 値引きは項目名付きで複数行。金額が入っていない行は出力しない
      修正17⑬: 値引き単価と数量が入っていれば「単価×数量」で表記する
      ★v18.73: 行キー(DISC/DISC1…)は order.discounts の★元の並び順で振る。
@@ -6544,6 +6606,94 @@ function buildShipRows(order,legIndex,scope){
 /* legIndex（v18.81 修正21①）: 出荷指示書を便ごとに分けて出すときの便番号（0始まり）。
    scope（v18.88 修正24③④）: {wh:'倉庫ID', line:'ラインID'} 倉庫ごと／タイプごとに分けて出すときの絞り込み。
    どちらも省略すると従来どおり案件の全量で1枚出す。 */
+/* ===== v18.99 修正28: 見積書の項目が多くて複数枚に分かれるとき =====
+   ・各ページの先頭に「御見積書」から詳細項目の枠（受渡地・支払条件）までを同じように出す（.qhead を複製）。
+   ・御見積書の下（右寄せ）に「1-2」のように何枚目かを出す。1枚で収まるときは出さない。
+   ブラウザ任せの自動改ページでは見出しの繰り返しもページ番号も付けられないため、
+   ★印刷用ウィンドウの中で実際の高さを測って .sheet（A4 1枚）ごとに組み直す。
+   ・明細は行単位で次のページへ送る。構成行（【2列3段】cfg-pre／扉色 cfg-post）は本体行と同じページに置く。
+   ・合計・備考・発注書・文末の欄は、入らなければ次のページへ送る（ブロックの途中では切らない）。
+   ・フォント読み込み後に測る。openPrintWindow() は window.__lecReady を待ってから印刷ダイアログを出す。
+   ★この関数は印刷用ウィンドウの中で実行される（アプリの変数は使えない）。 */
+function lecQuotePaginator(){
+  function run(){
+    var sheet=document.querySelector('.sheet.qpaged');
+    if(!sheet||sheet.getAttribute('data-paged'))return;
+    sheet.setAttribute('data-paged','1');
+    var mm=96/25.4;
+    var LIMIT=Math.floor((297-24)*mm)-10;/* A4の高さ − 上下の余白(12mm×2) − 誤差の逃げ */
+    var cs=getComputedStyle(sheet);
+    var padV=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+    sheet.style.minHeight='0';sheet.style.position='relative';
+    function reset(){sheet.style.minHeight='';sheet.style.position='';}
+    if(sheet.offsetHeight-padV<=LIMIT){reset();return;}
+    var head=sheet.querySelector('.qhead'),label=sheet.querySelector('.qpage'),table=sheet.querySelector('table.qtbl');
+    if(!head||!label||!table){reset();return;}
+    label.style.display='block';label.textContent='1-1';/* 枚数表記の1行ぶんを含めて測る */
+    var kids=Array.prototype.slice.call(sheet.children).filter(function(el){return el.tagName!=='SCRIPT';});
+    var ti=kids.indexOf(table);
+    function span(el){
+      var i=kids.indexOf(el),nx=kids[i+1];
+      if(nx)return nx.offsetTop-el.offsetTop;
+      return el.offsetHeight+(parseFloat(getComputedStyle(el).marginBottom)||0);
+    }
+    var headH=span(head),preH=0;
+    for(var i=0;i<ti;i++)preH+=span(kids[i]);
+    var thead=table.tHead,body=table.tBodies[0];
+    var rows=Array.prototype.slice.call(body.rows);
+    var rowsH=0;rows.forEach(function(r){rowsH+=r.offsetHeight;});
+    var tExtra=span(table)-thead.offsetHeight-rowsH;
+    /* 行のまとまり（構成行＋本体行＋扉色の行） */
+    var units=[],open=null;
+    rows.forEach(function(r){
+      var c=' '+(r.className||'')+' ';
+      if(c.indexOf(' cfg-post ')>=0&&units.length){var lu=units[units.length-1];lu.rows.push(r);lu.h+=r.offsetHeight;return;}
+      if(open){open.rows.push(r);open.h+=r.offsetHeight;if(c.indexOf(' cfg-pre ')<0)open=null;return;}
+      var u={rows:[r],h:r.offsetHeight};units.push(u);
+      if(c.indexOf(' cfg-pre ')>=0)open=u;
+    });
+    var tails=kids.slice(ti+1).map(function(el){return {el:el,h:span(el)};});
+    var pages=[],pg={rows:[],tails:[],h:preH+tExtra+thead.offsetHeight};
+    units.forEach(function(u){
+      if(pg.h+u.h>LIMIT&&pg.rows.length){pages.push(pg);pg={rows:[],tails:[],h:headH+tExtra+thead.offsetHeight};}
+      pg.rows=pg.rows.concat(u.rows);pg.h+=u.h;
+    });
+    tails.forEach(function(t){
+      if(pg.h+t.h>LIMIT&&(pg.rows.length||pg.tails.length)){pages.push(pg);pg={rows:[],tails:[],h:headH};}
+      pg.tails.push(t.el);pg.h+=t.h;
+    });
+    pages.push(pg);
+    var n=pages.length;
+    if(n<=1){label.style.display='none';label.textContent='';reset();return;}
+    var pre=kids.slice(0,ti);
+    kids.forEach(function(el){sheet.removeChild(el);});
+    var last=sheet;
+    pages.forEach(function(p,k){
+      var s=(k===0)?sheet:sheet.cloneNode(false);
+      if(k===0)pre.forEach(function(el){s.appendChild(el);});
+      else{s.removeAttribute('data-paged');s.className='sheet';s.appendChild(head.cloneNode(true));}
+      if(p.rows.length){
+        var t=table.cloneNode(false);t.appendChild(thead.cloneNode(true));
+        var tb=document.createElement('tbody');p.rows.forEach(function(r){tb.appendChild(r);});
+        t.appendChild(tb);s.appendChild(t);
+      }
+      p.tails.forEach(function(el){s.appendChild(el);});
+      var lb=s.querySelector('.qpage');if(lb){lb.style.display='block';lb.textContent=(k+1)+'-'+n;}
+      s.style.minHeight='';s.style.position='';
+      if(k>0){last.parentNode.insertBefore(s,last.nextSibling);last=s;}
+    });
+  }
+  window.__lecReady=new Promise(function(resolve){
+    var done=false;
+    function go(){if(done)return;done=true;try{run();}catch(e){}resolve();}
+    function start(){
+      if(document.fonts&&document.fonts.ready)document.fonts.ready.then(go,go);else go();
+      setTimeout(go,2500);/* フォントの読み込みが終わらなくても印刷は出す */
+    }
+    if(document.readyState==='complete')start();else window.addEventListener('load',start);
+  });
+}
+var QUOTE_PAGINATE_SCRIPT='<script>('+lecQuotePaginator.toString()+')();<\/script>';
 function generateQuoteHTML(order,docType,legIndex,scope){
   docType=docType||'quote';
   scope=scope||{};
@@ -6591,6 +6741,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     rows=_is.rows;subtotal=_is.subtotal;tax10=_is.tax;total=_is.total;
     cfg=Object.assign({},cfg,{title:cfg.title+'（'+(invSheetIdx+1)+'／全'+_in+'枚）'});
   }
+  rows=rowsForDoc(rows,order,docType);/* v18.99 修正28: 送料の備考の既定文は見積書だけ */
   var subject=quoteSubjectOf(order);
   var payTerms=order.paymentTerms||'前払い（銀行振り込み）';
   var slipCode=cfg.slipPrefix+'-'+order.no;
@@ -6630,8 +6781,15 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   html+='.trow.main{font-size:13px;font-weight:900;background:#f8f8f8;border-bottom:2px solid #333}.trow.sub{font-size:8px;color:#666}';
   /* 印刷時は「紙が何枚も続く」形にするので min-height は外す（末尾に空白ページが出るのを防ぐ） */
   html+='@media print{html,body{background:#fff;padding:0}.sheet{min-height:0;box-shadow:none}}';
-  html+='</style></head><body><div class="sheet">';
+  /* v18.99 修正28: 見積書が複数枚に分かれるときの2枚目以降（.sheet を並べ、印刷では1枚ずつ改ページ） */
+  html+='.sheet+.sheet{margin-top:12px}@media print{.sheet+.sheet{margin-top:0;break-before:page;page-break-before:always}}';
+  var isQuoteDoc=(docType==='quote');
+  html+='</style></head><body><div class="sheet'+(isQuoteDoc?' qpaged':'')+'">';
+  /* v18.99 修正28: 見積書は「御見積書」から詳細項目の枠までを .qhead で囲み、複数枚になったら各ページの先頭に同じものを出す */
+  if(isQuoteDoc)html+='<div class="qhead">';
   html+='<div style="text-align:right"><span style="font-size:22px;font-weight:700;letter-spacing:4px;border-bottom:3px solid #222;padding-bottom:4px;display:inline-block">'+cfg.title+'</span></div>';
+  /* v18.99 修正28: 何枚目かの表記（例 1-2）。御見積書の下・右寄せ。1枚で収まるときは出さない（印刷時にページ分けの処理が書き込む） */
+  if(isQuoteDoc)html+='<div class="qpage" style="display:none;text-align:right;font-size:12px;font-weight:700;letter-spacing:1px;margin-top:4px"></div>';
   /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない（他の帳票は従来どおり）
      v18.92 修正26⑥⑦: 物品受領書・納品書も副題を空にしたので、★副題が空の帳票は同じ間隔だけ空ける。 */
   if(isShipping||!cfg.subtitle)html+='<div style="margin-bottom:12px"></div>';
@@ -6695,7 +6853,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     html+='<div><b>荷受人:</b> '+(shv.consignee||'')+em('consignee')+'</div>';
     html+='<div><b>納品先住所:</b> '+(shv.postal?'〒'+shv.postal+'　':'')+(shv.address||'')+em('postal')+em('address')+'</div>';
     html+='<div><b>納品先電話番号:</b> '+(shv.phone||'')+em('phone')+'</div>';
-    html+='<div><b>納品日時:</b> '+(shv.delivery||'')+em('delivery')+'</div>';
+    html+='<div><b>納品日時:</b> '+shipDeliveryDisplay(shv.delivery,order)+em('delivery')+'</div>';/* v18.99 修正28: 曜日付き */
     html+='<div><b>便種:</b> '+shipMethodMarks(order)+'</div>';
     html+='</div><div style="flex:1;min-width:0">';
     /* v18.85: 荷送人は「会社名／住所以降」を2行にし、2行目を会社名の先頭に揃える（依頼どおり）。
@@ -6732,6 +6890,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     if(docType==='quote'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
     else if(docType==='invoice'){html+='<div><b>支払条件:</b> '+dv.payTerms+'</div>';}
     html+='</div>';
+    if(isQuoteDoc)html+='</div>';/* .qhead を閉じる（v18.99 修正28） */
   }
   if(!isReceipt&&!isShipping){html+='<div style="font-size:16px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+'：　&yen;'+fm(total)+'</div>';}
   if(isShipping){
@@ -6747,12 +6906,12 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     });
     for(var i=0;i<Math.max(0,6-rows.length);i++)html+='<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>';
   }else{
-    html+='<table><thead><tr><th style="width:80px">商品コード</th><th>商品名称</th><th style="width:40px">数量</th><th style="width:35px">単位</th><th style="width:70px">単価</th><th style="width:80px">金額</th><th style="width:50px">税</th><th>備考</th></tr></thead><tbody>';
+    html+='<table class="qtbl"><thead><tr><th style="width:80px">商品コード</th><th>商品名称</th><th style="width:40px">数量</th><th style="width:35px">単位</th><th style="width:70px">単価</th><th style="width:80px">金額</th><th style="width:50px">税</th><th>備考</th></tr></thead><tbody>';
     rows.forEach(function(r){
-      if(r.configNote){html+='<tr class="cfg-row"><td></td><td colspan="7">'+r.configNote+'</td></tr>';}
+      if(r.configNote){html+='<tr class="cfg-row cfg-pre"><td></td><td colspan="7">'+r.configNote+'</td></tr>';}/* cfg-pre/cfg-post: ページを分けるとき本体行と離さない（v18.99） */
       html+='<tr><td>'+r.code+'</td><td>'+r.name+'</td><td class="c">'+(r.qty===''?'':r.qty)+'</td><td class="c">'+(r.unit||'')+'</td><td class="r">'+(r.price===''?'':fm(r.price))+'</td><td class="r"'+(r.amount<0?' style="color:#B91C1C"':'')+'>'+(r.amount===''?'':fm(r.amount))+'</td><td class="c">'+(r.tax||'')+'</td><td class="rmk">'+(r.remark||'')+'</td></tr>';
       /* v18.73 修正17の追加: 扉色が複数のときは本体行の下に色ごとの行を出す */
-      if(r.colorNote){html+='<tr class="cfg-row"><td></td><td colspan="7">'+r.colorNote+'</td></tr>';}
+      if(r.colorNote){html+='<tr class="cfg-row cfg-post"><td></td><td colspan="7">'+r.colorNote+'</td></tr>';}
     });
     for(var i=0;i<Math.max(0,6-rows.length);i++)html+='<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
   }
@@ -6801,6 +6960,10 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   /* ===== v18.79 修正20③: 発注書付見積書 =====
    　見積書の基本フォームはそのままで、下部に発注書欄を足す。
    　既定は「見積書のみ」で、見積書作成画面のチェック（order.withPO）を入れた案件だけ発注書欄が付く。 */
+  /* ===== v18.99 修正28: 発注書付の見積書は「見積内容 → 備考 → 発注書」の順にする =====
+     従来は全体備考が発注書の下（文末の欄）に出ていた。★発注書付のときだけ備考を合計金額の直下へ移す。 */
+  var notesBeforePO=(docType==='quote'&&order.withPO);
+  if(notesBeforePO&&order.notes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(order.notes)+'</div>';
   if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
   html+='<div style="margin-top:16px;font-size:9px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
@@ -6825,8 +6988,8 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
-  html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（記載場所は従来と同一） */
-  html+='</div></div></body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
+  if(!notesBeforePO)html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（記載場所は従来と同一） */
+  html+='</div></div>'+(isQuoteDoc?QUOTE_PAGINATE_SCRIPT:'')+'</body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
   return{html:html,subtotal:subtotal,tax:tax10,total:total,rows:rows,subject:subject,slipCode:slipCode};
 }
 
@@ -7136,7 +7299,15 @@ function openPrintWindow(html){
         if(mq&&mq.addListener)mq.addListener(function(m){if(!m.matches)setTimeout(function(){try{w.close();}catch(e){}},400);});
       }
     }catch(e){}
-    setTimeout(function(){try{w.print();}catch(e){}},500);
+    /* v18.99 修正28: 見積書は複数枚に組み直す処理（window.__lecReady）が終わってから印刷ダイアログを出す。
+       ★組み直す前に印刷ダイアログを出すと、1枚に詰まった（ページ番号の無い）状態で印刷されてしまう。 */
+    setTimeout(function(){
+      var fired=false;
+      function doPrint(){if(fired)return;fired=true;setTimeout(function(){try{w.print();}catch(e){}},150);}
+      var r=null;try{r=w.__lecReady;}catch(e){}
+      if(r&&typeof r.then==='function'){r.then(doPrint,doPrint);setTimeout(doPrint,4000);}
+      else doPrint();
+    },350);
   }catch(e){return false;}
   return true;
 }
@@ -10486,6 +10657,7 @@ function QuotePreview(p){
     var _isP=buildInvoiceSheets(o).sheets[invSheetP];
     rows=_isP.rows;subtotal=_isP.subtotal;tax10=_isP.tax;total=_isP.total;
   }
+  rows=rowsForDoc(rows,o,dt);/* v18.99 修正28: 送料の備考の既定文は見積書だけ */
   var subject=quoteSubjectOf(o);
   var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
   var salesP2=orderSalesPersonRaw(o,cust)||'齋藤 勝';/* v18.97 修正27④ */
@@ -10544,7 +10716,7 @@ function QuotePreview(p){
           h('div',null,h('b',null,'荷受人: '),shvP.consignee||''),
           h('div',null,h('b',null,'納品先住所: '),(shvP.postal?'〒'+shvP.postal+'　':'')+(shvP.address||'')),
           h('div',null,h('b',null,'納品先電話番号: '),shvP.phone||''),
-          h('div',null,h('b',null,'納品日時: '),shvP.delivery||''),
+          h('div',null,h('b',null,'納品日時: '),shipDeliveryDisplay(shvP.delivery,o)),/* v18.99 修正28: 曜日付き */
           /* v18.84 修正22④: 便種は該当の1つだけ。判定は shipDocMode()（出力時に選んだ便種を優先） */
           h('div',null,h('b',null,'便種: '),shipMethodMarks(o))
         ),
