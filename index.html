@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.96（納品書も請求書と同じ分け方で分かれる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.97（修正27 追加部材・扉の倉庫間移動・エンド別担当・請求書の紙ごと手修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -543,6 +543,23 @@ function isSaPart(key,sub,cat){
   return !!SA_PART_MAP[key+'|'+(sub||'')];
 }
 function saPartOf(key,sub){return SA_PART_MAP[key+'|'+(sub||'')]||null;}
+/* ===== v18.97 修正27①②: 部材在庫一覧に追加した部材 =====
+   ◆台湾製   … ハンガーパイプは★グレー表記（在庫キー hanger は据え置き・表示名だけ変える）
+   　　　　　　 トッテ(台湾)／ネームプレートカバーSML(台湾)／SS・3S(台湾) を新設（台湾製だけに出す）
+   ◆Ver.2    … ハンガーパイプ（グレー）を新設（在庫キー hanger_gy。既存の hanger はブラックのまま）
+   ◆共通     … F/B/C/D/L マスターキー・ダイヤル錠(D003) を新設（鍵類と同じく全ライン共通在庫＝COMMON_STOCK_KEYS）
+   ★どのラインに出すかはこの表の1か所で決まる（在庫表・在庫編集・Excel・パーツ単品追加が共通で見る）。
+   　表に無いキーは従来どおり全ラインに出る。 */
+var LINE_ONLY_PART_KEYS={hanger_gy:['jp2'],totte_tw:['tw'],namePlateCoverSML_tw:['tw'],namePlateCoverSS_tw:['tw']};
+function partShownInLine(key,lineId){
+  var a=LINE_ONLY_PART_KEYS[key];
+  return !a||a.indexOf(lineId)>=0;
+}
+/* 台湾製では汎用のネームプレートカバー行を(台湾)の行に置き換える。
+   ★ただし台湾製の在庫に数量が入っていれば消さない（見えなくなって在庫が迷子になるのを防ぐ安全弁）。 */
+var TW_REPLACED_PART_KEYS=['namePlateCoverSML','namePlateCoverSS'];
+/* ハンガーパイプの色表記。台湾製はグレー、それ以外（日本製）はブラック */
+function hangerColorLabel(lineId){return lineId==='tw'?'グレー':'ブラック';}
 /* v18.21 要望18: 商品選択の錠前を実在庫キー(部材在庫一覧/パーツ単品 cat:'lock')と同名・同数で紐付け。
    旧 dialH110/dialH111 は在庫キーが存在せず(在庫は dialH110new/dialH111new のみ)常に欠品表示になっていたため実在庫キーへ修正。
    cylinderMaster は削除15項目で確定のため除去。汎用cylinderは在庫に対応キーが無く(在庫はcylinderShort/Long系)要吉野確認のため暫定保持。 */
@@ -787,8 +804,32 @@ function deliveryPlaceOf(order,cust){
    見積書側の最終フォールバック（齋藤 勝）は一覧表示・検索では補わず、未入力は空欄のままにする。 */
 function orderStaffOf(order,cust){
   /* v18.53: 案件管理の「担当:」表示・検索も、顧客DBのフルネーム表記をアカウント名へ寄せて揃える */
-  if(order&&order.salesPersonOverride)return resolveSalesPerson(order.salesPersonOverride);
-  return resolveSalesPerson(cust&&cust.salesPerson);
+  return resolveSalesPerson(orderSalesPersonRaw(order,cust));
+}
+/* ===== v18.97 修正27④: 代理店のエンドユーザーごとに弊社担当者を持つ =====
+   顧客編集（代理店）のエンド納品先に「弊社担当」を登録すると、そのエンド納品先を選んだ案件の担当者になる。
+   ★担当者の決まり方（上から順に優先）:
+   　1) 案件で直接入れたLEC担当者（order.salesPersonOverride）
+   　2) 案件のエンド納品先に登録された弊社担当（cust.endUsers[].salesPerson）
+   　3) 顧客の弊社営業担当（cust.salesPerson）
+   ★エンド納品先は顧客DBから★その都度引く（案件に写しを持たない）。顧客編集で担当を変えれば既存案件にも効く
+   　（顧客の弊社営業担当と同じ考え方）。案件側は id で突合し、id の無い旧案件は納品先名で突合する。
+   ★見積書・請求書などの帳票の担当者も同じ関数を通す（担当者の決まり方をここ1か所に集約）。 */
+function endUserOfOrder(order,cust){
+  var eu=order&&order.endUser;
+  if(!eu||!cust||!(cust.endUsers||[]).length)return null;
+  var list=cust.endUsers;
+  var hit=eu.id?list.find(function(x){return x&&x.id===eu.id;}):null;
+  if(!hit&&eu.name)hit=list.find(function(x){return x&&x.name&&x.name===eu.name;});
+  return hit||null;
+}
+function endUserStaffOf(order,cust){
+  var hit=endUserOfOrder(order,cust);
+  return (hit&&String(hit.salesPerson||'').trim())||'';
+}
+function orderSalesPersonRaw(order,cust){
+  if(order&&order.salesPersonOverride)return order.salesPersonOverride;
+  return endUserStaffOf(order,cust)||(cust&&cust.salesPerson)||'';
 }
 /* ===== v18.67 修正14②: 案件の担当拠点（本社／関西営業所） =====
    判定は「顧客登録の弊社営業担当（案件で上書きしていればそちら）」→「ユーザー管理のその人の拠点情報」。
@@ -1045,7 +1086,9 @@ var PART_ADD_DEFS=[
   {k:'shelf_bk',l:'棚板（ブラック）',hasSub:'grp',stockKey:'shelf_bk'},
   {k:'vj',l:'上下ジョイント',hasSub:'grp'},
   {k:'sj',l:'サイドジョイント',hasSub:'grp'},
-  {k:'hanger',l:'ハンガーパイプ'},
+  /* v18.97 修正27①: 台湾製を選んでいるときは「ハンガーパイプ（グレー）」と出す（lineLabels） */
+  {k:'hanger',l:'ハンガーパイプ（ブラック）',lineLabels:{tw:'ハンガーパイプ（グレー）'}},
+  {k:'hanger_gy',l:'ハンガーパイプ（グレー）'},/* v18.97 修正27① Ver.2 */
   {k:'connector',l:'コネクター（XL/SS）',hasSub:'size'},
   {k:'anchorCap_gy',l:'アンカー穴キャップ（グレー）',stockKey:'anchorCap',fixedSub:'gy'},
   {k:'anchorCap_bk',l:'アンカー穴キャップ（ブラック）',stockKey:'anchorCap',fixedSub:'bk'},
@@ -1066,7 +1109,9 @@ var PART_ADD_DEFS=[
   {k:'dialH111new',l:'ダイヤル錠 H111'},
   {k:'dialDST',l:'ダイヤル錠 DST'},
   {k:'dialOpnus',l:'ダイヤル錠(オプナス)'},
+  {k:'dialD003',l:'ダイヤル錠(D003)'},/* v18.97 修正27① 共通 */
   {k:'totte',l:'トッテ'},
+  {k:'totte_tw',l:'トッテ(台湾)'},/* v18.97 修正27① 台湾製 */
   {k:'padlock',l:'南京錠'},
   {k:'padlockGreen',l:'3桁ダイヤル南京錠 グリーン'},
   {k:'padlockBlack',l:'3桁ダイヤル南京錠 ブラック'},
@@ -1083,6 +1128,12 @@ var PART_ADD_DEFS=[
   {k:'cylinderExchangeSpare',l:'内筒交換用予備'},
   {k:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター'},
   {k:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター'},
+  /* v18.97 修正27① 共通: マスターキー5種 */
+  {k:'masterKeyF',l:'Fマスターキー'},
+  {k:'masterKeyB',l:'Bマスターキー'},
+  {k:'masterKeyC',l:'Cマスターキー'},
+  {k:'masterKeyD',l:'Dマスターキー'},
+  {k:'masterKeyL',l:'Lマスターキー'},
   {k:'coinReturn',l:'コインリターン錠'},
   {k:'dialKeyH110',l:'ダイヤル錠検索キー H110'},
   {k:'dialKeyH111',l:'ダイヤル錠検索キー H111'},
@@ -1103,8 +1154,21 @@ var PART_ADD_DEFS=[
   {k:'hingeCoverSS',l:'ヒンジカバー SS'},
   {k:'namePlateCoverSML',l:'ネームプレートカバー SML'},
   {k:'namePlateCoverSS',l:'ネームプレートカバー SS・3S'},
+  {k:'namePlateCoverSML_tw',l:'ネームプレートカバー SML(台湾)'},/* v18.97 修正27① 台湾製 */
+  {k:'namePlateCoverSS_tw',l:'ネームプレートカバー SS・3S(台湾)'},/* v18.97 修正27① 台湾製 */
   {k:'namePlatePaper',l:'ネームプレート厚紙'}
 ];
+/* v18.97 修正27②: パーツ単品追加の選択肢をパーツの製品ラインで絞る（ライン限定の部材は他ラインに出さない）。
+   台湾製では汎用のネームプレートカバーを出さず(台湾)の方を出す。名称もラインに合わせる（ハンガーパイプの色）。 */
+function partAddDefsForLine(lineId){
+  return getPartAddDefs().filter(function(d){
+    var k=d.isDoor?d.doorKey:(d.stockKey||d.k);
+    if(!partShownInLine(k,lineId))return false;
+    if(lineId==='tw'&&TW_REPLACED_PART_KEYS.indexOf(k)>=0)return false;
+    return true;
+  });
+}
+function partAddLabel(d,lineId){return (d&&d.lineLabels&&d.lineLabels[lineId])||(d&&d.l)||'';}
 /* localStorageのカスタム部材も含めたパーツ単品候補（部材在庫一覧と一致） */
 function getPartAddDefs(){
   var extra=[];
@@ -1158,7 +1222,12 @@ var PART_LABELS={
   hingeCoverSML:'ヒンジカバー SML共通',hingeCoverSS:'ヒンジカバー SS',
   namePlateCoverSML:'ネームプレートカバー SML',namePlateCoverSS:'ネームプレートカバー SS・3S',
   namePlatePaper:'ネームプレート厚紙',
-  padlockGreen:'3桁ダイヤル南京錠 グリーン',padlockBlack:'3桁ダイヤル南京錠 ブラック',padlockRed:'3桁ダイヤル南京錠 レッド'
+  padlockGreen:'3桁ダイヤル南京錠 グリーン',padlockBlack:'3桁ダイヤル南京錠 ブラック',padlockRed:'3桁ダイヤル南京錠 レッド',
+  /* v18.97 修正27①: 追加した部材 */
+  hanger_gy:'ハンガーパイプ(グレー)',totte_tw:'トッテ(台湾)',
+  namePlateCoverSML_tw:'ネームプレートカバー SML(台湾)',namePlateCoverSS_tw:'ネームプレートカバー SS・3S(台湾)',
+  masterKeyF:'Fマスターキー',masterKeyB:'Bマスターキー',masterKeyC:'Cマスターキー',masterKeyD:'Dマスターキー',masterKeyL:'Lマスターキー',
+  dialD003:'ダイヤル錠(D003)'
 };
 /* サブキー（サイズ・色）も含めた完全な日本語ラベル取得 */
 function partLabelJP(key,sub,color,isDoor){
@@ -1296,7 +1365,10 @@ doorPocket:108,carryBag:100,/* v18.82 修正21②の追加: 持ち帰り用袋�
   dialKeyH110:100,dialKeyH111:100,dialKeyD003:100,dialKeyD018:100,dialKeyDST:100,
   hingeCoverSML:200,hingeCoverSS:200,
   namePlateCoverSML:200,namePlateCoverSS:200,namePlatePaper:500,
-  padlockGreen:100,padlockBlack:100,padlockRed:100
+  padlockGreen:100,padlockBlack:100,padlockRed:100,
+  /* v18.97 修正27①: 追加部材の入数は★暫定で同種の部材に合わせた（実数が分かれば在庫項目マスタで変更可） */
+  hanger_gy:16,totte_tw:100,namePlateCoverSML_tw:200,namePlateCoverSS_tw:200,
+  masterKeyF:100,masterKeyB:100,masterKeyC:100,masterKeyD:100,masterKeyL:100,dialD003:50
 };
 /* v14.2: カスタム入数の永続化 - localStorageから上書き */
 (function applyCustomIrisu(){
@@ -1329,7 +1401,9 @@ var BOX_WEIGHT={
   padlock:5.0,
   cylinder:3.0,cylinderLongStd:3.0,cylinderLongF:3.0,cylinderLongB:3.0,cylinderShortStd:3.0,cylinderShortF:3.0,cylinderShortB:3.0,cylinderShortC:3.0,cylinderExchange:3.0,cylinderExchangeSpare:3.0,cylinderMaster:3.0,
   coinReturn:3.0,railSideSML:1.5,railBackSML:1.0,railSideSS:1.5,railBackSS:1.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0,carryBag:1.0,/* v18.82 修正21②の追加: 箱重量は暫定1.0kg（実測が分かれば在庫項目マスタで変更可） */
-  railLong:1.5,railShort:1.0/* v18.76 修正18① */
+  railLong:1.5,railShort:1.0,/* v18.76 修正18① */
+  /* v18.97 修正27①: 追加部材の箱重量は★暫定で同種の部材に合わせた */
+  hanger_gy:5.0,totte_tw:5.0,masterKeyF:1.0,masterKeyB:1.0,masterKeyC:1.0,masterKeyD:1.0,masterKeyL:1.0,dialD003:3.0
 };
 var MISC_FEE=325;
 var MARKUP=1.1;
@@ -1432,7 +1506,9 @@ var HELD={};
 })();
 
 /* v14: 鍵類は全製品ライン共通プール（A1）。物理在庫はラインを問わず合算 */
-var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock','cylinder','cylinderMaster','cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderExchange','cylinderExchangeSpare','coinReturn','dialH110new','dialH111new','dialH112','dialImon','searchKey','masterKey','dialOpnus','cylinderFMaster','cylinderBMaster','cylinderCMaster','cylinderDMaster','cylinderLMaster','dialKeyH110','dialKeyH111','dialKeyD003','dialKeyD018','dialKeyDST','padlockGreen','padlockBlack','padlockRed'];
+var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock','cylinder','cylinderMaster','cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderExchange','cylinderExchangeSpare','coinReturn','dialH110new','dialH111new','dialH112','dialImon','searchKey','masterKey','dialOpnus','cylinderFMaster','cylinderBMaster','cylinderCMaster','cylinderDMaster','cylinderLMaster','dialKeyH110','dialKeyH111','dialKeyD003','dialKeyD018','dialKeyDST','padlockGreen','padlockBlack','padlockRed',
+  /* v18.97 修正27①「共通」: マスターキー5種・ダイヤル錠(D003) */
+  'masterKeyF','masterKeyB','masterKeyC','masterKeyD','masterKeyL','dialD003'];
 function isCommonStockKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0;}
 /* v18.44 修正３⑥: 受注発注部材（原則在庫なし・見積時のみ使用。最終的に入庫された段階で出荷する）。
    在庫確認で不足でも案件全体をNGにせず「受発注」バッジ表示にし、他部材の仮押さえを妨げない。
@@ -2646,7 +2722,7 @@ function shipEditHeader(order,cust,scope){
     phone:st.phone||(eu?eu.phone:'')||(cust?(cust.phone||''):''),
     delivery:(order&&order.deliveryDate)||'',
     consignee:(cust&&cust.contactPerson)?(cust.contactPerson+' '+((cust.honorific||'様'))):'',
-    staff:(order&&order.salesPersonOverride)||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝',
+    staff:orderSalesPersonRaw(order,cust)||'齋藤 勝',/* v18.97 修正27④ */
     slip:'出荷-'+((order&&order.no)||''),
     /* v18.85 修正22の確認事項4: 出荷指示日を戻した（ユーザー回答「出荷指示日は追加して」）。
        自動値は出力日（docDateOf の 'shipping' と同じ）。★手修正できる。 */
@@ -3737,6 +3813,26 @@ function transferStock(lineId,key,sub,fromWh,toWh,qty,label,editorNm){
   var rIn=_rbAddStock(wl,toWh,key,sub,null,qty);
   EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:(label||key)+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
   EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:(label||key)+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
+  return {ok:true,moved:qty};
+}
+/* ===== v18.97 修正27③: 扉の倉庫間移動 =====
+   在庫編集で扉だけ倉庫間移動ができなかった（上の transferStock は扉を対象外にしていた）。
+   扉は STK[ライン][倉庫][door|doorH][色][サイズ] の3階層なので、色とサイズを指定して動かす。
+   考え方は transferStock と同じ: 移動元の★空き在庫（在庫−仮押さえ）までしか動かせない／EDIT_LOG に出庫・入庫の2行を残す。
+   扉は共通在庫ではないのでライン集約はしない。 */
+function transferDoorStock(lineId,doorKey,color,size,fromWh,toWh,qty,label,editorNm){
+  qty=parseInt(qty)||0;
+  if(qty<=0)return {ok:false,reason:'invalid'};
+  if(!fromWh||!toWh||fromWh===toWh||!color||!size)return {ok:false,reason:'invalid'};
+  var dk=doorKey||'door';
+  var free=availD(lineId,fromWh,color,size,dk);
+  if(free<qty)return {ok:false,reason:'insufficient',avail:free};
+  var ts=new Date().toLocaleString('ja-JP');
+  var rOut=_rbAddStock(lineId,fromWh,dk,size,color,-qty);
+  var rIn=_rbAddStock(lineId,toWh,dk,size,color,qty);
+  var nm=(label||dk)+' '+size;
+  EDIT_LOG.push({timestamp:ts,lineId:lineId,key:dk,sub:size,color:color,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:nm+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
+  EDIT_LOG.push({timestamp:ts,lineId:lineId,key:dk,sub:size,color:color,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:nm+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
   return {ok:true,moved:qty};
 }
 /* ========== v18.55 修正９④: 予備パーツ管理 ==========
@@ -5905,17 +6001,55 @@ function shipDocDeliveryText(order,cust){
    ★項目を増やすときは DOC_EDIT_KEYS と ✎モーダルの2か所を直すこと（印刷用HTMLと画面プレビューは
    　この関数の戻り値しか見ていないので、この2か所だけで両方に反映される）。 */
 var DOC_EDIT_TYPES=['invoice','receipt','delivery'];
-var DOC_EDIT_KEYS=['subject','staff','date','slip','delivery','dest','payTerms'];
+/* v18.97 修正27⑧: 宛先（宛名・〒・住所・電話・FAX・顧客コード）も手修正できるようにした（to〜 の6項目） */
+var DOC_EDIT_TO_KEYS=['toName','toPostal','toAddress','toPhone','toFax','toCode'];
+var DOC_EDIT_KEYS=['subject','staff','date','slip','delivery','dest','payTerms'].concat(DOC_EDIT_TO_KEYS);
 function docEditFor(order,docType){
   var m=(order&&order.docEdit)||{};
   return m[docType]||{};
 }
-function docEditHeader(order,cust,docType){
-  var de=docEditFor(order,docType);
+/* ===== v18.97 修正27⑥: 請求書を複数枚に分けたときは★紙ごとに手修正できる =====
+   保存先は order.docEdit.invoice.sheets[紙の番号(0始まり)]。紙ごとの指定が無い項目は
+   docEdit.invoice の直下（全枚共通の手修正＝分ける前に入れた手修正）へフォールバックする。
+   1枚のときは sheets[0] も見る（分割を1枚へ戻しても、1枚目に入れた手修正が消えないように）。
+   ★紙ごとの手修正を持つのは請求書だけ。納品書は請求書の紙ごとの内容を引き継ぐ（修正27⑦）。 */
+function docEditLayer(order,docType,sheetIdx){
+  var de=docEditFor(order,docType),out={};
+  Object.keys(de).forEach(function(k){if(k!=='sheets')out[k]=de[k];});
+  if(docType==='invoice'&&de.sheets){
+    var s=de.sheets[String(parseInt(sheetIdx)||0)];
+    if(s)Object.keys(s).forEach(function(k){out[k]=s[k];});
+  }
+  return out;
+}
+/* ===== v18.97 修正27⑤⑦: 請求書を手修正したら納品書にも自動で反映する =====
+   納品書の記載値は「納品書で手修正した項目」→「請求書の手修正（同じ紙番号）」→「自動値」の順で決まる。
+   ★請求書にしか無い項目（支払条件）は引き継がない。日付と伝票コードは意味を揃えて引き継ぐ:
+   　・納品書の「納品日」 ← 請求書の「納品日」（請求書の「請求日」ではない）
+   　・納品書の「伝票コード」 ← 請求書の伝票コードの先頭「請求」を「納品」に置き換えたもの
+   ★物品受領書は対象外（従来どおり物品受領書の手修正だけを見る）。 */
+var DOC_EDIT_INHERIT_KEYS=['subject','staff','dest','showRep','repName'].concat(DOC_EDIT_TO_KEYS);
+function deliveryInheritFromInvoice(order,sheetIdx){
+  var inv=docEditLayer(order,'invoice',sheetIdx),out={};
+  DOC_EDIT_INHERIT_KEYS.forEach(function(k){if(inv[k]!==undefined&&inv[k]!==null&&inv[k]!=='')out[k]=inv[k];});
+  if(inv.delivery)out.date=inv.delivery;
+  if(inv.slip)out.slip=String(inv.slip).replace(/^請求/,'納品');
+  return out;
+}
+function docEditHeader(order,cust,docType,sheetIdx){
+  var de=docEditLayer(order,docType,sheetIdx);
+  if(docType==='delivery')de=Object.assign(deliveryInheritFromInvoice(order,sheetIdx),de);
   var eu=(order&&order.endUser&&(order.endUser.name||order.endUser.address))?order.endUser:null;
   var hv={
+    /* v18.97 修正27⑧: 宛先の自動値（見積書と同じく顧客DBの内容） */
+    toName:cust?(cust.name+' 御中'):'',
+    toPostal:(cust&&cust.postal)||'',
+    toAddress:cust?((cust.pref||'')+(cust.city||'')):'',
+    toPhone:(cust&&cust.phone)||'',
+    toFax:(cust&&cust.fax)||'',
+    toCode:(cust&&cust.id)||'',
     subject:quoteSubjectOf(order),
-    staff:(order&&order.salesPersonOverride)||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝',
+    staff:orderSalesPersonRaw(order,cust)||'齋藤 勝',/* v18.97 修正27④ */
     date:docDateOf(order,docType),
     slip:(docType==='invoice'?'請求':'納品')+'-'+((order&&order.no)||''),
     /* 請求書の納品日（修正26②）。出荷指示書に出ている納品日時と同じ値を既定にする */
@@ -5937,8 +6071,13 @@ function docEditHeader(order,cust,docType){
 /* その帳票に手修正が保存されているか（✎ボタンの表示に使う） */
 function hasDocEdit(order,docType){
   var de=docEditFor(order,docType);
-  return DOC_EDIT_KEYS.some(function(k){return !!de[k];})
-    ||(de.showRep!==undefined&&de.showRep!==null&&de.showRep!=='')||!!de.repName;
+  function any(x){
+    return DOC_EDIT_KEYS.some(function(k){return !!x[k];})
+      ||(x.showRep!==undefined&&x.showRep!==null&&x.showRep!=='')||!!x.repName;
+  }
+  if(any(de))return true;
+  /* v18.97 修正27⑥: 紙ごとの手修正 */
+  return !!de.sheets&&Object.keys(de.sheets).some(function(k){return de.sheets[k]&&any(de.sheets[k]);});
 }
 /* ===== v18.79 修正20③: 見積書の下部に付ける「発注書」欄 =====
    サンプル「発注書付見積書.pdf」の様式。見積書の基本フォームは変えず、この欄だけを下に足す。
@@ -6449,7 +6588,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var slipCode=cfg.slipPrefix+'-'+order.no;
   /* v18.93 修正26②⑤: 請求書・物品受領書・納品書は記載内容を ✎ で手修正できる（空欄=自動値）。
      ★この3帳票の記載値は必ず dv から取ること（order を直接読むと手修正が効かない）。 */
-  var dv=isBill?docEditHeader(order,cust,docType):null;
+  var dv=isBill?docEditHeader(order,cust,docType,invSheetIdx):null;/* v18.97 修正27⑥⑦: 分けた紙はその紙の手修正 */
   /* v18.95 修正26③: 分けて出す請求書は伝票コードに枚数の枝番を付ける（手修正があればそちらが優先） */
   if(dv&&invSheetIdx!=null&&!dv.edited.slip)dv.slip=dv.slip+'-'+(invSheetIdx+1);
 
@@ -6499,6 +6638,13 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     /* v18.85 修正22の確認事項3: 「御中」の有無は shipDocAddressee() が倉庫ごとに決める
        v18.88 修正24③: 倉庫ごとに分けて出すときは★その倉庫だけを宛名にする */
     html+='<div style="font-size:14px;font-weight:700">'+shipDocAddressee(order,scope.wh)+'</div>';
+  }else if(dv){
+    /* v18.97 修正27⑧: 請求書・物品受領書・納品書の宛先は ✎ 手修正の値（空欄＝顧客DBの内容）。並びは見積書と同じ */
+    html+='<div style="font-size:14px;font-weight:700;margin-bottom:4px">'+(dv.toName||'')+'</div>';
+    html+='<div style="font-size:9px">'+(dv.toPostal?'〒'+String(dv.toPostal).replace(/^〒/,''):'')+'</div>';
+    html+='<div>'+(dv.toAddress||'')+'</div>';
+    html+='<div style="display:flex;gap:20px;font-size:9px"><span>電話番号 '+(dv.toPhone||'')+'</span><span>FAX番号 '+(dv.toFax||'')+'</span></div>';
+    html+='<div style="font-size:9px">顧客コード '+(dv.toCode||'')+'</div>';
   }else{
     html+='<div style="font-size:14px;font-weight:700;margin-bottom:4px">'+(cust?cust.name:'')+' 御中</div>';
     /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ移動。先方担当者（ご担当）は見積書から削除 */
@@ -6512,7 +6658,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
      flex:0 0 auto にして内容幅にすると space-between で右端に張り付く。文字始まりは左揃えのまま。 */
   html+='<div style="flex:0 0 auto;text-align:left;font-size:9px;line-height:1.8;padding:0;margin-top:34px">';
   html+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">株式会社LEC</div>';
-  var salesP=order.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
+  var salesP=orderSalesPersonRaw(order,cust)||'齋藤 勝';/* v18.97 修正27④ */
   /* v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記する）
      v18.93 修正26⑤: 請求書・物品受領書・納品書は帳票ごとのチェック（docEdit.showRep）でも切り替えられる。
      　　　　　　　　 既定は見積書作成画面のチェックを自動で引き継ぐ。 */
@@ -6698,7 +6844,7 @@ function generateExcel(order,docType){
   wsData.push(['顧客名',cust?cust.name+' 御中':'','','株式会社LEC']);
   wsData.push(['〒',cust&&cust.postal?cust.postal:'','','','','〒120-0005 東京都足立区綾瀬7-4-1']);
   wsData.push(['住所',cust?cust.pref+(cust.city||''):'','','','','TEL. 03-5849-5563  FAX. 03-5849-5564']);
-  var exSalesP=order.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
+  var exSalesP=orderSalesPersonRaw(order,cust)||'齋藤 勝';/* v18.97 修正27④ */
   var exPayTerms=order.paymentTerms||'前払い（銀行振り込み）';
   /* v18.33 要望⑬⑯: Excel出力も見積書HTMLと同様、担当者は伝票コード上部の欄に統一・先方担当者（ご担当）行は削除 */
   wsData.push(['電話番号',cust&&cust.phone?cust.phone:'','FAX番号',cust&&cust.fax?cust.fax:'','','登録番号:T4040001077220']);
@@ -7812,7 +7958,8 @@ function CustPage(p){
   function EndUserListEditor(list,onChange){
     var arr=list||[];
     return h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#f5f7fa',borderRadius:4,border:'1px solid var(--g200)'}},
-      h('div',{style:{fontSize:9,fontWeight:700,color:'#1e3a5f',marginBottom:4}},'エンド納品先（代理店経由の納品先。複数登録可）'),
+      h('div',{style:{fontSize:9,fontWeight:700,color:'#1e3a5f',marginBottom:4}},'エンド納品先（代理店経由の納品先。複数登録可）',
+        h('span',{style:{fontWeight:400,color:'var(--g500)',marginLeft:6}},'※弊社担当を選ぶと、そのエンド納品先の案件は案件管理でその担当者になります')),
       arr.length===0?h('div',{style:{fontSize:9,color:'var(--g400)',marginBottom:4}},'未登録です。「＋ エンド納品先を追加」から登録してください。'):null,
       arr.map(function(eu,i){
         function upd(k,v){var a2=arr.slice();a2[i]=Object.assign({},a2[i],{});a2[i][k]=v;onChange(a2);}
@@ -7821,6 +7968,17 @@ function CustPage(p){
           h('input',{className:'inp',style:{flex:'1 1 80px'},value:eu.postal||'',placeholder:'〒',onChange:function(e){upd('postal',e.target.value);}}),
           h('input',{className:'inp',style:{flex:'2 1 150px'},value:eu.address||'',placeholder:'住所',onChange:function(e){upd('address',e.target.value);}}),
           h('input',{className:'inp',style:{flex:'1 1 100px'},value:eu.phone||'',placeholder:'電話番号',onChange:function(e){upd('phone',e.target.value);}}),
+          /* v18.97 修正27④: エンドユーザーごとの弊社担当。未設定なら顧客（代理店）の弊社営業担当になる */
+          (function(){
+            var cur=resolveSalesPerson(eu.salesPerson);
+            var opts=salesPersonOptions();
+            var extra=(cur&&opts.indexOf(cur)<0)?cur:null;
+            return h('select',{className:'inp',style:{flex:'1 1 110px'},value:cur,title:'このエンド納品先を選んだ案件の担当者になります（未設定＝代理店の弊社営業担当）',
+              onChange:function(e){upd('salesPerson',e.target.value);}},
+              h('option',{value:''},'弊社担当（代理店と同じ）'),
+              opts.map(function(s){return h('option',{key:s,value:s},'弊社担当: '+s);}),
+              extra?h('option',{value:extra},'弊社担当: '+extra+'（アカウント外）'):null);
+          })(),
           h('button',{className:'btn btn-xs btn-rd',onClick:function(){var a2=arr.slice();a2.splice(i,1);onChange(a2);}},'✕')
         );
       }),
@@ -8453,7 +8611,7 @@ function InvPage(p){
     var realKey=pd.isDoor?pd.doorKey:(pd.stockKey||pd.k);
     /* v14 A6: パーツ単品の製品ラインは本体明細のラインとは別に partLine で選択可能 */
     var pLine=partLine[0]||ln[0];
-    var pSub,pLabel=pd.l;
+    var pSub,pLabel=partAddLabel(pd,pLine);/* v18.97 修正27②: 台湾製のハンガーパイプはグレー表記 */
     /* v18.33 要望⑧: 新台湾製(sa)のサイズ・グループ表記は「Sα」に統一（在庫キーpSubは従来のsml/Sのまま） */
     if(pd.fixedSub){pSub=pd.fixedSub;}
     else if(pd.hasSub==='grp'){pSub=sizeObj(partSub[0]).grp;pLabel+='('+(pLine==='sa'?'Sα':pSub.toUpperCase())+')';}
@@ -9382,6 +9540,9 @@ function InvPage(p){
               h('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},LINES.map(function(l){
                 return h('button',{key:l.id,className:'btn btn-xs '+(partLine[0]===l.id?'btn-or':'btn-ol'),onClick:function(){
                   partLine[1](l.id);
+                  /* v18.97 修正27②: 選択中のパーツが新しいラインに無い（ライン限定の部材）なら先頭のパーツへ戻す */
+                  var defsL=partAddDefsForLine(l.id);
+                  if(!defsL.some(function(d){return d.k===partType[0];})&&defsL.length)partType[1](defsL[0].k);
                   /* カラーが新ラインに無い場合は先頭色に切替 */
                   var nc=LINE_COLORS[l.id]||[];
                   if(nc.length&&!nc.find(function(c){return c.v===partColor[0];}))partColor[1](nc[0].v);
@@ -9391,7 +9552,7 @@ function InvPage(p){
             h('div',{style:{display:'flex',gap:4,marginBottom:4}},
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'パーツ（部材在庫一覧の全項目）'),
                 /* v18.66 修正13②: 受注発注品を選んだ時点で仕入れ送料の注意喚起ポップアップを出す */
-                h('select',{className:'inp',value:partType[0],onChange:function(e){partType[1](e.target.value);alertOrderFreight(e.target.value);}},getPartAddDefs().map(function(pd){return h('option',{key:pd.k,value:pd.k},pd.l+(isDiscontinuedKey(pd.stockKey||pd.k)?DISCONTINUED_MARK:''));}))),
+                h('select',{className:'inp',value:partType[0],onChange:function(e){partType[1](e.target.value);alertOrderFreight(e.target.value);}},partAddDefsForLine(partLine[0]||ln[0]).map(function(pd){return h('option',{key:pd.k,value:pd.k},partAddLabel(pd,partLine[0]||ln[0])+(isDiscontinuedKey(pd.stockKey||pd.k)?DISCONTINUED_MARK:''));}))),/* v18.97 修正27②: ラインで絞る */
               (PART_ADD_DEFS.find(function(d){return d.k===partType[0];})||{}).hasSub?h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
                 h('select',{className:'inp',value:partSub[0],onChange:function(e){partSub[1](e.target.value);}},(LINE_SIZES[partLine[0]]||sizes).map(function(s){return h('option',{key:s,value:s},(partLine[0]||ln[0])==='sa'?'Sα':s);}))):null
             ),
@@ -9500,7 +9661,7 @@ function InvPage(p){
                     if(!q)return true;
                     return [eu.name,eu.address,eu.phone,eu.postal].some(function(x){return String(x||'').toLowerCase().indexOf(q)>=0;});
                   });
-                  function pick(eu){if(eu)endUser[1]({name:eu.name||'',postal:eu.postal||'',address:eu.address||'',phone:eu.phone||''});}
+                  function pick(eu){if(eu)endUser[1]({id:eu.id||'',name:eu.name||'',postal:eu.postal||'',address:eu.address||'',phone:eu.phone||''});}/* v18.97 修正27④: id で顧客DBのエンド納品先（弊社担当）と突合する */
                   return h('select',{className:'inp',style:{fontSize:8,width:170,padding:'2px 4px'},value:'',onChange:function(e){
                     if(!e.target.value)return;
                     pick((cust.endUsers||[]).find(function(d){return d.id===e.target.value;}));
@@ -9521,7 +9682,7 @@ function InvPage(p){
                 if(!hits.length)return h('div',{style:{fontSize:8,color:'#B45309',marginBottom:4}},'※「'+endSearch[0]+'」に一致するエンド納品先はありません');
                 return h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',marginBottom:4}},hits.map(function(eu){
                   return h('button',{key:eu.id,className:'btn btn-xs '+(endUser[0].name&&endUser[0].name===eu.name?'btn-nv':'btn-ol'),style:{padding:'1px 6px',fontSize:8},title:(eu.address||'')+(eu.phone?' TEL.'+eu.phone:''),onClick:function(){
-                    endUser[1]({name:eu.name||'',postal:eu.postal||'',address:eu.address||'',phone:eu.phone||''});
+                    endUser[1]({id:eu.id||'',name:eu.name||'',postal:eu.postal||'',address:eu.address||'',phone:eu.phone||''});/* v18.97 修正27④ */
                   }},eu.name||'(名称未設定)');
                 }));
               })(),
@@ -9917,7 +10078,7 @@ function InvPage(p){
                支払条件→明細の備考→送料→値引き→全体備考）に揃える。 */
             h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:6,marginBottom:4}},
               h('div',null,h('label',{style:EL},'件名（空欄で自動生成: 商品名・サイズ・台数）'),h('input',{className:'inp',value:qo.subject||'',onChange:function(e){updQ({subject:e.target.value});}})),
-              h('div',null,h('label',{style:EL},'LEC担当者（空欄=顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
+              h('div',null,h('label',{style:EL},'LEC担当者（空欄=エンド納品先の弊社担当→顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
             ),
             /* v18.72 修正17⑱: 会社名の下に代表者名を入れる（必要に応じてなのでチェックボックスで切替） */
             h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
@@ -10284,16 +10445,27 @@ function QuotePreview(p){
   /* v18.92/18.93 修正26②④⑤⑧: 請求書・物品受領書・納品書は記載項目の扱いを揃え、
      ✎手修正（order.docEdit）を反映する。★印刷用HTMLと同じ docEditHeader() を使うのでズレない。 */
   var isBillP=(dt==='invoice'||dt==='receipt'||dt==='delivery');
-  var dvP=isBillP?docEditHeader(o,cust,dt):null;
+  /* v18.97 修正27⑥⑦: 請求書・納品書を複数枚に分けている案件は、p.invSheet の紙を出す（印刷用HTMLと同じ出し方） */
+  var invSheetP=null;
+  if(invSplitApplies(dt)&&invSplitCount(o)>1){
+    invSheetP=Math.max(0,Math.min(invSplitCount(o)-1,parseInt(p.invSheet)||0));
+    cfg=Object.assign({},cfg,{title:cfg.title+'（'+(invSheetP+1)+'／全'+invSplitCount(o)+'枚）'});
+  }
+  var dvP=isBillP?docEditHeader(o,cust,dt,invSheetP):null;
+  if(dvP&&invSheetP!=null&&!dvP.edited.slip)dvP.slip=dvP.slip+'-'+(invSheetP+1);
   /* v18.59 修正10③(b): 出荷指示書の宛先・納品希望日は ✎様式手修正(o.shipEdit) を反映した値を使う */
   var shvP=shipEditHeader(o,cust,p.scope);/* v18.89 修正25②: 紙ごとの手修正 */
   /* v18.72 修正17: 明細行は buildQuoteRows() に集約（印刷用HTMLと同一のロジック） */
   var _qp=buildQuoteRows(o);
   var rows=_qp.rows,subtotal=_qp.subtotal;
   var tax10=Math.floor(subtotal*0.1),total=subtotal+tax10;
+  if(invSheetP!=null){
+    var _isP=buildInvoiceSheets(o).sheets[invSheetP];
+    rows=_isP.rows;subtotal=_isP.subtotal;tax10=_isP.tax;total=_isP.total;
+  }
   var subject=quoteSubjectOf(o);
   var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
-  var salesP2=o.salesPersonOverride||(cust&&cust.salesPerson?cust.salesPerson:'')||'齋藤 勝';
+  var salesP2=orderSalesPersonRaw(o,cust)||'齋藤 勝';/* v18.97 修正27④ */
   var slipCode=(dt==='quote'?'見積':dt==='invoice'?'請求':dt==='shipping'?'出荷':'納品')+'-'+o.no;
   var cs={border:'1px solid #999',padding:'3px 6px',fontSize:9.5};/* v18.34 ⑫追随: 印刷版(9.5px)と一致 */
   var tabStyle=function(k){return{padding:'4px 12px',fontSize:10,fontWeight:dt===k?700:400,cursor:'pointer',border:'1px solid #ccc',borderBottom:dt===k?'2px solid var(--nv)':'1px solid #ccc',background:dt===k?'#fff':'#f5f5f5',color:dt===k?'var(--nv)':'#666',borderRadius:'4px 4px 0 0',marginRight:2};};
@@ -10316,15 +10488,16 @@ function QuotePreview(p){
         h('div',{style:{width:'52%',borderLeft:'3px solid #222',padding:'8px 12px',lineHeight:1.8}},
           /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（印刷用HTMLと同じ） */
           isShipping?h('div',{style:{fontSize:14,fontWeight:700}},shipDocAddressee(o,p.scope&&p.scope.wh)):
-          h('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},cust?cust.name+' 御中':''),
+          /* v18.97 修正27⑧: 請求書・物品受領書・納品書の宛先は ✎ 手修正の値（印刷用HTMLと同じ） */
+          h('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},dvP?(dvP.toName||''):(cust?cust.name+' 御中':'')),
           /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ。先方担当者（ご担当）は削除 */
-          isShipping?null:h('div',{style:{fontSize:9}},cust&&cust.postal?'〒'+cust.postal:''),
-          isShipping?null:h('div',{style:{fontSize:10}},cust?cust.pref+(cust.city||''):''),
+          isShipping?null:h('div',{style:{fontSize:9}},dvP?(dvP.toPostal?'〒'+String(dvP.toPostal).replace(/^〒/,''):''):(cust&&cust.postal?'〒'+cust.postal:'')),
+          isShipping?null:h('div',{style:{fontSize:10}},dvP?(dvP.toAddress||''):(cust?cust.pref+(cust.city||''):'')),
           isShipping?null:h('div',{style:{display:'flex',gap:16,fontSize:9}},
-            h('span',null,'電話番号 '+(cust&&cust.phone?cust.phone:'')),
-            h('span',null,'FAX番号 '+(cust&&cust.fax?cust.fax:''))
+            h('span',null,'電話番号 '+(dvP?(dvP.toPhone||''):(cust&&cust.phone?cust.phone:''))),
+            h('span',null,'FAX番号 '+(dvP?(dvP.toFax||''):(cust&&cust.fax?cust.fax:'')))
           ),
-          isShipping?null:h('div',{style:{fontSize:9}},'顧客コード '+(cust?cust.id:''))
+          isShipping?null:h('div',{style:{fontSize:9}},'顧客コード '+(dvP?(dvP.toCode||''):(cust?cust.id:'')))
         ),
         h('div',{style:{flex:'0 0 auto',textAlign:'left',fontSize:9,lineHeight:1.8,padding:0,marginTop:34}},
           h('div',{style:{fontSize:13,fontWeight:700,marginBottom:2}},'株式会社LEC'),
@@ -10871,32 +11044,63 @@ function OrdersPage(p){
   }
   /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル =====
      出荷指示書の ✎ と同じ作り。空欄＝自動値なので、入力があった項目だけを order.docEdit へ残す。 */
+  /* v18.97 修正27⑥: 請求書を分けている案件は★紙ごとのシート（タブ）で編集する。
+     モーダルの状態は sheets:[{v:入力値, auto:自動値}] ＋ tab。1枚の案件は sheets が1件だけ（従来と同じ画面）。 */
   function openDocEdit(order,docType){
     var o=liveOrder(order)||order;
     var c=CUSTS.find(function(x){return x.id===o.cid;});
-    var de=docEditFor(o,docType);
-    var hv=docEditHeader(o,c,docType);
-    var v={showRep:hv.showRep,repName:de.repName||''};
-    DOC_EDIT_KEYS.forEach(function(k){v[k]=de[k]||'';});
-    docEditModal[1]({order:o,docType:docType,v:v,auto:hv});
+    var n=(docType==='invoice'&&invSplitCount(o)>1)?invSplitCount(o):1;
+    /* 自動値（プレースホルダ）は「この帳票の手修正が無いとき」に紙へ出る値。納品書なら請求書から引き継ぐ値も含む */
+    var bare=Object.assign({},o);
+    var dm=Object.assign({},o.docEdit||{});delete dm[docType];bare.docEdit=dm;
+    var split=invSplitApplies(docType)&&invSplitCount(o)>1;
+    var sheets=[],autos=[];
+    for(var k=0;k<n;k++){
+      var layer=docEditLayer(o,docType,k);
+      var hv=docEditHeader(o,c,docType,k);
+      var v={showRep:hv.showRep,repName:layer.repName||''};
+      DOC_EDIT_KEYS.forEach(function(key){v[key]=layer[key]||'';});
+      sheets.push({v:v});
+    }
+    /* 紙の枚数ぶんの自動値。★納品書は手修正は全枚共通のまま、プレビューと自動値だけ紙ごとに切り替える
+       （納品書の各紙は請求書の同じ紙の手修正を引き継ぐため、紙によって自動値が違う） */
+    var np=split?invSplitCount(o):1;
+    for(var j=0;j<np;j++){
+      var auto=docEditHeader(bare,c,docType,split?j:null);
+      if(split&&!auto.edited.slip)auto.slip=auto.slip+'-'+(j+1);
+      autos.push(auto);
+    }
+    docEditModal[1]({order:o,docType:docType,sheets:sheets,autos:autos,tab:0});
   }
-  function docEditValues(m0){
-    var v=(m0&&m0.v)||{},de={};
+  function docEditValues(v){
+    v=v||{};var de={};
     DOC_EDIT_KEYS.forEach(function(k){
       var s=String(v[k]==null?'':v[k]).trim();
       if(s)de[k]=s;
     });
     return de;
   }
+  /* 入力値から保存する手修正を作る（保存とプレビューで共通） */
+  function docEditEntry(o2,m0){
+    function one(v){
+      var de=docEditValues(v);
+      /* v18.93 修正26⑤: 代表者名は「見積書の設定と違うときだけ」帳票ごとの指定として残す。
+         ★同じなら残さない＝見積書のチェックを変えたら3帳票にも自動で反映される（依頼どおり）。 */
+      if(!!v.showRep!==!!o2.showRepName)de.showRep=!!v.showRep;
+      var rn=String(v.repName||'').trim();
+      if(rn&&rn!==(o2.repName||REP_NAME_DEFAULT))de.repName=rn;
+      return de;
+    }
+    var sh=m0.sheets||[];
+    if(sh.length<=1)return one((sh[0]||{}).v||{});
+    /* v18.97 修正27⑥: 分けた請求書は紙ごとに保存する（全枚共通の直下は空にする＝各紙に値が入っているため） */
+    var map={};
+    sh.forEach(function(s,k){var de=one(s.v||{});if(Object.keys(de).length)map[String(k)]=de;});
+    return Object.keys(map).length?{sheets:map}:{};
+  }
   function applyDocEdit(m0){
     var o2=liveOrder(m0.order)||m0.order;
-    var v=m0.v||{};
-    var de=docEditValues(m0);
-    /* v18.93 修正26⑤: 代表者名は「見積書の設定と違うときだけ」帳票ごとの指定として残す。
-       ★同じなら残さない＝見積書のチェックを変えたら3帳票にも自動で反映される（依頼どおり）。 */
-    if(!!v.showRep!==!!o2.showRepName)de.showRep=!!v.showRep;
-    var rn=String(v.repName||'').trim();
-    if(rn&&rn!==(o2.repName||REP_NAME_DEFAULT))de.repName=rn;
+    var de=docEditEntry(o2,m0);
     var map=Object.assign({},o2.docEdit||{});
     if(Object.keys(de).length)map[m0.docType]=de;else delete map[m0.docType];
     if(Object.keys(map).length)o2.docEdit=map;else delete o2.docEdit;
@@ -10906,12 +11110,8 @@ function OrdersPage(p){
   function docEditPreviewOrder(m0){
     var o2=liveOrder(m0.order)||m0.order;
     var copy=Object.assign({},o2);
-    var de=docEditValues(m0);
-    de.showRep=!!(m0.v&&m0.v.showRep);
-    var rn=String((m0.v&&m0.v.repName)||'').trim();
-    if(rn)de.repName=rn;
     var map=Object.assign({},copy.docEdit||{});
-    map[m0.docType]=de;
+    map[m0.docType]=docEditEntry(o2,m0);
     copy.docEdit=map;
     return copy;
   }
@@ -11658,7 +11858,7 @@ function OrdersPage(p){
       var od=spareModal[0];
       var sps=od.spareParts||[];
       var f=spareForm[0];
-      var pdefs=getPartAddDefs();
+      var pdefs=partAddDefsForLine(f.lineId);/* v18.97 修正27②: ライン限定の部材は他ラインに出さない */
       var pd=pdefs.find(function(d){return d.k===f.part;})||{};
       var lineColors=(LINE_COLORS[f.lineId]||[]).filter(function(c){return !c.und;});
       var lineSz=LINE_SIZES[f.lineId]||[];
@@ -11673,7 +11873,7 @@ function OrdersPage(p){
         var color=pd.hasColor?(f.color||(lineColors[0]&&lineColors[0].v)||''):'';
         var lname=(LINES.find(function(l){return l.id===f.lineId;})||{name:''}).name;
         var cObj=lineColors.find(function(c){return c.v===color;});
-        var label=pd.l+(pd.hasSub?'('+(f.lineId==='sa'?'Sα':f.sub)+')':'')+(cObj?' '+cObj.l:'')+'【'+lname+'】';
+        var label=partAddLabel(pd,f.lineId)+(pd.hasSub?'('+(f.lineId==='sa'?'Sα':f.sub)+')':'')+(cObj?' '+cObj.l:'')+'【'+lname+'】';
         return {lineId:f.lineId,key:key,sub:sub,color:color||null,isDoor:!!pd.isDoor,label:label};
       }
       function freeOf(sp,wh){
@@ -11711,7 +11911,7 @@ function OrdersPage(p){
             })),
             h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',alignItems:'flex-end'}},
               h('div',{style:{flex:'2 1 200px'}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'パーツ'),
-                h('select',{className:'inp',value:f.part,onChange:function(e){uf('part',e.target.value);}},pdefs.map(function(d){return h('option',{key:d.k,value:d.k},d.l+(isDiscontinuedKey(d.stockKey||d.k)?DISCONTINUED_MARK:''));}))),
+                h('select',{className:'inp',value:f.part,onChange:function(e){uf('part',e.target.value);}},pdefs.map(function(d){return h('option',{key:d.k,value:d.k},partAddLabel(d,f.lineId)+(isDiscontinuedKey(d.stockKey||d.k)?DISCONTINUED_MARK:''));}))),
               pd.hasSub?h('div',{style:{flex:'1 1 90px'}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'サイズ'),
                 h('select',{className:'inp',value:f.sub,onChange:function(e){uf('sub',e.target.value);}},lineSz.map(function(s){return h('option',{key:s,value:s},f.lineId==='sa'?'Sα':s);}))):null,
               pd.hasColor?h('div',{style:{flex:'1 1 110px'}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'カラー'),
@@ -12121,7 +12321,9 @@ function OrdersPage(p){
                 title:d[1]+'の記載内容（件名・担当者・日付・伝票コード・納品先・代表者名など）を手修正します',
                 onClick:function(){var lo=liveOrder(docPick[0])||docPick[0];docPick[1](null);openDocEdit(lo,d[0]);}},
                 '✎ 記載内容の手修正'),
-              hasDocEdit(docPick[0],d[0])?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null
+              hasDocEdit(docPick[0],d[0])?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null,
+              /* v18.97 修正27⑤⑦: 納品書は請求書の手修正を引き継ぐ */
+              (d[0]==='delivery'&&hasDocEdit(docPick[0],'invoice'))?h('span',{style:{fontSize:9,color:'#0E7490',fontWeight:700}},'請求書の手修正を反映'):null
             ):null,
             /* v18.86 修正23⑤: 帳票の出力画面から便種のプルダウンは削除した。
                便種は「✎ 記載内容の手修正」画面で変更する（ユーザー指定）。 */
@@ -12289,10 +12491,24 @@ function OrdersPage(p){
        空欄＝自動値。保存内容は order.docEdit[帳票] に入り、全端末へ同期される。
        ★プレビューは印刷用HTMLと同じ docEditHeader() を通るので、画面と紙がズレない。 */
     docEditModal[0]?(function(){
-      var m=docEditModal[0],a=m.auto||{},v=m.v||{},isInv=m.docType==='invoice';
+      var m=docEditModal[0],isInv=m.docType==='invoice',isDel=m.docType==='delivery';
+      /* v18.97 修正27⑥: 紙（シート）のタブ。請求書は紙ごとに入力値を持つ。納品書はプレビューだけ紙を切り替える */
+      var nTab=(m.autos||[]).length||1,tab=Math.min(m.tab||0,nTab-1);
+      var si=(m.sheets.length>1)?Math.min(tab,m.sheets.length-1):0;
+      var v=(m.sheets[si]||{}).v||{},a=(m.autos||[])[tab]||{};
       /* 出荷指示書のモーダルと同じ見た目の小さいラベル（あちらの FLBL はあちらのスコープなので別に持つ） */
       var DLBL={fontSize:8,fontWeight:600,color:'var(--g500)'};
-      function setV(patch){docEditModal[1](Object.assign({},m,{v:Object.assign({},v,patch)}));}
+      function setV(patch){
+        var sh=m.sheets.slice();
+        sh[si]=Object.assign({},sh[si],{v:Object.assign({},v,patch)});
+        docEditModal[1](Object.assign({},m,{sheets:sh}));
+      }
+      var tabBtn=function(k){
+        var on=k===tab;
+        return h('button',{key:'st'+k,className:'btn btn-xs '+(on?'btn-nv':'btn-ol'),style:{marginLeft:4},
+          title:isInv?((k+1)+'枚目の請求書を編集します'):((k+1)+'枚目の納品書をプレビューします'),
+          onClick:function(){docEditModal[1](Object.assign({},m,{tab:k}));}},(k+1)+'枚目');
+      };
       function fldD(k,label,style){
         return h('div',{style:style||{flex:1}},h('label',{style:DLBL},label),
           h('input',{className:'inp',value:v[k]||'',placeholder:a[k]||'',
@@ -12325,8 +12541,30 @@ function OrdersPage(p){
         h('div',null,
           h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},
             '空欄の項目は自動値（案件・顧客の情報）が使われます。入力した内容は案件に保存され、全端末で共有されます。',
-            h('span',{style:{color:'#975a16'}},'※この画面は'+(DOC_TYPE_LABELS[m.docType]||'')+'だけに効きます（他の帳票は別々に手修正できます）。')),
-          h('div',{style:{fontSize:11,fontWeight:700,marginBottom:6,borderBottom:'1px solid var(--g200)',paddingBottom:4}},'記載内容（空欄=自動）'),
+            /* v18.97 修正27⑤⑦: 請求書の手修正は納品書にも反映される */
+            isInv?h('span',{style:{color:'#975a16'}},'※請求書の手修正は★納品書にも自動で反映されます（納品書側で手修正した項目はそちらが優先。支払条件は請求書だけ）。')
+            :isDel?h('span',{style:{color:'#975a16'}},'※空欄の項目は★請求書の記載内容（請求書の手修正を含む）が使われます。ここで入力した項目だけ納品書で上書きします。')
+            :h('span',{style:{color:'#975a16'}},'※この画面は'+(DOC_TYPE_LABELS[m.docType]||'')+'だけに効きます（他の帳票は別々に手修正できます）。')),
+          h('div',{style:{display:'flex',alignItems:'center',flexWrap:'wrap',gap:2,fontSize:11,fontWeight:700,marginBottom:6,borderBottom:'1px solid var(--g200)',paddingBottom:4}},
+            '記載内容（空欄=自動）',
+            /* v18.97 修正27⑥: 「記載内容（空欄=自動）」の右にシートタブ（依頼書の指定位置） */
+            nTab>1?h('span',{style:{marginLeft:8,fontSize:9,fontWeight:400,color:'var(--g500)'}},isInv?'請求書を切り替え:':'プレビューする紙:'):null,
+            nTab>1?Array.apply(null,{length:nTab}).map(function(_,k){return tabBtn(k);}):null,
+            (nTab>1&&isDel)?h('span',{style:{marginLeft:6,fontSize:9,fontWeight:400,color:'#975a16'}},'※納品書の手修正は全枚共通です。紙ごとに変えるときは請求書側で直してください'):null
+          ),
+          /* v18.97 修正27⑧: 宛先（空欄＝顧客DBの内容） */
+          h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+            fldD('toName','宛名（敬称まで。例: ○○株式会社 御中）',{flex:3}),
+            fldD('toCode','顧客コード',{flex:1})
+          ),
+          h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+            fldD('toPostal','〒',{flex:1}),
+            fldD('toAddress','住所',{flex:3})
+          ),
+          h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+            fldD('toPhone','電話番号',{flex:1}),
+            fldD('toFax','FAX番号',{flex:1})
+          ),
           h('div',{style:{display:'flex',gap:4,marginBottom:6}},
             fldD('subject','件名',{flex:3}),
             fldD('staff','担当者',{flex:1})
@@ -12349,10 +12587,10 @@ function OrdersPage(p){
               placeholder:a.repName||REP_NAME_DEFAULT,
               onChange:function(e){setV({repName:e.target.value});}}):null,
             h('div',{style:{fontSize:9,color:'var(--g500)',marginTop:3}},
-              '既定は見積書作成画面の設定（'+(m.order.showRepName?'表記する':'表記しない')+'）です。ここで変えるとこの帳票だけに効きます。')
+              '既定は見積書作成画面の設定（'+(m.order.showRepName?'表記する':'表記しない')+'）です。ここで変えるとこの帳票だけに効きます'+(isInv?'（納品書にも反映）':'')+'。')
           ),
           h('div',{style:{fontSize:11,fontWeight:700,margin:'10px 0 6px',borderBottom:'1px solid var(--g200)',paddingBottom:4}},'プレビュー'),
-          h(QuotePreview,{order:docEditPreviewOrder(m),docType:m.docType,hideTabs:true})
+          h(QuotePreview,{order:docEditPreviewOrder(m),docType:m.docType,hideTabs:true,invSheet:tab})
         )
       );
     })():null,
@@ -12847,7 +13085,9 @@ function PartsPage(p){
     var lastItem='';
     rows.forEach(function(r){if(r.item)lastItem=r.item;r._grpItem=lastItem;});
     rows=rows.filter(function(r){
-      if(r.isDoor||DISCONTINUED_UNIROW_KEYS.indexOf(r.key)<0)return true;
+      if(r.isDoor)return true;
+      /* v18.97 修正27①: 追加した部材の行は、その部材を押さえている／出荷した案件があるときだけ出す */
+      if(DISCONTINUED_UNIROW_KEYS.indexOf(r.key)<0&&!r.onlyIfUsed)return true;
       var pk=uniRowPartKey(r);
       return (orderPartsList||[]).some(function(op){return (op.parts[pk]||0)>0;});
     });
@@ -12999,11 +13239,21 @@ function PartsPage(p){
     {label:'サイドジョイント(SML・グレー)',key:'sj',sub:'sml',cat:'option',alias:['サイドジョイント(SML)']},
     {label:'サイドジョイント(SS/3S・グレー)',key:'sj',sub:'ss',cat:'option',alias:['サイドジョイント(SS/3S)']},
     {label:'トッテ',key:'totte',cat:'lock'},
+    {label:'トッテ(台湾)',key:'totte_tw',cat:'lock'},/* v18.97 修正27① 台湾製だけ（LINE_ONLY_PART_KEYS） */
     /* v18.40 修正１⑥: 廃番の旧型ダイヤル錠H110/H111は部材在庫一覧の在庫表から削除（在庫データ自体は保持、他画面には影響しない） */
     {label:'ダイヤル錠 DST',key:'dialDST',cat:'lock'},
+    {label:'ダイヤル錠(D003)',key:'dialD003',cat:'lock'},/* v18.97 修正27① 共通 */
     {label:'南京錠',key:'padlock',cat:'lock'},
     {label:'コインリターン錠',key:'coinReturn',cat:'lock'},
+    /* v18.97 修正27①: 台湾製のハンガーパイプはグレー（表示名だけ下で差し替える。取込の照合用に両方の表記を alias に持つ） */
     {label:'ハンガーパイプ(ブラック)',key:'hanger',cat:'option',alias:['ハンガーパイプ']},
+    {label:'ハンガーパイプ(グレー)',key:'hanger_gy',cat:'option'},/* v18.97 修正27① Ver.2だけ */
+    /* v18.97 修正27① 共通: マスターキー5種 */
+    {label:'Fマスターキー',key:'masterKeyF',cat:'lock'},
+    {label:'Bマスターキー',key:'masterKeyB',cat:'lock'},
+    {label:'Cマスターキー',key:'masterKeyC',cat:'lock'},
+    {label:'Dマスターキー',key:'masterKeyD',cat:'lock'},
+    {label:'Lマスターキー',key:'masterKeyL',cat:'lock'},
     {label:'コネクター(XL・グレー)',key:'connector',sub:'XL',cat:'option',alias:['コネクター(XL)']},
     {label:'コネクター(SS・グレー)',key:'connector',sub:'SS',cat:'option',alias:['コネクター(SS)']},
     {label:'アンカー穴キャップ(ブラック)',key:'anchorCap',sub:'bk',cat:'option',color2:'bk'},
@@ -13050,6 +13300,8 @@ function PartsPage(p){
     {label:'ヒンジカバー SS',key:'hingeCoverSS',cat:'option'},
     {label:'ネームプレートカバー SML',key:'namePlateCoverSML',cat:'option'},
     {label:'ネームプレートカバー SS・3S',key:'namePlateCoverSS',cat:'option'},
+    {label:'ネームプレートカバー SML(台湾)',key:'namePlateCoverSML_tw',cat:'option'},/* v18.97 修正27① 台湾製だけ */
+    {label:'ネームプレートカバー SS・3S(台湾)',key:'namePlateCoverSS_tw',cat:'option'},/* v18.97 修正27① 台湾製だけ */
     {label:'ネームプレート厚紙',key:'namePlatePaper',cat:'option'},
     {label:'3桁ダイヤル南京錠 グリーン',key:'padlockGreen',cat:'lock'},
     {label:'3桁ダイヤル南京錠 ブラック',key:'padlockBlack',cat:'lock'},
@@ -13073,6 +13325,19 @@ function PartsPage(p){
         鍵は日本製と共通のため従来どおり全て表示する。
         ★万一 SA_PARTS に無いキーに在庫が入っていた場合は消さずに残す（_saHasStock）。 */
   var isSaLine=selLine[0]==='sa';
+  /* ===== v18.97 修正27①: ライン限定の部材を絞り込み、台湾製のハンガーパイプはグレー表記にする ===== */
+  function twReplacedHasStock(key){
+    try{return WH_IDS.some(function(w){return gs('tw',w,key)>0;});}catch(e){return false;}
+  }
+  function keepRowInLine(key){
+    if(!partShownInLine(key,selLine[0]))return false;
+    if(selLine[0]==='tw'&&TW_REPLACED_PART_KEYS.indexOf(key)>=0)return twReplacedHasStock(key);
+    return true;
+  }
+  structRowsAll=structRowsAll.filter(function(r){return r.isCustom||keepRowInLine(r.key);}).map(function(r){
+    if(r.key==='hanger'&&selLine[0]==='tw')return Object.assign({},r,{label:'ハンガーパイプ(グレー)',alias:['ハンガーパイプ','ハンガーパイプ(ブラック)']});
+    return r;
+  });
   if(isSaLine){
     structRowsAll.push({label:'レール長(Sα)',key:'railLong',cat:'option'});
     structRowsAll.push({label:'レール短(Sα)',key:'railShort',cat:'option'});
@@ -13149,7 +13414,9 @@ function PartsPage(p){
           /* 8. ハンガーパイプ
              v18.46 修正５⑩: 同じ在庫キー(hanger)で「ブラック」「グレー」の2行を出していたため、
              実在庫は1つなのに黒とグレーへ同じ数が二重表示されていた。日本製の取扱はブラックのみのため1行に統合。 */
-          uniRows.push({item:'ハンガーパイプ',variant:'ブラック',key:'hanger',irisu:iGet('hanger')});
+          /* v18.97 修正27①: 台湾製はグレー表記。Ver.2はグレーを別在庫（hanger_gy）で持つ */
+          uniRows.push({item:'ハンガーパイプ',variant:hangerColorLabel(selLine[0]),key:'hanger',irisu:iGet('hanger')});
+          uniRows.push({item:'',variant:'グレー',key:'hanger_gy',irisu:iGet('hanger_gy')});
           /* 9. コネクター
              v18.46 修正５⑩: XL・SSとも取扱はグレーのみ（ブラックは無い）。同上の二重表示を解消し、グレー1行に統合。 */
           uniRows.push({item:'コネクター',variant:'XLグレー',key:'connector',sub:'XL',irisu:iGet('connector','XL'),grp:'sml'});
@@ -13166,6 +13433,7 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'SS・3S共通グレー',key:'sj',sub:'ss',irisu:iGet('sj','ss'),grp:'ss'});
           /* 13. トッテ */
           uniRows.push({item:'トッテ',variant:'新',key:'totte',irisu:iGet('totte')});
+          uniRows.push({item:'',variant:'台湾',key:'totte_tw',irisu:iGet('totte_tw')});/* v18.97 修正27① 台湾製だけ */
           /* 14. ダイヤル錠 */
           /* v18.40 修正１⑥: 廃番の旧型H110/H111(旧)は在庫表から削除 */
           uniRows.push({item:'ダイヤル錠',variant:'H110',key:'dialH110new',irisu:iGet('dialH110new')});
@@ -13173,6 +13441,7 @@ function PartsPage(p){
           /* v18.72 修正17②の回答: H112(自由式)は取扱終了のため在庫表から削除 */
           /* v14.5 C7: 実在庫を持つ旧キーを画面にも表示（Excelと項目一致） */
           uniRows.push({item:'',variant:'DST',key:'dialDST',irisu:iGet('dialDST')});
+          uniRows.push({item:'',variant:'D003',key:'dialD003',irisu:iGet('dialD003')});/* v18.97 修正27① 共通 */
           /* 17. 南京錠 */
           uniRows.push({item:'南京錠',variant:'',key:'padlock',irisu:iGet('padlock')});
           /* 18. シリンダー錠 */
@@ -13189,6 +13458,10 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
           uniRows.push({item:'',variant:'内筒交換錠',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
           uniRows.push({item:'',variant:'内筒交換用予備',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
+          /* v18.97 修正27① 共通: マスターキー5種 */
+          ['F','B','C','D','L'].forEach(function(mk,mi){
+            uniRows.push({item:mi===0?'マスターキー':'',variant:mk+'マスターキー',key:'masterKey'+mk,irisu:iGet('masterKey'+mk)});
+          });
           /* v14.5 C7: 実在庫を持つ旧キー（無印・マスター組）を画面にも表示（Excelと項目一致） */
           uniRows.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iGet('coinReturn')});
           /* v16: レール新方式（在庫4商品） */
@@ -13226,6 +13499,8 @@ function PartsPage(p){
           uniRows.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iGet('hingeCoverSS')});
           uniRows.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iGet('namePlateCoverSML')});
           uniRows.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iGet('namePlateCoverSS')});
+          uniRows.push({item:'ネームプレートカバー SML(台湾)',variant:'',key:'namePlateCoverSML_tw',irisu:iGet('namePlateCoverSML_tw')});/* v18.97 修正27① */
+          uniRows.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iGet('namePlateCoverSS_tw')});/* v18.97 修正27① */
           uniRows.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iGet('namePlatePaper')});
           /* v14.2: 40-42. 3桁ダイヤル南京錠（3種） */
           uniRows.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iGet('padlockGreen')});
@@ -13240,6 +13515,17 @@ function PartsPage(p){
           }catch(e){}
           /* v18.40 修正１⑤: アイテム名検索用に、空欄('')になっている継続行にも直前のアイテム名を引き継がせてタグ付け。
              これによりグループ単位（＝同じアイテムの色・サイズ違い全体）でヒット判定でき、一致した行は色・サイズを全表示できる */
+          /* v18.97 修正27①: ライン限定の部材を絞る。グループ先頭行（item名あり）が消えたら次の行へ名前を引き継ぐ */
+          (function(){
+            var out=[],carry='';
+            uniRows.forEach(function(r){
+              if(r.isDoor||r.isCustom||keepRowInLine(r.key)){
+                if(!r.item&&carry){r=Object.assign({},r,{item:carry});}
+                carry='';out.push(r);
+              }else if(r.item){carry=r.item;}
+            });
+            uniRows=out;
+          })();
           (function(){
             var lastItem='';
             uniRows.forEach(function(r){
@@ -13575,7 +13861,8 @@ function PartsPage(p){
               snapRows.push({item:'上下ジョイント(SS/3S)',key:'vj',sub:'ss'});
               snapRows.push({item:'サイドジョイント(SML)',key:'sj',sub:'sml'});
               snapRows.push({item:'サイドジョイント(SS/3S)',key:'sj',sub:'ss'});
-              snapRows.push({item:'ハンガーパイプ',key:'hanger'});
+              snapRows.push({item:'ハンガーパイプ('+hangerColorLabel(selLine[0])+')',key:'hanger'});
+              snapRows.push({item:'ハンガーパイプ(グレー)',key:'hanger_gy'});/* v18.97 修正27① */
               snapRows.push({item:'XLコネクター',key:'connector',sub:'XL'});
               snapRows.push({item:'SSコネクター',key:'connector',sub:'SS'});
               snapRows.push({item:'アンカー穴キャップ(グレー)',key:'anchorCap',sub:'gy'});
@@ -13586,6 +13873,7 @@ function PartsPage(p){
               snapRows.push({item:'目隠しネジ(ブラック)',key:'capScrew_bk'});
               snapRows.push({item:'目隠しネジ(グレー)',key:'capScrew_gy'});
               snapRows.push({item:'トッテ',key:'totte'});
+              snapRows.push({item:'トッテ(台湾)',key:'totte_tw'});/* v18.97 修正27① */
               /* v14.5 C7: 画面の在庫表(uniRows)と項目を完全一致させる（鍵・シリンダー全種を網羅） */
               snapRows.push({item:'ダイヤル錠 H110(旧)',key:'dialH110'});
               snapRows.push({item:'ダイヤル錠 H110',key:'dialH110new'});
@@ -13593,6 +13881,7 @@ function PartsPage(p){
               snapRows.push({item:'ダイヤル錠 H111',key:'dialH111new'});
               snapRows.push({item:'ダイヤル錠 H112(自由式)',key:'dialH112'});
               snapRows.push({item:'ダイヤル錠 DST',key:'dialDST'});
+              snapRows.push({item:'ダイヤル錠(D003)',key:'dialD003'});/* v18.97 修正27① */
               snapRows.push({item:'南京錠',key:'padlock'});
               snapRows.push({item:'シリンダー錠 カム長スタンダード',key:'cylinderLongStd'});
               snapRows.push({item:'シリンダー錠 カム長Fマスター',key:'cylinderLongF'});
@@ -13603,6 +13892,7 @@ function PartsPage(p){
               snapRows.push({item:'シリンダー錠 カム短Cマスター',key:'cylinderShortC'});
               snapRows.push({item:'シリンダー錠 内筒交換錠',key:'cylinderExchange'});
               snapRows.push({item:'シリンダー錠 内筒交換用予備',key:'cylinderExchangeSpare'});
+              ['F','B','C','D','L'].forEach(function(mk){snapRows.push({item:mk+'マスターキー',key:'masterKey'+mk});});/* v18.97 修正27① */
               snapRows.push({item:'コインリターン錠',key:'coinReturn'});
               snapRows.push({item:'SMLXL共通サイドレール',key:'railSideSML'});
               snapRows.push({item:'SMLXL共通バックレール',key:'railBackSML'});
@@ -13625,6 +13915,8 @@ function PartsPage(p){
               snapRows.push({item:'ヒンジカバー SS',key:'hingeCoverSS'});
               snapRows.push({item:'ネームプレートカバー SML',key:'namePlateCoverSML'});
               snapRows.push({item:'ネームプレートカバー SS・3S',key:'namePlateCoverSS'});
+              snapRows.push({item:'ネームプレートカバー SML(台湾)',key:'namePlateCoverSML_tw'});/* v18.97 修正27① */
+              snapRows.push({item:'ネームプレートカバー SS・3S(台湾)',key:'namePlateCoverSS_tw'});
               snapRows.push({item:'ネームプレート厚紙',key:'namePlatePaper'});
               snapRows.push({item:'3桁ダイヤル南京錠 グリーン',key:'padlockGreen'});
               snapRows.push({item:'3桁ダイヤル南京錠 ブラック',key:'padlockBlack'});
@@ -13634,6 +13926,7 @@ function PartsPage(p){
                 var cp2=JSON.parse(lsGet('lec_custom_parts')||'[]');
                 cp2.forEach(function(it){snapRows.push({item:'＋'+it.label,key:it.key});});
               }catch(e){}
+              snapRows=snapRows.filter(function(r){return r.isDoorRow||keepRowInLine(r.key);});/* v18.97 修正27①: ライン限定の部材を絞る */
               snapRows.forEach(function(r){
                 var row=[r.item,r.sub||'',iGetEx(r.key,r.sub)];
                 var totalAv=0;
@@ -13954,6 +14247,7 @@ function PartsPage(p){
         uniR.push({item:'サイドジョイント',variant:'SMLXL共通',key:'sj',sub:'sml',irisu:iG('sj','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SS・3S共通',key:'sj',sub:'ss',irisu:iG('sj','ss'),grp:'ss'});
         uniR.push({item:'ハンガーパイプ',variant:'',key:'hanger',irisu:iG('hanger')});
+        uniR.push({item:'ハンガーパイプ(グレー)',variant:'',key:'hanger_gy',irisu:iG('hanger_gy'),onlyIfUsed:true});/* v18.97 修正27① */
         uniR.push({item:'XLコネクター',variant:'',key:'connector',sub:'XL',irisu:iG('connector','XL')});
         uniR.push({item:'SSコネクター',variant:'',key:'connector',sub:'SS',irisu:iG('connector','SS')});
         uniR.push({item:'アンカー穴キャップ',variant:'グレー',key:'anchorCap',sub:'gy',irisu:iG('anchorCap','gy')});
@@ -13964,6 +14258,7 @@ function PartsPage(p){
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
         uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
+        uniR.push({item:'トッテ(台湾)',variant:'',key:'totte_tw',irisu:iG('totte_tw'),onlyIfUsed:true});/* v18.97 修正27① */
         /* v18.44 修正３①: 現行のダイヤル錠H110/H111(キー dialH110new/dialH111new)の行がこの一覧に無く、
            現行ダイヤル錠の仮押さえ/出荷実績が表示されなかった（v18.43で旧型(旧)行を非表示化した結果、H110/H111が全く出なくなった）。
            現行行を追加（旧型(旧)行は従来どおり、数量が入っている案件がある場合のみ表示） */
@@ -13972,6 +14267,8 @@ function PartsPage(p){
         uniR.push({item:'ダイヤル錠H110(旧)',variant:'',key:'dialH110',irisu:iG('dialH110')});
         uniR.push({item:'ダイヤル錠H111(旧)',variant:'',key:'dialH111',irisu:iG('dialH111')});
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
+        uniR.push({item:'ダイヤル錠(D003)',variant:'',key:'dialD003',irisu:iG('dialD003'),onlyIfUsed:true});/* v18.97 修正27① */
+        ['F','B','C','D','L'].forEach(function(mk){uniR.push({item:mk+'マスターキー',variant:'',key:'masterKey'+mk,irisu:iG('masterKey'+mk),onlyIfUsed:true});});/* v18.97 修正27① */
         uniR.push({item:'南京錠',variant:'',key:'padlock',irisu:iG('padlock')});
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
         /* v16レール新方式（在庫4商品）を仮押さえ一覧にも追加。削除確定の旧ハンドル/シリンダー無印/マスター組/F・B・Cマスター/ネームプレート/ネーム厚紙は除去 */
@@ -13997,6 +14294,8 @@ function PartsPage(p){
         uniR.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iG('hingeCoverSS')});
         uniR.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iG('namePlateCoverSML')});
         uniR.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iG('namePlateCoverSS')});
+        uniR.push({item:'ネームプレートカバー SML(台湾)',variant:'',key:'namePlateCoverSML_tw',irisu:iG('namePlateCoverSML_tw'),onlyIfUsed:true});/* v18.97 修正27① */
+        uniR.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iG('namePlateCoverSS_tw'),onlyIfUsed:true});
         uniR.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});
         uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
@@ -14300,6 +14599,7 @@ function PartsPage(p){
         uniR.push({item:'サイドジョイント',variant:'SMLXL共通',key:'sj',sub:'sml',irisu:iG('sj','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SS・3S共通',key:'sj',sub:'ss',irisu:iG('sj','ss'),grp:'ss'});
         uniR.push({item:'ハンガーパイプ',variant:'',key:'hanger',irisu:iG('hanger')});
+        uniR.push({item:'ハンガーパイプ(グレー)',variant:'',key:'hanger_gy',irisu:iG('hanger_gy'),onlyIfUsed:true});/* v18.97 修正27① */
         uniR.push({item:'XLコネクター',variant:'',key:'connector',sub:'XL',irisu:iG('connector','XL')});
         uniR.push({item:'SSコネクター',variant:'',key:'connector',sub:'SS',irisu:iG('connector','SS')});
         uniR.push({item:'アンカー穴キャップ',variant:'グレー',key:'anchorCap',sub:'gy',irisu:iG('anchorCap','gy')});
@@ -14310,6 +14610,7 @@ function PartsPage(p){
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
         uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
+        uniR.push({item:'トッテ(台湾)',variant:'',key:'totte_tw',irisu:iG('totte_tw'),onlyIfUsed:true});/* v18.97 修正27① */
         /* v18.44 修正３①: 現行のダイヤル錠H110/H111(キー dialH110new/dialH111new)の行がこの一覧に無く、
            現行ダイヤル錠の仮押さえ/出荷実績が表示されなかった（v18.43で旧型(旧)行を非表示化した結果、H110/H111が全く出なくなった）。
            現行行を追加（旧型(旧)行は従来どおり、数量が入っている案件がある場合のみ表示） */
@@ -14318,6 +14619,8 @@ function PartsPage(p){
         uniR.push({item:'ダイヤル錠H110(旧)',variant:'',key:'dialH110',irisu:iG('dialH110')});
         uniR.push({item:'ダイヤル錠H111(旧)',variant:'',key:'dialH111',irisu:iG('dialH111')});
         uniR.push({item:'ダイヤル錠DST',variant:'',key:'dialDST',irisu:iG('dialDST')});
+        uniR.push({item:'ダイヤル錠(D003)',variant:'',key:'dialD003',irisu:iG('dialD003'),onlyIfUsed:true});/* v18.97 修正27① */
+        ['F','B','C','D','L'].forEach(function(mk){uniR.push({item:mk+'マスターキー',variant:'',key:'masterKey'+mk,irisu:iG('masterKey'+mk),onlyIfUsed:true});});/* v18.97 修正27① */
         uniR.push({item:'南京錠',variant:'',key:'padlock',irisu:iG('padlock')});
         uniR.push({item:'コインリターン錠',variant:'',key:'coinReturn',irisu:iG('coinReturn')});
         /* v16レール新方式（在庫4商品）を出荷済み一覧にも追加。削除確定の旧ハンドル/シリンダー無印/マスター組/F・B・Cマスター/ネームプレート/ネーム厚紙は除去 */
@@ -14343,6 +14646,8 @@ function PartsPage(p){
         uniR.push({item:'ヒンジカバー SS',variant:'',key:'hingeCoverSS',irisu:iG('hingeCoverSS')});
         uniR.push({item:'ネームプレートカバー SML',variant:'',key:'namePlateCoverSML',irisu:iG('namePlateCoverSML')});
         uniR.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iG('namePlateCoverSS')});
+        uniR.push({item:'ネームプレートカバー SML(台湾)',variant:'',key:'namePlateCoverSML_tw',irisu:iG('namePlateCoverSML_tw'),onlyIfUsed:true});/* v18.97 修正27① */
+        uniR.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iG('namePlateCoverSS_tw'),onlyIfUsed:true});
         uniR.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});
         uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
@@ -14493,7 +14798,47 @@ function PartsPage(p){
                   )
                 );
               }))
-            )
+            ),
+            /* ===== v18.97 修正27③: 扉も他の部材と同じく倉庫間移動できるようにする（サイズを選んで動かす） ===== */
+            (function(){
+              var em0=editModal[0],f0=xferForm[0];
+              var sz=f0.size&&em0.doorSizes.indexOf(f0.size)>=0?f0.size:(em0.doorSizes[0]||'');
+              function setF(patch){xferForm[1](Object.assign({},xferForm[0],patch));}
+              return h('div',{style:{marginTop:10,paddingTop:10,borderTop:'1px solid var(--g200)'}},
+                h('div',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',marginBottom:6}},'🔄 倉庫間移動（取り寄せ）'),
+                h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
+                  h('select',{className:'inp',style:{width:80},value:sz,title:'移動する扉のサイズ',onChange:function(e){setF({size:e.target.value});}},
+                    em0.doorSizes.map(function(s){return h('option',{key:s,value:s},s==='SSA'?'SSα':s);})),
+                  /* 移動元は在庫を持つ倉庫（倉庫タブから開いた場合はその倉庫だけ）。括弧内はそのサイズの空き在庫 */
+                  h('select',{className:'inp',style:{width:150},value:f0.from,onChange:function(e){setF({from:e.target.value});}},
+                    [h('option',{key:'_f',value:''},'移動元')].concat(WH_IDS.filter(function(w){return hasStock(em0.lineId,w)&&(!em0.onlyWh||w===em0.onlyWh);}).map(function(w){
+                      return h('option',{key:w,value:w},WH_MAP[w].n+'（空き'+Math.max(0,availD(em0.lineId,w,em0.color,sz,em0.key))+'）');
+                    }))),
+                  h('span',null,'→'),
+                  h('select',{className:'inp',style:{width:130},value:f0.to,onChange:function(e){setF({to:e.target.value});}},
+                    [h('option',{key:'_t',value:''},'移動先')].concat(WH_IDS.map(function(w){return h('option',{key:w,value:w},WH_MAP[w].n);}))),
+                  h('input',{className:'inp',type:'number',min:1,style:{width:64},placeholder:'数量',value:f0.qty,onChange:function(e){setF({qty:e.target.value});}}),
+                  h('button',{className:'btn btn-xs btn-pr',onClick:function(){
+                    if(p.isReadOnly){p.toast('読み取り専用モード中は移動できません');return;}
+                    var em=editModal[0],f=xferForm[0];
+                    if(!f.from||!f.to||f.from===f.to){p.toast('移動元と移動先を別々に選んでください');return;}
+                    var q=parseInt(f.qty)||0;if(q<=0){p.toast('数量を入力してください');return;}
+                    var r=transferDoorStock(em.lineId,em.key,em.color,sz,f.from,f.to,q,em.label,editorName[0]);
+                    if(!r.ok){p.toast(r.reason==='insufficient'?('移動元の空き在庫が不足です（'+sz+' 空き'+r.avail+'）'):'移動できません（サイズ・移動元・先・数量を確認）');return;}
+                    /* ★保存ボタンは入力欄の値で上書きするので、動かした2倉庫の入力欄を最新の在庫へ合わせ直す */
+                    var e2=Object.assign({},em);e2.doorVals=Object.assign({},em.doorVals);
+                    [f.from,f.to].forEach(function(w){
+                      e2.doorVals[w]=Object.assign({},e2.doorVals[w]||{});
+                      e2.doorVals[w][sz]=gd(em.lineId,w,em.color,sz,em.key);
+                    });
+                    editModal[1](e2);xferForm[1]({from:'',to:'',qty:'',size:sz});
+                    broadcastEdit(p.userName||editorName[0]||'不明',em.label+' '+sz+' を倉庫間移動('+q+')');
+                    bump[1](bump[0]+1);saveAll();p.toast('倉庫間移動: '+em.label+' '+sz+' を'+q+'枚移動しました');
+                  }},'移動')
+                ),
+                h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」（在庫−仮押さえ）から差し引き移動先へ加算します。EDIT_LOGに記録。')
+              );
+            })()
           ):
           /* Non-door edit: simple warehouse list + 倉庫間移動(要望10) */
           h('div',null,
@@ -14527,7 +14872,7 @@ function PartsPage(p){
                   bump[1](bump[0]+1);saveAll();p.toast('倉庫間移動: '+q+'個を移動しました');
                 }},'移動')
               ),
-              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」から差し引き移動先へ加算（チャーター/混載の取り寄せ等）。EDIT_LOGに記録。扉は対象外。')
+              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」から差し引き移動先へ加算（チャーター/混載の取り寄せ等）。EDIT_LOGに記録。')
             )
           )
       )
