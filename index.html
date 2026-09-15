@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.97（修正27 追加部材・扉の倉庫間移動・エンド別担当・請求書の紙ごと手修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v18.98（修正27の再修正 トッテ井門表記・台湾製の表示・エンド納品先の見やすさ・納品予定日の変更）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -555,9 +555,11 @@ function partShownInLine(key,lineId){
   var a=LINE_ONLY_PART_KEYS[key];
   return !a||a.indexOf(lineId)>=0;
 }
-/* 台湾製では汎用のネームプレートカバー行を(台湾)の行に置き換える。
-   ★ただし台湾製の在庫に数量が入っていれば消さない（見えなくなって在庫が迷子になるのを防ぐ安全弁）。 */
-var TW_REPLACED_PART_KEYS=['namePlateCoverSML','namePlateCoverSS'];
+/* 台湾製では汎用のトッテ・ネームプレートカバーを出さず、(台湾)の行だけを出す。
+   v18.98 修正27の再修正: 「台湾製を選択の場合は台湾製のトッテ／(台湾)のネームプレートカバーのみ表示」（ユーザー指定）。
+   ★v18.97 の「台湾製の在庫に数量があれば残す」安全弁は依頼により外した。
+   　トッテ(井門)は全ライン共通在庫なので、日本製の在庫一覧から確認・編集できる。 */
+var TW_REPLACED_PART_KEYS=['totte','namePlateCoverSML','namePlateCoverSS'];
 /* ハンガーパイプの色表記。台湾製はグレー、それ以外（日本製）はブラック */
 function hangerColorLabel(lineId){return lineId==='tw'?'グレー':'ブラック';}
 /* v18.21 要望18: 商品選択の錠前を実在庫キー(部材在庫一覧/パーツ単品 cat:'lock')と同名・同数で紐付け。
@@ -6038,7 +6040,10 @@ function deliveryInheritFromInvoice(order,sheetIdx){
 }
 function docEditHeader(order,cust,docType,sheetIdx){
   var de=docEditLayer(order,docType,sheetIdx);
-  if(docType==='delivery')de=Object.assign(deliveryInheritFromInvoice(order,sheetIdx),de);
+  /* v18.98 修正27の再修正（v18.97 の確認事項4への回答）: ★優先は請求書。
+     請求書で手修正した項目は、納品書側で手修正していても請求書の値を出す（納品書の手修正は請求書が空欄の項目だけに効く）。 */
+  var inh=(docType==='delivery')?deliveryInheritFromInvoice(order,sheetIdx):{};
+  if(docType==='delivery')de=Object.assign({},de,inh);
   var eu=(order&&order.endUser&&(order.endUser.name||order.endUser.address))?order.endUser:null;
   var hv={
     /* v18.97 修正27⑧: 宛先の自動値（見積書と同じく顧客DBの内容） */
@@ -6066,6 +6071,9 @@ function docEditHeader(order,cust,docType,sheetIdx){
   DOC_EDIT_KEYS.forEach(function(k){if(de[k]){hv[k]=de[k];hv.edited[k]=true;}});
   if(de.showRep!==undefined&&de.showRep!==null&&de.showRep!==''){hv.showRep=!!de.showRep;hv.edited.showRep=true;}
   if(de.repName){hv.repName=de.repName;hv.edited.repName=true;}
+  /* 納品書で「請求書の手修正から来た項目」の印（記載内容の画面でその欄を入力不可にするのに使う） */
+  hv.fromInvoice={};
+  Object.keys(inh).forEach(function(k){hv.fromInvoice[k]=true;});
   return hv;
 }
 /* その帳票に手修正が保存されているか（✎ボタンの表示に使う） */
@@ -7961,25 +7969,40 @@ function CustPage(p){
       h('div',{style:{fontSize:9,fontWeight:700,color:'#1e3a5f',marginBottom:4}},'エンド納品先（代理店経由の納品先。複数登録可）',
         h('span',{style:{fontWeight:400,color:'var(--g500)',marginLeft:6}},'※弊社担当を選ぶと、そのエンド納品先の案件は案件管理でその担当者になります')),
       arr.length===0?h('div',{style:{fontSize:9,color:'var(--g400)',marginBottom:4}},'未登録です。「＋ エンド納品先を追加」から登録してください。'):null,
+      /* ===== v18.98 修正27の再修正: 納品先ごとに枠で囲んで見やすくする =====
+         従来は入力欄を横に詰めて並べていたため、モーダルの幅で折り返すと「どこまでが1件か」の境目が分からなかった。
+         1件＝1枚のカード（見出し「納品先 N」＋項目名つきの欄）にし、カードの間を空ける。 */
       arr.map(function(eu,i){
         function upd(k,v){var a2=arr.slice();a2[i]=Object.assign({},a2[i],{});a2[i][k]=v;onChange(a2);}
-        return h('div',{key:eu.id||i,style:{display:'flex',gap:4,marginBottom:4,alignItems:'center',flexWrap:'wrap'}},
-          h('input',{className:'inp',style:{flex:'2 1 120px'},value:eu.name||'',placeholder:'納品先名',onChange:function(e){upd('name',e.target.value);}}),
-          h('input',{className:'inp',style:{flex:'1 1 80px'},value:eu.postal||'',placeholder:'〒',onChange:function(e){upd('postal',e.target.value);}}),
-          h('input',{className:'inp',style:{flex:'2 1 150px'},value:eu.address||'',placeholder:'住所',onChange:function(e){upd('address',e.target.value);}}),
-          h('input',{className:'inp',style:{flex:'1 1 100px'},value:eu.phone||'',placeholder:'電話番号',onChange:function(e){upd('phone',e.target.value);}}),
+        var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
+        function fld(k,label,ph,flex){
+          return h('div',{style:{flex:flex||1,minWidth:0}},h('label',{style:EL},label),
+            h('input',{className:'inp',value:eu[k]||'',placeholder:ph||'',onChange:function(e){upd(k,e.target.value);}}));
+        }
+        return h('div',{key:eu.id||i,className:'eu-card',style:{background:'#fff',border:'1px solid var(--g300)',borderLeft:'4px solid #1e3a5f',borderRadius:6,padding:'6px 8px 8px',marginBottom:8,boxShadow:'0 1px 3px rgba(0,0,0,.06)'}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:4,paddingBottom:4,borderBottom:'1px dashed var(--g200)'}},
+            h('span',{style:{fontSize:10,fontWeight:800,color:'#fff',background:'#1e3a5f',borderRadius:10,padding:'0 8px'}},'納品先 '+(i+1)),
+            h('span',{style:{fontSize:11,fontWeight:700,color:'var(--g700)',flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},eu.name||'（名称未入力）'),
+            h('button',{className:'btn btn-xs btn-rd',title:'この納品先を削除します',onClick:function(){
+              if((eu.name||eu.address)&&!confirm('納品先「'+(eu.name||eu.address)+'」を削除します。よろしいですか？'))return;
+              var a2=arr.slice();a2.splice(i,1);onChange(a2);
+            }},'✕ 削除')
+          ),
+          h('div',{style:{display:'flex',gap:6,marginBottom:4}},fld('name','納品先名','例: ○○小学校',1)),
+          h('div',{style:{display:'flex',gap:6,marginBottom:4}},fld('postal','〒','例: 120-0005',1),fld('phone','電話番号','例: 03-0000-0000',1)),
+          h('div',{style:{display:'flex',gap:6,marginBottom:4}},fld('address','住所','例: 東京都足立区綾瀬7-4-1',1)),
           /* v18.97 修正27④: エンドユーザーごとの弊社担当。未設定なら顧客（代理店）の弊社営業担当になる */
           (function(){
             var cur=resolveSalesPerson(eu.salesPerson);
             var opts=salesPersonOptions();
             var extra=(cur&&opts.indexOf(cur)<0)?cur:null;
-            return h('select',{className:'inp',style:{flex:'1 1 110px'},value:cur,title:'このエンド納品先を選んだ案件の担当者になります（未設定＝代理店の弊社営業担当）',
-              onChange:function(e){upd('salesPerson',e.target.value);}},
-              h('option',{value:''},'弊社担当（代理店と同じ）'),
-              opts.map(function(s){return h('option',{key:s,value:s},'弊社担当: '+s);}),
-              extra?h('option',{value:extra},'弊社担当: '+extra+'（アカウント外）'):null);
-          })(),
-          h('button',{className:'btn btn-xs btn-rd',onClick:function(){var a2=arr.slice();a2.splice(i,1);onChange(a2);}},'✕')
+            return h('div',null,h('label',{style:EL},'弊社担当（この納品先の案件の担当者）'),
+              h('select',{className:'inp',value:cur,title:'このエンド納品先を選んだ案件の担当者になります（未設定＝代理店の弊社営業担当）',
+                onChange:function(e){upd('salesPerson',e.target.value);}},
+                h('option',{value:''},'弊社担当（代理店と同じ）'),
+                opts.map(function(s){return h('option',{key:s,value:s},'弊社担当: '+s);}),
+                extra?h('option',{value:extra},'弊社担当: '+extra+'（アカウント外）'):null));
+          })()
         );
       }),
       h('button',{className:'btn btn-xs btn-tl',onClick:function(){var a2=arr.slice();a2.push({id:'EU'+Date.now()+Math.floor(Math.random()*1000),name:'',postal:'',address:'',phone:''});onChange(a2);}},'＋ エンド納品先を追加')
@@ -10725,6 +10748,24 @@ function OrdersPage(p){
   var shipEditModal=us(null);
   /* v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル {order,docType,v,auto} */
   var docEditModal=us(null);
+  /* v18.98 修正27の再修正: 案件一覧の納品予定日をその場で変更する（{no, value}。null＝閉じている） */
+  var dlvEdit=us(null);
+  /* 納品予定日を保存する。★order.deliveryDate は請求書・納品書の日付、出荷指示書の納品日時（自動値）にも使われる */
+  function saveDeliveryDate(o,val){
+    if(p.isReadOnly){p.toast('読み取り専用モード中は変更できません');return false;}
+    var lo=liveOrder(o)||o;
+    if(isOrderLocked(lo)){p.toast('納品完了の案件は変更できません（ステータスを戻してから変更してください）');return false;}
+    var v=String(val||'').trim();
+    if(v&&!/^\d{4}-\d{2}-\d{2}$/.test(v)){p.toast('日付をカレンダーから選んでください');return false;}
+    var before=lo.deliveryDate||'';
+    if(v===before){dlvEdit[1](null);return true;}
+    if(v)lo.deliveryDate=v;else delete lo.deliveryDate;
+    saveAll();
+    broadcastOrderUpdate(p.userName||'',lo.no+' 納品予定日を変更（'+(before||'未設定')+' → '+(v||'未設定')+'）');
+    p.toast('納品予定日を変更しました: '+(v||'未設定'));
+    dlvEdit[1](null);p.bump&&p.bump();
+    return true;
+  }
   /* v18.95 修正26③: 請求書を複数枚に分ける設定モーダル {no,n,alloc} */
   var invSplitModal=us(null);
   /* v18.40 修正１⑤: 案件番号・顧客名・エンド納品先名・明細アイテム名で自由検索できる検索ボックス */
@@ -11223,6 +11264,36 @@ function OrdersPage(p){
               (function(){var dp=deliveryPlanOf(o);return dp
                 ?h('div',{style:{fontSize:12,color:'#0E7490',fontWeight:800,lineHeight:1.3},title:'納品予定日'},'納品予定: '+dp)
                 :h('div',{style:{fontSize:9,color:'var(--g300)',lineHeight:1.3},title:'納品予定日は未設定'},'納品予定: −');})(),
+              /* ===== v18.98 修正27の再修正: 納品予定日を案件管理画面で変更する =====
+                 日付欄に「納品予定日の変更」ボタン → 押すとカレンダー（input type=date）が開き、日付を選んで保存する。
+                 ★保存先は order.deliveryDate（出荷指示の画面で入れる納品予定日と同じ項目）。
+                 ★納品完了の案件はロック中なので出さない（isOrderLocked）。 */
+              (dlvEdit[0]&&dlvEdit[0].no===o.no)
+              ?h('div',{style:{marginTop:3,display:'flex',flexDirection:'column',gap:3}},
+                  h('input',{className:'inp',type:'date',style:{fontSize:11,width:140},value:dlvEdit[0].value||'',
+                    ref:function(el){
+                      /* ボタンを押したらそのままカレンダーを開く（showPicker が使えないブラウザは欄をクリックで開く） */
+                      if(el&&!el._pk){el._pk=true;try{el.focus();if(el.showPicker)el.showPicker();}catch(e){}}
+                    },
+                    onChange:function(e){dlvEdit[1]({no:o.no,value:e.target.value});}}),
+                  h('div',{style:{display:'flex',gap:3}},
+                    h('button',{className:'btn btn-xs btn-gn',onClick:function(){saveDeliveryDate(o,dlvEdit[0].value);}},'保存'),
+                    h('button',{className:'btn btn-xs btn-ol',onClick:function(){dlvEdit[1](null);}},'取消'),
+                    o.deliveryDate?h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626'},title:'納品予定日を未設定に戻します',onClick:function(){saveDeliveryDate(o,'');}},'クリア'):null
+                  ),
+                  (o.shipEdit&&o.shipEdit.delivery)||(o.shipEdits&&Object.keys(o.shipEdits).some(function(k){return o.shipEdits[k]&&o.shipEdits[k].delivery;}))
+                    ?h('div',{style:{fontSize:8,color:'#975a16',lineHeight:1.4,maxWidth:160}},'※出荷指示書の納品日時は手修正されているため、そちらは変わりません'):null
+                )
+              :(!isOrderLocked(o)&&!p.isReadOnly)?h('button',{className:'btn btn-xs btn-ol',style:{marginTop:3,fontSize:8,padding:'1px 5px'},title:'カレンダーから納品予定日を選んで変更します',
+                  onClick:function(){
+                    /* 初期値は今の納品予定日（納期欄の文言しか無い案件は、日付として読めるときだけ入れる） */
+                    var cur=String(o.deliveryDate||'');
+                    if(!/^\d{4}-\d{2}-\d{2}$/.test(cur)){
+                      var ms=deliveryPlanMs(o),dd=ms!=null?new Date(ms):null;
+                      cur=dd?(dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0')):'';
+                    }
+                    dlvEdit[1]({no:o.no,value:cur});
+                  }},'📅 納品予定日の変更'):null,
               h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:2},title:'案件作成日'},'作成: '+o.date)
             ),
             /* v18.40 修正１③: 代理店経由でエンド納品先が設定されている場合、顧客名に（エンド納品先名）を併記 */
@@ -12509,9 +12580,14 @@ function OrdersPage(p){
           title:isInv?((k+1)+'枚目の請求書を編集します'):((k+1)+'枚目の納品書をプレビューします'),
           onClick:function(){docEditModal[1](Object.assign({},m,{tab:k}));}},(k+1)+'枚目');
       };
+      /* v18.98 修正27の再修正: 納品書で、請求書の手修正が入っている項目は★請求書が優先なので入力できないようにする */
+      var fromInv=(isDel&&a.fromInvoice)||{};
       function fldD(k,label,style){
-        return h('div',{style:style||{flex:1}},h('label',{style:DLBL},label),
-          h('input',{className:'inp',value:v[k]||'',placeholder:a[k]||'',
+        var lock=!!fromInv[k];
+        return h('div',{style:style||{flex:1}},h('label',{style:DLBL},label,lock?h('span',{style:{color:'#0E7490',marginLeft:4}},'（請求書の手修正が優先）'):null),
+          h('input',{className:'inp',value:lock?'':(v[k]||''),placeholder:a[k]||'',disabled:lock,
+            title:lock?'請求書で手修正した内容が使われます。変えるときは請求書の記載内容を直してください':'',
+            style:lock?{background:'#ECFEFF',color:'#0E7490'}:null,
             onChange:function(e){var o={};o[k]=e.target.value;setV(o);}}));
       }
       return h(Modal,{show:true,w:900,
@@ -12542,8 +12618,8 @@ function OrdersPage(p){
           h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},
             '空欄の項目は自動値（案件・顧客の情報）が使われます。入力した内容は案件に保存され、全端末で共有されます。',
             /* v18.97 修正27⑤⑦: 請求書の手修正は納品書にも反映される */
-            isInv?h('span',{style:{color:'#975a16'}},'※請求書の手修正は★納品書にも自動で反映されます（納品書側で手修正した項目はそちらが優先。支払条件は請求書だけ）。')
-            :isDel?h('span',{style:{color:'#975a16'}},'※空欄の項目は★請求書の記載内容（請求書の手修正を含む）が使われます。ここで入力した項目だけ納品書で上書きします。')
+            isInv?h('span',{style:{color:'#975a16'}},'※請求書の手修正は★納品書にも自動で反映されます（納品書側で手修正していても請求書が優先。支払条件は請求書だけ）。')
+            :isDel?h('span',{style:{color:'#975a16'}},'※請求書で手修正した項目は★請求書が優先され、ここでは変更できません（水色の欄）。それ以外の項目だけ納品書で手修正できます。')
             :h('span',{style:{color:'#975a16'}},'※この画面は'+(DOC_TYPE_LABELS[m.docType]||'')+'だけに効きます（他の帳票は別々に手修正できます）。')),
           h('div',{style:{display:'flex',alignItems:'center',flexWrap:'wrap',gap:2,fontSize:11,fontWeight:700,marginBottom:6,borderBottom:'1px solid var(--g200)',paddingBottom:4}},
             '記載内容（空欄=自動）',
@@ -12581,9 +12657,9 @@ function OrdersPage(p){
           /* v18.93 修正26⑤: 会社名の下の代表者名。既定は見積書作成画面のチェックを引き継ぐ */
           h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
             h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:600,cursor:'pointer'}},
-              h('input',{type:'checkbox',checked:!!v.showRep,onChange:function(e){setV({showRep:e.target.checked});}}),
+              h('input',{type:'checkbox',checked:(fromInv.showRep?!!a.showRep:!!v.showRep),disabled:!!(fromInv.showRep||fromInv.repName),onChange:function(e){setV({showRep:e.target.checked});}}),
               '会社名（株式会社LEC）の下に代表者名を表記する'),
-            v.showRep?h('input',{className:'inp',style:{marginTop:3},value:v.repName||'',
+            (fromInv.showRep?a.showRep:v.showRep)?h('input',{className:'inp',style:{marginTop:3},value:fromInv.repName?'':(v.repName||''),disabled:!!fromInv.repName,
               placeholder:a.repName||REP_NAME_DEFAULT,
               onChange:function(e){setV({repName:e.target.value});}}):null,
             h('div',{style:{fontSize:9,color:'var(--g500)',marginTop:3}},
@@ -13238,7 +13314,7 @@ function PartsPage(p){
        業者データ取込は alias で旧表記のまま照合できるようにしている */
     {label:'サイドジョイント(SML・グレー)',key:'sj',sub:'sml',cat:'option',alias:['サイドジョイント(SML)']},
     {label:'サイドジョイント(SS/3S・グレー)',key:'sj',sub:'ss',cat:'option',alias:['サイドジョイント(SS/3S)']},
-    {label:'トッテ',key:'totte',cat:'lock'},
+    {label:'トッテ(井門)',key:'totte',cat:'lock',alias:['トッテ']},/* v18.98 修正27の再修正: 表記を井門に（取込は旧表記でも照合） */
     {label:'トッテ(台湾)',key:'totte_tw',cat:'lock'},/* v18.97 修正27① 台湾製だけ（LINE_ONLY_PART_KEYS） */
     /* v18.40 修正１⑥: 廃番の旧型ダイヤル錠H110/H111は部材在庫一覧の在庫表から削除（在庫データ自体は保持、他画面には影響しない） */
     {label:'ダイヤル錠 DST',key:'dialDST',cat:'lock'},
@@ -13326,12 +13402,9 @@ function PartsPage(p){
         ★万一 SA_PARTS に無いキーに在庫が入っていた場合は消さずに残す（_saHasStock）。 */
   var isSaLine=selLine[0]==='sa';
   /* ===== v18.97 修正27①: ライン限定の部材を絞り込み、台湾製のハンガーパイプはグレー表記にする ===== */
-  function twReplacedHasStock(key){
-    try{return WH_IDS.some(function(w){return gs('tw',w,key)>0;});}catch(e){return false;}
-  }
   function keepRowInLine(key){
     if(!partShownInLine(key,selLine[0]))return false;
-    if(selLine[0]==='tw'&&TW_REPLACED_PART_KEYS.indexOf(key)>=0)return twReplacedHasStock(key);
+    if(selLine[0]==='tw'&&TW_REPLACED_PART_KEYS.indexOf(key)>=0)return false;/* v18.98 修正27の再修正 */
     return true;
   }
   structRowsAll=structRowsAll.filter(function(r){return r.isCustom||keepRowInLine(r.key);}).map(function(r){
@@ -13432,7 +13505,7 @@ function PartsPage(p){
           uniRows.push({item:'サイドジョイント',variant:'SMLXL共通グレー',key:'sj',sub:'sml',irisu:iGet('sj','sml'),grp:'sml'});
           uniRows.push({item:'',variant:'SS・3S共通グレー',key:'sj',sub:'ss',irisu:iGet('sj','ss'),grp:'ss'});
           /* 13. トッテ */
-          uniRows.push({item:'トッテ',variant:'新',key:'totte',irisu:iGet('totte')});
+          uniRows.push({item:'トッテ',variant:'井門',key:'totte',irisu:iGet('totte')});/* v18.98 修正27の再修正: 新→井門 */
           uniRows.push({item:'',variant:'台湾',key:'totte_tw',irisu:iGet('totte_tw')});/* v18.97 修正27① 台湾製だけ */
           /* 14. ダイヤル錠 */
           /* v18.40 修正１⑥: 廃番の旧型H110/H111(旧)は在庫表から削除 */
@@ -13872,7 +13945,7 @@ function PartsPage(p){
               snapRows.push({item:'ジョイントネジ(SS/3S・グレー)',key:'jointScrew_ss_gy'});
               snapRows.push({item:'目隠しネジ(ブラック)',key:'capScrew_bk'});
               snapRows.push({item:'目隠しネジ(グレー)',key:'capScrew_gy'});
-              snapRows.push({item:'トッテ',key:'totte'});
+              snapRows.push({item:'トッテ(井門)',key:'totte'});/* v18.98 修正27の再修正 */
               snapRows.push({item:'トッテ(台湾)',key:'totte_tw'});/* v18.97 修正27① */
               /* v14.5 C7: 画面の在庫表(uniRows)と項目を完全一致させる（鍵・シリンダー全種を網羅） */
               snapRows.push({item:'ダイヤル錠 H110(旧)',key:'dialH110'});
@@ -14257,7 +14330,7 @@ function PartsPage(p){
         uniR.push({item:'',variant:'SS・3S(灰)',key:'jointScrew_ss_gy',irisu:''});
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
-        uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
+        uniR.push({item:'トッテ',variant:'井門',key:'totte',irisu:iG('totte')});/* v18.98 修正27の再修正 */
         uniR.push({item:'トッテ(台湾)',variant:'',key:'totte_tw',irisu:iG('totte_tw'),onlyIfUsed:true});/* v18.97 修正27① */
         /* v18.44 修正３①: 現行のダイヤル錠H110/H111(キー dialH110new/dialH111new)の行がこの一覧に無く、
            現行ダイヤル錠の仮押さえ/出荷実績が表示されなかった（v18.43で旧型(旧)行を非表示化した結果、H110/H111が全く出なくなった）。
@@ -14609,7 +14682,7 @@ function PartsPage(p){
         uniR.push({item:'',variant:'SS・3S(灰)',key:'jointScrew_ss_gy',irisu:''});
         uniR.push({item:'目隠しネジ',variant:'ブラック',key:'capScrew_bk',irisu:''});
         uniR.push({item:'',variant:'グレー',key:'capScrew_gy',irisu:''});
-        uniR.push({item:'トッテ',variant:'新',key:'totte',irisu:iG('totte')});
+        uniR.push({item:'トッテ',variant:'井門',key:'totte',irisu:iG('totte')});/* v18.98 修正27の再修正 */
         uniR.push({item:'トッテ(台湾)',variant:'',key:'totte_tw',irisu:iG('totte_tw'),onlyIfUsed:true});/* v18.97 修正27① */
         /* v18.44 修正３①: 現行のダイヤル錠H110/H111(キー dialH110new/dialH111new)の行がこの一覧に無く、
            現行ダイヤル錠の仮押さえ/出荷実績が表示されなかった（v18.43で旧型(旧)行を非表示化した結果、H110/H111が全く出なくなった）。
