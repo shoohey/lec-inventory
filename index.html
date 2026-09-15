@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.00（修正28の再修正 送料の備考を全帳票に・見積書プレビューの備考の位置）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.01（出荷指示書の作成者・全帳票の文字サイズとバランス）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1057,7 +1057,7 @@ function notesBoxHTML(notes){
   if(!notes)return '';
   var lines=String(notes).split('\n');
   var body=lines.map(function(t){return '<div style="min-height:1.6em">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';}).join('');
-  return '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:9px"><tr>'+
+  return '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:11px"><tr>'+
     '<td style="border:1px solid #999;width:70px;text-align:center;vertical-align:middle;padding:6px 4px;letter-spacing:4px">備考</td>'+
     '<td style="border:1px solid #999;padding:6px 10px;line-height:1.7">'+body+'</td></tr></table>';
 }
@@ -2780,6 +2780,8 @@ function shipEditHeader(order,cust,scope){
     /* v18.85 修正22の確認事項4: 出荷指示日を戻した（ユーザー回答「出荷指示日は追加して」）。
        自動値は出力日（docDateOf の 'shipping' と同じ）。★手修正できる。 */
     shipDate:tdSlash(),
+    /* v19.01: 作成者の自動値は案件の起票者（案件管理の「起票:」と同じ order.createdBy） */
+    creator:(order&&order.createdBy)||'',
     shipper:shipperName,
     shipperName:shipperParts(shipperName).name,
     shipperDetail:shipperParts(shipperName).detail,
@@ -2797,6 +2799,7 @@ function shipEditHeader(order,cust,scope){
   if(se.staff){hv.staff=se.staff;hv.edited.staff=true;}
   if(se.slip){hv.slip=se.slip;hv.edited.slip=true;}
   if(se.shipDate){hv.shipDate=se.shipDate;hv.edited.shipDate=true;}
+  if(se.creator){hv.creator=se.creator;hv.edited.creator=true;}
   if(se.shipper){
     hv.shipper=se.shipper;hv.edited.shipper=true;
     /* 手修正の荷送人も SHIPPER_INFO に住所があれば併記する（無ければ名前だけ） */
@@ -2811,7 +2814,7 @@ function shipEditHeader(order,cust,scope){
 function hasShipEdit(order){
   function any(se){
     se=se||{};
-    return !!(se.name||se.postal||se.address||se.phone||se.delivery||se.consignee||se.staff||se.slip||se.shipDate||se.shipper||se.notes||(se.rows&&Object.keys(se.rows).length));
+    return !!(se.name||se.postal||se.address||se.phone||se.delivery||se.consignee||se.staff||se.slip||se.shipDate||se.creator||se.shipper||se.notes||(se.rows&&Object.keys(se.rows).length));
   }
   if(any((order&&order.shipEdit)||{}))return true;
   var m=(order&&order.shipEdits)||{};
@@ -6145,21 +6148,21 @@ function hasDocEdit(order,docType){
    ★見積書本体と発注書の両方に出る金額は税込合計。★出す/出さないは order.withPO の1か所で決まる。 */
 function purchaseOrderHTML(order,total){
   var s='<div style="margin-top:18px;border-top:2px dashed #999;padding-top:10px">';
-  s+='<div style="font-size:9.5px;margin-bottom:8px">御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。</div>';
-  s+='<div style="text-align:center;font-size:17px;font-weight:700;letter-spacing:10px;margin-bottom:10px">発 注 書</div>';
+  s+='<div style="font-size:11.5px;margin-bottom:8px">御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。</div>';
+  s+='<div style="text-align:center;font-size:20px;font-weight:700;letter-spacing:10px;margin-bottom:10px">発 注 書</div>';
   s+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
-  s+='<div style="font-size:12px;font-weight:700">株式会社LEC 御中</div>';
-  s+='<div style="font-size:10px;line-height:2">';
+  s+='<div style="font-size:14px;font-weight:700">株式会社LEC 御中</div>';
+  s+='<div style="font-size:12px;line-height:2">';
   s+='<div>発注日:&emsp;<span style="display:inline-block;min-width:120px;border-bottom:1px solid #333">&nbsp;</span></div>';
   s+='<div>発注する見積No:&emsp;<b>'+order.no+'</b></div>';
   s+='</div></div>';
   s+='<div style="display:flex;align-items:baseline;gap:20px;margin-bottom:14px">';
-  s+='<div style="font-size:15px;font-weight:900">発注金額: &yen;'+fm(total)+'</div>';
-  s+='<div style="font-size:10px">上記見積内容を発注いたします。</div></div>';
+  s+='<div style="font-size:18px;font-weight:900">発注金額: &yen;'+fm(total)+'</div>';
+  s+='<div style="font-size:12px">上記見積内容を発注いたします。</div></div>';
   s+='<table style="margin-top:4px"><tbody><tr>';
-  s+='<td style="width:22%;background:#f0f0f0;font-weight:700;font-size:10px">御発注者名</td><td style="height:52px">&nbsp;</td>';
-  s+='<td style="width:8%;text-align:center;font-size:9px;color:#666">印</td>';
-  s+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:10px">御担当者名</td><td>&nbsp;</td>';
+  s+='<td style="width:22%;background:#f0f0f0;font-weight:700;font-size:12px">御発注者名</td><td style="height:52px">&nbsp;</td>';
+  s+='<td style="width:8%;text-align:center;font-size:11px;color:#666">印</td>';
+  s+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:12px">御担当者名</td><td>&nbsp;</td>';
   s+='</tr></tbody></table></div>';
   return s;
 }
@@ -6755,20 +6758,20 @@ function generateQuoteHTML(order,docType,legIndex,scope){
      　「用紙に合わせる」になっている（ブラウザ側の設定・ユーザーごとに記憶される）。 */
   html+='<style>@page{size:A4 portrait;margin:0}*{margin:0;padding:0;box-sizing:border-box}';
   html+='html,body{background:#fff}';
-  html+='body{font-family:"Noto Sans JP",sans-serif;font-size:10.5px;color:#222;line-height:1.65}';
+  html+='body{font-family:"Noto Sans JP",sans-serif;font-size:12.5px;color:#222;line-height:1.65}';
   /* .sheet ＝ A4用紙そのもの。内側の padding が印刷余白になる */
   html+='.sheet{width:210mm;min-height:297mm;padding:12mm 10mm;margin:0 auto;background:#fff}';
   html+='@media screen{html,body{background:#e8e8e8;padding:12px 0}.sheet{box-shadow:0 2px 12px rgba(0,0,0,.25)}}';
-  html+='table{width:100%;border-collapse:collapse;margin:8px 0;font-size:9.5px}th,td{border:1px solid #999;padding:3px 6px}';
-  html+='th{background:#f0f0f0;font-weight:600;text-align:center;font-size:8.5px;white-space:nowrap}td.r{text-align:right}td.c{text-align:center}';
+  html+='table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11.5px}th,td{border:1px solid #999;padding:3px 6px}';
+  html+='th{background:#f0f0f0;font-weight:600;text-align:center;font-size:10.5px;white-space:nowrap}td.r{text-align:right}td.c{text-align:center}';
   /* v18.72 修正17⑯: 構成行(【1列2段】等)は border-left/right を消していたため、印刷すると
      その行だけ表の左右の枠線が抜けて見えていた。枠線は他の行と同じにする。 */
-  html+='.cfg-row td{font-size:9.5px;font-weight:600;color:#333;padding:2px 6px}';
+  html+='.cfg-row td{font-size:11.5px;font-weight:600;color:#333;padding:2px 6px}';
   /* v18.72 修正17⑦: 備考の「外寸:…」が途中で改行されないようにする（列幅は商品名称側で吸収する） */
-  html+='td.rmk{font-size:7px;white-space:nowrap}';
-  html+='.tot-box{margin-left:auto;width:300px;font-size:10px;border:1px solid #999;margin-top:8px}';
+  html+='td.rmk{font-size:8.5px;white-space:nowrap}';
+  html+='.tot-box{margin-left:auto;width:340px;font-size:12px;border:1px solid #999;margin-top:8px}';
   html+='.trow{display:flex;justify-content:space-between;padding:3px 10px;border-bottom:1px solid #ddd}';
-  html+='.trow.main{font-size:13px;font-weight:900;background:#f8f8f8;border-bottom:2px solid #333}.trow.sub{font-size:8px;color:#666}';
+  html+='.trow.main{font-size:15px;font-weight:900;background:#f8f8f8;border-bottom:2px solid #333}.trow.sub{font-size:10px;color:#666}';
   /* 印刷時は「紙が何枚も続く」形にするので min-height は外す（末尾に空白ページが出るのを防ぐ） */
   html+='@media print{html,body{background:#fff;padding:0}.sheet{min-height:0;box-shadow:none}}';
   /* v18.99 修正28: 見積書が複数枚に分かれるときの2枚目以降（.sheet を並べ、印刷では1枚ずつ改ページ） */
@@ -6777,52 +6780,54 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   html+='</style></head><body><div class="sheet'+(isQuoteDoc?' qpaged':'')+'">';
   /* v18.99 修正28: 見積書は「御見積書」から詳細項目の枠までを .qhead で囲み、複数枚になったら各ページの先頭に同じものを出す */
   if(isQuoteDoc)html+='<div class="qhead">';
-  html+='<div style="text-align:right"><span style="font-size:22px;font-weight:700;letter-spacing:4px;border-bottom:3px solid #222;padding-bottom:4px;display:inline-block">'+cfg.title+'</span></div>';
+  html+='<div style="text-align:right"><span style="font-size:26px;font-weight:700;letter-spacing:4px;border-bottom:3px solid #222;padding-bottom:4px;display:inline-block">'+cfg.title+'</span></div>';
   /* v18.99 修正28: 何枚目かの表記（例 1-2）。御見積書の下・右寄せ。1枚で収まるときは出さない（印刷時にページ分けの処理が書き込む） */
-  if(isQuoteDoc)html+='<div class="qpage" style="display:none;text-align:right;font-size:12px;font-weight:700;letter-spacing:1px;margin-top:4px"></div>';
+  if(isQuoteDoc)html+='<div class="qpage" style="display:none;text-align:right;font-size:14px;font-weight:700;letter-spacing:1px;margin-top:4px"></div>';
   /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない（他の帳票は従来どおり）
      v18.92 修正26⑥⑦: 物品受領書・納品書も副題を空にしたので、★副題が空の帳票は同じ間隔だけ空ける。 */
   if(isShipping||!cfg.subtitle)html+='<div style="margin-bottom:12px"></div>';
-  else html+='<div style="text-align:right;font-size:10px;color:#444;margin-bottom:16px">'+cfg.subtitle+'</div>';
+  else html+='<div style="text-align:right;font-size:12px;color:#444;margin-bottom:16px">'+cfg.subtitle+'</div>';
   /* v18.72 修正17⑧ ／ v18.73 追加修正⑧: 弊社（株式会社LEC）の欄は★見積書の右側に置き、
      ★お客様名より下の行から始まるように上に余白を入れる。文字は左揃え。
      （v18.72 では「お客様情報の直ぐ下」に置いたが、右側へ戻してほしいとの指示） */
   html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">';
-  html+='<div style="width:52%;border-left:3px solid #222;padding:8px 12px;font-size:10px;line-height:1.8">';
+  html+='<div style="width:52%;border-left:3px solid #222;padding:8px 12px;font-size:12px;line-height:1.8">';
   if(isShipping){
     /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（郵便番号・住所・電話・顧客コードは出さない） */
     /* v18.85 修正22の確認事項3: 「御中」の有無は shipDocAddressee() が倉庫ごとに決める
        v18.88 修正24③: 倉庫ごとに分けて出すときは★その倉庫だけを宛名にする */
-    html+='<div style="font-size:14px;font-weight:700">'+shipDocAddressee(order,scope.wh)+'</div>';
+    html+='<div style="font-size:17px;font-weight:700">'+shipDocAddressee(order,scope.wh)+'</div>';
   }else if(dv){
     /* v18.97 修正27⑧: 請求書・物品受領書・納品書の宛先は ✎ 手修正の値（空欄＝顧客DBの内容）。並びは見積書と同じ */
-    html+='<div style="font-size:14px;font-weight:700;margin-bottom:4px">'+(dv.toName||'')+'</div>';
-    html+='<div style="font-size:9px">'+(dv.toPostal?'〒'+String(dv.toPostal).replace(/^〒/,''):'')+'</div>';
+    html+='<div style="font-size:17px;font-weight:700;margin-bottom:4px">'+(dv.toName||'')+'</div>';
+    html+='<div style="font-size:11px">'+(dv.toPostal?'〒'+String(dv.toPostal).replace(/^〒/,''):'')+'</div>';
     html+='<div>'+(dv.toAddress||'')+'</div>';
-    html+='<div style="display:flex;gap:20px;font-size:9px"><span>電話番号 '+(dv.toPhone||'')+'</span><span>FAX番号 '+(dv.toFax||'')+'</span></div>';
-    html+='<div style="font-size:9px">顧客コード '+(dv.toCode||'')+'</div>';
+    html+='<div style="display:flex;gap:20px;font-size:11px"><span>電話番号 '+(dv.toPhone||'')+'</span><span>FAX番号 '+(dv.toFax||'')+'</span></div>';
+    html+='<div style="font-size:11px">顧客コード '+(dv.toCode||'')+'</div>';
   }else{
-    html+='<div style="font-size:14px;font-weight:700;margin-bottom:4px">'+(cust?cust.name:'')+' 御中</div>';
+    html+='<div style="font-size:17px;font-weight:700;margin-bottom:4px">'+(cust?cust.name:'')+' 御中</div>';
     /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ移動。先方担当者（ご担当）は見積書から削除 */
-    html+='<div style="font-size:9px">'+(cust&&cust.postal?'〒'+cust.postal:'')+'</div>';
+    html+='<div style="font-size:11px">'+(cust&&cust.postal?'〒'+cust.postal:'')+'</div>';
     html+='<div>'+(cust?cust.pref+(cust.city||''):'')+'</div>';
-    html+='<div style="display:flex;gap:20px;font-size:9px"><span>電話番号 '+(cust&&cust.phone?cust.phone:'')+'</span><span>FAX番号 '+(cust&&cust.fax?cust.fax:'')+'</span></div>';
-    html+='<div style="font-size:9px">顧客コード '+(cust?cust.id:'')+'</div>';
+    html+='<div style="display:flex;gap:20px;font-size:11px"><span>電話番号 '+(cust&&cust.phone?cust.phone:'')+'</span><span>FAX番号 '+(cust&&cust.fax?cust.fax:'')+'</span></div>';
+    html+='<div style="font-size:11px">顧客コード '+(cust?cust.id:'')+'</div>';
   }
   html+='</div>';
   /* v18.74 修正17の再修正⑧: 上下関係（お客様名より下）はそのままで、ブロックを★右端へ寄せる。
      flex:0 0 auto にして内容幅にすると space-between で右端に張り付く。文字始まりは左揃えのまま。 */
-  html+='<div style="flex:0 0 auto;text-align:left;font-size:9px;line-height:1.8;padding:0;margin-top:34px">';
-  html+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">株式会社LEC</div>';
+  html+='<div style="flex:0 0 auto;text-align:left;font-size:11px;line-height:1.8;padding:0;margin-top:42px">';
+  html+='<div style="font-size:15px;font-weight:700;margin-bottom:2px">株式会社LEC</div>';
   var salesP=orderSalesPersonRaw(order,cust)||'齋藤 勝';/* v18.97 修正27④ */
   /* v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記する）
      v18.93 修正26⑤: 請求書・物品受領書・納品書は帳票ごとのチェック（docEdit.showRep）でも切り替えられる。
      　　　　　　　　 既定は見積書作成画面のチェックを自動で引き継ぐ。 */
-  if(dv?dv.showRep:order.showRepName)html+='<div style="font-size:10px;font-weight:600;margin-bottom:2px">'+(dv?dv.repName:(order.repName||REP_NAME_DEFAULT))+'</div>';
+  if(dv?dv.showRep:order.showRepName)html+='<div style="font-size:12px;font-weight:600;margin-bottom:2px">'+(dv?dv.repName:(order.repName||REP_NAME_DEFAULT))+'</div>';
   /* v18.33 要望⑬: 弊社担当者名の重複を削除（伝票コード上部の欄に統一） */
   /* v18.86 修正23⑪: 出荷指示書は右上の登録番号（インボイス番号）を出さない */
   html+='〒120-0005<br>東京都足立区綾瀬7-4-1<br>TEL. 03-5849-5563&emsp;FAX. 03-5849-5564'
-    +(isShipping?'':'<br>登録番号:T4040001077220')+'</div></div>';
+    +(isShipping?'':'<br>登録番号:T4040001077220')
+    /* v19.01 修正: 出荷指示書は会社の電話番号の下に「作成者」（既定は案件の起票者・✎で手修正可） */
+    +(isShipping?('<br>作成者: '+(shipEditHeader(order,cust,scope).creator||'')):'')+'</div></div>';
   if(isShipping){
     /* ===== v18.84 修正22⑤ ／ v18.85 修正22の追加修正: 出荷指示書の記載項目と配置 =====
        左側: 納品先名／荷受人／納品先住所／納品先電話番号／納品日時／便種
@@ -6837,7 +6842,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     /* v18.86 修正23⑨: 手修正の ✎（ペン）アイコンは★完全に出さない（ユーザー指定）。
        手修正されているかどうかは shv.edited に残っているが、帳票には印字しない。 */
     var em=function(){return '';};
-    html+='<div style="display:flex;gap:20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
+    html+='<div style="display:flex;gap:20px;font-size:12px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
     html+='<div style="flex:1;min-width:0">';
     html+='<div><b>納品先名:</b> '+(shv.name||'')+em('name')+'</div>';
     html+='<div><b>荷受人:</b> '+(shv.consignee||'')+em('consignee')+'</div>';
@@ -6849,7 +6854,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     /* v18.85: 荷送人は「会社名／住所以降」を2行にし、2行目を会社名の先頭に揃える（依頼どおり）。
        ★ここに ✎ は付けない（ユーザー指定「荷送人電話番号右側のペンのアイコン削除」）。 */
     html+='<div style="display:flex;gap:4px"><b style="white-space:nowrap">荷送人:</b>'
-      +'<span>'+(shv.shipperName||'')+(shv.shipperDetail?('<br>'+shv.shipperDetail):'')+'</span></div>';
+      +'<span>'+(shv.shipperName||'')+(shv.shipperDetail?('<br>'+String(shv.shipperDetail).replace(/(TEL[:：]?\s*[\d-]+)/,'<span style="white-space:nowrap">$1</span>')):'')+'</span></div>';/* v19.01: 電話番号の途中で改行しない */
     html+='<div><b>担当者:</b> '+(shv.staff||'')+em('staff')+'</div>';
     html+='<div><b>出荷指示日:</b> '+(shv.shipDate||'')+em('shipDate')+'</div>';
     html+='<div><b>伝票コード:</b> '+(shv.slip||'')+em('slip')+'</div>';
@@ -6857,7 +6862,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
       +'<span>'+String(shv.notes||'').split('\n').join('<br>')+'</span></div>';
     html+='</div></div>';
   }else{
-    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;font-size:10px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
+    html+='<div style="display:grid;grid-template-columns:3fr 2fr;gap:2px 20px;font-size:12px;margin-bottom:10px;border:1px solid #ccc;padding:6px 10px">';
     /* v18.93 修正26②: 3帳票は dv（✎手修正つきの値）、見積書は従来どおりの自動値 */
     html+='<div><b>件名:</b> '+(dv?dv.subject:subject)+'</div>';
     html+='<div><b>担当者:</b> '+(dv?dv.staff:salesP)+'</div>';
@@ -6870,7 +6875,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
        ・受渡地は3帳票とも出さない（見積書は従来どおり出す）。
        ・「エンド納品先」の見出しは3帳票とも「納品先」にする（見積書は従来どおり）。
        ★3帳票をまとめて判定しているので、どれか1つだけ扱いを変えたくなったら isBill を分けること。 */
-    if(docType==='invoice')html+='<div><b>納品日:</b> '+dv.delivery+'</div>';
+    if(docType==='invoice')html+='<div><b>納品日:</b> '+String(dv.delivery||'').replace(/^(\d{4})-(\d{2})-(\d{2})/,'$1/$2/$3')+'</div>';/* v19.01: 他の日付と同じ 2026/09/30 表記 */
     /* v18.37 修正箇所2③: 受渡地は自由入力優先。未入力なら顧客住所の市区町村まで */
     if(!isBill)html+='<div><b>受渡地:</b> '+deliveryPlaceOf(order,cust)+'</div>';
     var destTxt=dv?dv.dest:((order.endUser&&(order.endUser.name||order.endUser.address))
@@ -6882,12 +6887,12 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     html+='</div>';
     if(isQuoteDoc)html+='</div>';/* .qhead を閉じる（v18.99 修正28） */
   }
-  if(!isReceipt&&!isShipping){html+='<div style="font-size:16px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+'：　&yen;'+fm(total)+'</div>';}
+  if(!isReceipt&&!isShipping){html+='<div style="font-size:19px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+'：　&yen;'+fm(total)+'</div>';}
   if(isShipping){
     /* Shipping: show quote number only, no item detail table */
-    html+='<div style="margin:8px 0;padding:6px 10px;border:1px solid #ccc;background:#f9f9f9;font-size:10px"><b>見積№:</b> '+order.no+'</div>';
+    html+='<div style="margin:8px 0;padding:6px 10px;border:1px solid #ccc;background:#f9f9f9;font-size:12px"><b>見積№:</b> '+order.no+'</div>';
   }else if(isReceipt){
-    html+='<table><thead><tr><th style="width:80px">商品コード</th><th>商品名称</th><th style="width:50px">数量</th><th style="width:40px">単位</th><th>備考</th></tr></thead><tbody>';
+    html+='<table><thead><tr><th style="width:86px">商品コード</th><th>商品名称</th><th style="width:56px">数量</th><th style="width:44px">単位</th><th>備考</th></tr></thead><tbody>';
     rows.forEach(function(r){
       if(r.configNote){html+='<tr class="cfg-row"><td></td><td colspan="4">'+r.configNote+'</td></tr>';}
       html+='<tr><td>'+r.code+'</td><td>'+r.name+'</td><td class="c">'+r.qty+'</td><td class="c">'+r.unit+'</td><td class="rmk">'+(r.remark||'')+'</td></tr>';
@@ -6896,7 +6901,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     });
     for(var i=0;i<Math.max(0,6-rows.length);i++)html+='<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>';
   }else{
-    html+='<table class="qtbl"><thead><tr><th style="width:80px">商品コード</th><th>商品名称</th><th style="width:40px">数量</th><th style="width:35px">単位</th><th style="width:70px">単価</th><th style="width:80px">金額</th><th style="width:50px">税</th><th>備考</th></tr></thead><tbody>';
+    html+='<table class="qtbl"><thead><tr><th style="width:76px">商品コード</th><th>商品名称</th><th style="width:42px">数量</th><th style="width:36px">単位</th><th style="width:68px">単価</th><th style="width:78px">金額</th><th style="width:58px">税</th><th>備考</th></tr></thead><tbody>';
     rows.forEach(function(r){
       if(r.configNote){html+='<tr class="cfg-row cfg-pre"><td></td><td colspan="7">'+r.configNote+'</td></tr>';}/* cfg-pre/cfg-post: ページを分けるとき本体行と離さない（v18.99） */
       html+='<tr><td>'+r.code+'</td><td>'+r.name+'</td><td class="c">'+(r.qty===''?'':r.qty)+'</td><td class="c">'+(r.unit||'')+'</td><td class="r">'+(r.price===''?'':fm(r.price))+'</td><td class="r"'+(r.amount<0?' style="color:#B91C1C"':'')+'>'+(r.amount===''?'':fm(r.amount))+'</td><td class="c">'+(r.tax||'')+'</td><td class="rmk">'+(r.remark||'')+'</td></tr>';
@@ -6920,16 +6925,16 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     var scopeNote=[];
     if(sr.scopeWh)scopeNote.push(((WH_MAP[sr.scopeWh]||{}).n)||sr.scopeWh+'ぶん');
     if(sr.scopeLine)scopeNote.push(lineName(sr.scopeLine)+'ぶん');
-    html+='<div style="margin-top:12px;font-size:11px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材'
+    html+='<div style="margin-top:12px;font-size:13px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材'
       +(scopeNote.length?('　<span style="color:#1e3a5f">'+scopeNote.join(' ／ ')+'</span>'):'')
       +(sr.legIndex!=null?('　<span style="color:#B45309">'+(sr.legIndex+1)+'便 ／ 全'+sr.legs+'便</span>'):'')+'</div>';
     /* v18.86 修正23⑨: ✎ の注記行と行末の ✎ は廃止（手修正の内容はそのまま反映される） */
-    html+='<table><thead><tr>'+(sr.showCode?'<th style="width:65px">品番</th>':'')
-      +'<th>名称</th><th style="width:45px">入数</th><th style="width:55px">出荷総数</th><th style="width:55px">出荷箱数</th><th style="width:55px">出荷バラ</th></tr></thead><tbody>';
+    html+='<table><thead><tr>'+(sr.showCode?'<th style="width:72px">品番</th>':'')
+      +'<th>名称</th><th style="width:52px">入数</th><th style="width:66px">出荷総数</th><th style="width:66px">出荷箱数</th><th style="width:66px">出荷バラ</th></tr></thead><tbody>';
     /* v18.89 修正25③: 明細ごとの見出し行（【パーツ単品】や製品タイトル）は出さず、部材だけを並べる */
     sr.rows.forEach(function(r){
-      html+='<tr>'+(sr.showCode?('<td style="font-size:8px">'+(r.code||'')+'</td>'):'')
-        +'<td>'+r.label+(r.note?' <span style="font-size:7px;color:#975a16">('+r.note+')</span>':'')+'</td>'
+      html+='<tr>'+(sr.showCode?('<td style="font-size:10px">'+(r.code||'')+'</td>'):'')
+        +'<td>'+r.label+(r.note?' <span style="font-size:9px;color:#975a16">('+r.note+')</span>':'')+'</td>'
         +'<td class="c">'+(r.irisu===''?'':fm(r.irisu))+'</td>'
         +'<td class="c" style="font-weight:700">'+fm(r.qty)+'</td>'
         +'<td class="c">'+(r.boxes===''?'':fm(r.boxes))+'</td>'
@@ -6937,7 +6942,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     });
     if(!sr.rows.length)html+='<tr><td colspan="'+nCol+'" style="text-align:center;color:#999">出荷する部材がありません</td></tr>';
     html+='</tbody></table>';
-    html+='<div style="margin-top:4px;font-size:11px;font-weight:700">正箱数： '+fm(sr.totalBoxes)+' 箱'+(sr.baraKinds>0?('　＋　バラ '+sr.baraKinds+'種'):'')+'</div>';
+    html+='<div style="margin-top:4px;font-size:13px;font-weight:700">正箱数： '+fm(sr.totalBoxes)+' 箱'+(sr.baraKinds>0?('　＋　バラ '+sr.baraKinds+'種'):'')+'</div>';
   }
   if(!isReceipt&&!isShipping){
     html+='<div class="tot-box">';
@@ -6955,7 +6960,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var notesBeforePO=(docType==='quote'&&order.withPO);
   if(notesBeforePO&&order.notes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(order.notes)+'</div>';
   if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
-  html+='<div style="margin-top:16px;font-size:9px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
+  html+='<div style="margin-top:16px;font-size:11px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
   else if(isReceipt){
     /* ===== v18.92 修正26④: 受領日と受領者（署名欄）は★枠を設けて書く場所を分かりやすくする =====
@@ -6964,10 +6969,10 @@ function generateQuoteHTML(order,docType,legIndex,scope){
        ★枠の外の下に返信のお願いを1文入れる（依頼どおり枠外）。 */
     html+='上記の通り受領致しました。';
     html+='<table style="margin-top:6px"><tbody><tr>';
-    html+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:10px;text-align:center">受領日</td><td style="width:32%;height:46px">&nbsp;</td>';
-    html+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:10px;text-align:center">受領者（署名）</td><td>&nbsp;</td>';
+    html+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:12px;text-align:center">受領日</td><td style="width:32%;height:46px">&nbsp;</td>';
+    html+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:12px;text-align:center">受領者（署名）</td><td>&nbsp;</td>';
     html+='</tr></tbody></table>';
-    html+='<div style="margin-top:5px;font-size:9px">内容をご確認のうえ、FAXかメールにてご返信をお願いいたします。</div>';
+    html+='<div style="margin-top:5px;font-size:11px">内容をご確認のうえ、FAXかメールにてご返信をお願いいたします。</div>';
   }
   else if(isShipping){
     /* v18.84 修正22⑤: 記載項目は上のヘッダー欄に集約したので、文末の配送先・納品日時・荷送人の
@@ -10606,7 +10611,7 @@ function InvPage(p){
 
 /* 画面プレビューの「備考」枠（印刷用の notesBoxHTML と同じ見た目） */
 function previewNotesBox(notes){
-  return h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:8,fontSize:9}},
+  return h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:8,fontSize:11}},
     h('tbody',null,h('tr',null,
       h('td',{style:{border:'1px solid #999',width:70,textAlign:'center',verticalAlign:'middle',padding:'6px 4px',letterSpacing:4}},'備考'),
       h('td',{style:{border:'1px solid #999',padding:'6px 10px',lineHeight:1.7}},
@@ -10661,10 +10666,10 @@ function QuotePreview(p){
   var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
   var salesP2=orderSalesPersonRaw(o,cust)||'齋藤 勝';/* v18.97 修正27④ */
   var slipCode=(dt==='quote'?'見積':dt==='invoice'?'請求':dt==='shipping'?'出荷':'納品')+'-'+o.no;
-  var cs={border:'1px solid #999',padding:'3px 6px',fontSize:9.5};/* v18.34 ⑫追随: 印刷版(9.5px)と一致 */
-  var tabStyle=function(k){return{padding:'4px 12px',fontSize:10,fontWeight:dt===k?700:400,cursor:'pointer',border:'1px solid #ccc',borderBottom:dt===k?'2px solid var(--nv)':'1px solid #ccc',background:dt===k?'#fff':'#f5f5f5',color:dt===k?'var(--nv)':'#666',borderRadius:'4px 4px 0 0',marginRight:2};};
+  var cs={border:'1px solid #999',padding:'3px 6px',fontSize:11.5};/* v18.34 ⑫追随: 印刷版(9.5px)と一致 */
+  var tabStyle=function(k){return{padding:'4px 12px',fontSize:12,fontWeight:dt===k?700:400,cursor:'pointer',border:'1px solid #ccc',borderBottom:dt===k?'2px solid var(--nv)':'1px solid #ccc',background:dt===k?'#fff':'#f5f5f5',color:dt===k?'var(--nv)':'#666',borderRadius:'4px 4px 0 0',marginRight:2};};
 
-  return h('div',{style:{fontSize:10.5,lineHeight:1.65}},/* v18.34 ⑫追随: 印刷版(10.5px/1.65)と一致 */
+  return h('div',{style:{fontSize:12.5,lineHeight:1.65}},/* v18.34 ⑫追随: 印刷版(10.5px/1.65)と一致 */
     /* v18.86 修正23③: 出荷指示書の手修正画面に埋め込むときはタブを出さない（hideTabs） */
     p.hideTabs?null:h('div',{style:{display:'flex',marginBottom:12,borderBottom:'1px solid #ccc'}},
       h('button',{style:tabStyle('quote'),onClick:function(){docType[1]('quote');}},'御見積書'),
@@ -10672,43 +10677,45 @@ function QuotePreview(p){
     ),
     h('div',{style:{border:'1px solid #ccc',borderRadius:8,padding:20,background:'#fff'}},
       h('div',{style:{textAlign:'right',marginBottom:4}},
-        h('span',{style:{fontSize:20,fontWeight:700,letterSpacing:4,borderBottom:'3px solid #222',paddingBottom:4,display:'inline-block'}},cfg.title)
+        h('span',{style:{fontSize:24,fontWeight:700,letterSpacing:4,borderBottom:'3px solid #222',paddingBottom:4,display:'inline-block'}},cfg.title)
       ),
       /* v18.86 修正23⑩: 出荷指示書は表題の下の副題を出さない
          v18.92 修正26⑥⑦: 副題が空の帳票（納品書・物品受領書）も同じ間隔だけ空ける */
-      (isShipping||!cfg.subtitle)?h('div',{style:{marginBottom:10}}):h('div',{style:{textAlign:'right',fontSize:9,color:'#444',marginBottom:14}},cfg.subtitle),
+      (isShipping||!cfg.subtitle)?h('div',{style:{marginBottom:10}}):h('div',{style:{textAlign:'right',fontSize:11,color:'#444',marginBottom:14}},cfg.subtitle),
       /* v18.72 修正17⑧ ／ v18.73 追加修正⑧: 弊社の欄は見積書の右側・お客様名より下の行から（印刷用HTMLと同じ） */
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}},
         h('div',{style:{width:'52%',borderLeft:'3px solid #222',padding:'8px 12px',lineHeight:1.8}},
           /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（印刷用HTMLと同じ） */
-          isShipping?h('div',{style:{fontSize:14,fontWeight:700}},shipDocAddressee(o,p.scope&&p.scope.wh)):
+          isShipping?h('div',{style:{fontSize:17,fontWeight:700}},shipDocAddressee(o,p.scope&&p.scope.wh)):
           /* v18.97 修正27⑧: 請求書・物品受領書・納品書の宛先は ✎ 手修正の値（印刷用HTMLと同じ） */
-          h('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},dvP?(dvP.toName||''):(cust?cust.name+' 御中':'')),
+          h('div',{style:{fontSize:17,fontWeight:700,marginBottom:4}},dvP?(dvP.toName||''):(cust?cust.name+' 御中':'')),
           /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ。先方担当者（ご担当）は削除 */
-          isShipping?null:h('div',{style:{fontSize:9}},dvP?(dvP.toPostal?'〒'+String(dvP.toPostal).replace(/^〒/,''):''):(cust&&cust.postal?'〒'+cust.postal:'')),
-          isShipping?null:h('div',{style:{fontSize:10}},dvP?(dvP.toAddress||''):(cust?cust.pref+(cust.city||''):'')),
-          isShipping?null:h('div',{style:{display:'flex',gap:16,fontSize:9}},
+          isShipping?null:h('div',{style:{fontSize:11}},dvP?(dvP.toPostal?'〒'+String(dvP.toPostal).replace(/^〒/,''):''):(cust&&cust.postal?'〒'+cust.postal:'')),
+          isShipping?null:h('div',{style:{fontSize:12}},dvP?(dvP.toAddress||''):(cust?cust.pref+(cust.city||''):'')),
+          isShipping?null:h('div',{style:{display:'flex',gap:16,fontSize:11}},
             h('span',null,'電話番号 '+(dvP?(dvP.toPhone||''):(cust&&cust.phone?cust.phone:''))),
             h('span',null,'FAX番号 '+(dvP?(dvP.toFax||''):(cust&&cust.fax?cust.fax:'')))
           ),
-          isShipping?null:h('div',{style:{fontSize:9}},'顧客コード '+(dvP?(dvP.toCode||''):(cust?cust.id:'')))
+          isShipping?null:h('div',{style:{fontSize:11}},'顧客コード '+(dvP?(dvP.toCode||''):(cust?cust.id:'')))
         ),
-        h('div',{style:{flex:'0 0 auto',textAlign:'left',fontSize:9,lineHeight:1.8,padding:0,marginTop:34}},
-          h('div',{style:{fontSize:13,fontWeight:700,marginBottom:2}},'株式会社LEC'),
+        h('div',{style:{flex:'0 0 auto',textAlign:'left',fontSize:11,lineHeight:1.8,padding:0,marginTop:42}},
+          h('div',{style:{fontSize:15,fontWeight:700,marginBottom:2}},'株式会社LEC'),
           /* v18.74 修正17の再修正⑧: 上下関係はそのまま・ブロックは右端へ（印刷用HTMLと同じ）
              v18.72 修正17⑱: 会社名の下に代表者名（チェックが入っている案件だけ表記） */
           /* v18.93 修正26⑤: 3帳票は帳票ごとのチェック（docEdit.showRep）。既定は見積書の設定を引き継ぐ */
-          (dvP?dvP.showRep:o.showRepName)?h('div',{style:{fontSize:10,fontWeight:600,marginBottom:2}},dvP?dvP.repName:(o.repName||REP_NAME_DEFAULT)):null,
+          (dvP?dvP.showRep:o.showRepName)?h('div',{style:{fontSize:12,fontWeight:600,marginBottom:2}},dvP?dvP.repName:(o.repName||REP_NAME_DEFAULT)):null,
           h('div',null,'〒120-0005'),h('div',null,'東京都足立区綾瀬7-4-1'),
           h('div',null,'TEL. 03-5849-5563  FAX. 03-5849-5564'),
           /* v18.86 修正23⑪: 出荷指示書は登録番号を出さない。v18.33 要望⑬: 担当者は伝票コード上部の欄に統一 */
-          isShipping?null:h('div',null,'登録番号:T4040001077220')
+          isShipping?null:h('div',null,'登録番号:T4040001077220'),
+          /* v19.01: 出荷指示書の作成者（印刷用HTMLと同じ位置・同じ出所） */
+          isShipping?h('div',null,'作成者: '+(shvP.creator||'')):null
         )
       ),
       /* v18.85 修正22の追加修正: 出荷指示書のヘッダーは★左右2列（印刷用HTMLと同じ並び・同じ出所）。
          左=納品先名/荷受人/納品先住所/納品先電話番号/納品日時/便種、
          右=荷送人/担当者/出荷指示日/伝票コード/連絡事項。出荷元倉庫・受渡地・エンド納品先・出荷№は出さない。 */
-      isShipping?h('div',{style:{display:'flex',gap:16,fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
+      isShipping?h('div',{style:{display:'flex',gap:16,fontSize:11,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
         /* v18.86 修正23⑨: 手修正の ✎（ペン）アイコンは★完全に出さない（印刷用HTMLと同じ） */
         h('div',{style:{flex:1,minWidth:0}},
           h('div',null,h('b',null,'納品先名: '),shvP.name||''),
@@ -10722,14 +10729,14 @@ function QuotePreview(p){
         h('div',{style:{flex:1,minWidth:0}},
           /* v18.85: 荷送人は会社名／住所以降の2行 */
           h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'荷送人:'),
-            h('span',null,shvP.shipperName||'',shvP.shipperDetail?h('div',null,shvP.shipperDetail):null)),
+            h('span',null,shvP.shipperName||'',shvP.shipperDetail?h('div',null,String(shvP.shipperDetail).split(/(?=TEL)/).map(function(t,ti){return h('span',{key:ti,style:ti?{whiteSpace:'nowrap'}:null},t);})):null)),
           h('div',null,h('b',null,'担当者: '),shvP.staff||''),
           h('div',null,h('b',null,'出荷指示日: '),shvP.shipDate||''),
           h('div',null,h('b',null,'伝票コード: '),shvP.slip||''),
           h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'連絡事項:'),
             h('span',null,String(shvP.notes||'').split('\n').map(function(t,ti){return h('div',{key:ti},t);})))
         )
-      ):h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2px 16px',fontSize:9,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
+      ):h('div',{style:{display:'grid',gridTemplateColumns:'3fr 2fr',gap:'2px 16px',fontSize:11,border:'1px solid #ccc',padding:'6px 10px',marginBottom:10}},
         [
           /* v18.93 修正26②: 3帳票は dvP（✎手修正つきの値）、見積書は従来どおりの自動値 */
           h('div',{key:'q1'},h('b',null,'件名: '),dvP?dvP.subject:subject),
@@ -10740,7 +10747,7 @@ function QuotePreview(p){
           dt==='quote'?h('div',{key:'q5'},h('b',null,'納期: '),deliveryTermOf(o)):null,
           dt==='quote'?h('div',{key:'q6'},h('b',null,'有効期限: '),validUntilOf(o)):null,
           /* v18.92 修正26② 請求書に納品日（出荷指示書の納品日時と同じ値） */
-          dt==='invoice'?h('div',{key:'q5b'},h('b',null,'納品日: '),dvP.delivery):null,
+          dt==='invoice'?h('div',{key:'q5b'},h('b',null,'納品日: '),String(dvP.delivery||'').replace(/^(\d{4})-(\d{2})-(\d{2})/,'$1/$2/$3')):null,
           /* v18.92 修正26②④⑧: 3帳票は受渡地を出さない */
           isBillP?null:h('div',{key:'q7'},h('b',null,'受渡地: '),deliveryPlaceOf(o,cust)),/* v18.37 修正箇所2③: 自由入力優先・未入力は市区町村まで */
           (function(){
@@ -10755,22 +10762,22 @@ function QuotePreview(p){
           dt==='invoice'?h('div',{key:'q9b'},h('b',null,'支払条件: '),dvP.payTerms):null
         ]
       ),
-      !isReceipt&&!isShipping?h('div',{style:{fontSize:16,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+'\uFF1A\u3000\u00A5'+fm(total)):null,/* v18.81 \u4FEE\u6B6321\u2463: \u300C\u898B\u7A4D\u91D1\u984D\uFF1A\u3000\uFFE5\u2026\u300D\u3068\u30B9\u30DA\u30FC\u30B9\u3092\u7A7A\u3051\u308B\uFF08\u5370\u5237\u7248\u3068\u540C\u3058\uFF09 */
+      !isReceipt&&!isShipping?h('div',{style:{fontSize:19,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+'\uFF1A\u3000\u00A5'+fm(total)):null,/* v18.81 \u4FEE\u6B6321\u2463: \u300C\u898B\u7A4D\u91D1\u984D\uFF1A\u3000\uFFE5\u2026\u300D\u3068\u30B9\u30DA\u30FC\u30B9\u3092\u7A7A\u3051\u308B\uFF08\u5370\u5237\u7248\u3068\u540C\u3058\uFF09 */
       isShipping?
-        h('div',{style:{margin:'8px 0',padding:'6px 10px',border:'1px solid #ccc',background:'#f9f9f9',fontSize:10}},h('b',null,'見積№: '),o.no):
+        h('div',{style:{margin:'8px 0',padding:'6px 10px',border:'1px solid #ccc',background:'#f9f9f9',fontSize:12}},h('b',null,'見積№: '),o.no):
       isReceipt?
         h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'8px 0'}},
           h('thead',null,h('tr',null,
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:80})},'商品コード'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:86})},'商品コード'),
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},'商品名称'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:50})},'数量'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:40})},'単位'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:56})},'数量'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:44})},'単位'),
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},'備考')
           )),
           h('tbody',null,[].concat.apply([],rows.map(function(r){
             var els=[];
             if(r.configNote){els.push(h('tr',{key:'cfg-'+r.no},h('td',{style:cs},''),h('td',{colSpan:4,style:Object.assign({},cs,{fontWeight:600})},r.configNote)));}
-            els.push(h('tr',{key:r.no},h('td',{style:cs},r.code),h('td',{style:cs},r.name),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.qty),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.unit),h('td',{style:Object.assign({},cs,{fontSize:7,whiteSpace:'nowrap'})},r.remark||'')));
+            els.push(h('tr',{key:r.no},h('td',{style:cs},r.code),h('td',{style:cs},r.name),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.qty),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.unit),h('td',{style:Object.assign({},cs,{fontSize:8.5,whiteSpace:'nowrap'})},r.remark||'')));
             /* v18.73 修正17の追加: 扉色が複数のときは本体行の下に色ごとの行を出す */
             if(r.colorNote){els.push(h('tr',{key:'col-'+r.no},h('td',{style:cs},''),h('td',{colSpan:4,style:Object.assign({},cs,{fontWeight:600})},r.colorNote)));}
             return els;
@@ -10778,19 +10785,19 @@ function QuotePreview(p){
         ):
         h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'8px 0'}},
           h('thead',null,h('tr',null,
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:80})},'商品コード'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:76})},'商品コード'),
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},'商品名称'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:40})},'数量'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:35})},'単位'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:70})},'単価'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:80})},'金額'),
-            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:50})},'税'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:42})},'数量'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:36})},'単位'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:68})},'単価'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:78})},'金額'),
+            h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600,width:58})},'税'),
             h('th',{style:Object.assign({},cs,{background:'#f0f0f0',fontWeight:600})},'備考')
           )),
           h('tbody',null,[].concat.apply([],rows.map(function(r){
             var els=[];
             if(r.configNote){els.push(h('tr',{key:'cfg-'+r.no},h('td',{style:cs},''),h('td',{colSpan:7,style:Object.assign({},cs,{fontWeight:600})},r.configNote)));}
-            els.push(h('tr',{key:r.no},h('td',{style:cs},r.code),h('td',{style:cs},r.name),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.qty),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.unit),h('td',{style:Object.assign({},cs,{textAlign:'right'})},r.price===''?'':fm(r.price)),h('td',{style:Object.assign({},cs,{textAlign:'right',color:r.amount<0?'#B91C1C':''})},r.amount===''?'':fm(r.amount)),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.tax||''),h('td',{style:Object.assign({},cs,{fontSize:7,whiteSpace:'nowrap'})},r.remark||'')));
+            els.push(h('tr',{key:r.no},h('td',{style:cs},r.code),h('td',{style:cs},r.name),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.qty),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.unit),h('td',{style:Object.assign({},cs,{textAlign:'right'})},r.price===''?'':fm(r.price)),h('td',{style:Object.assign({},cs,{textAlign:'right',color:r.amount<0?'#B91C1C':''})},r.amount===''?'':fm(r.amount)),h('td',{style:Object.assign({},cs,{textAlign:'center'})},r.tax||''),h('td',{style:Object.assign({},cs,{fontSize:8.5,whiteSpace:'nowrap'})},r.remark||'')));
             /* v18.73 修正17の追加: 扉色が複数のときは本体行の下に色ごとの行を出す */
             if(r.colorNote){els.push(h('tr',{key:'col-'+r.no},h('td',{style:cs},''),h('td',{colSpan:7,style:Object.assign({},cs,{fontWeight:600})},r.colorNote)));}
             return els;
@@ -10809,22 +10816,22 @@ function QuotePreview(p){
         if(sr.scopeWh)scopeNote.push(((WH_MAP[sr.scopeWh]||{}).n)||sr.scopeWh+'ぶん');
         if(sr.scopeLine)scopeNote.push(lineName(sr.scopeLine)+'ぶん');
         return h('div',{style:{marginTop:12}},
-          h('div',{style:{fontSize:11,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'出荷部材',
+          h('div',{style:{fontSize:13,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'出荷部材',
             scopeNote.length?h('span',{style:{color:'#1e3a5f',marginLeft:8}},scopeNote.join(' ／ ')):null,
             sr.legIndex!=null?h('span',{style:{color:'#B45309',marginLeft:8}},(sr.legIndex+1)+'便 ／ 全'+sr.legs+'便'):null),
           h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'4px 0'}},
             h('thead',null,h('tr',null,
-              sr.showCode?h('th',{style:th(65)},'品番'):null,
-              h('th',{style:th()},'名称'),h('th',{style:th(45)},'入数'),h('th',{style:th(55)},'出荷総数'),
-              h('th',{style:th(55)},'出荷箱数'),h('th',{style:th(55)},'出荷バラ')
+              sr.showCode?h('th',{style:th(72)},'品番'):null,
+              h('th',{style:th()},'名称'),h('th',{style:th(52)},'入数'),h('th',{style:th(66)},'出荷総数'),
+              h('th',{style:th(66)},'出荷箱数'),h('th',{style:th(66)},'出荷バラ')
             )),
             h('tbody',null,(function(){
               /* v18.89 修正25③: 明細ごとの見出し行は出さず、部材だけを並べる（印刷用HTMLと同じ） */
               var out=sr.rows.map(function(r,ri){
                 return h('tr',{key:'sr'+ri},
-                  sr.showCode?h('td',{style:Object.assign({},cs,{fontSize:8})},r.code||''):null,
+                  sr.showCode?h('td',{style:Object.assign({},cs,{fontSize:10})},r.code||''):null,
                   /* v18.86 修正23⑨: ✎ は出さない */
-                  h('td',{style:cs},r.label,r.note?h('span',{style:{fontSize:7,color:'#975a16'}},'（'+r.note+'）'):null),
+                  h('td',{style:cs},r.label,r.note?h('span',{style:{fontSize:9,color:'#975a16'}},'（'+r.note+'）'):null),
                   h('td',{style:ctd},r.irisu===''?'':fm(r.irisu)),
                   h('td',{style:Object.assign({},ctd,{fontWeight:700})},fm(r.qty)),
                   h('td',{style:ctd},r.boxes===''?'':fm(r.boxes)),
@@ -10834,15 +10841,15 @@ function QuotePreview(p){
               return out;
             })())
           ),
-          h('div',{style:{marginTop:4,fontSize:11,fontWeight:700}},'正箱数： '+fm(sr.totalBoxes)+' 箱'+(sr.baraKinds>0?('　＋　バラ '+sr.baraKinds+'種'):''))
+          h('div',{style:{marginTop:4,fontSize:13,fontWeight:700}},'正箱数： '+fm(sr.totalBoxes)+' 箱'+(sr.baraKinds>0?('　＋　バラ '+sr.baraKinds+'種'):''))
         );
       })():null,
       !isReceipt&&!isShipping?h('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:8}},
-        h('div',{style:{width:280,border:'1px solid #999'}},
+        h('div',{style:{width:320,border:'1px solid #999'}},
           h('div',{style:{display:'flex',justifyContent:'space-between',padding:'3px 10px',borderBottom:'1px solid #ddd'}},h('span',null,'税抜合計'),h('span',null,'\u00A5'+fm(subtotal))),
           h('div',{style:{display:'flex',justifyContent:'space-between',padding:'3px 10px',borderBottom:'1px solid #ddd'}},h('span',null,'消費税額'),h('span',null,'\u00A5'+fm(tax10))),
-          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 10px',fontSize:13,fontWeight:900,background:'#f8f8f8',borderBottom:'2px solid #333'}},h('span',null,'税込合計'),h('span',null,'\u00A5'+fm(total))),
-          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'2px 10px',fontSize:8,color:'#666'}},h('span',null,'10%対象  \u00A5'+fm(subtotal)),h('span',null,'(税)  \u00A5'+fm(tax10)))
+          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'4px 10px',fontSize:15,fontWeight:900,background:'#f8f8f8',borderBottom:'2px solid #333'}},h('span',null,'税込合計'),h('span',null,'\u00A5'+fm(total))),
+          h('div',{style:{display:'flex',justifyContent:'space-between',padding:'2px 10px',fontSize:10,color:'#666'}},h('span',null,'10%対象  \u00A5'+fm(subtotal)),h('span',null,'(税)  \u00A5'+fm(tax10)))
           /* v18.47 修正５⑪の消し漏れ対応: 画面プレビュー側にも「8%軽減対」「非課税対象」が残っていたため削除。
              v18.46 では印刷用HTML(generateQuoteHTML)とExcel出力の2箇所しか消せておらず、見積書作成画面のプレビューには表示されたままだった。 */
         )
@@ -10852,33 +10859,33 @@ function QuotePreview(p){
       (dt==='quote'&&o.withPO&&o.notes)?h('div',{className:'qp-notes-before-po',style:{marginTop:10}},previewNotesBox(o.notes)):null,
       /* ===== v18.79 修正20③: 発注書付にチェックが入っている案件はプレビューにも発注書欄を出す ===== */
       (dt==='quote'&&o.withPO)?h('div',{style:{marginTop:18,borderTop:'2px dashed #999',paddingTop:10}},
-        h('div',{style:{fontSize:9.5,marginBottom:8}},'御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。'),
-        h('div',{style:{textAlign:'center',fontSize:17,fontWeight:700,letterSpacing:10,marginBottom:10}},'発 注 書'),
+        h('div',{style:{fontSize:11.5,marginBottom:8}},'御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。'),
+        h('div',{style:{textAlign:'center',fontSize:20,fontWeight:700,letterSpacing:10,marginBottom:10}},'発 注 書'),
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}},
-          h('div',{style:{fontSize:12,fontWeight:700}},'株式会社LEC 御中'),
-          h('div',{style:{fontSize:10,lineHeight:2}},
+          h('div',{style:{fontSize:14,fontWeight:700}},'株式会社LEC 御中'),
+          h('div',{style:{fontSize:12,lineHeight:2}},
             h('div',null,'発注日:　',h('span',{style:{display:'inline-block',minWidth:120,borderBottom:'1px solid #333'}},' ')),
             h('div',null,'発注する見積No:　',h('b',null,o.no)))),
         h('div',{style:{display:'flex',alignItems:'baseline',gap:20,marginBottom:14}},
-          h('div',{style:{fontSize:15,fontWeight:900}},'発注金額: \u00A5'+fm(total)),
-          h('div',{style:{fontSize:10}},'上記見積内容を発注いたします。')),
+          h('div',{style:{fontSize:18,fontWeight:900}},'発注金額: \u00A5'+fm(total)),
+          h('div',{style:{fontSize:12}},'上記見積内容を発注いたします。')),
         h('table',{style:{width:'100%',borderCollapse:'collapse'}},h('tbody',null,h('tr',null,
-          h('td',{style:Object.assign({},cs,{width:'22%',background:'#f0f0f0',fontWeight:700,fontSize:10})},'御発注者名'),
+          h('td',{style:Object.assign({},cs,{width:'22%',background:'#f0f0f0',fontWeight:700,fontSize:12})},'御発注者名'),
           h('td',{style:Object.assign({},cs,{height:52})},' '),
-          h('td',{style:Object.assign({},cs,{width:'8%',textAlign:'center',fontSize:9,color:'#666'})},'印'),
-          h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:10})},'御担当者名'),
+          h('td',{style:Object.assign({},cs,{width:'8%',textAlign:'center',fontSize:11,color:'#666'})},'印'),
+          h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:12})},'御担当者名'),
           h('td',{style:cs},' '))))
       ):null,
-      h('div',{style:{marginTop:14,fontSize:9,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
+      h('div',{style:{marginTop:14,fontSize:11,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
         /* v18.92 修正26④: 受領日・受領者（署名）は枠にし、枠外の下に返信のお願いを出す（印刷用HTMLと同じ） */
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',
           h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:6}},h('tbody',null,h('tr',null,
-            h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:10,textAlign:'center'})},'受領日'),
+            h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:12,textAlign:'center'})},'受領日'),
             h('td',{style:Object.assign({},cs,{width:'32%',height:46})},' '),
-            h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:10,textAlign:'center'})},'受領者（署名）'),
+            h('td',{style:Object.assign({},cs,{width:'18%',background:'#f0f0f0',fontWeight:700,fontSize:12,textAlign:'center'})},'受領者（署名）'),
             h('td',{style:cs},' ')))),
-          h('div',{style:{marginTop:5,fontSize:9}},'内容をご確認のうえ、FAXかメールにてご返信をお願いいたします。')
+          h('div',{style:{marginTop:5,fontSize:11}},'内容をご確認のうえ、FAXかメールにてご返信をお願いいたします。')
         ):null,
         /* v18.84 修正22⑤: 記載項目は上のヘッダー欄に集約。文末の重複表示と定型の ※2文は廃止
            （※2文は「連絡事項」のプルダウン選択肢 SHIP_NOTE_OPTIONS へ移動した）。
@@ -11181,7 +11188,7 @@ function OrdersPage(p){
      ★様式テンプレ（部材行の元ネタ）が引けない案件でもヘッダー項目は直せるように、
      　テンプレ未判定でも中断せず部材行だけ空にして開く（v18.83以前はここで toast して開かなかった）。 */
   /* 手修正で持つヘッダー項目（保存・プレビュー・読み込みで共通に使う） */
-  var SHIP_EDIT_FIELDS=['name','phone','postal','address','delivery','consignee','staff','slip','shipDate','shipper','notes'];
+  var SHIP_EDIT_FIELDS=['name','phone','postal','address','delivery','consignee','staff','slip','shipDate','creator','shipper','notes'];/* v19.01: creator（作成者）を追加 */
   function openShipEdit(o,shipMode){
     /* v18.49 修正６⑨: 納品完了の案件は内容を編集できない */
     if(isOrderLocked(o)){p.toast('納品完了の案件は編集できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
@@ -12965,7 +12972,9 @@ function OrdersPage(p){
           fld('staff','担当者',m0.autoHv.staff||'',{flex:1}),
           /* v18.85 修正22の確認事項4: 出荷指示日（既定は出力日）。手修正できる */
           fld('shipDate','出荷指示日（例: 2026/09/10）',m0.autoHv.shipDate||'',{flex:1}),
-          fld('slip','伝票コード',m0.autoHv.slip||'',{flex:1})
+          fld('slip','伝票コード',m0.autoHv.slip||'',{flex:1}),
+          /* v19.01: 作成者（既定は案件の起票者）。出荷指示書の会社電話番号の下に出る */
+          fld('creator','作成者（空欄=起票者）',m0.autoHv.creator||'',{flex:1})
         ),
         /* v18.86 修正23⑥: 連絡事項は「プルダウンで定型文を挿入 ＋ 自由入力」。
            選択肢は★いま選んでいる便種のものだけに切り替わる（SHIP_NOTE_OPTIONS_BY_MODE）。 */
