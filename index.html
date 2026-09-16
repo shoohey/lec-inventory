@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.06（請求書の前払い表記を銀行振り込みに訂正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.07（分割請求書は紙ごとに入金確認）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5917,6 +5917,27 @@ function invSplitOf(order){
   return {n:Math.max(1,Math.min(INV_SPLIT_MAX,parseInt(s.n)||1)),alloc:s.alloc||{}};
 }
 function invSplitCount(order){return invSplitOf(order).n;}
+/* ===== v19.07 口頭依頼: 請求書を分けた案件は★紙ごとに入金確認する =====
+   依頼「請求書を複数枚に分けた場合、納品完了タブでの入金確認チェックボックスを、分けた請求書に応じて
+   作成して。（請求書を分けると入金元が変わる為）」
+   保存先は order.paidSheets={'0':{at,by},…}。紙の番号は buildInvoiceSheets と同じ0始まり。
+   ★order.paid は「全枚そろって入金済み」を表すフラグとして残す（1枚運用の挙動は v18.67 のまま）。
+   ★paidSheets を持たない過去の案件は、o.paid=true なら★全枚入金済みとして読む
+   　（v18.67〜v19.06 の「入金済」は案件単位の意味だったため）。 */
+function paidSheetsOf(order){
+  var n=invSplitCount(order),src=(order&&order.paidSheets)||null,out={};
+  for(var i=0;i<n;i++){
+    var k=String(i);
+    if(src)out[k]=src[k]?Object.assign({},src[k]):null;
+    else out[k]=(order&&order.paid)?{at:(order.paidAt||''),by:(order.paidBy||'')}:null;
+  }
+  return out;
+}
+function paidSheetCount(order){
+  var m=paidSheetsOf(order);
+  return Object.keys(m).filter(function(k){return !!m[k];}).length;
+}
+function isFullyPaid(order){var n=invSplitCount(order);return n>0&&paidSheetCount(order)===n;}
 /* 金額のある行だけが分割の対象（見出しだけの行は対象外） */
 function invRowSplittable(r){return !!r&&r.amount!==''&&r.amount!=null&&!isNaN(parseInt(r.amount));}
 /* 台数で分けられるのは「数量が2以上で単価がある行」だけ（1式の送料などは金額でしか分けられない） */
@@ -11078,15 +11099,25 @@ function OrdersPage(p){
   }
   /* v18.67 修正14⑤: 入金確認（納品完了タブ）。納品完了の案件はロック中だが、入金確認は納品後に行う運用なので許可する
      （予備パーツの持ち帰りと同じ扱い）。 */
-  function togglePaid(o0,on){
+  /* v19.07 口頭依頼: 請求書を分けた案件は紙ごとにチェックする。idx は紙の番号（0始まり）。
+     ★1枚の案件は idx=0 だけなので、従来（v19.06 まで）とまったく同じ動きになる。 */
+  function togglePaidSheet(o0,idx,on){
     if(p.isReadOnly){p.toast('読み取り専用モード中は入金確認を登録できません');return;}
     var o=liveOrder(o0);
-    o.paid=!!on;
-    if(on){o.paidAt=td2();o.paidBy=p.userName||'';}
+    var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0));
+    var m=paidSheetsOf(o);
+    m[String(i)]=on?{at:td2(),by:(p.userName||'')}:null;
+    var ps={};Object.keys(m).forEach(function(k){if(m[k])ps[k]=m[k];});
+    if(Object.keys(ps).length)o.paidSheets=ps;else delete o.paidSheets;
+    /* o.paid は「全枚そろったか」。1枚運用では従来どおり「入金済かどうか」と同じ意味になる */
+    var all=Object.keys(ps).length===n;
+    o.paid=all;
+    if(all){o.paidAt=ps[String(i)].at;o.paidBy=ps[String(i)].by;}
     else{delete o.paidAt;delete o.paidBy;}
-    p.toast((on?'入金確認: ':'入金確認を解除: ')+o.no);
+    var lbl=n>1?('（'+(i+1)+'枚目）'):'';
+    p.toast((on?'入金確認: ':'入金確認を解除: ')+o.no+lbl);
     saveAll();
-    broadcastOrderUpdate(p.userName||'',o.no+(on?' 入金確認':' 入金確認解除'));
+    broadcastOrderUpdate(p.userName||'',o.no+lbl+(on?' 入金確認':' 入金確認解除'));
     p.bump&&p.bump();
   }
 
@@ -11545,7 +11576,7 @@ function OrdersPage(p){
             /* ===== v18.67 修正14⑤: 納品完了タブの「総金額 ／ 入金」列 =====
                上段に案件の総金額（税込）、下段に入金チェックボックスを置く（依頼: 総金額は入金チェックの上部）。
                金額は売上集計（📊 売上集計）と同じ計算＝商品＋棚板＋ベース＋パーツ＋送料−値引き。 */
-            baseTab[0]==='done'?h('td',{style:{minWidth:118}},
+            baseTab[0]==='done'?h('td',{style:{minWidth:invSplitCount(o)>1?152:118}},/* v19.07: 分割時は紙ごとの行が入るので少し広げる */
               (function(){
                 var f;try{f=orderSalesFigures(o);}catch(err){f=null;}
                 if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
@@ -11554,12 +11585,34 @@ function OrdersPage(p){
                   title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+'　※売上集計と同じ計算です'},
                   '¥'+fm(f.sell+tax));
               })(),
-              h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:p.isReadOnly?'not-allowed':'pointer',color:o.paid?'#065F46':'var(--g500)'},
-                title:o.paid?('入金確認済み'+(o.paidAt?'（'+o.paidAt+(o.paidBy?' '+o.paidBy:'')+'）':'')):'入金が確認できたらチェックを入れてください'},
-                h('input',{type:'checkbox',checked:!!o.paid,disabled:!!p.isReadOnly,onChange:function(e){togglePaid(o,e.target.checked);}}),
-                o.paid?'入金済':'入金確認'
-              ),
-              o.paid&&o.paidAt?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:1}},o.paidAt+(o.paidBy?'／'+o.paidBy:'')):null
+              /* ===== v19.07 口頭依頼: 請求書を分けた案件は★紙ごとにチェックボックスを出す =====
+                 「請求書を分けると入金元が変わる為」。1枚の案件は従来どおりチェックボックス1つ。 */
+              (function(){
+                var nInv=invSplitCount(o),pm=paidSheetsOf(o);
+                function chk(i,text){
+                  var st=pm[String(i)];
+                  return h('div',{key:'ps'+i},
+                    h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:p.isReadOnly?'not-allowed':'pointer',color:st?'#065F46':'var(--g500)'},
+                      title:st?('入金確認済み'+(st.at?'（'+st.at+(st.by?' '+st.by:'')+'）':'')):'入金が確認できたらチェックを入れてください'},
+                      h('input',{type:'checkbox',checked:!!st,disabled:!!p.isReadOnly,onChange:function(e){togglePaidSheet(o,i,e.target.checked);}}),
+                      text
+                    ),
+                    st&&st.at?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:1,marginLeft:16}},st.at+(st.by?'／'+st.by:'')):null
+                  );
+                }
+                /* 1枚の案件は従来どおりの「入金確認／入金済」1つだけ */
+                if(nInv<=1)return chk(0,pm['0']?'入金済':'入金確認');
+                var shs=null;try{shs=buildInvoiceSheets(o).sheets;}catch(err){shs=null;}
+                return h('div',null,
+                  h('div',{style:{fontSize:8,fontWeight:700,color:'#975a16',marginTop:3},
+                    title:'請求書を'+nInv+'枚に分けている案件です。入金元ごとにチェックしてください'},
+                    '請求書'+nInv+'枚 '+paidSheetCount(o)+'/'+nInv+'入金'),
+                  Array.apply(null,{length:nInv}).map(function(_,i){
+                    var amt=(shs&&shs[i])?shs[i].total:null;
+                    return chk(i,(i+1)+'枚目'+(amt!=null?' ¥'+fm(amt):'')+(pm[String(i)]?' 入金済':''));
+                  })
+                );
+              })()
             ):null,
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){showBom[1](false);detail[1](o);}},'詳細'),
