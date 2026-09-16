@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.03（請求書に支払期日・振込先の下）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.04（請求書の支払期日／前払いは支払条件と表記）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6074,6 +6074,10 @@ function payDueTextOf(invoiceDate,payTerms){
   if(!due)return '';
   return slashYmd(toBusinessDayBack(due));
 }
+/* v19.04 口頭依頼: 紙に出す見出しは★値によって変える（ユーザー指示「支払期日が明確な場合＝支払期日、
+   前払いの場合＝支払条件」）。日付になっているときだけ「支払期日」、それ以外（前払い・✎で入れた
+   文言など）は「支払条件」。★手修正で日付を入れた場合も自動で「支払期日」になる。 */
+function payDueLabelOf(v){return /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(String(v||'').trim())?'支払期日':'支払条件';}
 /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容を手修正する =====
    依頼「出荷指示書同様各項目を手修正できるようにして」。考え方は出荷指示書の ✎（order.shipEdit）と同じで、
    ★空欄＝自動値、入力した項目だけを上書きする。
@@ -6990,7 +6994,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   /* v19.03 口頭依頼: 支払期日は★振込先の下（依頼の指定位置）。空欄のときは行ごと出さない */
   if(docType==='invoice'){
     html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';
-    if(dv.payDue)html+='<br><b>支払期日: '+String(dv.payDue).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</b>';
+    if(dv.payDue)html+='<br><b>'+payDueLabelOf(dv.payDue)+': '+String(dv.payDue).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</b>';
   }
   else if(isReceipt){
     /* ===== v18.92 修正26④: 受領日と受領者（署名欄）は★枠を設けて書く場所を分かりやすくする =====
@@ -7106,7 +7110,7 @@ function generateExcel(order,docType){
     /* v19.03 口頭依頼: 支払期日も振込先の下に出す。★紙と数字がずれないよう、ここだけは docEditHeader（✎手修正込み）を見る
        （Excelの他の項目は従来どおり手修正を反映しない作りのまま）。 */
     var exPayDue='';try{exPayDue=docEditHeader(order,cust,'invoice',null).payDue||'';}catch(e){}
-    if(exPayDue)wsData.push(['支払期日: '+exPayDue]);
+    if(exPayDue)wsData.push([payDueLabelOf(exPayDue)+': '+exPayDue]);
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除 */
   /* v18.37 修正箇所2⑥: 全体備考は改行ごとに1行として出力（入力内容と連動） */
@@ -10901,7 +10905,7 @@ function QuotePreview(p){
       h('div',{style:{marginTop:14,fontSize:11,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
         /* v19.03 口頭依頼: 支払期日は振込先の下。★印刷用HTMLと同じ並びにすること */
         dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック',
-          dvP.payDue?h('span',null,h('br'),h('b',null,'支払期日: '+dvP.payDue)):null):null,
+          dvP.payDue?h('span',null,h('br'),h('b',null,payDueLabelOf(dvP.payDue)+': '+dvP.payDue)):null):null,
         /* v18.92 修正26④: 受領日・受領者（署名）は枠にし、枠外の下に返信のお願いを出す（印刷用HTMLと同じ） */
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',
           h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:6}},h('tbody',null,h('tr',null,
@@ -12853,9 +12857,10 @@ function OrdersPage(p){
             fldD('dest','納品先（空欄=案件のエンド納品先。登録が無ければ記載しません）',{flex:3}),
             isInv?fldD('payTerms','支払条件',{flex:2}):null
           ),
-          /* v19.03 口頭依頼: 支払期日（振込先の下に出る）。空欄なら支払条件と請求日から自動計算した日付 */
+          /* v19.03 口頭依頼: 支払期日（振込先の下に出る）。空欄なら支払条件と請求日から自動計算した日付
+             v19.04: 紙の見出しは値によって「支払期日」／「支払条件」に変わる（payDueLabelOf） */
           isInv?h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-            fldD('payDue','支払期日（空欄=支払条件と請求日から自動計算。例: 2026/10/31）',{flex:3})
+            fldD('payDue','支払期日（空欄=支払条件と請求日から自動計算。日付なら「支払期日」、前払い等の文言なら「支払条件」と印字）',{flex:3})
           ):null,
           /* v18.93 修正26⑤: 会社名の下の代表者名。既定は見積書作成画面のチェックを引き継ぐ */
           h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
