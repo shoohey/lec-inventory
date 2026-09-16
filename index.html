@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.09（金額検索・分割請求書の表題）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.10（並べ替えに入金確認日）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5942,6 +5942,22 @@ function paidSheetCount(order){
   return Object.keys(m).filter(function(k){return !!m[k];}).length;
 }
 function isFullyPaid(order){var n=invSplitCount(order);return n>0&&paidSheetCount(order)===n;}
+/* v19.10 口頭依頼: 並べ替え用の「入金確認日」。
+   ★全枚そろっていない案件は null（並べ替えでは後ろへ回す）。
+   ★請求書を分けている案件は「全てが揃った日」＝紙ごとの入金日の★いちばん新しい日（ユーザー指定）。
+   日付は paidSheets[i].at（v19.08 の入金日。チェックを入れた日が既定で、後から直せる）を見る。
+   ★画面に入金確認日そのものは出さない（依頼どおり並べ替えの基準としてだけ使う）。 */
+function paidConfirmedMs(order){
+  if(!isFullyPaid(order))return null;
+  var m=paidSheetsOf(order),best=null;
+  Object.keys(m).forEach(function(k){
+    var d=m[k]&&m[k].at?parseDocDate(m[k].at):null;
+    if(!d)return;
+    var t=d.getTime();
+    if(best===null||t>best)best=t;
+  });
+  return best;
+}
 /* 金額のある行だけが分割の対象（見出しだけの行は対象外） */
 function invRowSplittable(r){return !!r&&r.amount!==''&&r.amount!=null&&!isNaN(parseInt(r.amount));}
 /* 台数で分けられるのは「数量が2以上で単価がある行」だけ（1式の送料などは金額でしか分けられない） */
@@ -11065,6 +11081,14 @@ function OrdersPage(p){
   function cmpOrders(a,b){
     if(sortKey[0]==='no')return b.no>a.no?1:-1;
     if(sortKey[0]==='created')return (b.date||'')>(a.date||'')?1:((b.date||'')<(a.date||'')?-1:(b.no>a.no?1:-1));
+    /* v19.10 口頭依頼: 入金確認日（新しい順）。未入金・一部入金の案件は★後ろへまとめる */
+    if(sortKey[0]==='paid'){
+      var pa=paidConfirmedMs(a),pb=paidConfirmedMs(b);
+      if(pa!==null&&pb!==null)return pb-pa||(a.no>b.no?1:-1);
+      if(pa!==null)return -1;
+      if(pb!==null)return 1;
+      return a.no>b.no?1:-1;
+    }
     var da=deliveryPlanMs(a),db=deliveryPlanMs(b);
     if(da!==null&&db!==null)return da-db||(a.no>b.no?1:-1);
     if(da!==null)return -1;
@@ -11509,7 +11533,9 @@ function OrdersPage(p){
           h('select',{className:'inp',style:{width:150,fontSize:10},value:sortKey[0],onChange:function(e){sortKey[1](e.target.value);}},
             h('option',{value:'delivery'},'納品予定日が近い順'),
             h('option',{value:'no'},'案件番号（新しい順）'),
-            h('option',{value:'created'},'案件作成日（新しい順）')
+            h('option',{value:'created'},'案件作成日（新しい順）'),
+            /* v19.10 口頭依頼: 入金確認日（新しい順）。請求書を分けた案件は全枚そろった日で並ぶ */
+            h('option',{value:'paid',title:'入金確認日の新しい順。請求書を分けている案件は全枚そろった日で並びます。未入金・一部入金の案件は後ろへまとめます'},'入金確認日（新しい順）')
           ),
           /* v18.54 修正８①: 年間の売上集計。棚卸単価はここでだけ使う */
           h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:4,fontWeight:700},title:'期間を指定して売上・原価・粗利と棚卸評価額を集計します',onClick:function(){salesRep[1](true);}},'📊 売上集計')
