@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.02（粗利計算表の原価表アップロードを削除）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.03（請求書に支払期日・振込先の下）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6034,6 +6034,46 @@ function shipDocDeliveryText(order,cust){
     return shipEditHeader(order,c,{}).delivery||'';
   }catch(e){return order.deliveryDate||'';}
 }
+/* ===== v19.03 口頭依頼: 請求書の支払期日 =====
+   既定は「見積書の支払条件（order.paymentTerms）」を★請求日ベースで計算した日付。振込先の下に出す。
+   ★ユーザー確認済みの決め（2026-09-16・チャット）:
+     ・「○日締め翌月末」で請求日が締め日を過ぎていたら★次の締めへ送る
+       （例: 請求日 9/16・5日締め翌月末 → 10/5締め → 支払 11/30）。
+     ・「前払い（銀行振り込み）」「新規前入金」は日付ではなく★「前払い」と記載する。
+     ・土日にあたる日は★前営業日（金曜）へ繰り上げる。
+       ★祝日マスタが無いので祝日は判定できない（年末年始・GWにかかる月末は ✎ で手修正すること）。
+     ・上記に当てはまらない自由入力の支払条件は計算できないので★空欄（✎で手入力する）。
+   ★請求日・支払条件を ✎ で手修正したら、支払期日の自動値もそれに追随する（docEditHeader の末尾で計算）。 */
+function parseDocDate(s){
+  var m=/(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/.exec(String(s||''));
+  return m?new Date(+m[1],+m[2]-1,+m[3]):null;
+}
+function endOfMonthDate(y,m){return new Date(y,m+1,0);}/* m は0始まり。翌月0日＝その月の末日 */
+function toBusinessDayBack(d){
+  var w=d.getDay();
+  if(w===6)d.setDate(d.getDate()-1);/* 土 → 金 */
+  else if(w===0)d.setDate(d.getDate()-2);/* 日 → 金 */
+  return d;
+}
+function slashYmd(d){return d.getFullYear()+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2);}
+function payDueTextOf(invoiceDate,payTerms){
+  var pt=String(payTerms||'');
+  if(/前払|前入金/.test(pt))return '前払い';
+  var base=parseDocDate(invoiceDate);
+  if(!base)return '';
+  var due=null,mm;
+  if((mm=/納品後\s*(\d+)\s*日/.exec(pt))){
+    due=new Date(base.getFullYear(),base.getMonth(),base.getDate()+parseInt(mm[1],10));
+  }else if(/末\s*締め?\s*翌月末/.test(pt)){
+    due=endOfMonthDate(base.getFullYear(),base.getMonth()+1);/* 当月末締め → 翌月末 */
+  }else if((mm=/(\d+)\s*日?\s*締め?\s*翌月末/.exec(pt))){
+    var cut=parseInt(mm[1],10);
+    var cm=base.getMonth()+(base.getDate()<=cut?0:1);/* 締め日を過ぎていたら次の締めへ */
+    due=endOfMonthDate(base.getFullYear(),cm+1);
+  }
+  if(!due)return '';
+  return slashYmd(toBusinessDayBack(due));
+}
 /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容を手修正する =====
    依頼「出荷指示書同様各項目を手修正できるようにして」。考え方は出荷指示書の ✎（order.shipEdit）と同じで、
    ★空欄＝自動値、入力した項目だけを上書きする。
@@ -6043,7 +6083,8 @@ function shipDocDeliveryText(order,cust){
 var DOC_EDIT_TYPES=['invoice','receipt','delivery'];
 /* v18.97 修正27⑧: 宛先（宛名・〒・住所・電話・FAX・顧客コード）も手修正できるようにした（to〜 の6項目） */
 var DOC_EDIT_TO_KEYS=['toName','toPostal','toAddress','toPhone','toFax','toCode'];
-var DOC_EDIT_KEYS=['subject','staff','date','slip','delivery','dest','payTerms'].concat(DOC_EDIT_TO_KEYS);
+/* v19.03 口頭依頼: payDue（支払期日）を追加。請求書だけの項目なので DOC_EDIT_INHERIT_KEYS には入れない */
+var DOC_EDIT_KEYS=['subject','staff','date','slip','delivery','dest','payTerms','payDue'].concat(DOC_EDIT_TO_KEYS);
 function docEditFor(order,docType){
   var m=(order&&order.docEdit)||{};
   return m[docType]||{};
@@ -6107,6 +6148,9 @@ function docEditHeader(order,cust,docType,sheetIdx){
     edited:{}
   };
   DOC_EDIT_KEYS.forEach(function(k){if(de[k]){hv[k]=de[k];hv.edited[k]=true;}});
+  /* v19.03 口頭依頼: 支払期日の自動値は★手修正を当てた後の請求日・支払条件から計算する
+     （請求日や支払条件を ✎ で直したら期日もそれに追随する）。期日そのものの手修正は上のループで入っている。 */
+  if(!hv.edited.payDue)hv.payDue=(docType==='invoice')?payDueTextOf(hv.date,hv.payTerms):'';
   if(de.showRep!==undefined&&de.showRep!==null&&de.showRep!==''){hv.showRep=!!de.showRep;hv.edited.showRep=true;}
   if(de.repName){hv.repName=de.repName;hv.edited.repName=true;}
   /* 納品書で「請求書の手修正から来た項目」の印（記載内容の画面でその欄を入力不可にするのに使う） */
@@ -6943,7 +6987,11 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   if(notesBeforePO&&order.notes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(order.notes)+'</div>';
   if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
   html+='<div style="margin-top:16px;font-size:11px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
-  if(docType==='invoice'){html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';}
+  /* v19.03 口頭依頼: 支払期日は★振込先の下（依頼の指定位置）。空欄のときは行ごと出さない */
+  if(docType==='invoice'){
+    html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';
+    if(dv.payDue)html+='<br><b>支払期日: '+String(dv.payDue).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</b>';
+  }
   else if(isReceipt){
     /* ===== v18.92 修正26④: 受領日と受領者（署名欄）は★枠を設けて書く場所を分かりやすくする =====
        従来は「受領日:　　　　受領者（署名）:　　　」と全角スペースを並べただけだったので、
@@ -7055,6 +7103,10 @@ function generateExcel(order,docType){
   if(docType==='invoice'){
     wsData.push(['お振込手数料はお客様にてご負担ください。']);
     wsData.push(['振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック']);
+    /* v19.03 口頭依頼: 支払期日も振込先の下に出す。★紙と数字がずれないよう、ここだけは docEditHeader（✎手修正込み）を見る
+       （Excelの他の項目は従来どおり手修正を反映しない作りのまま）。 */
+    var exPayDue='';try{exPayDue=docEditHeader(order,cust,'invoice',null).payDue||'';}catch(e){}
+    if(exPayDue)wsData.push(['支払期日: '+exPayDue]);
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除 */
   /* v18.37 修正箇所2⑥: 全体備考は改行ごとに1行として出力（入力内容と連動） */
@@ -10847,7 +10899,9 @@ function QuotePreview(p){
           h('td',{style:cs},' '))))
       ):null,
       h('div',{style:{marginTop:14,fontSize:11,color:'#444',lineHeight:2,borderTop:'1px solid #ccc',paddingTop:8}},
-        dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック'):null,
+        /* v19.03 口頭依頼: 支払期日は振込先の下。★印刷用HTMLと同じ並びにすること */
+        dt==='invoice'?h('div',null,'お振込手数料はお客様にてご負担ください。',h('br'),'振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック',
+          dvP.payDue?h('span',null,h('br'),h('b',null,'支払期日: '+dvP.payDue)):null):null,
         /* v18.92 修正26④: 受領日・受領者（署名）は枠にし、枠外の下に返信のお願いを出す（印刷用HTMLと同じ） */
         dt==='receipt'?h('div',null,'上記の通り受領致しました。',
           h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:6}},h('tbody',null,h('tr',null,
@@ -12799,6 +12853,10 @@ function OrdersPage(p){
             fldD('dest','納品先（空欄=案件のエンド納品先。登録が無ければ記載しません）',{flex:3}),
             isInv?fldD('payTerms','支払条件',{flex:2}):null
           ),
+          /* v19.03 口頭依頼: 支払期日（振込先の下に出る）。空欄なら支払条件と請求日から自動計算した日付 */
+          isInv?h('div',{style:{display:'flex',gap:4,marginBottom:6}},
+            fldD('payDue','支払期日（空欄=支払条件と請求日から自動計算。例: 2026/10/31）',{flex:3})
+          ):null,
           /* v18.93 修正26⑤: 会社名の下の代表者名。既定は見積書作成画面のチェックを引き継ぐ */
           h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
             h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:600,cursor:'pointer'}},
