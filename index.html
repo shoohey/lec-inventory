@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.10（並べ替えに入金確認日）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.11（入金確認日はチェックした操作日）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5944,16 +5944,23 @@ function paidSheetCount(order){
 function isFullyPaid(order){var n=invSplitCount(order);return n>0&&paidSheetCount(order)===n;}
 /* v19.10 口頭依頼: 並べ替え用の「入金確認日」。
    ★全枚そろっていない案件は null（並べ替えでは後ろへ回す）。
-   ★請求書を分けている案件は「全てが揃った日」＝紙ごとの入金日の★いちばん新しい日（ユーザー指定）。
-   日付は paidSheets[i].at（v19.08 の入金日。チェックを入れた日が既定で、後から直せる）を見る。
-   ★画面に入金確認日そのものは出さない（依頼どおり並べ替えの基準としてだけ使う）。 */
+   ★請求書を分けている案件は「全てが揃った日」＝紙ごとの★いちばん新しい日（ユーザー指定）。
+   ★画面に入金確認日そのものは出さない（依頼どおり並べ替えの基準としてだけ使う）。
+   ===== v19.11 口頭依頼: 並べる基準は★チェックを入れた操作日 =====
+   v19.10 は入金日（at）で並べていたが「操作した日で並べたい」との指示。
+   togglePaidSheet がチェック時に checkedAt を別に記録し、ここではそれを優先して見る。
+   ★checkedAt は★入金日を後から直しても変わらない（setPaidSheetField は触らない）。
+   ★v19.10 以前にチェックした紙には checkedAt が無いので、その場合だけ入金日（at）で代用する。 */
+function paidSheetMs(st){
+  var d=st?parseDocDate(st.checkedAt||st.at):null;
+  return d?d.getTime():null;
+}
 function paidConfirmedMs(order){
   if(!isFullyPaid(order))return null;
   var m=paidSheetsOf(order),best=null;
   Object.keys(m).forEach(function(k){
-    var d=m[k]&&m[k].at?parseDocDate(m[k].at):null;
-    if(!d)return;
-    var t=d.getTime();
+    var t=paidSheetMs(m[k]);
+    if(t===null)return;
     if(best===null||t>best)best=t;
   });
   return best;
@@ -11150,8 +11157,10 @@ function OrdersPage(p){
     var o=liveOrder(o0);
     var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0));
     var m=paidSheetsOf(o);
-    /* v19.08: チェックを入れた時点の既定は「今日・商工組合中央金庫」。どちらも下の欄で直せる */
-    m[String(i)]=on?{at:td2(),by:(p.userName||''),bank:PAID_BANKS[0]}:null;
+    /* v19.08: チェックを入れた時点の既定は「今日・商工組合中央金庫」。どちらも下の欄で直せる。
+       v19.11: checkedAt＝★チェックを入れた操作日。入金日(at)を後から直しても変わらない
+       　（並べ替えの「入金確認日」はこちらを見る）。 */
+    m[String(i)]=on?{at:td2(),by:(p.userName||''),bank:PAID_BANKS[0],checkedAt:td2()}:null;
     var ps={};Object.keys(m).forEach(function(k){if(m[k])ps[k]=m[k];});
     if(Object.keys(ps).length)o.paidSheets=ps;else delete o.paidSheets;
     /* o.paid は「全枚そろったか」。1枚運用では従来どおり「入金済かどうか」と同じ意味になる */
