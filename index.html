@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.08（入金確認に入金日と口座を追加）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.09（金額検索・分割請求書の表題）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6792,7 +6792,9 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     invSheetIdx=Math.max(0,Math.min(_in-1,parseInt(scope.invSheet)||0));
     var _is=buildInvoiceSheets(order).sheets[invSheetIdx];
     rows=_is.rows;subtotal=_is.subtotal;tax10=_is.tax;total=_is.total;
-    cfg=Object.assign({},cfg,{title:cfg.title+'（'+(invSheetIdx+1)+'／全'+_in+'枚）'});
+    /* v19.09 口頭依頼: 分けたときの表題は★「請求書」だけにする（「（1／全2枚）」は付けない）。
+       ★どの紙かは伝票コードの枝番（請求-QT-…-1）で分かる（v18.95 修正26③）。
+       ★出荷指示書の「(1便／全2便)」は別物なので残してある（上の legIndex の分岐）。 */
   }
   var subject=quoteSubjectOf(order);
   var payTerms=order.paymentTerms||'前払い（銀行振り込み）';
@@ -10710,7 +10712,7 @@ function QuotePreview(p){
   var invSheetP=null;
   if(invSplitApplies(dt)&&invSplitCount(o)>1){
     invSheetP=Math.max(0,Math.min(invSplitCount(o)-1,parseInt(p.invSheet)||0));
-    cfg=Object.assign({},cfg,{title:cfg.title+'（'+(invSheetP+1)+'／全'+invSplitCount(o)+'枚）'});
+    /* v19.09 口頭依頼: 表題は「請求書」だけ（印刷用HTMLと揃える）。紙の区別は伝票コードの枝番で付く */
   }
   var dvP=isBillP?docEditHeader(o,cust,dt,invSheetP):null;
   if(dvP&&invSheetP!=null&&!dvP.edited.slip)dvP.slip=dvP.slip+'-'+(invSheetP+1);
@@ -11043,7 +11045,21 @@ function OrdersPage(p){
        ほぼ全案件が同じ部材名を持つため絞り込みとして機能していなかった）。
        商品名も従来どおり対象外。検索できるのは 案件番号・顧客名・エンド納品先・件名・倉庫名・担当者。 */
     hay.push(orderStaffOf(o,c));
-    return hay.join(' ').toLowerCase().indexOf(q)>=0;
+    if(hay.join(' ').toLowerCase().indexOf(q)>=0)return true;
+    /* ===== v19.09 口頭依頼: 金額でも検索できるようにする =====
+       ★数字だけを入力したときだけ金額を突き合わせる（毎回 buildQuoteRows を回さないため）。
+       　「¥335,500」「335,500」「335500円」はどれも 335500 として扱う。部分一致なので「3355」でも当たる。
+       対象は 案件の税抜合計・税込合計と、請求書を分けている案件は★紙ごとの税込合計。 */
+    var qn=q.replace(/[¥￥,，\s円]/g,'');
+    if(!qn||!/^\d+$/.test(qn))return false;
+    var amts=[];
+    try{
+      var f=orderSalesFigures(o);
+      var tax=Math.floor(f.sell*0.1);
+      amts.push(f.sell,f.sell+tax);
+      if(invSplitCount(o)>1)buildInvoiceSheets(o).sheets.forEach(function(s){amts.push(s.subtotal,s.total);});
+    }catch(err){return false;}
+    return amts.some(function(v){return String(Math.abs(Math.round(v))).indexOf(qn)>=0;});
   }
   /* v18.46 修正５③: 既定は納品予定日の近い順。納品予定日が読み取れない案件は後ろへ回し、案件作成日（新しい順）で並べる */
   function cmpOrders(a,b){
@@ -11473,7 +11489,9 @@ function OrdersPage(p){
       h('div',{className:'chd'},h('h3',null,(baseTab[0]==='done'?'納品完了':baseTab[0]==='lost'?'失注':baseTab[0]==='all'?'案件管理':('案件管理 — '+orderBaseLabel(baseTab[0])))+'（'+fl.length+'/'+(baseTab[0]==='done'?tabCount.done:baseTab[0]==='lost'?tabCount.lost:tabCount.all)+'件）'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
           /* v18.48 修正６②: 検索対象からアイテムを外し担当者を追加したため、プレースホルダの文言も差し替える */
-          h('input',{className:'inp',style:{width:200},value:kw[0],onChange:function(e){kw[1](e.target.value);},placeholder:'🔍 案件番号・顧客・倉庫・担当者で検索…'}),
+          /* v19.09 口頭依頼: 金額検索を追加したのでプレースホルダとツールチップにも入れる */
+          h('input',{className:'inp',style:{width:200},value:kw[0],onChange:function(e){kw[1](e.target.value);},placeholder:'🔍 案件番号・顧客・倉庫・担当者・金額で検索…',
+            title:'案件番号・顧客名・エンド納品先・件名・倉庫名・担当者で検索します。数字だけを入れると金額（税抜／税込。請求書を分けている案件は紙ごとの金額も）で検索します（¥やカンマは付けても可）'}),
           /* v18.46 修正４④: ステータスは複数選択可（クリックでON/OFF）。「全て」で解除 */
           /* v18.67 修正14④: 納品完了タブは全件が「納品完了」なのでステータス絞り込みは出さない。
              他のタブでは「納品完了」を選択肢から外す（納品完了タブへ移っているため0件になる）。 */
