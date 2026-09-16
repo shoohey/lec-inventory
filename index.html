@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.04（請求書の支払期日／前払いは支払条件と表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.05（請求書の支払条件を文末へ一本化・備考の位置）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6058,7 +6058,9 @@ function toBusinessDayBack(d){
 function slashYmd(d){return d.getFullYear()+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2);}
 function payDueTextOf(invoiceDate,payTerms){
   var pt=String(payTerms||'');
-  if(/前払|前入金/.test(pt))return '前払い';
+  /* v19.05 口頭依頼: 前払いの案件の記載は「前払い（現金振込）」（見積書の支払条件の文言とは別に固定）。
+     ★見出しは payDueLabelOf が日付でないと判定するので「支払条件: 前払い（現金振込）」と出る。 */
+  if(/前払|前入金/.test(pt))return '前払い（現金振込）';
   var base=parseDocDate(invoiceDate);
   if(!base)return '';
   var due=null,mm;
@@ -6912,8 +6914,10 @@ function generateQuoteHTML(order,docType,legIndex,scope){
       ?((order.endUser.name||'')+(order.endUser.postal?' 〒'+order.endUser.postal:'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:''))
       :'');
     if(destTxt){html+='<div style="grid-column:1/3"><b>'+(isBill?'納品先':'エンド納品先')+':</b> '+destTxt+'</div>';}
+    /* v19.05 口頭依頼: 請求書★上部の詳細枠からは「支払条件」を削除した（文末の支払期日／支払条件へ一本化）。
+       ★order.paymentTerms（＝dv.payTerms）は支払期日の計算に使い続けるので、値そのものは残っている。
+       　見積書は従来どおりここに出す（支払条件の出所は見積書）。 */
     if(docType==='quote'){html+='<div><b>支払条件:</b> '+payTerms+'</div>';}
-    else if(docType==='invoice'){html+='<div><b>支払条件:</b> '+dv.payTerms+'</div>';}
     html+='</div>';
     if(isQuoteDoc)html+='</div>';/* .qhead を閉じる（v18.99 修正28） */
   }
@@ -6988,7 +6992,10 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   /* ===== v18.99 修正28: 発注書付の見積書は「見積内容 → 備考 → 発注書」の順にする =====
      従来は全体備考が発注書の下（文末の欄）に出ていた。★発注書付のときだけ備考を合計金額の直下へ移す。 */
   var notesBeforePO=(docType==='quote'&&order.withPO);
-  if(notesBeforePO&&order.notes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(order.notes)+'</div>';
+  /* v19.05 口頭依頼: 請求書の備考は「お振込手数料はお客様にてご負担ください」の★上部線より上に出す。
+     ＝下の border-top を引いた枠の外（上）に置く。発注書付見積書と同じ扱いにまとめている。 */
+  var notesAbove=notesBeforePO||docType==='invoice';
+  if(notesAbove&&order.notes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(order.notes)+'</div>';
   if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
   html+='<div style="margin-top:16px;font-size:11px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   /* v19.03 口頭依頼: 支払期日は★振込先の下（依頼の指定位置）。空欄のときは行ごと出さない */
@@ -7017,7 +7024,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
-  if(!notesBeforePO)html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（記載場所は従来と同一） */
+  if(!notesAbove)html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（v19.05: 請求書は上へ移動） */
   html+='</div></div>'+(isQuoteDoc?QUOTE_PAGINATE_SCRIPT:'')+'</body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
   return{html:html,subtotal:subtotal,tax:tax10,total:total,rows:rows,subject:subject,slipCode:slipCode};
 }
@@ -7059,7 +7066,9 @@ function generateExcel(order,docType){
   if(docType==='quote'){
     wsData.push(['納期',deliveryTermOf(order),'','有効期限',validUntilOf(order)]);
   }
-  wsData.push(['受渡地',deliveryPlaceOf(order,cust),'','支払条件',exPayTerms]);
+  /* v19.05 口頭依頼: 請求書は上部の支払条件を出さない（文末の支払期日／支払条件へ一本化）。HTML版と揃える */
+  if(docType==='invoice')wsData.push(['受渡地',deliveryPlaceOf(order,cust)]);
+  else wsData.push(['受渡地',deliveryPlaceOf(order,cust),'','支払条件',exPayTerms]);
   /* v17.1 要望25: エンド納品先（代理店経由） */
   if(order.endUser&&(order.endUser.name||order.endUser.address)){
     wsData.push(['エンド納品先',(order.endUser.name||'')+(order.endUser.postal?'（〒'+order.endUser.postal+'）':'')+' '+(order.endUser.address||'')+(order.endUser.phone?' TEL.'+order.endUser.phone:'')]);
@@ -10784,8 +10793,8 @@ function QuotePreview(p){
             /* v18.92 修正26②④⑧: 3帳票は見出しを「納品先」にする */
             return h('div',{key:'q8',style:{gridColumn:'1/3'}},h('b',null,(isBillP?'納品先: ':'エンド納品先: ')),dtx);
           })(),
-          dt==='quote'?h('div',{key:'q9'},h('b',null,'支払条件: '),payTerms2):null,
-          dt==='invoice'?h('div',{key:'q9b'},h('b',null,'支払条件: '),dvP.payTerms):null
+          /* v19.05 口頭依頼: 請求書の上部の枠からは支払条件を削除（文末へ一本化）。★印刷用HTMLと揃えること */
+          dt==='quote'?h('div',{key:'q9'},h('b',null,'支払条件: '),payTerms2):null
         ]
       ),
       !isReceipt&&!isShipping?h('div',{style:{fontSize:19,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+'\uFF1A\u3000\u00A5'+fm(total)):null,/* v18.81 \u4FEE\u6B6321\u2463: \u300C\u898B\u7A4D\u91D1\u984D\uFF1A\u3000\uFFE5\u2026\u300D\u3068\u30B9\u30DA\u30FC\u30B9\u3092\u7A7A\u3051\u308B\uFF08\u5370\u5237\u7248\u3068\u540C\u3058\uFF09 */
@@ -10882,7 +10891,8 @@ function QuotePreview(p){
       ):null,
       /* ===== v18.99 修正28の再修正: 発注書付の見積書は「見積内容 → 備考 → 発注書」の順（印刷用HTMLと同じ） =====
          v18.99 では印刷用HTMLだけ直し、この画面プレビューは備考が発注書の下のままだった（ユーザー指摘「直ってない」）。 */
-      (dt==='quote'&&o.withPO&&o.notes)?h('div',{className:'qp-notes-before-po',style:{marginTop:10}},previewNotesBox(o.notes)):null,
+      /* v19.05 口頭依頼: 請求書の備考も★上部線より上（下の枠の外）へ。印刷用HTMLの notesAbove と同じ条件にすること */
+      (((dt==='quote'&&o.withPO)||dt==='invoice')&&o.notes)?h('div',{className:'qp-notes-before-po',style:{marginTop:10}},previewNotesBox(o.notes)):null,
       /* ===== v18.79 修正20③: 発注書付にチェックが入っている案件はプレビューにも発注書欄を出す ===== */
       (dt==='quote'&&o.withPO)?h('div',{style:{marginTop:18,borderTop:'2px dashed #999',paddingTop:10}},
         h('div',{style:{fontSize:11.5,marginBottom:8}},'御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。'),
@@ -10922,7 +10932,7 @@ function QuotePreview(p){
         /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（上部の欄には残る） */
         dt==='delivery'?h('div',null,'上記の通り納品致しましたのでご査収ください。'):null,
         /* v18.37 修正箇所2⑥: 全体備考は入力内容と連動し、改行のまま箇条書き表示（記載場所は従来と同一） */
-        (o.notes&&!(dt==='quote'&&o.withPO))?previewNotesBox(o.notes):null/* 発注書付の見積書は上（合計の下）に出している */
+        (o.notes&&!((dt==='quote'&&o.withPO)||dt==='invoice'))?previewNotesBox(o.notes):null/* 発注書付の見積書と請求書は上に出している（v19.05） */
       )
     )
   );
@@ -12855,7 +12865,8 @@ function OrdersPage(p){
           ),
           h('div',{style:{display:'flex',gap:4,marginBottom:6}},
             fldD('dest','納品先（空欄=案件のエンド納品先。登録が無ければ記載しません）',{flex:3}),
-            isInv?fldD('payTerms','支払条件',{flex:2}):null
+            /* v19.05: 請求書の紙には直接出なくなったが、下の支払期日の計算に使うので欄は残す */
+            isInv?fldD('payTerms','支払条件（紙には出ません。下の支払期日の計算に使います）',{flex:2}):null
           ),
           /* v19.03 口頭依頼: 支払期日（振込先の下に出る）。空欄なら支払条件と請求日から自動計算した日付
              v19.04: 紙の見出しは値によって「支払期日」／「支払条件」に変わる（payDueLabelOf） */
