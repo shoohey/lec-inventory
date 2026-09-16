@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.07（分割請求書は紙ごとに入金確認）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.08（入金確認に入金日と口座を追加）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5924,12 +5924,16 @@ function invSplitCount(order){return invSplitOf(order).n;}
    ★order.paid は「全枚そろって入金済み」を表すフラグとして残す（1枚運用の挙動は v18.67 のまま）。
    ★paidSheets を持たない過去の案件は、o.paid=true なら★全枚入金済みとして読む
    　（v18.67〜v19.06 の「入金済」は案件単位の意味だったため）。 */
+/* v19.08 口頭依頼: 入金のチェック時に★入金日（カレンダー）と★入金された口座（選択式）を入れる。
+   at は td2() と同じ YYYY-MM-DD（<input type="date"> にそのまま渡せる書式）。
+   bank は下の2択。★口座を増やすときはこの配列に足すだけでよい。 */
+var PAID_BANKS=['商工組合中央金庫','三井住友銀行'];
 function paidSheetsOf(order){
   var n=invSplitCount(order),src=(order&&order.paidSheets)||null,out={};
   for(var i=0;i<n;i++){
     var k=String(i);
     if(src)out[k]=src[k]?Object.assign({},src[k]):null;
-    else out[k]=(order&&order.paid)?{at:(order.paidAt||''),by:(order.paidBy||'')}:null;
+    else out[k]=(order&&order.paid)?{at:(order.paidAt||''),by:(order.paidBy||''),bank:(order.paidBank||'')}:null;
   }
   return out;
 }
@@ -11106,18 +11110,35 @@ function OrdersPage(p){
     var o=liveOrder(o0);
     var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0));
     var m=paidSheetsOf(o);
-    m[String(i)]=on?{at:td2(),by:(p.userName||'')}:null;
+    /* v19.08: チェックを入れた時点の既定は「今日・商工組合中央金庫」。どちらも下の欄で直せる */
+    m[String(i)]=on?{at:td2(),by:(p.userName||''),bank:PAID_BANKS[0]}:null;
     var ps={};Object.keys(m).forEach(function(k){if(m[k])ps[k]=m[k];});
     if(Object.keys(ps).length)o.paidSheets=ps;else delete o.paidSheets;
     /* o.paid は「全枚そろったか」。1枚運用では従来どおり「入金済かどうか」と同じ意味になる */
     var all=Object.keys(ps).length===n;
     o.paid=all;
-    if(all){o.paidAt=ps[String(i)].at;o.paidBy=ps[String(i)].by;}
-    else{delete o.paidAt;delete o.paidBy;}
+    if(all){o.paidAt=ps[String(i)].at;o.paidBy=ps[String(i)].by;o.paidBank=ps[String(i)].bank;}
+    else{delete o.paidAt;delete o.paidBy;delete o.paidBank;}
     var lbl=n>1?('（'+(i+1)+'枚目）'):'';
     p.toast((on?'入金確認: ':'入金確認を解除: ')+o.no+lbl);
     saveAll();
     broadcastOrderUpdate(p.userName||'',o.no+lbl+(on?' 入金確認':' 入金確認解除'));
+    p.bump&&p.bump();
+  }
+  /* v19.08 口頭依頼: 入金日・口座の変更。チェック済みの紙だけが対象（未チェックなら何もしない）。
+     ★o.paid が立っている（全枚そろっている）ときは案件直下の paidAt/paidBy/paidBank も追随させる。 */
+  function setPaidSheetField(o0,idx,patch){
+    if(p.isReadOnly){p.toast('読み取り専用モード中は入金内容を変更できません');return;}
+    var o=liveOrder(o0);
+    var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0)),k=String(i);
+    var m=paidSheetsOf(o);
+    if(!m[k])return;/* チェックが入っていない紙は編集できない */
+    m[k]=Object.assign({},m[k],patch);
+    var ps={};Object.keys(m).forEach(function(kk){if(m[kk])ps[kk]=m[kk];});
+    o.paidSheets=ps;
+    if(o.paid){o.paidAt=ps[k].at;o.paidBy=ps[k].by;o.paidBank=ps[k].bank;}
+    saveAll();
+    broadcastOrderUpdate(p.userName||'',o.no+(n>1?'（'+(i+1)+'枚目）':'')+' 入金内容を変更');
     p.bump&&p.bump();
   }
 
@@ -11576,7 +11597,7 @@ function OrdersPage(p){
             /* ===== v18.67 修正14⑤: 納品完了タブの「総金額 ／ 入金」列 =====
                上段に案件の総金額（税込）、下段に入金チェックボックスを置く（依頼: 総金額は入金チェックの上部）。
                金額は売上集計（📊 売上集計）と同じ計算＝商品＋棚板＋ベース＋パーツ＋送料−値引き。 */
-            baseTab[0]==='done'?h('td',{style:{minWidth:invSplitCount(o)>1?152:118}},/* v19.07: 分割時は紙ごとの行が入るので少し広げる */
+            baseTab[0]==='done'?h('td',{style:{minWidth:152}},/* v19.07/v19.08: 紙ごとの行と入金日・口座の欄が入るぶん広げてある */
               (function(){
                 var f;try{f=orderSalesFigures(o);}catch(err){f=null;}
                 if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
@@ -11597,7 +11618,21 @@ function OrdersPage(p){
                       h('input',{type:'checkbox',checked:!!st,disabled:!!p.isReadOnly,onChange:function(e){togglePaidSheet(o,i,e.target.checked);}}),
                       text
                     ),
-                    st&&st.at?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:1,marginLeft:16}},st.at+(st.by?'／'+st.by:'')):null
+                    /* ===== v19.08 口頭依頼: チェックを入れたら入金日（カレンダー）と口座（選択式）を入れる =====
+                       既定は「今日・商工組合中央金庫」。その場で直せる（別画面を開かなくてよい）。 */
+                    st?h('div',{style:{marginLeft:16,marginTop:2,display:'flex',flexDirection:'column',gap:2}},
+                      h('label',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'var(--g500)'}},'入金日',
+                        h('input',{className:'inp',type:'date',style:{fontSize:9,padding:'1px 3px',height:20,width:118},
+                          value:st.at||'',disabled:!!p.isReadOnly,title:'入金日',
+                          onChange:function(e){setPaidSheetField(o,i,{at:e.target.value});}})),
+                      h('label',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'var(--g500)'}},'口座',
+                        h('select',{className:'inp',style:{fontSize:9,padding:'1px 3px',height:20,width:118},
+                          value:st.bank||'',disabled:!!p.isReadOnly,title:'入金された口座',
+                          onChange:function(e){setPaidSheetField(o,i,{bank:e.target.value});}},
+                          st.bank?null:h('option',{value:''},'（未選択）'),
+                          PAID_BANKS.map(function(b){return h('option',{key:b,value:b},b);})))
+                    ):null,
+                    st&&st.by?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:1,marginLeft:16}},'記録: '+st.by):null
                   );
                 }
                 /* 1枚の案件は従来どおりの「入金確認／入金済」1つだけ */
