@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.14（入数マスタのExcel取込）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.15（ベースボードの単価の紐づけ訂正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -4984,10 +4984,15 @@ var PRODUCT_CODE_MAP={
   'sa|S|per|d':['MYPL-Sα','MyプラロッカーSαサイズ　パーソナル']
 };
 /* ベースボード・棚板（ライン群＋サイズグループ別） */
+/* v19.15（2026-09-25 ユーザー回答）: SMLXLのベースボードは単価マスタに無いコードに紐づいていた。
+   ・日本製 'MYPL-E-B' → ★色で分ける: グレー MYPL-E-BG／ブラック MYPL-E-BB（'eco|sml' は色が分からないときの既定＝グレー）。
+     従来は売価が固定値4,000円（単価表と同額）、原価（仕入・棚卸）は0円で粗利に入っていなかった。
+   ・台湾製 'ＭＹＰＬ－Ｂ' → ＭＹＰＬ－ＢーTW（販売4,400円）。従来は固定値4,000円で見積っていた。 */
 var BASE_CODE_MAP={
-  'eco|sml':['MYPL-E-B','MyプラECOロッカーベースボード黒'],
+  'eco|sml':['MYPL-E-BG','ＭｙプラECOロッカーベースボード（グレー）　アンカー穴キャップ付'],
+  'eco|sml|bk':['MYPL-E-BB','MyプラECOロッカーベースボード黒'],
   'eco|ss':['MYPL-E-ＳＳ-B','ＭｙプラECOロッカーＳＳベースボード'],
-  'tw|sml':['ＭＹＰＬ－Ｂ','Myプラ　ベースボード'],
+  'tw|sml':['ＭＹＰＬ－ＢーTW','Myプラ　ベースボード'],
   'tw|ss':['ＭＹＰＬ－ＳＳＢ','ＭｙプラロッカーＳＳ/３Ｓベース'],
   'sa|sml':['MYPL-SαーB','MyプラロッカーSα用ベースボード（７ｃｍ）'],
   'sa|ss':['MYPL-SαーB','MyプラロッカーSα用ベースボード（７ｃｍ）']
@@ -5053,8 +5058,8 @@ var PART_CODE_MAP={
   'back|L':['MYPL-E-L-BB','単品　Ｌサイズ　バックボード'],'back|SS':['MYPL-E-SS-BB','単品　SSサイズ　バックボード　'],
   'back|3S':['MYPL-E-3S-SB','単品　３Ｓサイズ　バックボード　'],
   'top|sml':['MYPL-E-TB','単品　上下共通ボード'],'top|ss':['MYPL-E-SSTB','単品　ＳＳ上下共通ボード　'],
-  /* ベースボード（グレー/ブラックとも同単価） */
-  'base|sml':['MYPL-E-B','MyプラECOロッカーベースボード黒'],'base_bk|sml':['MYPL-E-B','MyプラECOロッカーベースボード黒'],
+  /* ベースボード。v19.15: SMLXLは単価マスタに無い 'MYPL-E-B' だったのを色別のコードへ（グレー MYPL-E-BG／ブラック MYPL-E-BB） */
+  'base|sml':['MYPL-E-BG','ＭｙプラECOロッカーベースボード（グレー）　アンカー穴キャップ付'],'base_bk|sml':['MYPL-E-BB','MyプラECOロッカーベースボード黒'],
   'base|ss':['MYPL-E-ＳＳ-B','ＭｙプラECOロッカーＳＳベースボード'],'base_bk|ss':['MYPL-E-ＳＳ-B','ＭｙプラECOロッカーＳＳベースボード'],
   'vj|ss':['ＭＹＰＬ－Ｊ','上下ジョイント黒色（学校保管備品）'],
   'totte|':['F00017','トッテ'],
@@ -5107,12 +5112,16 @@ var PART_CODE_MAP_TW={
   'back|3S':['MYPL-3S-SB','単品　３Ｓサイズ　バックボード'],
   'top|sml':['MYPL-TB','単品　上下共通ボード'],'top|ss':['MYPL-SSTB','単品　ＳＳ上下共通ボード'],
   'hanger|':['MYPL-HP-G','ハンガーパイプ（グレー）'],
+  /* v19.15: 台湾製・Sαのベースボード単品は各ラインのベースのコード（従来はECOのコードを引いていた） */
+  'base|sml':['ＭＹＰＬ－ＢーTW','Myプラ　ベースボード'],'base_bk|sml':['ＭＹＰＬ－ＢーTW','Myプラ　ベースボード'],
+  'base|ss':['ＭＹＰＬ－ＳＳＢ','ＭｙプラロッカーＳＳ/３Ｓベース'],'base_bk|ss':['ＭＹＰＬ－ＳＳＢ','ＭｙプラロッカーＳＳ/３Ｓベース'],
   'railSideSML|':['F00053TW','サイドレール（２本）'],'railBackSML|':['F00054TW','バックレール'],
   'railSideSS|':['F00053TW','サイドレール（２本）'],'railBackSS|':['F00054TW','バックレール'],
   'connector|SS':['MYPL-SSαC','SSα用コネクター']
 };
 var PART_CODE_MAP_SA={
   'door|S':['MYPL-SαD','単品　Sαサイズ扉'],
+  'base|sml':['MYPL-SαーB','MyプラロッカーSα用ベースボード（７ｃｍ）'],/* v19.15 */
   'connector|SS':['MYPL-SSαC','SSα用コネクター']
 };
 /* ===== v18.70 修正16④: 新柏・尼高・八木熊の商品コードを部材在庫のアイテムに紐づける =====
@@ -5322,7 +5331,9 @@ function bodyCodeOf(ln){
   if(!e&&t==='per')e=PRODUCT_CODE_MAP[g+'|'+ln.size+'|std|'+d]||PRODUCT_CODE_MAP[g+'|'+ln.size+'|std|d'];
   return e||null;
 }
-function baseCodeOf(ln){var g=priceLineGroup(ln&&ln.line);var grp=(ln&&ln.size)?sizeObj(ln.size).grp:'sml';return BASE_CODE_MAP[g+'|'+grp]||BASE_CODE_MAP[g+'|sml']||null;}
+function baseCodeOf(ln){var g=priceLineGroup(ln&&ln.line);var grp=(ln&&ln.size)?sizeObj(ln.size).grp:'sml';
+  if(ln&&ln.baseColor==='bk'&&BASE_CODE_MAP[g+'|'+grp+'|bk'])return BASE_CODE_MAP[g+'|'+grp+'|bk'];/* v19.15: 黒のベース */
+  return BASE_CODE_MAP[g+'|'+grp]||BASE_CODE_MAP[g+'|sml']||null;}
 function shelfCodeOf(ln){var g=priceLineGroup(ln&&ln.line);var grp=(ln&&ln.size)?sizeObj(ln.size).grp:'sml';return SHELF_CODE_MAP[g+'|'+grp]||SHELF_CODE_MAP['eco|sml']||null;}
 function lockCodeOf(lockKey){return (lockKey&&lockKey!=='none')?(LOCK_CODE_MAP[lockKey]||null):null;}
 /* v18.70 修正16③: 製品ラインごとに商品コードが違う部材があるため lineId を受け取る。
