@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.13（入数訂正: 在庫表・出荷指示書の入り数）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.14（入数マスタのExcel取込）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1431,6 +1431,81 @@ function applyCustomIrisuObj(ci){
       IRISU[k]=v;
     }
   });
+}
+/* ===== v19.14 入数マスタのExcel取込（⚙在庫項目マスタの「📥 入数マスタExcel取込」） =====
+   NAS の マスタデータ\在庫管理システム_マスタ一覧_*.xlsx の「入数マスタ」シートを直して取り込む。
+   列: 区分（共通／Sα）・在庫キー（例 side|S・totte）・入数。ほかの列は読まない（参考列は自由に足してよい）。
+   ★取込時点のシステムの値と★違う行だけを反映する（直していない行は何もしない）。
+   　こうしないと「共通」行でトッテを直したのに、Sα 行に残っている旧い値でSα専用の入数が作られてしまう。
+   ★区分がSαの行は Sα だけの入数（IRISU_LINE.sa／保存先 '@line:sa'）、それ以外は共通の入数（IRISU）。
+   ★ブラックのベース・棚板（base_bk/shelf_bk）はグレーと同じ入数なので、本体キー（base/shelf）へ書く。 */
+function parseIrisuImportAoa(aoa){
+  var hdr=-1,ci={};
+  for(var r=0;r<Math.min(aoa.length,10);r++){
+    var row=aoa[r]||[],f={};
+    row.forEach(function(x,i){var t=String(x==null?'':x).replace(/\s/g,'');
+      if(f.key==null&&/^在庫キー/.test(t))f.key=i;
+      if(f.val==null&&/^入数/.test(t))f.val=i;
+      if(f.kbn==null&&/^区分/.test(t))f.kbn=i;});
+    if(f.key!=null&&f.val!=null){hdr=r;ci=f;break;}
+  }
+  if(hdr<0)return {error:'ヘッダ行（「在庫キー」「入数」）が見つかりません'};
+  var customKeys={};try{JSON.parse(lsGet('lec_custom_parts')||'[]').forEach(function(c){if(c&&c.key)customKeys[c.key]=true;});}catch(e){}
+  var changes=[],errors=[],seen={},rowsRead=0;
+  /* 同じファイルの「共通」行の値（Sα行が共通と同じ値なら、Sα専用の入数は作らないため） */
+  var commonInFile={};
+  for(var r0=hdr+1;r0<aoa.length;r0++){
+    var w0=aoa[r0]||[],k0=String(w0[ci.key]==null?'':w0[ci.key]).trim();if(!k0)continue;
+    if(/Sα|ＳＡ|^sa$/i.test(String(ci.kbn!=null&&w0[ci.kbn]!=null?w0[ci.kbn]:'').trim()))continue;
+    var n0=Number(String(w0[ci.val]==null?'':w0[ci.val]).replace(/[,\s　]/g,''));
+    var s0=k0.split('|');if(n0>0)commonInFile[_masterKeyOf(IRISU,s0[0])+'|'+(s0[1]||'')]=n0;
+  }
+  for(var rr=hdr+1;rr<aoa.length;rr++){
+    var rw=aoa[rr]||[];
+    var kraw=String(rw[ci.key]==null?'':rw[ci.key]).trim();
+    if(!kraw)continue;
+    var vraw=String(rw[ci.val]==null?'':rw[ci.val]).replace(/[,\s　]/g,'');
+    var line=/Sα|ＳＡ|^sa$/i.test(String(ci.kbn!=null&&rw[ci.kbn]!=null?rw[ci.kbn]:'').trim())?'sa':'';
+    var ks=kraw.split('|'),key=ks[0],sub=ks.length>1&&ks[1]!==''?ks[1]:undefined;
+    rowsRead++;
+    if(!vraw)continue;
+    var v=Number(vraw);
+    if(!(v>0)||Math.floor(v)!==v){errors.push((rr+1)+'行目 '+kraw+': 入数「'+vraw+'」は1以上の整数にしてください');continue;}
+    if(!(IRISU[key]!==undefined||PART_LABELS[key]||customKeys[key])){errors.push((rr+1)+'行目 '+kraw+': 在庫キーがシステムにありません');continue;}
+    var tk=line?key:_masterKeyOf(IRISU,key);
+    if(!line&&sub!==undefined&&typeof IRISU[tk]==='number'){errors.push((rr+1)+'行目 '+kraw+': この部材はサイズ別の入数を持ちません（在庫キーは「'+key+'」だけにしてください）');continue;}
+    var id=(line||'共通')+'|'+tk+'|'+(sub||'');
+    if(seen[id])continue;/* 同じ部材の2行目（ブラックとグレー等）は先の行を使う */
+    seen[id]=true;
+    var cur=irisuDisp(key,sub,line||undefined);
+    if(cur===v)continue;
+    /* Sα専用の入数を持たない部材の Sα 行が、共通の値（ファイルの共通行／無ければ今の値）と同じなら何もしない。
+       共通行でトッテを直したとき、Sα行に残った旧い値でSα専用の入数ができるのを防ぐ。 */
+    if(line&&irisuLineVal(line,key,sub)===undefined){
+      var cmn=commonInFile[_masterKeyOf(IRISU,key)+'|'+(sub||'')];
+      if(v===(cmn!==undefined?cmn:irisuDisp(key,sub)))continue;
+    }
+    changes.push({line:line,key:tk,sub:sub,label:kraw,from:cur,to:v});
+  }
+  return {changes:changes,errors:errors,rowsRead:rowsRead};
+}
+function applyIrisuImport(changes){
+  var ci=JSON.parse(lsGet('lec_custom_irisu')||'{}');
+  if(!ci['@rev'])ci['@rev']=IRISU_REV;
+  changes.forEach(function(c){
+    var tgt,store;
+    if(c.line){
+      tgt=IRISU_LINE[c.line]=IRISU_LINE[c.line]||{};
+      store=ci['@line:'+c.line]=(ci['@line:'+c.line]&&typeof ci['@line:'+c.line]==='object')?ci['@line:'+c.line]:{};
+    }else{tgt=IRISU;store=ci;}
+    if(c.sub!==undefined){
+      if(typeof tgt[c.key]!=='object'||tgt[c.key]===null)tgt[c.key]={};
+      tgt[c.key][c.sub]=c.to;
+      if(typeof store[c.key]!=='object'||store[c.key]===null)store[c.key]={};
+      store[c.key][c.sub]=c.to;
+    }else{tgt[c.key]=c.to;store[c.key]=c.to;}
+  });
+  lsSet('lec_custom_irisu',JSON.stringify(ci));
 }
 /* v14.2: カスタム入数の永続化 - localStorageから上書き */
 (function applyCustomIrisu(){
@@ -17015,6 +17090,36 @@ function PartsPage(p){
             }},'＋ 追加')
           )
         ),
+        /* v19.14: 入数マスタのExcel取込（NAS のマスタ一覧Excelの「入数マスタ」シート） */
+        h('div',{style:{padding:10,background:'#EFF6FF',borderRadius:6,marginBottom:12,border:'1px solid #BFDBFE',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+          h('label',{className:'btn btn-xs btn-nv',style:{cursor:'pointer'}},'📥 入数マスタExcel取込',
+            h('input',{type:'file',accept:'.xlsx,.xls',style:{display:'none'},onChange:function(e){
+              var f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
+              if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+              var rd=new FileReader();
+              rd.onload=function(ev){
+                try{
+                  var wb=XLSX.read(ev.target.result,{type:'array'});
+                  var sn=wb.SheetNames.find(function(n){return n.indexOf('入数')>=0;})||wb.SheetNames[0];
+                  var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:''});
+                  var pr=parseIrisuImportAoa(aoa);
+                  if(pr.error){p.toast(pr.error);return;}
+                  var msg='「'+sn+'」シート '+pr.rowsRead+'行を読みました。\n';
+                  if(pr.errors.length)msg+='\n★取り込めない行 '+pr.errors.length+'件（この行は無視します）:\n'+pr.errors.slice(0,15).join('\n')+(pr.errors.length>15?'\n…ほか'+(pr.errors.length-15)+'件':'')+'\n';
+                  if(!pr.changes.length){alert(msg+'\n入数が変わる行はありませんでした（システムの値と同じです）。');return;}
+                  msg+='\n入数が変わる行 '+pr.changes.length+'件:\n'+pr.changes.slice(0,30).map(function(c){
+                    return (c.line?'[Sα] ':'')+c.label+'　'+(c.from===''?'（空欄）':c.from)+' → '+c.to;}).join('\n')+(pr.changes.length>30?'\n…ほか'+(pr.changes.length-30)+'件':'')+'\n\nこの内容で反映しますか？（全端末に共有されます）';
+                  if(!confirm(msg))return;
+                  applyIrisuImport(pr.changes);
+                  bump[1](bump[0]+1);
+                  cloudSave(p.userName);
+                  p.toast('入数を'+pr.changes.length+'件反映しました（全端末共有）');
+                }catch(err){p.toast('入数マスタの読込に失敗: '+(err&&err.message||err));}
+              };
+              rd.readAsArrayBuffer(f);
+            }})),
+          h('span',{style:{fontSize:9,color:'var(--g500)',lineHeight:1.6}},'NASの「マスタデータ」にある マスタ一覧Excel の「入数マスタ」シートを直して取り込みます。直した行（システムの値と違う行）だけが反映されます。')
+        ),
         h('div',{style:{maxHeight:'55vh',overflow:'auto'}},
           h('table',{className:'tbl',style:{fontSize:11}},
             h('thead',null,h('tr',null,
@@ -17069,10 +17174,13 @@ function PartsPage(p){
                             cl[r.baseKey][r.sub]=v;
                           }else{tl[r.baseKey]=v;cl[r.baseKey]=v;}
                         }else if(r.sub){
-                          if(typeof IRISU[r.baseKey]!=='object'||IRISU[r.baseKey]===null)IRISU[r.baseKey]={};
-                          IRISU[r.baseKey][r.sub]=v;
-                          if(typeof ci[r.baseKey]!=='object'||ci[r.baseKey]===null)ci[r.baseKey]={};
-                          ci[r.baseKey][r.sub]=v;
+                          /* v19.14: ブラックのベース・棚板（base_bk/shelf_bk）は本体キーへ書く。
+                             base_bk:{sml:v} だけを作ると、もう片方のサイズ（ss）の入数が 1 になってしまうため */
+                          var bk2=_masterKeyOf(IRISU,r.baseKey);
+                          if(typeof IRISU[bk2]!=='object'||IRISU[bk2]===null)IRISU[bk2]={};
+                          IRISU[bk2][r.sub]=v;
+                          if(typeof ci[bk2]!=='object'||ci[bk2]===null)ci[bk2]={};
+                          ci[bk2][r.sub]=v;
                         }else{
                           IRISU[r.baseKey]=v;
                           ci[r.baseKey]=v;
