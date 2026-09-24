@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.11（入金確認日はチェックした操作日）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.12（修正29: 出荷指示の遷移先・予備パーツ別紙ほか）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2522,10 +2522,13 @@ function shipRowToBOM(name){
    ・spareRest(pool) … 最後まで一致しなかった残りを配列で返す
    ★返却済みかどうかは見ない。出荷指示書は「出荷時に持ち出す数」を示す帳票のため、持ち出し数(qty)で合算する。 */
 function spareBomKey(key,sub,color){return (key||'')+'|'+(sub==null?'':sub)+'|'+(color||'');}
-function spareBomPool(order){
+/* v19.12 修正29③: onlyWh を渡すと「その倉庫から持ち出した予備パーツ」だけのプールになる
+   （省略時は従来どおり全件）。予備パーツだけの出荷指示書を倉庫ごとに出すために使う。 */
+function spareBomPool(order,onlyWh){
   var pool={};
   ((order&&order.spareParts)||[]).forEach(function(s){
     var q=parseInt(s.qty)||0;if(q<=0)return;
+    if(onlyWh&&String(s.wh||s.fromWh||'')!==onlyWh)return;
     var k=spareBomKey(s.key,s.sub,s.color);
     if(!pool[k])pool[k]={qty:0,label:s.label||s.key||'',key:s.key,sub:s.sub,color:s.color,isDoor:!!s.isDoor,line:s.lineId};
     pool[k].qty+=q;
@@ -2541,6 +2544,21 @@ function spareTake(pool,key,sub,color){
 function spareRest(pool){
   var out=[];
   Object.keys(pool||{}).forEach(function(k){if(pool[k].qty>0)out.push(pool[k]);});
+  return out;
+}
+/* ===== v19.12 修正29③: 予備パーツだけの出荷指示書 =====
+   依頼29「予備パーツ選択時は本出荷指示書とは別の予備パーツだけの出荷指示を出したい
+   （本出荷指示書と合算しない）」。★v18.56 確認項目②の「部材内訳の同じ行へ足し込む」は
+   この依頼で★撤回された（出荷指示書の見え方だけ。在庫の増減・aggregateOrderBOM は従来どおり）。
+   紙は「持ち出し元の倉庫」ごとに分ける。倉庫の記録が無い古い予備パーツは倉庫なしの1枚にまとまる。 */
+var SHIP_SPARE_LABEL='予備パーツ';
+function spareShipWhs(order){
+  var out=[];
+  ((order&&order.spareParts)||[]).forEach(function(s){
+    if((parseInt(s&&s.qty)||0)<=0)return;
+    var w=String((s&&(s.wh||s.fromWh))||'');
+    if(out.indexOf(w)<0)out.push(w);
+  });
   return out;
 }
 /* order全明細のBOMを {key|sub|color: qty} に集約（扉は色別展開・部分解放を差引・倉庫横断合算）。
@@ -2668,6 +2686,8 @@ function shipEditRowKeys(b,ln){
    ★手修正の読み出しは必ずこの関数を通すこと（order.shipEdit を直接見ない）。 */
 function shipScopeKey(scope){
   var w=(scope&&scope.wh)||'',l=(scope&&scope.line)||'';
+  /* v19.12 修正29③: 予備パーツだけの紙は別キー（本体の紙と手修正が混ざらないように） */
+  if(scope&&scope.spare)return 'spare|'+((scope&&scope.spareWh)||'');
   return (w||l)?(w+'|'+l):'';
 }
 function shipEditFor(order,scope){
@@ -2800,6 +2820,10 @@ function shipEditHeader(order,cust,scope){
   if(se.slip){hv.slip=se.slip;hv.edited.slip=true;}
   if(se.shipDate){hv.shipDate=se.shipDate;hv.edited.shipDate=true;}
   if(se.creator){hv.creator=se.creator;hv.edited.creator=true;}
+  /* ===== v19.12 修正29⑤: 出荷指示書の作成者は★氏名だけを出す =====
+     アカウント名は「事務/岩上」のように 役割/氏名 で登録されている（userDisplayName の項参照）。
+     依頼「事務や営業の文言は不要」により、自動値も ✎手修正も最後にここで氏名だけへ寄せる。 */
+  hv.creator=userDisplayName(hv.creator);
   if(se.shipper){
     hv.shipper=se.shipper;hv.edited.shipper=true;
     /* 手修正の荷送人も SHIPPER_INFO に住所があれば併記する（無ければ名前だけ） */
@@ -4206,7 +4230,7 @@ function _heldQtyAt(ln,wh,b,dcColor){
    ・shipOrder / shipOrderMulti が走った時刻と倉庫を order._stockConsumed に残す
    ・差し戻し（restoreShippedStock）で在庫を戻したら記録も消す
    ・案件詳細で「出荷指示以降なのに記録も台帳も無い」案件に警告を出す（stockConsumedState）
-   ・出荷指示を2回押しても在庫が二重に引かれないよう confirmShipOrder で確認を挟む */
+   ・出荷指示を2回押しても在庫が二重に引かれないよう runShipOrder（v19.11以前は confirmShipOrder）で確認を挟む */
 function markStockConsumed(order){
   if(!order)return;
   order._stockConsumed={at:new Date().toLocaleString('ja-JP'),whs:orderWhs(order).slice()};
@@ -5774,6 +5798,20 @@ function buildQuoteRows(order){
       /* 修正17⑥: パーツ単品は既定で「送料の上」に並べる（下の concat で送料の直前へ入れる） */
       var amt=(ln.qty||0)*(ln.unitPrice||0);
       var pName=ln.isFreeInput?(ln.name||''):stripLineTag(productName(ln.line)+' '+ln.partLabel);
+      /* ===== v19.12 修正29⑦: パーツ単品追加で扉を選ぶと見積書に扉色が出ていなかった =====
+         パーツ単品の品名は partLabel（例「扉（同色）(M)」）だけで色を持たないため、
+         ★扉の明細（isDoor）は本体明細と同じ書き方で色名を添える（色未定は「（扉色未定）」）。
+         色の出所は明細の color（＝パーツ単品追加で選んだ色。partColor と同じ値）。 */
+      if(!ln.isFreeInput&&ln.isDoor){
+        var pdc=ln.color||ln.partColor||'';
+        if(pdc){
+          if(isUndColor(pdc))pName+='（扉色未定）';
+          else{
+            var pdco=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===pdc;});
+            if(pdco)pName+='　'+pdco.l+'色';
+          }
+        }
+      }
       var pUnit=ln.isFreeInput?(ln.unit||'個'):'個';
       var pRmk=ln.isFreeInput?(ln.remark||''):'';
       partRows.push({rkey:'L'+ln.id,code:'',name:pName,qty:ln.qty,unit:pUnit,price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':'',remark:rowRemark(order,'L'+ln.id,pRmk)});
@@ -6399,22 +6437,47 @@ function shipDocLineLabel(order,onlyLine){
 function shipDocSplits(order){
   var whs=[];try{whs=orderWhs(order);}catch(e){whs=[];}
   var lines=shipDocLines(order);
-  if(whs.length<2&&lines.length<2)return [{wh:'',line:'',label:'',rows:null}];
-  var ws=whs.length>1?whs:[''];
-  var ls=lines.length>1?lines:[''];
+  /* v19.12 修正29③: 予備パーツはいつも別紙（持ち出し元の倉庫ごと）。本体の紙とは合算しない */
+  var spWhs=spareShipWhs(order);
   var out=[];
-  ws.forEach(function(w){
-    ls.forEach(function(l){
-      var sr;try{sr=buildShipRows(order,null,{wh:w,line:l});}catch(e){sr=null;}
-      var n=0;if(sr)sr.groups.forEach(function(g){n+=g.rows.length;});
-      if(!n)return;
-      var lab=[];
-      if(w)lab.push(((WH_MAP[w]||{}).n)||w);
-      if(l)lab.push(lineName(l));
-      out.push({wh:w,line:l,label:lab.join(' ／ '),rows:n});
+  if(whs.length<2&&lines.length<2){
+    out.push({wh:'',line:'',label:spWhs.length?'本体':'',rows:null});
+  }else{
+    var ws=whs.length>1?whs:[''];
+    var ls=lines.length>1?lines:[''];
+    ws.forEach(function(w){
+      ls.forEach(function(l){
+        var sr;try{sr=buildShipRows(order,null,{wh:w,line:l});}catch(e){sr=null;}
+        var n=0;if(sr)sr.groups.forEach(function(g){n+=g.rows.length;});
+        if(!n)return;
+        var lab=[];
+        if(w)lab.push(((WH_MAP[w]||{}).n)||w);
+        if(l)lab.push(lineName(l));
+        out.push({wh:w,line:l,label:lab.join(' ／ '),rows:n});
+      });
     });
+    if(!out.length)out.push({wh:'',line:'',label:spWhs.length?'本体':'',rows:null});
+  }
+  spWhs.forEach(function(w){
+    var sr2;try{sr2=buildShipRows(order,null,{spare:true,spareWh:w});}catch(e){sr2=null;}
+    var n2=sr2?sr2.rows.length:0;
+    if(!n2)return;
+    var lab2=[];
+    if(w)lab2.push(((WH_MAP[w]||{}).n)||w);
+    lab2.push(SHIP_SPARE_LABEL);
+    out.push({wh:'',line:'',spare:true,spareWh:w,label:lab2.join(' ／ '),rows:n2});
   });
   return out.length?out:[{wh:'',line:'',label:'',rows:null}];
+}
+/* v19.12: 「出荷部材」見出しに添える但し書き（印刷用HTMLと画面プレビューで共通に使う）。
+   ★修正29④により「ぶん」は付けない。 */
+function shipScopeNote(sr){
+  var out=[];
+  var w=(sr&&(sr.scopeWh||sr.scopeSpareWh))||'';
+  if(w)out.push(((WH_MAP[w]||{}).n)||w);
+  if(sr&&sr.scopeLine)out.push(lineName(sr.scopeLine));
+  if(sr&&sr.scopeSpare)out.push(SHIP_SPARE_LABEL);
+  return out;
 }
 /* 分割ぶんを1回の印刷でまとめて出す（1枚ごとに改ページ）。v18.88 修正24③④ */
 /* v18.95 修正26③: 分けた請求書を全枚数まとめて1回で印刷する（紙ごとに改ページ）
@@ -6488,7 +6551,21 @@ function buildShipRows(order,legIndex,scope){
     if(r.isDoor){var kk=ln_+'|'+r.key+'|'+(r.color||'')+'|'+(r.doorSub||'');prDoorH[kk]=(prDoorH[kk]||0)+r.released;}
     else{var k2=ln_+'|'+r.key+'|'+(r.sub||'');prSubH[k2]=(prSubH[k2]||0)+r.released;}
   });
-  var spPool=spareBomPool(order);
+  /* ===== v19.12 修正29③: 予備パーツは本出荷指示書と合算せず、予備パーツだけの紙に出す =====
+     ・scope.spare が真 … ★予備パーツだけの紙（本体の部材は載せない）。scope.spareWh があれば
+     　　その倉庫から持ち出したぶんだけ。
+     ・それ以外       … 本体の紙には予備パーツを★足さない。
+     ★予備パーツが無い案件は予備の紙を作らないので、従来と何も変わらない。 */
+  var spOnly=!!(scope&&scope.spare);
+  var spareOnlyRows=[];
+  if(spOnly){
+    spareRest(spareBomPool(order,(scope&&scope.spareWh)||'')).forEach(function(sp0){
+      var r0=mkRow(sp0.label||sp0.key||'',sp0.qty,sp0.key,sp0.sub,'',false,sp0.color,!!sp0.isDoor);
+      r0.line=sp0.line||'';
+      spareOnlyRows.push(r0);
+    });
+  }
+  var spPool={};/* 本体の紙にも予備パーツの紙にも「合算」はしない */
   var sePool=shipEditPool(order,scope);/* v18.89 修正25②: 紙ごとの手修正 */
   function mkRow(label,qty,key,sub,note,edited,color,isDoor){
     if(edited)anyEdit=true;
@@ -6568,6 +6645,8 @@ function buildShipRows(order,legIndex,scope){
   spareRest(spPool).forEach(function(s){extra.push(mkRow(s.label||s.key||'',s.qty,s.key,s.sub,'予備パーツ',false,s.color,(s.key==='door'||s.key==='doorH')));});
   shipEditRest(sePool).forEach(function(s){extra.push(mkRow(s.label,s.qty,s.key,s.sub,'',true));});
   if(extra.length)groups.push({title:'追加分',rows:extra,line:''});
+  /* v19.12 修正29③: 予備パーツだけの紙は、本体の部材を載せず予備パーツだけを並べる */
+  if(spOnly)groups=spareOnlyRows.length?[{title:SHIP_SPARE_LABEL,rows:spareOnlyRows,line:''}]:[];
 
   /* ---- v18.88 修正24③④: 倉庫／製品ラインで絞る ----
      ★行IDは「絞る前の並び順」で決めるので、gi をここで固定してから絞る
@@ -6670,6 +6749,8 @@ function buildShipRows(order,legIndex,scope){
   return {groups:groups,rows:flatRows,totalBoxes:totalBox,baraKinds:baraKinds,edited:anyEdit,
           legs:legs,legIndex:(legs>1&&legIndex!=null)?legIndex:null,
           scopeWh:scope.wh||'',scopeLine:scope.line||'',
+          /* v19.12 修正29③: 予備パーツだけの紙か（見出し・宛名の判定に使う） */
+          scopeSpare:spOnly,scopeSpareWh:spOnly?((scope&&scope.spareWh)||''):'',
           /* v18.81 修正21②: 札幌倉庫から出す案件は品番列を出す。
              v18.88 修正24③: 倉庫ごとに分けているときは★その紙の倉庫が札幌かどうかで判定する。 */
           showCode:(function(){
@@ -6880,7 +6961,8 @@ function generateQuoteHTML(order,docType,legIndex,scope){
     /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（郵便番号・住所・電話・顧客コードは出さない） */
     /* v18.85 修正22の確認事項3: 「御中」の有無は shipDocAddressee() が倉庫ごとに決める
        v18.88 修正24③: 倉庫ごとに分けて出すときは★その倉庫だけを宛名にする */
-    html+='<div style="font-size:17px;font-weight:700">'+shipDocAddressee(order,scope.wh)+'</div>';
+    /* v19.12 修正29③: 予備パーツだけの紙は、その予備を持ち出す倉庫が宛名になる */
+    html+='<div style="font-size:17px;font-weight:700">'+shipDocAddressee(order,scope.wh||scope.spareWh)+'</div>';
   }else if(dv){
     /* v18.97 修正27⑧: 請求書・物品受領書・納品書の宛先は ✎ 手修正の値（空欄＝顧客DBの内容）。並びは見積書と同じ */
     html+='<div style="font-size:17px;font-weight:700;margin-bottom:4px">'+(dv.toName||'')+'</div>';
@@ -7007,10 +7089,9 @@ function generateQuoteHTML(order,docType,legIndex,scope){
        ★行の組み立ては buildShipRows() の1か所だけ（画面プレビューも同じものを使う）。 */
     var sr=buildShipRows(order,legIndex,scope);
     var nCol=sr.showCode?6:5;
-    /* v18.88 修正24③④: 倉庫／タイプで分けて出している紙は、どのぶんかを見出しに書く */
-    var scopeNote=[];
-    if(sr.scopeWh)scopeNote.push(((WH_MAP[sr.scopeWh]||{}).n)||sr.scopeWh+'ぶん');
-    if(sr.scopeLine)scopeNote.push(lineName(sr.scopeLine)+'ぶん');
+    /* v18.88 修正24③④: 倉庫／タイプで分けて出している紙は、どれかを見出しに書く
+       v19.12 修正29④「ぶん」は付けない／修正29③ 予備パーツだけの紙はその旨を書く（shipScopeNote） */
+    var scopeNote=shipScopeNote(sr);
     html+='<div style="margin-top:12px;font-size:13px;font-weight:700;border-bottom:2px solid #333;padding-bottom:2px">出荷部材'
       +(scopeNote.length?('　<span style="color:#1e3a5f">'+scopeNote.join(' ／ ')+'</span>'):'')
       +(sr.legIndex!=null?('　<span style="color:#B45309">'+(sr.legIndex+1)+'便 ／ 全'+sr.legs+'便</span>'):'')+'</div>';
@@ -8629,7 +8710,10 @@ function InvPage(p){
   var discountRows=us([]);
   var shipLabelSt=us('');
   /* v18.37 修正箇所2②: 商品備考は廃止（明細各行の備考欄へ移行）のため productNotes の状態は削除 */
-  var quoteSubject=us(''),paymentTerms=us('前払い（銀行振り込み）'),paymentCustom=us(''),quoteNotes=us('');
+  /* v19.12 修正29⑥: 見積書作成画面の支払条件の★既定値を「末締め翌月末」に変更（依頼29）。
+     ★ここは新規作成時の初期値だけ。既存案件（order.paymentTerms 未設定の過去データ）の
+     　帳票側フォールバックは「前払い（銀行振り込み）」のまま＝過去の紙の文言は変わらない。 */
+  var quoteSubject=us(''),paymentTerms=us('末締め翌月末'),paymentCustom=us(''),quoteNotes=us('');
   var quoteSalesPerson=us('');/* Override sales person per quote */
   var endUser=us({name:'',postal:'',address:'',phone:''});/* v17.1 要望25: 代理店経由のエンド納品先（任意） */
   /* v18.55 修正９⑤: エンド納品先が増えるとプルダウンから探すのが大変なため、文字入力で絞り込めるようにする。
@@ -10773,7 +10857,7 @@ function QuotePreview(p){
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}},
         h('div',{style:{width:'52%',borderLeft:'3px solid #222',padding:'8px 12px',lineHeight:1.8}},
           /* v18.84 修正22③: 出荷指示書の宛名は倉庫会社名のみ（印刷用HTMLと同じ） */
-          isShipping?h('div',{style:{fontSize:17,fontWeight:700}},shipDocAddressee(o,p.scope&&p.scope.wh)):
+          isShipping?h('div',{style:{fontSize:17,fontWeight:700}},shipDocAddressee(o,(p.scope&&(p.scope.wh||p.scope.spareWh))||'')):
           /* v18.97 修正27⑧: 請求書・物品受領書・納品書の宛先は ✎ 手修正の値（印刷用HTMLと同じ） */
           h('div',{style:{fontSize:17,fontWeight:700,marginBottom:4}},dvP?(dvP.toName||''):(cust?cust.name+' 御中':'')),
           /* v18.33 要望⑭⑯: 顧客コードは電話番号の下へ。先方担当者（ご担当）は削除 */
@@ -10898,10 +10982,8 @@ function QuotePreview(p){
         var nCol=sr.showCode?6:5;
         var th=function(w){return Object.assign({},cs,{background:'#f0f0f0',fontWeight:600},w?{width:w}:{});};
         var ctd=Object.assign({},cs,{textAlign:'center'});
-        /* v18.88 修正24③④: 倉庫／タイプで分けている紙は、どのぶんかを見出しに書く（印刷用HTMLと同じ） */
-        var scopeNote=[];
-        if(sr.scopeWh)scopeNote.push(((WH_MAP[sr.scopeWh]||{}).n)||sr.scopeWh+'ぶん');
-        if(sr.scopeLine)scopeNote.push(lineName(sr.scopeLine)+'ぶん');
+        /* v18.88 修正24③④ / v19.12 修正29③④: 印刷用HTMLと同じ shipScopeNote() を使う */
+        var scopeNote=shipScopeNote(sr);
         return h('div',{style:{marginTop:12}},
           h('div',{style:{fontSize:13,fontWeight:700,borderBottom:'2px solid #333',paddingBottom:2,marginBottom:6}},'出荷部材',
             scopeNote.length?h('span',{style:{color:'#1e3a5f',marginLeft:8}},scopeNote.join(' ／ ')):null,
@@ -11211,11 +11293,18 @@ function OrdersPage(p){
       order.shippedDate=String(sd||'').trim();
     }
     if(ns==='出荷指示'){
-      /* ===== v18.86 修正23②: 出荷指示の遷移先を「✎ 記載内容の手修正」画面に統一した =====
-         従来はここで専用の「出荷指示」モーダル(shipModal)を開いていたが、
-         📄帳票 →「✎ 記載内容の手修正」と同じ画面へ寄せる（ユーザー指定）。
-         この画面のフッターに「出荷指示書発行」を出し、そこで在庫の引き落としとステータス変更を行う。 */
-      openShipEdit(order,true);
+      /* ===== v19.12 修正29①②: 出荷指示の遷移先は「📄帳票（帳票一覧）」 =====
+         v18.86 修正23② では「✎ 記載内容の手修正」画面（＝出荷指示書作成画面）を開き、
+         そのフッターで在庫を引いて★倉庫合算の出荷指示書を1枚印刷していた。依頼29により
+         　① 複数倉庫の案件で出していた★合算版の出荷指示書は廃止（倉庫ごとの紙は帳票一覧から）
+         　② 遷移先は出荷指示書作成画面ではなく★帳票一覧
+         へ変更した。在庫の引き落としとステータス変更はここで済ませる。
+         ★納品予定日は案件管理の「📅 納品予定日の変更」、記載内容は帳票一覧の
+         　「✎ 記載内容の手修正」から入れる（どちらも従来どおり残っている）。 */
+      if(!runShipOrder(order))return;
+      p.toast('ステータス変更: '+order.no+' → 出荷指示（在庫を引き落としました）');
+      detail[1](null);
+      docPick[1](order);/* ★帳票一覧を開く。出荷指示書はここから出す */
       return;
     }
     order.status=ns;
@@ -11284,14 +11373,15 @@ function OrdersPage(p){
     broadcastOrderUpdate(p.userName||'',order.no+' 差し戻し→'+target);
     detail[1](null);saveAll();p.bump&&p.bump();
   }
-  /* ===== v18.86 修正23②: 「✎ 記載内容の手修正」画面から出荷指示を確定する =====
-     旧「出荷指示」モーダル(shipModal)の confirmShipOrder をこちらへ移した。
-     入力内容の保存は applyShipEdit()、在庫の引き落としと出荷指示書の発行は従来どおり。 */
-  function confirmShipOrder(){
-    var m0=shipEditModal[0];if(!m0)return;
-    if(p.isReadOnly){p.toast('読み取り専用モード中は出荷指示できません');return;}
-    var order=applyShipEdit(m0);
-    if(!order||!order.no)return;/* v18.68 修正15⑧ */
+  /* ===== v19.12 修正29①②: 出荷指示の確定（在庫の引き落とし・ステータス変更） =====
+     v18.86 修正23② の confirmShipOrder から、★モーダルと印刷に関わらない部分だけを切り出した。
+     ・依頼29① 複数倉庫の案件で出していた★倉庫合算版の出荷指示書は廃止した（ここでは印刷しない）。
+     　倉庫ごとの紙は帳票一覧（📄帳票）から出す（shipDocSplits）。
+     ・依頼29② 遷移先も「出荷指示書作成画面」ではなく★帳票一覧にしたので、この関数は
+     　changeStatus() からだけ呼ぶ。
+     戻り値 false ＝ 確認ダイアログでやめた（ステータスは変えていない）。 */
+  function runShipOrder(order){
+    if(!order||!order.no)return false;/* v18.68 修正15⑧ */
     /* v18.31: 扉色未定(und)が残ったまま出荷すると、扉が出荷指示書に載らず在庫消費もされない。確定前に警告 */
     var hasUnd=(order.lines||[]).some(function(l){
       if(l.isFreeInput)return false;
@@ -11301,22 +11391,20 @@ function OrdersPage(p){
       if(l.colorBreakdown&&l.colorBreakdown.length)return l.colorBreakdown.some(function(dc){return dc.color==='und'&&dc.qty>0;});
       return l.color==='und'&&!l.noDoor;
     });
-    if(hasUnd&&!confirm('扉色が「未定」のままの明細があります。\nこのまま出荷すると扉は出荷指示書に記載されず、扉在庫も消費されません。\n（扉色を確定するには「✏ 案件修正」から色を選び直してください）\n\nこのまま出荷確定しますか？'))return;
+    if(hasUnd&&!confirm('扉色が「未定」のままの明細があります。\nこのまま出荷すると扉は出荷指示書に記載されず、扉在庫も消費されません。\n（扉色を確定するには「✏ 案件修正」から色を選び直してください）\n\nこのまま出荷確定しますか？'))return false;
     /* v18.76 修正18③: 出荷指示を2回押すと在庫が二重に引かれる。既に引いている案件は必ず確認を挟む
        （v18.68 修正15⑧ で直したステータスの取りこぼしと同じ場面で起きていた事故の再発防止）。 */
     if(stockConsumedState(order)!=='none'){
       var _sc=order._stockConsumed;
-      if(!confirm('この案件はすでに在庫を引き落としています'+(_sc&&_sc.at?'（'+_sc.at+'）':'（過去の出荷指示）')+'。\nこのまま進めると同じ数量がもう一度在庫から引かれます。\n\n在庫を引き直したい場合は、いったん「受注確定」へ差し戻してから出荷指示してください。\n\nそれでも続けますか？'))return;
+      if(!confirm('この案件はすでに在庫を引き落としています'+(_sc&&_sc.at?'（'+_sc.at+'）':'（過去の出荷指示）')+'。\nこのまま進めると同じ数量がもう一度在庫から引かれます。\n\n在庫を引き直したい場合は、いったん「受注確定」へ差し戻してから出荷指示してください。\n\nそれでも続けますか？'))return false;
     }
     if(orderWhs(order).length>1){shipOrderMulti(order);}else{shipOrder(order);}/* v18.68 修正15⑤ */
     order.status='出荷指示';
-    /* v14.5 E1: 在庫消費の永続化・同期を「印刷ウィンドウより先に」確実に実行（ポップアップブロックでデータが失われないように） */
+    /* v14.5 E1: 在庫消費の永続化・同期を確実に実行する（以前は印刷ウィンドウより先に行っていた） */
     saveAll();
     broadcastOrderUpdate(p.userName||'',order.no+' 出荷指示');
-    shipEditModal[1](null);detail[1](null);p.bump&&p.bump();
-    var q=generateQuoteHTML(order,'shipping');
-    if(openPrintWindow(q.html)){p.toast('出荷指示書発行: '+order.no);}
-    else{p.toast('出荷指示書を発行しました（'+order.no+'）。印刷ウィンドウはポップアップブロックのため開けませんでした。ブラウザのポップアップを許可してください');}
+    p.bump&&p.bump();
+    return true;
   }
   function openQuote(order,docType){
     var q=generateQuoteHTML(order,docType||'quote');
@@ -11330,7 +11418,9 @@ function OrdersPage(p){
      　テンプレ未判定でも中断せず部材行だけ空にして開く（v18.83以前はここで toast して開かなかった）。 */
   /* 手修正で持つヘッダー項目（保存・プレビュー・読み込みで共通に使う） */
   var SHIP_EDIT_FIELDS=['name','phone','postal','address','delivery','consignee','staff','slip','shipDate','creator','shipper','notes'];/* v19.01: creator（作成者）を追加 */
-  function openShipEdit(o,shipMode){
+  /* v19.12 修正29②: shipMode（出荷指示から開く＝フッターが「出荷指示書発行」になるモード）は廃止。
+     出荷指示は changeStatus() が runShipOrder() で確定し、この画面は★記載内容の手修正専用になった。 */
+  function openShipEdit(o){
     /* v18.49 修正６⑨: 納品完了の案件は内容を編集できない */
     if(isOrderLocked(o)){p.toast('納品完了の案件は編集できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
     var tpl=SHIP_TEMPLATES[shipTemplateKey(o)];
@@ -11345,6 +11435,8 @@ function OrdersPage(p){
     var sheets=splits.map(function(sc){
       var se=shipEditFor(o,sc)||{};var ser=se.rows||{};
       var sh={key:shipScopeKey(sc),wh:sc.wh||'',line:sc.line||'',
+        /* v19.12 修正29③: 予備パーツだけの紙もタブの1つ（プレビューの scope に渡す） */
+        spare:!!sc.spare,spareWh:sc.spareWh||'',
         label:sc.label||'この案件ぶん',
         rows:((tpl&&tpl.rows)||[]).map(function(rw){
           var m=shipRowToBOM(rw[2]);var auto=m?shipLookupAgg(agg,m):0;
@@ -11355,8 +11447,6 @@ function OrdersPage(p){
       return sh;
     });
     shipEditModal[1]({order:o,autoHv:autoHv,noTpl:!tpl,
-      /* v18.86 修正23②: ship=true のときは「出荷指示」から来た＝保存時に在庫を引いて出荷指示書を出す */
-      ship:!!shipMode,
       splits:splits,sheets:sheets,tab:0,
       /* 納品予定日は案件の実データ（請求書・納品書の日付にも使う）。旧「出荷指示」モーダルの入力欄をここへ移した。
          便種も含めて★案件単位（全シート共通）。 */
@@ -11762,7 +11852,7 @@ function OrdersPage(p){
               }},'🧰 予備パーツ'+((o.spareParts||[]).length?'('+(o.spareParts||[]).length+')':'')),
               /* v18.86 修正23①: 操作欄の「✎ 出荷指示書の手修正」ボタンは削除した。
                  「📄帳票」→ 出荷指示書の「✎ 記載内容の手修正」から開けるようになったため（ユーザー指定）。
-                 モーダル本体と openShipEdit() は生きている（📄帳票 と 出荷指示 の両方から呼ぶ）。 */
+                 v19.12 修正29②: openShipEdit() の呼び出し口は★📄帳票の1か所だけになった。 */
               /* 一覧から直接削除 */
               h('button',{className:'btn btn-xs btn-rd',style:Object.assign({marginLeft:2,background:'#991B1B'},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
                 title:isOrderLocked(o)?'納品完了の案件は削除できません（ステータスを差し戻してから操作してください）':'この案件を削除します',onClick:function(){
@@ -13034,11 +13124,9 @@ function OrdersPage(p){
     })():null,
     /* Shipping instruction modal */
     /* v18.28 顧客要望: 出荷指示書(様式)の手入力修正モーダル。空欄=自動値。保存内容は order.shipEdit に永続化され全端末へ同期 */
-    /* ===== v18.86 修正23②: 出荷指示の遷移先もこの画面に統一した =====
-       ship=true（ステータスの「出荷指示」から来た）のときはフッターが「出荷指示書発行」になり、
-       保存に加えて在庫の引き落とし・ステータス変更・出荷指示書の印刷まで行う。 */
+    /* v19.12 修正29②: この画面は★記載内容の手修正専用（出荷指示の確定は案件のステータス操作で行う） */
     shipEditModal[0]?h(Modal,{show:true,w:900,
-      title:(shipEditModal[0].ship?'🚚 出荷指示 — ':'✎ 出荷指示書の記載内容 — ')+shipEditModal[0].order.no,
+      title:'✎ 出荷指示書の記載内容 — '+shipEditModal[0].order.no,
       onClose:function(){shipEditModal[1](null);},
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){shipEditModal[1](null);}},'キャンセル'),
@@ -13051,9 +13139,7 @@ function OrdersPage(p){
           broadcastOrderUpdate(p.userName||'',o3.no+' 出荷指示書の手修正をクリア');
           p.toast('手修正をクリアしました（自動値に戻ります）');shipEditModal[1](null);p.bump&&p.bump();
         }},'自動値に戻す'),
-        shipEditModal[0].ship
-        ?h('button',{className:'btn btn-rd',onClick:confirmShipOrder},'出荷指示書発行')
-        :h('button',{className:'btn btn-rd',onClick:function(){
+        h('button',{className:'btn btn-rd',onClick:function(){
           if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
           var m0=shipEditModal[0];
           var o2=applyShipEdit(m0);
@@ -13087,7 +13173,7 @@ function OrdersPage(p){
         /* v18.84 修正22⑤: 依頼書の記載項目をすべて手修正できるようにした */
         h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'空欄の項目は自動値（顧客/エンド納品先・案件の担当営業・在庫計算の数量）が使われます。入力した内容は案件に保存され、全端末で共有されます（帳票にペンのマークは付きません）。',
           h('span',{style:{color:'#975a16'}},'※数量を 0 にするとその部材は出荷指示書に載りません。'),
-          m0.ship?h('div',{style:{color:'#991B1B',fontWeight:700,marginTop:3}},'※「出荷指示書発行」を押すと、この内容で在庫を引き落としてステータスを「出荷指示」にします。'):null),
+          h('div',{style:{color:'#0E7490',marginTop:3}},'※ここは記載内容の手修正だけです。在庫の引き落としとステータス変更は案件の「出荷指示」操作で行います（v19.12 修正29②）。')),
         /* ===== v18.89 修正25②: 「記載内容　空欄＝自動」の右側にシートタブ =====
            倉庫別／タイプ別に紙が分かれる案件は、ここで紙を切り替えて1枚ずつ編集する。
            タブの並びは実際に出力される紙（shipDocSplits）と1対1。 */
@@ -13210,7 +13296,7 @@ function OrdersPage(p){
             +(sheets.length>1?('　— '+(sh.label||'')):'')),
           /* v18.89 修正25②: いま選んでいるシートの紙をプレビューする */
           h(QuotePreview,{order:shipEditPreviewOrder(m0),docType:'shipping',hideTabs:true,
-            scope:sheets.length>1?{wh:sh.wh||'',line:sh.line||''}:null})
+            scope:sheets.length>1?{wh:sh.wh||'',line:sh.line||'',spare:!!sh.spare,spareWh:sh.spareWh||''}:null})
         )
         );
       })()
@@ -13752,8 +13838,17 @@ function PartsPage(p){
   try{
     var cpAll=JSON.parse(lsGet('lec_custom_parts')||'[]');
     cpAll.forEach(function(cp){
-      if(!structRowsAll.find(function(r){return r.key===cp.key&&!r.sub;})){
+      var exRow=structRowsAll.find(function(r){return r.key===cp.key&&!r.sub;});
+      if(!exRow){
         structRowsAll.push({label:'[カスタム] '+cp.label,key:cp.key,cat:'option',isCustom:true});
+      }else{
+        /* ===== v19.12 修正29⑧: 同じキーの標準部材が後からできたカスタム部材を消せるようにする =====
+           ハンガーパイプ（グレー）(hanger_gy) と ダイヤル錠(D003)(dialD003) は v18.97 修正27① で
+           ★標準部材になったが、それ以前に同じキーで入れたカスタム登録が残っていた。
+           従来はここで push を飛ばすだけだったため、⚙在庫項目マスタ管理には「標準」行しか出ず
+           🗑（削除）が出ない＝カスタム登録を消せなかった（依頼29「すでにアイテムとして存在する場合のバグ」）。
+           ★行そのものは標準のまま出し、カスタム登録が残っている印だけ付ける。 */
+        exRow.hasCustomDup=true;
       }
     });
   }catch(e){console.warn('カスタム部材マージ失敗',e);}
@@ -16857,8 +16952,21 @@ function PartsPage(p){
                  ここで再 push しないよう row.isCustom フラグで判定して重複防止 */
               structRowsAll.forEach(function(row){
                 var iri=row.sub!==undefined?(IRISU[row.key]&&typeof IRISU[row.key]==='object'?IRISU[row.key][row.sub]:''):(typeof IRISU[row.key]==='number'?IRISU[row.key]:'');
-                rows.push({label:row.label,key:row.key+(row.sub?'|'+row.sub:''),baseKey:row.key,sub:row.sub,irisu:iri,custom:!!row.isCustom});
+                rows.push({label:row.label,key:row.key+(row.sub?'|'+row.sub:''),baseKey:row.key,sub:row.sub,irisu:iri,custom:!!row.isCustom,dup:!!row.hasCustomDup});
               });
+              /* ===== v19.12 修正29⑧: 製品ラインの絞り込みで structRowsAll から外れたカスタム登録も必ず出す =====
+                 ハンガーパイプ(グレー)(hanger_gy) は★Ver.2 専用（LINE_ONLY_PART_KEYS）なので、
+                 在庫一覧で Ver.1 を選んでいると行そのものが無く、カスタム登録を消す手段が無かった。
+                 ★ここに出す行は「標準部材と同じキーのカスタム登録」だけ（本物のカスタム部材は
+                 　ライン絞り込みの対象外なので上のループに必ず入っている）。 */
+              try{
+                JSON.parse(lsGet('lec_custom_parts')||'[]').forEach(function(it){
+                  if(!it||!it.key)return;
+                  if(rows.some(function(r0){return r0.baseKey===it.key&&!r0.sub;}))return;
+                  rows.push({label:(PART_LABELS[it.key]||it.label||it.key),key:it.key,baseKey:it.key,sub:undefined,
+                    irisu:(typeof IRISU[it.key]==='number'?IRISU[it.key]:''),custom:false,dup:true});
+                });
+              }catch(e){}
               return rows.map(function(r,i){
                 return h('tr',{key:i,style:{background:r.custom?'#FFFBEB':''}},
                   h('td',{style:{fontWeight:600}},r.label,r.custom?h('span',{style:{marginLeft:4,fontSize:8,padding:'1px 4px',background:'#FCD34D',color:'#7C2D12',borderRadius:3}},'カスタム'):null),
@@ -16884,17 +16992,19 @@ function PartsPage(p){
                       }catch(ex){p.toast('入数保存失敗: '+ex.message);}
                     },style:{width:80,textAlign:'right'}})
                   ),
-                  h('td',{style:{textAlign:'center',fontSize:9,color:r.custom?'#7C2D12':'var(--g500)'}},r.custom?'カスタム':'標準'),
+                  h('td',{style:{textAlign:'center',fontSize:9,color:(r.custom||r.dup)?'#7C2D12':'var(--g500)'}},r.custom?'カスタム':(r.dup?'標準＋カスタム登録':'標準')),/* v19.12 修正29⑧ */
                   h('td',{style:{textAlign:'center'}},
-                    r.custom?h('button',{className:'btn btn-xs btn-rd',onClick:function(){
+                    (r.custom||r.dup)?h('button',{className:'btn btn-xs btn-rd',title:r.dup?'標準部材と重複しているカスタム登録だけを削除します（標準部材の行と在庫は残ります）':'このカスタム部材を削除します',onClick:function(){
                       if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
-                      if(!confirm('部材「'+r.label+'」を削除します。\n在庫データはそのまま残ります。\nよろしいですか？'))return;
+                      if(!confirm(r.dup
+                        ?('「'+r.label+'」は標準部材と同じキー（'+r.baseKey+'）のカスタム登録が残っています。\nこのカスタム登録だけを削除します。\n（部材在庫一覧の「＋カスタム部材」の重複行が消えます。標準部材の行と在庫データはそのまま残ります）\n\nよろしいですか？')
+                        :('部材「'+r.label+'」を削除します。\n在庫データはそのまま残ります。\nよろしいですか？')))return;
                       try{
                         var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');
                         var idx=cp.findIndex(function(x){return x.key===r.baseKey;});
                         if(idx>=0)cp.splice(idx,1);
                         lsSet('lec_custom_parts',JSON.stringify(cp));
-                        p.toast('部材を削除しました: '+r.label);
+                        p.toast(r.dup?('重複していたカスタム登録を削除しました: '+r.label):('部材を削除しました: '+r.label));
                         bump[1](bump[0]+1);
                         cloudSave(p.userName);/* v14.6: 削除を全端末へ共有 */
                       }catch(e){p.toast('削除失敗: '+e.message);}
