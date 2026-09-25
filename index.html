@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.15（ベースボードの単価の紐づけ訂正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.16（SSα扉の箱重量 8.5kg）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1519,9 +1519,9 @@ var BOX_WEIGHT={
   side:{S:13.1,M:13.3,L:18.5,XL:13.3,SS:13.1,'3S':13.1,SSA:26.2},
   back:{S:7.0,M:7.0,L:10.3,XL:7.0,SS:7.0,'3S':7.0,SSA:14.0},
   /* v18.48 修正６①: SSα扉の箱重量（SS扉の入数半分・1枚あたり2倍相当の暫定値） */
-  /* v19.13 入数訂正: SSα扉の入数を10→20にしたので、1枚あたりの重さが変わらないよう箱重量も倍（8.5→17.0）にした */
-  door:{S:8.5,M:10.4,L:14.0,XL:10.4,SS:8.5,'3S':8.5,SSA:17.0},
-  doorH:{S:8.5,M:10.4,L:14.0,SS:8.5,'3S':8.5,SSA:17.0},
+  /* v19.16（2026-09-25 ユーザー回答）: SSα扉は★1箱20枚入りで8.5kg。v19.13 で暫定的に17.0にしていたのを訂正 */
+  door:{S:8.5,M:10.4,L:14.0,XL:10.4,SS:8.5,'3S':8.5,SSA:8.5},
+  doorH:{S:8.5,M:10.4,L:14.0,SS:8.5,'3S':8.5,SSA:8.5},
   top:{sml:11.9,ss:11.9},
   base:{sml:8.1,ss:8.1},
   shelf:{sml:11.8,ss:11.8},
