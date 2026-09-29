@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.16（SSα扉の箱重量 8.5kg）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.17（修正30 倉庫間移動・在庫編集の品名・構成表記の手修正・出荷指示書の担当者）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -893,6 +893,17 @@ var SHIP_ROW_REMARK_DEFAULT='※組立工事費別途';
 function rowRemark(order,rkey,fallback){
   var rr=(order&&order.rowRemarks)||{};
   if(Object.prototype.hasOwnProperty.call(rr,rkey))return rr[rkey]||'';
+  return fallback||'';
+}
+/* ===== v19.17 修正30③: 商品名称の上の構成表記（【Sサイズ1段積み：H380mm】【2列3段：W…】）を手修正する =====
+   自動の表記は lineStackLabel / lineGridDimLabel が作るが、増設（既設ロッカーへの追加）などでは実態と合わない
+   （例 RS-2026-225: 転入生分の追加なのに【Sサイズ1段積み：H380mm】と出る）。
+   見積書作成の明細の欄で書き換えた文字列を order.cfgNotes[行キー] に持つ。★【】も含めて行全体をそのまま使う。
+   空欄で保存した行は★表記を出さない。キーが無い行は従来どおり自動の表記。
+   ★見積書・請求書・納品書・物品受領書（buildQuoteRows を使う帳票すべて）とExcelに効く。 */
+function rowCfgNote(order,rkey,fallback){
+  var cn=(order&&order.cfgNotes)||{};
+  if(Object.prototype.hasOwnProperty.call(cn,rkey))return cn[rkey]||'';
   return fallback||'';
 }
 /* ========== v18.62 修正12②: 値引きは「項目名＋金額」を複数行で持つ ==========
@@ -6025,8 +6036,9 @@ function buildQuoteRows(order){
       cfgNote=gridLbl?('【'+gridLbl+'】'+(sq>0?' 棚板'+sq+'枚含':'')):'';
     }
     /* v18.62 修正12⑤: 備考欄には選択したサイズの外寸を自動反映する（行ごとの手入力があればそちら優先） */
+    /* v19.17 修正30③: 構成表記は手修正（order.cfgNotes）があればそちら。自動の値は configNoteAuto に残す（編集欄の「元に戻す」用） */
     rows.push({rkey:'L'+ln.id,code:codeDisp(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:qty,unit:'台',price:unitAll,amount:amt2,tax:'10%(外)',
-      configNote:cfgNote,colorNote:colorNote,remark:rowRemark(order,'L'+ln.id,lineDimRemark(ln))});
+      configNote:rowCfgNote(order,'L'+ln.id,cfgNote),configNoteAuto:cfgNote,colorNote:colorNote,remark:rowRemark(order,'L'+ln.id,lineDimRemark(ln))});
   });
   /* ベースボード（ベースを持つ明細から合算）。v18.73: 記載しない／販売／レンタル を選べる */
   var baseLines=(order.lines||[]).filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
@@ -7184,7 +7196,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
        ★ここに ✎ は付けない（ユーザー指定「荷送人電話番号右側のペンのアイコン削除」）。 */
     html+='<div style="display:flex;gap:4px"><b style="white-space:nowrap">荷送人:</b>'
       +'<span>'+(shv.shipperName||'')+(shv.shipperDetail?('<br>'+String(shv.shipperDetail).replace(/(TEL[:：]?\s*[\d-]+)/,'<span style="white-space:nowrap">$1</span>')):'')+'</span></div>';/* v19.01: 電話番号の途中で改行しない */
-    html+='<div><b>担当者:</b> '+(shv.staff||'')+em('staff')+'</div>';
+    /* v19.17 修正30④: 荷送人の下の「担当者」は出荷指示書に不要（削除）。★shv.staff は残っているが印字しない */
     html+='<div><b>出荷指示日:</b> '+(shv.shipDate||'')+em('shipDate')+'</div>';
     html+='<div><b>伝票コード:</b> '+(shv.slip||'')+em('slip')+'</div>';
     html+='<div style="display:flex;gap:4px"><b style="white-space:nowrap">連絡事項:</b>'
@@ -7356,7 +7368,7 @@ function generateExcel(order,docType){
   wsData.push([]);
   /* v18.33 要望⑮: 出荷指示書Excelには件名を出さない（HTMLと同挙動） */
   if(docType!=='shipping')wsData.push(['件名',q.subject,'','担当者',exSalesP]);
-  else wsData.push(['','','','担当者',exSalesP]);
+  /* v19.17 修正30④: 出荷指示書は担当者を載せない（HTMLと同じ） */
   wsData.push([cfg.dateLabel,docDateOf(order,docType),'','伝票コード',q.slipCode]);
   /* v18.37 修正箇所2③: 納期・有効期限・受渡地はHTML版と同じ保存値／既定値を使う */
   if(docType==='quote'){
@@ -9695,6 +9707,7 @@ function InvPage(p){
       order.deliveryPlace=existing.deliveryPlace||'';
       order.validUntil=existing.validUntil||'';
       order.rowRemarks=existing.rowRemarks||{};
+      order.cfgNotes=existing.cfgNotes||{};/* v19.17 修正30③: 構成表記の手修正も引き継ぐ */
       order.rentalOffset=!!existing.rentalOffset;
       order.rentalSel=existing.rentalSel||order.rentalSel;/* v18.73 修正17の追加5: 3品目の記載区分も引き継ぐ */
       order.rowUnit=existing.rowUnit||order.rowUnit;/* v18.73 修正17の追加⑳: 手入力した単価も引き継ぐ */
@@ -10554,6 +10567,12 @@ function InvPage(p){
             var rr3=Object.assign({},qo.rowRemarks||{});
             rr3[rkey]=val;updQ({rowRemarks:rr3});
           }
+          /* v19.17 修正30③: 構成表記（【Sサイズ1段積み：H380mm】等）の手修正。reset=true で自動の表記へ戻す */
+          function updCfgNote(rkey,val,reset){
+            var cn3=Object.assign({},qo.cfgNotes||{});
+            if(reset)delete cn3[rkey];else cn3[rkey]=val;
+            updQ({cfgNotes:cn3});
+          }
           /* ===== v18.72 修正17⑨⑩: 明細の並べ替えと自由入力行 =====
              並び順は order.rowOrder（現在の表示順の行キー配列）として保存する。
              ドラッグした行を落とした行の位置へ差し込み、その時点の並び順を丸ごと保存する。 */
@@ -10766,7 +10785,21 @@ function InvPage(p){
                   else if(dr)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{color:'#DC2626',flexShrink:0,fontSize:8},title:'この値引きを削除',onClick:function(){delDiscRow(di);}},'－'));
                   else if(uOv!==null)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手入力した単価を取り消して単価マスタの金額に戻す',onClick:function(){setRowUnit(rk,'');}},'↺'));
                   else cells.push(h('span',{key:'x',style:{width:18,flexShrink:0}}));
-                  return h('div',{key:rk,draggable:true,
+                  /* v19.17 修正30③: 本体の明細行（L…）は、帳票で商品名称の上に出る構成表記
+                     （【Sサイズ1段積み：H380mm】【2列3段：W…×D…×H…】）を行の上の欄で書き換えられる。
+                     手修正した欄は黄色。↺ で自動の表記に戻す。空欄にすると表記を出さない。 */
+                  var cfgEl=null;
+                  if(r.configNoteAuto!==undefined){
+                    var cnMap=qo.cfgNotes||{},cnHas=Object.prototype.hasOwnProperty.call(cnMap,rk);
+                    cfgEl=h('div',{key:rk+'-cfg',style:{display:'flex',gap:3,alignItems:'center',margin:'2px 0 1px 30px'}},
+                      h('span',{style:{fontSize:8,color:'var(--g500)',flexShrink:0}},'構成表記'),
+                      h('input',{className:'inp',style:{flex:1,minWidth:120,fontSize:9,background:cnHas?'#FEF3C7':'#fff'},
+                        value:cnHas?(cnMap[rk]||''):(r.configNoteAuto||''),placeholder:'（表記なし）',
+                        title:'見積書・請求書などで商品名称の上に出る表記です。書き換えるとこの案件の帳票すべてに反映されます（空欄にすると表記を出しません）',
+                        onChange:function(e){updCfgNote(rk,e.target.value);}}),
+                      cnHas?h('button',{className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手修正を取り消して自動の表記に戻す',onClick:function(){updCfgNote(rk,'',true);}},'↺'):h('span',{style:{width:18,flexShrink:0}}));
+                  }
+                  var rowEl=h('div',{key:rk,draggable:true,
                     onDragStart:function(){dragRk[1](rk);dropRk[1](null);},
                     onDragEnd:function(){dragRk[1](null);dropRk[1](null);},
                     /* v18.74 修正17の再修正: ドラッグ中はどこへ入るかが分かるよう、
@@ -10779,6 +10812,7 @@ function InvPage(p){
                       borderBottom:(showLine&&!lineAbove)?'2px solid #1e3a5f':'2px solid transparent',
                       opacity:dragRk[0]===rk?0.45:1,
                       background:dragRk[0]===rk?'#EFF6FF':(dr?'#FFF7ED':(ex?'#F0FDF4':'transparent'))}},cells);
+                  return cfgEl?h(React.Fragment,{key:rk},cfgEl,rowEl):rowEl;
                 }):h('div',{style:{fontSize:8,color:'var(--g500)',padding:'2px 0'}},'明細がありません'),
                 h('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:4,flexWrap:'wrap'}},
                   h('button',{className:'btn btn-xs btn-ol',onClick:addExtra},'＋ 自由入力の行を追加'),
@@ -11064,7 +11098,7 @@ function QuotePreview(p){
           /* v18.85: 荷送人は会社名／住所以降の2行 */
           h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'荷送人:'),
             h('span',null,shvP.shipperName||'',shvP.shipperDetail?h('div',null,String(shvP.shipperDetail).split(/(?=TEL)/).map(function(t,ti){return h('span',{key:ti,style:ti?{whiteSpace:'nowrap'}:null},t);})):null)),
-          h('div',null,h('b',null,'担当者: '),shvP.staff||''),
+          /* v19.17 修正30④: 「担当者」は出さない（印刷用HTMLと同じ） */
           h('div',null,h('b',null,'出荷指示日: '),shvP.shipDate||''),
           h('div',null,h('b',null,'伝票コード: '),shvP.slip||''),
           h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'連絡事項:'),
@@ -11249,6 +11283,22 @@ function OrdersPage(p){
   var sortKey=us('delivery');
   /* v18.79 修正20②: 案件管理の操作欄「📄帳票」で開く帳票選択モーダル */
   var docPick=us(null);
+  /* v19.17 修正30③: 構成表記（【Sサイズ1段積み：H380mm】等）の手修正モーダル。
+     見積書作成画面は「見積作成・仮押さえ・受注確定」の案件でしか開けない（✏ 案件修正の対象がこの3つ）ため、
+     出荷指示以降の案件（例 RS-2026-225）でも直せるよう📄帳票の見積書の下からも開けるようにした。
+     保存先は見積書作成画面の欄と同じ order.cfgNotes。{no, rows:[{rk,name,auto}], vals:{rk:文字列}, has:{rk:true}} */
+  var cfgEdit=us(null);
+  function openCfgEdit(order){
+    var o=liveOrder(order)||order;
+    var cn=o.cfgNotes||{},rows=[],vals={},has={};
+    buildQuoteRows(o).rows.forEach(function(r){
+      if(r.configNoteAuto===undefined)return;
+      rows.push({rk:r.rkey,name:r.name,auto:r.configNoteAuto||''});
+      if(Object.prototype.hasOwnProperty.call(cn,r.rkey)){has[r.rkey]=true;vals[r.rkey]=cn[r.rkey]||'';}
+      else vals[r.rkey]=r.configNoteAuto||'';
+    });
+    cfgEdit[1]({no:o.no,rows:rows,vals:vals,has:has});
+  }
   /* v18.81 修正21①: 出荷指示書を便（トラック）ごとに分ける設定モーダル {no,n,alloc,tab} */
   var splitModal=us(null);
   /* v18.28 → v18.86 修正23②: 出荷指示書の記載内容モーダル。
@@ -12926,6 +12976,42 @@ function OrdersPage(p){
     /* ===== v18.79 修正20②: 帳票の個別出力モーダル =====
        案件管理の操作欄「📄帳票」から開く。5帳票とも generateQuoteHTML(order, docType) の1か所で作っている。
        出荷指示書は v18.79 で新様式（名称／入数／出荷総数／出荷箱数／出荷バラ）に差し替え済み。 */
+    /* ===== v19.17 修正30③: 構成表記の手修正モーダル ===== */
+    cfgEdit[0]?(function(){
+      var m=cfgEdit[0];
+      function setV(rk,v){var nv=Object.assign({},m.vals);nv[rk]=v;var nh=Object.assign({},m.has);nh[rk]=true;cfgEdit[1](Object.assign({},m,{vals:nv,has:nh}));}
+      function resetV(rk){var nv=Object.assign({},m.vals);var nh=Object.assign({},m.has);delete nh[rk];
+        var row=m.rows.find(function(x){return x.rk===rk;});nv[rk]=row?row.auto:'';cfgEdit[1](Object.assign({},m,{vals:nv,has:nh}));}
+      return h(Modal,{show:true,w:640,title:'✎ 構成表記の手修正 — '+m.no,onClose:function(){cfgEdit[1](null);},
+        footer:h('div',{style:{display:'flex',gap:6}},
+          h('button',{className:'btn btn-ol',onClick:function(){cfgEdit[1](null);}},'キャンセル'),
+          h('button',{className:'btn btn-rd',onClick:function(){
+            if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+            var o2=ORDERS.find(function(x){return x.no===m.no;});
+            if(!o2){p.toast('案件が見つかりません');return;}
+            var cn=Object.assign({},o2.cfgNotes||{});
+            m.rows.forEach(function(r){if(m.has[r.rk])cn[r.rk]=m.vals[r.rk]||'';else delete cn[r.rk];});
+            if(Object.keys(cn).length)o2.cfgNotes=cn;else delete o2.cfgNotes;
+            saveAll();
+            broadcastOrderUpdate(p.userName||'',o2.no+' 構成表記を手修正');
+            p.toast('構成表記を保存しました（見積書・請求書・納品書・物品受領書に反映されます）');
+            cfgEdit[1](null);p.bump&&p.bump();
+          }},'保存'))},
+        h('div',null,
+          h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.6}},
+            '帳票で商品名称の上に出る表記です。【】も含めてそのまま印字されます。空欄にすると表記を出しません。',h('br'),
+            '↺ で自動の表記に戻します。見積書作成画面の明細の「構成表記」欄と同じ内容です。'),
+          m.rows.length?m.rows.map(function(r){
+            return h('div',{key:r.rk,style:{marginBottom:8}},
+              h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:2}},r.name),
+              h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
+                h('input',{className:'inp',style:{flex:1,fontSize:11,background:m.has[r.rk]?'#FEF3C7':'#fff'},value:m.vals[r.rk]||'',placeholder:'（表記なし）',
+                  onChange:function(e){setV(r.rk,e.target.value);}}),
+                m.has[r.rk]?h('button',{className:'btn btn-xs btn-ol',title:'自動の表記（'+(r.auto||'表記なし')+'）に戻す',onClick:function(){resetV(r.rk);}},'↺'):null),
+              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:1}},'自動の表記: '+(r.auto||'（なし）')));
+          }):h('div',{style:{fontSize:10,color:'var(--g500)'}},'構成表記を出す本体の明細がありません'))
+      );
+    })():null,
     docPick[0]?h(Modal,{show:true,title:'📄 帳票の出力 — '+docPick[0].no,w:460,onClose:function(){docPick[1](null);},
       footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
         h('button',{className:'btn btn-ol',onClick:function(){docPick[1](null);}},'閉じる'))},
@@ -12995,6 +13081,14 @@ function OrdersPage(p){
                       if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');
                     }},(ii+1)+'枚目');
                 })):null
+            ):null,
+            /* v19.17 修正30③: 見積書の下に「構成表記の手修正」（出荷指示以降の案件でも直せるように） */
+            d[0]==='quote'?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'}},
+              h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
+                title:'商品名称の上に出る【Sサイズ1段積み：H380mm】などの表記を手修正します（見積書・請求書・納品書・物品受領書すべてに反映）',
+                onClick:function(){var lo=liveOrder(docPick[0])||docPick[0];docPick[1](null);openCfgEdit(lo);}},
+                '✎ 構成表記（【…段積み…】）の手修正'),
+              (docPick[0].cfgNotes&&Object.keys(docPick[0].cfgNotes).length)?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null
             ):null,
             (DOC_EDIT_TYPES.indexOf(d[0])>=0)?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'}},
               h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
@@ -13405,7 +13499,7 @@ function OrdersPage(p){
                 onChange:function(e){setSheet({shipper:e.target.value});}})))
         ),
         h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-          fld('staff','担当者',m0.autoHv.staff||'',{flex:1}),
+          /* v19.17 修正30④: 担当者は出荷指示書に出さなくなったので手修正欄も外した */
           /* v18.85 修正22の確認事項4: 出荷指示日（既定は出力日）。手修正できる */
           fld('shipDate','出荷指示日（例: 2026/09/10）',m0.autoHv.shipDate||'',{flex:1}),
           fld('slip','伝票コード',m0.autoHv.slip||'',{flex:1}),
@@ -13789,7 +13883,20 @@ function PartsPage(p){
      従来は全倉庫一覧の編集ボタンと同じモーダル（全倉庫の入力欄）が開いてしまい、
      尼高を見ているつもりで本社の在庫を書き換えられる状態だった。
      onlyWh を持たせ、モーダルの表示と saveEdit の書込みを、その倉庫だけに限定する。 */
+  /* ===== v19.17 修正30②: 在庫編集の見出しは「アイテム名＋色/サイズ」 =====
+     従来は全倉庫一覧だと色/サイズだけ（例「M(グレー)」）、倉庫タブだとアイテム名だけ（例「サイドボード」）が
+     見出しに出ていて、何を編集しているのか分からなかった。★グループ名（_grpItem）と色/サイズ（variant）を並べる。
+     見出しはそのまま EDIT_LOG（履歴）の品名にも入る。 */
+  function editItemLabel(r){
+    var g=(r&&(r._grpItem||r.item))||'',v=(r&&r.variant)||'';
+    if(!g)return v;
+    if(!v||v===g)return g;
+    return g+'　'+v;
+  }
   function startEdit(label,lineId,key,sub,isDoor,color,onlyWh){
+    /* v19.17 修正30①: 倉庫間移動の入力欄は開くたびに空にする（前に開いたアイテムの入力が残り、
+       保存時の自動移動（saveEdit）で別のアイテムを動かしてしまわないように） */
+    xferForm[1]({from:'',to:'',qty:''});
     if(isDoor){
       /* Door edit: load ALL sizes for this color+doorKey across warehouses */
       /* v18.48 修正６①: SSα(SSA)の扉も在庫として存在するため、編集モーダルのサイズ列に含める（扉なしのSSWのみ除外） */
@@ -13826,10 +13933,55 @@ function PartsPage(p){
       editModal[1]({label:label+(isCommon?'（鍵類：共通在庫 全ライン合算）':''),lineId:targetLine,key:key,sub:sub,isDoor:false,color:color,vals:vals,isCommonKey:isCommon,onlyWh:onlyWh||null});
     }
   }
+  /* ===== v19.17 修正30①: 倉庫間移動の実行（「移動」ボタンと「保存」ボタンの共通処理） =====
+     【不具合】移動元・移動先・数量を入れて、フッターの緑の「保存」を押すと★移動されずに閉じていた
+     （saveEdit は倉庫ごとの入力欄しか見ておらず、移動欄は小さな「移動」ボタンでしか実行されなかった）。
+     「在庫数を更新しました」と出るので移動できたように見え、在庫の値が変わらない。
+     本番の EDIT_LOG に「倉庫間移動」の記録が1件も無く、手入力で付け替えた跡があったのはこのため。
+     → 保存時に移動欄が埋まっていれば★先に移動してから保存する（saveEdit 冒頭）。
+     戻り値 {ok, msg, q, sz, from, to}。在庫(STK)と EDIT_LOG は transferStock / transferDoorStock が書く。 */
+  function runXfer(em,f){
+    if(!f.from||!f.to||f.from===f.to)return {ok:false,msg:'移動元と移動先を別々に選んでください'};
+    var q=parseInt(f.qty)||0;if(q<=0)return {ok:false,msg:'移動する数量を入力してください'};
+    var r,sz=null;
+    if(em.isDoor){
+      sz=f.size&&em.doorSizes.indexOf(f.size)>=0?f.size:(em.doorSizes[0]||'');
+      r=transferDoorStock(em.lineId,em.key,em.color,sz,f.from,f.to,q,em.label,editorName[0]);
+      if(!r.ok)return {ok:false,msg:r.reason==='insufficient'?('移動元の空き在庫が不足です（'+sz+' 空き'+r.avail+'）'):'移動できません（サイズ・移動元・先・数量を確認）'};
+      broadcastEdit(p.userName||editorName[0]||'不明',em.label+' '+sz+' を倉庫間移動('+q+')');
+      return {ok:true,q:q,sz:sz,from:f.from,to:f.to,msg:'倉庫間移動: '+em.label+' '+sz+' を'+q+'枚移動しました'};
+    }
+    r=transferStock(em.lineId,em.key,em.sub,f.from,f.to,q,em.label,editorName[0]);
+    if(!r.ok)return {ok:false,msg:r.reason==='insufficient'?('移動元の空き在庫が不足です（空き'+r.avail+'）'):'移動できません（移動元・先・数量を確認）'};
+    broadcastEdit(p.userName||editorName[0]||'不明',em.label+' を倉庫間移動('+q+')');
+    return {ok:true,q:q,sz:null,from:f.from,to:f.to,msg:'倉庫間移動: '+em.label+' を'+q+'個移動しました'};
+  }
   function saveEdit(){
     var e=editModal[0];if(!e)return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は在庫編集できません');return;}
+    /* v19.17 修正30①: 移動欄に入力があれば、保存の前に倉庫間移動を実行する。
+       入力欄（vals/doorVals）は開いた時点の在庫なので、動かした2倉庫は★±数量だけずらしてから保存する
+       （絶対値で上書きすると移動が打ち消されるため）。手で数量を直していた場合もその値に対して±する。 */
+    var xf=xferForm[0]||{},xferMsg='';
+    if(xf.from||xf.to||(xf.qty!==''&&xf.qty!=null)){
+      var xr=runXfer(e,xf);
+      if(!xr.ok){p.toast('倉庫間移動ができません: '+xr.msg+'（移動しない場合は移動欄を空にしてから保存してください）');return;}
+      e=Object.assign({},e);
+      if(e.isDoor){
+        e.doorVals=Object.assign({},e.doorVals);
+        [[xr.from,-xr.q],[xr.to,xr.q]].forEach(function(t){
+          e.doorVals[t[0]]=Object.assign({},e.doorVals[t[0]]||{});
+          e.doorVals[t[0]][xr.sz]=Math.max(0,(parseInt(e.doorVals[t[0]][xr.sz])||0)+t[1]);
+        });
+      }else{
+        e.vals=Object.assign({},e.vals);
+        e.vals[xr.from]=Math.max(0,(parseInt(e.vals[xr.from])||0)-xr.q);
+        e.vals[xr.to]=(parseInt(e.vals[xr.to])||0)+xr.q;
+      }
+      xferForm[1]({from:'',to:'',qty:''});
+      xferMsg=xr.msg;
+    }
     /* v18.55 修正９③: 各倉庫タブから開いた編集は、その倉庫以外へ絶対に書き込まない。
        vals/doorVals は全倉庫分を持ったままなので（画面に出していないだけ）、
        ここで弾かないと「表示していない倉庫を保存し直す」ことになってしまう。 */
@@ -13889,7 +14041,7 @@ function PartsPage(p){
     }
     broadcastEdit(p.userName||editorName[0]||'不明',e.label+'の在庫を更新しました');
     editModal[1](null);bump[1](bump[0]+1);
-    p.toast('在庫数を更新しました');saveAll();
+    p.toast(xferMsg?(xferMsg+'（在庫数も保存しました）'):'在庫数を更新しました');saveAll();
   }
   function updateEditVal(wh,v){
     var e=Object.assign({},editModal[0]);
@@ -14756,7 +14908,7 @@ function PartsPage(p){
                 /* v18.55 修正９③: 選択中の倉庫(w)を渡し、その倉庫の数量だけ編集できるモーダルを開く */
                 h('td',null,h('button',{className:'btn btn-xs btn-ol',onClick:function(){
                   if(r.isDoor)startEdit((rr.dk==='doorH'?'扉〈ホタ〉':'扉 ')+(rr.colorObj?rr.colorObj.l:''),selLine[0],rr.dk,rr.doorSub,true,rr.color,w);
-                  else startEdit(rr._grpItem||rr.item||rr.variant,selLine[0],rr.key,rr.sub,false,null,w);
+                  else startEdit(editItemLabel(rr),selLine[0],rr.key,rr.sub,false,null,w);/* v19.17 修正30② */
                 }},'編集'))
               );
             }))
@@ -14877,7 +15029,7 @@ function PartsPage(p){
                 /* v14.2 Codex P3対応: 「扉すべて」合算行は編集不可（ファントムキー回避） */
                 h('td',null,r.isDoorTotal?h('span',{style:{fontSize:9,color:'var(--g400)'}},'合算'):h('button',{className:'btn btn-xs btn-ol',onClick:function(){
                   if(r.isDoor){startEdit((r.dk==='doorH'?'扉〈ホタ〉':'扉 ')+(r.colorObj?r.colorObj.l:''),selLine[0],r.dk,r.doorSub,true,r.color);}
-                  else{startEdit(r.item||r.variant,selLine[0],r.key,r.sub,false,null);}
+                  else{startEdit(editItemLabel(r),selLine[0],r.key,r.sub,false,null);}/* v19.17 修正30② */
                 }},'編集'))
               );
             }))
@@ -15516,11 +15668,9 @@ function PartsPage(p){
                   h('input',{className:'inp',type:'number',min:1,style:{width:64},placeholder:'数量',value:f0.qty,onChange:function(e){setF({qty:e.target.value});}}),
                   h('button',{className:'btn btn-xs btn-pr',onClick:function(){
                     if(p.isReadOnly){p.toast('読み取り専用モード中は移動できません');return;}
-                    var em=editModal[0],f=xferForm[0];
-                    if(!f.from||!f.to||f.from===f.to){p.toast('移動元と移動先を別々に選んでください');return;}
-                    var q=parseInt(f.qty)||0;if(q<=0){p.toast('数量を入力してください');return;}
-                    var r=transferDoorStock(em.lineId,em.key,em.color,sz,f.from,f.to,q,em.label,editorName[0]);
-                    if(!r.ok){p.toast(r.reason==='insufficient'?('移動元の空き在庫が不足です（'+sz+' 空き'+r.avail+'）'):'移動できません（サイズ・移動元・先・数量を確認）');return;}
+                    var em=editModal[0],f=Object.assign({},xferForm[0],{size:sz});
+                    var xr=runXfer(em,f);/* v19.17 修正30①: 保存ボタンと共通の処理 */
+                    if(!xr.ok){p.toast(xr.msg);return;}
                     /* ★保存ボタンは入力欄の値で上書きするので、動かした2倉庫の入力欄を最新の在庫へ合わせ直す */
                     var e2=Object.assign({},em);e2.doorVals=Object.assign({},em.doorVals);
                     [f.from,f.to].forEach(function(w){
@@ -15528,11 +15678,10 @@ function PartsPage(p){
                       e2.doorVals[w][sz]=gd(em.lineId,w,em.color,sz,em.key);
                     });
                     editModal[1](e2);xferForm[1]({from:'',to:'',qty:'',size:sz});
-                    broadcastEdit(p.userName||editorName[0]||'不明',em.label+' '+sz+' を倉庫間移動('+q+')');
-                    bump[1](bump[0]+1);saveAll();p.toast('倉庫間移動: '+em.label+' '+sz+' を'+q+'枚移動しました');
+                    bump[1](bump[0]+1);saveAll();p.toast(xr.msg);
                   }},'移動')
                 ),
-                h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」（在庫−仮押さえ）から差し引き移動先へ加算します。EDIT_LOGに記録。')
+                h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」（在庫−仮押さえ）から差し引き移動先へ加算します。「移動」を押さずに「保存」を押しても移動されます。EDIT_LOGに記録。')
               );
             })()
           ):
@@ -15557,18 +15706,15 @@ function PartsPage(p){
                 h('button',{className:'btn btn-xs btn-pr',onClick:function(){
                   if(p.isReadOnly){p.toast('読み取り専用モード中は移動できません');return;}
                   var em=editModal[0],f=xferForm[0];
-                  if(!f.from||!f.to||f.from===f.to){p.toast('移動元と移動先を別々に選んでください');return;}
-                  var q=parseInt(f.qty)||0;if(q<=0){p.toast('数量を入力してください');return;}
-                  var r=transferStock(em.lineId,em.key,em.sub,f.from,f.to,q,em.label,editorName[0]);
-                  if(!r.ok){p.toast(r.reason==='insufficient'?('移動元の空き在庫が不足です（空き'+r.avail+'）'):'移動できません（移動元・先・数量を確認）');return;}
+                  var xr=runXfer(em,f);/* v19.17 修正30①: 保存ボタンと共通の処理 */
+                  if(!xr.ok){p.toast(xr.msg);return;}
                   var e2=Object.assign({},em);e2.vals=Object.assign({},em.vals);
                   e2.vals[f.from]=gs(em.lineId,f.from,em.key,em.sub);e2.vals[f.to]=gs(em.lineId,f.to,em.key,em.sub);
                   editModal[1](e2);xferForm[1]({from:'',to:'',qty:''});
-                  broadcastEdit(p.userName||editorName[0]||'不明',em.label+' を倉庫間移動('+q+')');
-                  bump[1](bump[0]+1);saveAll();p.toast('倉庫間移動: '+q+'個を移動しました');
+                  bump[1](bump[0]+1);saveAll();p.toast(xr.msg);
                 }},'移動')
               ),
-              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」から差し引き移動先へ加算（チャーター/混載の取り寄せ等）。EDIT_LOGに記録。')
+              h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'※移動元の「空き在庫」から差し引き移動先へ加算（チャーター/混載の取り寄せ等）。「移動」を押さずに「保存」を押しても移動されます。EDIT_LOGに記録。')
             )
           )
       )
