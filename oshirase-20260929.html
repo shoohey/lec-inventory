@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】9月29日の更新のお知らせ（v19.17）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>倉庫間移動の不具合修正・構成表記の手修正などの<br>更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.17</span>
+      <span>2026年9月29日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。今回は<b>「倉庫間移動」をした在庫の数字が変わらない不具合</b>を直しました。倉庫間移動をされる方は、まず 1番 をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.17</b> になっていない場合は、ページを再読み込みしてください。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">倉庫間移動が在庫数に反映されない不具合を直しました</a><span class="tag">重要</span></li>
+      <li><a href="#s2">在庫の編集画面の見出しに、アイテム名と色・サイズが出るようにしました</a></li>
+      <li><a href="#s3">見積書などの構成表記（【…段積み…】）を手で直せるようにしました</a></li>
+      <li><a href="#s4">出荷指示書の荷送人の下の「担当者」を削除しました</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 部材在庫一覧 ============ -->
+  <h2 class="sec">部材在庫一覧（在庫の編集画面）</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>倉庫間移動が在庫数に反映されない不具合を直しました<span class="pill fix" style="margin-left:8px">不具合修正</span></span></h3>
+
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        <p class="step">移動元・移動先・数量を入力して、緑の <kbd>保存</kbd> を押す</p>
+        <p class="step"><span class="arw">↓</span> 「在庫数を更新しました」と出るのに、<b>実際には移動されていなかった</b></p>
+        <p class="step sub">（移動欄の横の小さな <kbd>移動</kbd> ボタンを押したときだけ移動されていました）</p>
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        <p class="step">移動元・移動先・数量を入力して、緑の <kbd>保存</kbd> を押す</p>
+        <p class="step"><span class="arw">↓</span> <b>移動してから保存されます</b></p>
+        <p class="step sub">（<kbd>移動</kbd> ボタン → <kbd>保存</kbd> の、これまでの手順でもかまいません）</p>
+      </div>
+    </div>
+
+    <ul class="sub">
+      <li>同じ画面で倉庫の数量を手で直していた場合も、その数に移動分を足し引きして保存します。</li>
+      <li>移動欄の入力が途中（数量だけ入れた等）のときや、移動元の在庫が足りないときは、保存せずにメッセージが出ます。画面は閉じないので、入力を直してください。</li>
+      <li>移動欄は編集画面を開くたびに空になります（これまでは前に入れた内容が、別のアイテムを開いたときにも残っていました）。</li>
+    </ul>
+
+    <div class="warnbox">
+      <b>ご確認のお願い：</b>9月上旬以降、倉庫間移動のつもりで保存した在庫は、<b>移動されていない可能性があります</b>。倉庫ごとの数字が合わない場合は、在庫数をご確認のうえ直してください。<br>
+      <kbd>移動</kbd> ボタンを押したのに数字が戻る、といった別の症状がある場合は、どのアイテム・どの倉庫で起きたかをご連絡ください。
+    </div>
+  </section>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>在庫の編集画面の見出しに、アイテム名と色・サイズが出るようにしました</span></h3>
+    <div class="ex">
+      これまで　<s>M（グレー）</s><br>
+      これから　<strong>サイドボード　M(グレー)</strong>
+    </div>
+    <p class="sub">履歴にも同じ名前で記録されるので、何を動かしたか分かりやすくなります。</p>
+  </section>
+
+  <!-- ============ 見積・帳票 ============ -->
+  <h2 class="sec">見積・帳票</h2>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>見積書などの構成表記（【Sサイズ1段積み：H380mm】など）を手で直せるようにしました</span></h3>
+    <p class="sub">直し方は2通りあります。どちらで直しても同じ内容が保存されます。</p>
+    <div class="how">
+      <b>見積書作成画面から</b>
+      明細 → 本体の行の上の「構成表記」欄<br>
+      手で直した欄は黄色になります。<kbd>↺</kbd> で自動の表記に戻ります。
+    </div>
+    <div class="how">
+      <b>案件管理から（出荷指示などに進んだ案件はこちら）</b>
+      案件管理 → <kbd>📄帳票</kbd> → 見積書の下の <kbd>✎ 構成表記（【…段積み…】）の手修正</kbd>
+    </div>
+    <ul>
+      <li>【】も含めた1行をそのまま書き換えます。<b>空欄にすると表記自体が出なくなります</b>。</li>
+      <li>見積書・請求書・納品書・物品受領書と、Excel出力のすべてに反映されます。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>出荷指示書の荷送人の下の「担当者」を削除しました</span></h3>
+    <ul>
+      <li>印刷・画面プレビュー・Excel出力のすべてから外しました。</li>
+      <li><kbd>✎ 記載内容の手修正</kbd> の「担当者」欄もなくなりました。</li>
+      <li>見積書・請求書などの担当者は、これまでどおり出ます。</li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.17】
+・★倉庫間移動の不具合修正：移動欄を入れて「保存」を押しても移動されていなかったのを直しました（「移動」ボタンを押さずに「保存」でも移動されます）。倉庫ごとの在庫数が合わない場合はご確認ください
+・在庫の編集画面の見出しを「サイドボード　M(グレー)」のようにアイテム名＋色/サイズに
+・見積書などの構成表記【…段積み…】を手修正できるように（見積書作成画面の明細、または「📄帳票」→見積書の「✎ 構成表記の手修正」から）
+・出荷指示書の荷送人の下の「担当者」を削除
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20260929.html
+表示が古いときは再読み込みしてください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
