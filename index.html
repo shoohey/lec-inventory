@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.18（修正31 出荷指示書の出荷No・見積書のオープン表記と別ライン扉の色）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.19（部材在庫一覧のサイズ絞り込み SSα追加・選んだサイズだけ表示）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -13787,7 +13787,30 @@ function PartsPage(p){
     var t=itemVendorCodeText(codes);
     return h('div',{style:{fontSize:7,fontWeight:600,marginTop:1,lineHeight:1.4,color:t?'#0E7490':'var(--g400)'}},t||'コード未連携');
   }
-  var sizeFilter=us('all'); /* all, 3S, SS, S, M, L, XL */
+  var sizeFilter=us('all'); /* all, 3S, SS, SSA, S, M, L, XL */
+  /* ===== v19.19 口頭依頼: 部材在庫一覧のサイズ絞り込み =====
+     ・SSα（SSA）のボタンを追加（SSα を持つライン＝LINE_SIZES に SSA があるラインだけ出す）。
+     ・★選んだサイズの行だけを出す。従来は「同じ系統（sml/ss）なら表示」だったため、
+     　S を選んでもサイドボード M・L、扉 M・L… まで出ていた。
+     　残すのは ①そのサイズの行 ②系統の共通部材（例「SS・3S共通」＝sub が sml/ss で同じ系統）
+     　③サイズを持たない部材（鍵・ネジ・色違いのキャップ等）。扉は doorSub がそのサイズのものだけ。
+     　★SSα はサイド/バックを SS・3S で組むが、SSα の行ではないので出さない（SSα扉と SS・3S共通部材だけ）。
+     ・そのラインに無いサイズを選んだままラインを替えたときは「全サイズ」扱いにする。 */
+  var SIZE_FILTER_BTNS=['3S','SS','SSA','S','M','L','XL'];
+  function sizeFilterOf(){
+    var sf=sizeFilter[0];
+    if(sf==='all')return 'all';
+    return (LINE_SIZES[selLine[0]]||[]).indexOf(sf)>=0?sf:'all';
+  }
+  function sizeRowMatch(sf,sub,isDoor,doorSub){
+    if(sf==='all')return true;
+    if(isDoor)return doorSub===sf;
+    if(sub==null||sub==='')return true;
+    if(sub===sf)return true;
+    if(sub==='sml'||sub==='ss')return sub===(sizeObj(sf)||{}).grp;
+    if(SIZES.some(function(x){return x.v===sub;}))return false;
+    return true;/* 色違いの sub（アンカー穴キャップ bk/gy 等）はサイズに関係しない */
+  }
   var selWH=us('all'); /* 'all' or specific warehouse id */
   var itemSearch=us(''); /* v18.40 修正１⑤: アイテム名の自由検索（一致したアイテムは色・サイズを全表示） */
   var showIncoming=us(false),showAddIncoming=us(false),editIncId=us(null);
@@ -14425,15 +14448,9 @@ function PartsPage(p){
   }
   var structRows=partFilter[0]==='all'?structRowsAll:structRowsAll.filter(function(r){return r.cat===partFilter[0];});
   /* Apply size filter */
-  if(sizeFilter[0]!=='all'){
-    var sf=sizeFilter[0];
-    var sfGrp=(sf==='3S'||sf==='SS')?'ss':'sml';
-    structRows=structRows.filter(function(r){
-      if(!r.sub)return true;/* items without sub (handle, locks) always show */
-      if(r.sub===sf)return true;/* exact size match */
-      if(r.sub===sfGrp)return true;/* group match (sml/ss) */
-      return false;
-    });
+  if(sizeFilterOf()!=='all'){
+    var sf=sizeFilterOf();
+    structRows=structRows.filter(function(r){return sizeRowMatch(sf,r.sub,false,null);});/* v19.19 */
   }
   /* v18.40 修正１⑤: アイテム名の自由検索。一致した行は同じアイテムの色・サイズ違いを全て残す
      （structRowsAllの各行ラベルは「アイテム名(サイズ)」の形式のため部分一致でサイズ違いも自然に全表示される） */
@@ -14449,9 +14466,7 @@ function PartsPage(p){
           h('input',{className:'inp',style:{width:170},value:itemSearch[0],onChange:function(e){itemSearch[1](e.target.value);},placeholder:'🔍 アイテム名で検索…'}),
           LINES.map(function(l){return h('button',{key:l.id,className:'btn btn-xs '+(selLine[0]===l.id?'btn-nv':'btn-ol'),onClick:function(){selLine[1](l.id);}},l.mark+' '+l.name);}),
           h('span',{style:{margin:'0 4px',color:'var(--g300)'}},'|'),
-          h('button',{className:'btn btn-xs '+(viewMode[0]==='struct'?'btn-nv':'btn-ol'),onClick:function(){viewMode[1]('struct');}},'構造部材'),
-          h('button',{className:'btn btn-xs '+(viewMode[0]==='door'?'btn-nv':'btn-ol'),onClick:function(){viewMode[1]('door');}},'扉(カラー別)'),
-          h('span',{style:{margin:'0 4px',color:'var(--g300)'}},'|'),
+          /* v19.19 口頭依頼: 「構造部材」「扉(カラー別)」の切替ボタンは削除（常に構造部材の表示。扉は「全て」で続けて出る） */
           viewMode[0]==='struct'?[
             h('button',{key:'fa',className:'btn btn-xs '+(partFilter[0]==='all'?'btn-tl':'btn-ol'),onClick:function(){partFilter[1]('all');}},'全て'),
             h('button',{key:'fs',className:'btn btn-xs '+(partFilter[0]==='size'?'btn-tl':'btn-ol'),onClick:function(){partFilter[1]('size');}},'サイズ部材'),
@@ -14459,8 +14474,9 @@ function PartsPage(p){
             h('button',{key:'fo',className:'btn btn-xs '+(partFilter[0]==='option'?'btn-tl':'btn-ol'),onClick:function(){partFilter[1]('option');}},'オプション'),
             h('span',{key:'sep2',style:{margin:'0 4px',color:'var(--g300)'}},'|'),
             h('span',{key:'szlbl',style:{fontSize:9,fontWeight:600,color:'var(--g500)',lineHeight:'24px'}},'サイズ:'),
-            h('button',{key:'sz-all',className:'btn btn-xs '+(sizeFilter[0]==='all'?'btn-nv':'btn-ol'),onClick:function(){sizeFilter[1]('all');}},'全サイズ'),
-            ['3S','SS','S','M','L','XL'].map(function(sz){return h('button',{key:'sz-'+sz,className:'btn btn-xs '+(sizeFilter[0]===sz?'btn-nv':'btn-ol'),onClick:function(){sizeFilter[1](sz);}},sz);}),
+            h('button',{key:'sz-all',className:'btn btn-xs '+(sizeFilterOf()==='all'?'btn-nv':'btn-ol'),onClick:function(){sizeFilter[1]('all');}},'全サイズ'),
+            /* v19.19: SSα を追加（そのラインに無いサイズのボタンは出さない） */
+            SIZE_FILTER_BTNS.filter(function(sz){return (LINE_SIZES[selLine[0]]||[]).indexOf(sz)>=0;}).map(function(sz){return h('button',{key:'sz-'+sz,className:'btn btn-xs '+(sizeFilterOf()===sz?'btn-nv':'btn-ol'),onClick:function(){sizeFilter[1](sz);}},sz==='SSA'?'SSα':sz);}),
             h('span',{key:'sep3',style:{margin:'0 4px',color:'var(--g300)'}},'|')
           ]:null,
           /* v18.70 修正16④: 商品コードの表示切替（請求書の突き合わせ用） */
@@ -14859,8 +14875,7 @@ function PartsPage(p){
              ※区分（サイズ部材/オプション/鍵）の見出し行は、全倉庫一覧に合わせて出さない。 */
           var uni=buildUniRows();
           var _q2=itemSearch[0].trim().toLowerCase();
-          var _sf2=sizeFilter[0];
-          var _sfG2=(_sf2==='3S'||_sf2==='SS')?'ss':'sml';
+          var _sf2=sizeFilterOf();/* v19.19 */
           /* サイズ絞り込みボタンは構造部材表示のときだけ画面に出るため、扉(カラー別)表示では適用しない */
           var _applySize=(viewMode[0]==='struct')&&_sf2!=='all';
           uni.forEach(function(r){
@@ -14874,10 +14889,7 @@ function PartsPage(p){
               if(viewMode[0]==='door')return;
               if(partFilter[0]!=='all'&&r.cat!==partFilter[0])return;
             }
-            if(_applySize){
-              if(isDoorR){if(r.doorSub!==_sf2&&r.grp!==_sfG2)return;}
-              else if(r.sub||r.grp){if(r.sub!==_sf2&&r.sub!==_sfG2&&r.grp!==_sfG2)return;}
-            }
+            if(_applySize&&!sizeRowMatch(_sf2,r.sub,isDoorR,r.doorSub))return;/* v19.19: 選んだサイズの行だけ */
             /* v18.70 修正16④: アイテム名だけでなく請求書の商品コードでも探せる */
             if(_q2){
               var hit=(r._grpItem||'').toLowerCase().indexOf(_q2)>=0;
@@ -14940,15 +14952,10 @@ function PartsPage(p){
         (function(){
           var uniRows=buildUniRows();/* v18.76 修正18⑤: 並び順は buildUniRows() に集約（各倉庫タブと共通） */
           /* Apply size filter */
-          if(sizeFilter[0]!=='all'){
-            var sf3=sizeFilter[0];var sfG3=(sf3==='3S'||sf3==='SS')?'ss':'sml';
-            uniRows=uniRows.filter(function(r){
-              if(!r.sub&&!r.isDoor&&!r.grp)return true;
-              if(r.isDoor){return r.doorSub===sf3||(r.grp===sfG3&&!r.doorSub);}
-              if(r.sub===sf3||r.sub===sfG3)return true;
-              if(r.grp===sfG3)return true;
-              return false;
-            });
+          if(sizeFilterOf()!=='all'){
+            var sf3=sizeFilterOf();
+            /* v19.19: 選んだサイズの行だけ（扉の色ごとの合計行 isDoorTotal はサイズを持たないので外す） */
+            uniRows=uniRows.filter(function(r){return !r.isDoorTotal&&sizeRowMatch(sf3,r.sub,!!r.isDoor,r.doorSub);});
           }
           /* v18.40 修正１⑤: アイテム名検索（グループ単位一致・色/サイズは全表示） */
           if(itemSearch[0].trim()){
