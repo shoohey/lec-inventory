@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.17（修正30 倉庫間移動・在庫編集の品名・構成表記の手修正・出荷指示書の担当者）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.18（修正31 出荷指示書の出荷No・見積書のオープン表記と別ライン扉の色）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1841,6 +1841,23 @@ function isOrderColor(lineId,colorId){
 function doorLineOf(ln){return (ln&&ln.doorLine)||(ln&&ln.line)||'';}
 /* BOM行から扉のラインを引く（calcBOM が扉行に doorLine を載せている） */
 function bomDoorLine(b,fallbackLine){return (b&&b.doorLine)||fallbackLine;}
+/* ===== v19.18 修正31②: 明細の扉色の色オブジェクト（扉だけ別ラインでも引ける） =====
+   本体と違うライン（例 日本製Ver.2本体＋台湾製ピンク扉）の色は本体ラインの色一覧に無いため、
+   LINE_COLORS[ln.line] で引くと見つからず、見積書・明細の表示から色が消えていた。
+   ★扉のライン（doorLineOf）で先に引き、無ければ本体ラインで引く。colorId 省略時は ln.color。 */
+function lineColorObj(ln,colorId){
+  if(colorId===undefined)colorId=ln&&ln.color;
+  if(!colorId)return null;
+  var f=function(x){return x.v===colorId;};
+  var dl=doorLineOf(ln);
+  return (LINE_COLORS[dl]||[]).find(f)||(ln&&ln.line!==dl?(LINE_COLORS[ln.line]||[]).find(f):null)||null;
+}
+/* v19.18 修正31①: 扉なし（オープン）の明細か。SSW はもともと扉の無い製品なので含めない */
+function lineIsOpen(ln){
+  if(!ln||ln.isPartOnly)return false;
+  if(ln.type==='open')return true;
+  return ln.noDoor===true&&!sizeObj(ln.size).ssw;
+}
 /* v18.71 修正17: 扉色の表示名。扉だけ別ライン（Ver.1・台湾製）のことがあるので、必ず扉のラインで引く。
    色コード(pb/pp 等)は在庫キー・保存データなので不変。画面に出すのはこのラベルだけにする。 */
 function doorColorLabelOf(lineId,colorId){
@@ -2957,7 +2974,8 @@ function shipEditHeader(order,cust,scope){
     /* v18.99 修正28: 荷受人には★必ず「様」を付ける（顧客の敬称が「先生」等でも出荷指示書は様） */
     consignee:(cust&&cust.contactPerson)?(cust.contactPerson+' 様'):'',
     staff:orderSalesPersonRaw(order,cust)||'齋藤 勝',/* v18.97 修正27④ */
-    slip:'出荷-'+((order&&order.no)||''),
+    /* v19.18 修正31: 見出しを「出荷No」にし、値は案件Noだけ（「出荷-」は付けない） */
+    slip:((order&&order.no)||''),
     /* v18.85 修正22の確認事項4: 出荷指示日を戻した（ユーザー回答「出荷指示日は追加して」）。
        自動値は出力日（docDateOf の 'shipping' と同じ）。★手修正できる。 */
     shipDate:tdSlash(),
@@ -2979,6 +2997,8 @@ function shipEditHeader(order,cust,scope){
   hv.consignee=withSama(hv.consignee);/* v18.99 修正28: 手修正した荷受人にも「様」を付ける */
   if(se.staff){hv.staff=se.staff;hv.edited.staff=true;}
   if(se.slip){hv.slip=se.slip;hv.edited.slip=true;}
+  /* v19.18 修正31: 以前の手修正に残っている先頭の「出荷-」も外す（自動値と同じ表記に揃える） */
+  hv.slip=String(hv.slip||'').replace(/^出荷[-－]\s*/,'');
   if(se.shipDate){hv.shipDate=se.shipDate;hv.edited.shipDate=true;}
   if(se.creator){hv.creator=se.creator;hv.edited.creator=true;}
   /* ===== v19.12 修正29⑤: 出荷指示書の作成者は★氏名だけを出す =====
@@ -4132,7 +4152,7 @@ function orderUnitBOM(order){
       vjQty:per(ln.vjQty)
     });
     var lnm=(LINES.find(function(l){return l.id===ln.line;})||{name:''}).name;
-    var cObj=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===col;});
+    var cObj=lineColorObj(ln,col);/* v19.18 修正31② */
     calcBOM(ln.size,1,1,ln.lock,ln.type,o1).forEach(function(b){
       if(!b||(parseInt(b.qty)||0)<=0)return;
       rows.push({
@@ -5990,8 +6010,9 @@ function buildQuoteRows(order){
       return;
     }
     var sz=sizeObj(ln.size);
-    var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
-    var colorName=(ln.type==='open'||!co)?'':co.l;
+    var co=lineColorObj(ln);/* v19.18 修正31②: 扉だけ別ラインの色も引く */
+    var isOpenLn=lineIsOpen(ln);/* v19.18 修正31①: 扉なし（オープン） */
+    var colorName=(isOpenLn||!co)?'':co.l;
     var isPersonal=ln.type==='personal';
     /* v18.73 修正17の追加: 扉色が複数ある場合は商品名称に色を書かず、本体行の下に色ごとの行を足す。
        1色のときは従来どおり商品名称に色を書く。 */
@@ -6000,7 +6021,7 @@ function buildQuoteRows(order){
     if(cb.length>1){
       colorNote='＜扉色：'+cb.map(function(c){
         if(c.color==='open')return 'オープン'+c.qty+'台';
-        var cn=(LINE_COLORS[ln.line]||[]).find(function(x){return x.v===c.color;});
+        var cn=lineColorObj(ln,c.color);/* v19.18 修正31② */
         return (cn?cn.l:'')+c.qty+'台';
       }).join('、')+'＞';
     }else if(colorName){
@@ -6011,10 +6032,11 @@ function buildQuoteRows(order){
     var itemName=productName(ln.line)+(ln.line==='sa'?'Sα':sz.l)+lineTypeLabel(ln)+colorDesc;
     var lockObj=LOCK_TYPES.find(function(lt){return lt.v===ln.lock;});
     if(lockObj&&ln.lock!=='none')itemName+='　'+(lockObj.s||lockObj.l);
-    if(isPersonal&&(!lockObj||ln.lock==='none'))itemName+='・トッテ';
+    if(isPersonal&&!isOpenLn&&(!lockObj||ln.lock==='none'))itemName+='・トッテ';/* v19.18: 扉なしはトッテも無い */
     var sq=parseInt(ln.shelfQty)||0;
     if(sq>0){var sc2=SHELF_COLORS.find(function(x){return x.v===ln.shelfColor;})||{l:'グレー'};itemName+='・棚板（'+sc2.l+'）';}
-    if(ln.type==='open')itemName+='（オープン）';
+    /* v19.18 修正31①: 在庫確認で「扉なし」にした明細も「オープン」と書く（従来は旧オープンタイプだけ） */
+    if(isOpenLn)itemName+='（オープン）';
     /* v18.54 修正８①: 単価は案件に焼き付けた販売単価（本体＋錠前）を使う。priceVerが無い旧案件は従来単価 */
     var uPrice=lineSellPrice(order,ln),shPrice=lineShelfPrice(order,ln);
     var bodyEnt=(order&&order.priceVer>=2)?bodyCodeOf(ln):null;
@@ -6759,7 +6781,7 @@ function buildShipRows(order,legIndex,scope){
       title='[パーツ単品]';
     }else{
       bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
-      var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
+      var co=lineColorObj(ln);/* v19.18 修正31② */
       var colorName=(ln.type==='open'||!co)?'':co.l;
       title=productName(ln.line,true)+' '+sizeLabel(ln.line,ln.size)+(colorName?' '+colorName:'')+(ln.type==='open'?' オープン':'')+' '+lineSpecLabel(ln,'');
     }
@@ -6796,7 +6818,7 @@ function buildShipRows(order,legIndex,scope){
       b.qty+=spareTake(spPool,b.key,b.isDoor?(b.doorSub||ln.size):b.sub,b.isDoor?b.color:null);
       var lbl=b.label;
       if(b.isDoor){
-        var cObj=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===b.color;});
+        var cObj=(LINE_COLORS[bomDoorLine(b,ln.line)]||[]).find(function(c){return c.v===b.color;})||lineColorObj(ln,b.color);/* v19.18 修正31② */
         if(cObj)lbl+=' '+cObj.l;
       }
       /* v18.59 修正10③(b): ✎様式手修正（品名書換・数量指示）を最優先で適用する */
@@ -7198,7 +7220,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
       +'<span>'+(shv.shipperName||'')+(shv.shipperDetail?('<br>'+String(shv.shipperDetail).replace(/(TEL[:：]?\s*[\d-]+)/,'<span style="white-space:nowrap">$1</span>')):'')+'</span></div>';/* v19.01: 電話番号の途中で改行しない */
     /* v19.17 修正30④: 荷送人の下の「担当者」は出荷指示書に不要（削除）。★shv.staff は残っているが印字しない */
     html+='<div><b>出荷指示日:</b> '+(shv.shipDate||'')+em('shipDate')+'</div>';
-    html+='<div><b>伝票コード:</b> '+(shv.slip||'')+em('slip')+'</div>';
+    html+='<div><b>出荷No:</b> '+(shv.slip||'')+em('slip')+'</div>';/* v19.18 修正31: 伝票コード→出荷No */
     html+='<div style="display:flex;gap:4px"><b style="white-space:nowrap">連絡事項:</b>'
       +'<span>'+String(shv.notes||'').split('\n').join('<br>')+'</span></div>';
     html+='</div></div>';
@@ -7232,8 +7254,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   }
   if(!isReceipt&&!isShipping){html+='<div style="font-size:19px;font-weight:900;text-decoration:underline;margin:10px 0;padding:6px 0">'+cfg.amountLabel+'：　&yen;'+fm(total)+'</div>';}
   if(isShipping){
-    /* Shipping: show quote number only, no item detail table */
-    html+='<div style="margin:8px 0;padding:6px 10px;border:1px solid #ccc;background:#f9f9f9;font-size:12px"><b>見積№:</b> '+order.no+'</div>';
+    /* v19.18 修正31: 出荷指示書の「見積№」の枠は不要（出荷Noと同じ番号のため削除） */
   }else if(isReceipt){
     html+='<table><thead><tr><th style="width:86px">商品コード</th><th>商品名称</th><th style="width:56px">数量</th><th style="width:44px">単位</th><th>備考</th></tr></thead><tbody>';
     rows.forEach(function(r){
@@ -7369,7 +7390,9 @@ function generateExcel(order,docType){
   /* v18.33 要望⑮: 出荷指示書Excelには件名を出さない（HTMLと同挙動） */
   if(docType!=='shipping')wsData.push(['件名',q.subject,'','担当者',exSalesP]);
   /* v19.17 修正30④: 出荷指示書は担当者を載せない（HTMLと同じ） */
-  wsData.push([cfg.dateLabel,docDateOf(order,docType),'','伝票コード',q.slipCode]);
+  /* v19.18 修正31: 出荷指示書は「出荷No」＝案件No（手修正があればそれ）。HTMLと同じ値 */
+  if(docType==='shipping')wsData.push([cfg.dateLabel,docDateOf(order,docType),'','出荷No',shipEditHeader(order,cust).slip]);
+  else wsData.push([cfg.dateLabel,docDateOf(order,docType),'','伝票コード',q.slipCode]);
   /* v18.37 修正箇所2③: 納期・有効期限・受渡地はHTML版と同じ保存値／既定値を使う */
   if(docType==='quote'){
     wsData.push(['納期',deliveryTermOf(order),'','有効期限',validUntilOf(order)]);
@@ -10159,7 +10182,7 @@ function InvPage(p){
         lines[0].length>0?h('div',{className:'card',style:{marginBottom:8}},
           h('div',{className:'chd'},h('h3',null,'明細 ('+lines[0].length+'件)')),
           h('div',{style:{padding:5}},lines[0].map(function(l){
-            var co=(LINE_COLORS[l.line]||[]).find(function(c){return c.v===l.color;});
+            var co=lineColorObj(l);/* v19.18 修正31②: 扉だけ別ラインの色も出す */
             var lo=LINES.find(function(x){return x.id===l.line;});
             if(l.isPartOnly){
               return h('div',{className:'olc',key:l.id},
@@ -10179,7 +10202,7 @@ function InvPage(p){
               isNoDoor?h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--g200)',flexShrink:0}}):h('div',{style:{width:14,height:14,borderRadius:3,background:co?co.x:'#ccc',flexShrink:0}}),
               h('div',{style:{flex:1,fontSize:10}},
                 h('b',null,sizeLabel(l.line,l.size)+(!isNoDoor&&co&&!l.colorBreakdown?' '+co.l:'')),
-                l.colorBreakdown?h('div',{style:{fontSize:8,color:'var(--pr)',fontWeight:600}},l.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===cb.color;});return (cn?cn.l:'')+'×'+cb.qty;}).join(', ')):null,
+                l.colorBreakdown?h('div',{style:{fontSize:8,color:'var(--pr)',fontWeight:600}},l.colorBreakdown.map(function(cb){if(cb.color==='open')return 'オープン×'+cb.qty;var cn=lineColorObj(l,cb.color);return (cn?cn.l:'')+'×'+cb.qty;}).join(', ')):null,
                 h('div',{style:{fontSize:8,color:'var(--g400)'}},
                   (lo?lo.mark+' ':'')+(to?to.l+' ':'')+(isNoDoor?'[扉なし] ':'')+lineSpecLabel(l)+(l.hasBase===false?' ベース無':'')+(l.shelfQty>0?' 棚板'+l.shelfQty+'枚':'')
                 ),
@@ -11100,7 +11123,7 @@ function QuotePreview(p){
             h('span',null,shvP.shipperName||'',shvP.shipperDetail?h('div',null,String(shvP.shipperDetail).split(/(?=TEL)/).map(function(t,ti){return h('span',{key:ti,style:ti?{whiteSpace:'nowrap'}:null},t);})):null)),
           /* v19.17 修正30④: 「担当者」は出さない（印刷用HTMLと同じ） */
           h('div',null,h('b',null,'出荷指示日: '),shvP.shipDate||''),
-          h('div',null,h('b',null,'伝票コード: '),shvP.slip||''),
+          h('div',null,h('b',null,'出荷No: '),shvP.slip||''),/* v19.18 修正31 */
           h('div',{style:{display:'flex',gap:4}},h('b',{style:{whiteSpace:'nowrap'}},'連絡事項:'),
             h('span',null,String(shvP.notes||'').split('\n').map(function(t,ti){return h('div',{key:ti},t);})))
         )
@@ -11131,8 +11154,7 @@ function QuotePreview(p){
         ]
       ),
       !isReceipt&&!isShipping?h('div',{style:{fontSize:19,fontWeight:900,textDecoration:'underline',margin:'10px 0',padding:'6px 0'}},cfg.amountLabel+'\uFF1A\u3000\u00A5'+fm(total)):null,/* v18.81 \u4FEE\u6B6321\u2463: \u300C\u898B\u7A4D\u91D1\u984D\uFF1A\u3000\uFFE5\u2026\u300D\u3068\u30B9\u30DA\u30FC\u30B9\u3092\u7A7A\u3051\u308B\uFF08\u5370\u5237\u7248\u3068\u540C\u3058\uFF09 */
-      isShipping?
-        h('div',{style:{margin:'8px 0',padding:'6px 10px',border:'1px solid #ccc',background:'#f9f9f9',fontSize:12}},h('b',null,'見積№: '),o.no):
+      isShipping?null:/* v19.18 修正31: 出荷指示書の「見積№」の枠は削除 */
       isReceipt?
         h('table',{style:{width:'100%',borderCollapse:'collapse',margin:'8px 0'}},
           h('thead',null,h('tr',null,
@@ -12491,7 +12513,7 @@ function OrdersPage(p){
         h('table',{className:'tbl',style:{marginTop:4}},
           h('thead',null,h('tr',null,h('th',null,'製品'),h('th',null,'サイズ'),h('th',null,'カラー'),h('th',null,'タイプ'),h('th',null,'構成'),h('th',null,'数量'))),
           h('tbody',null,detail[0].lines.map(function(l,i){
-            var co=(LINE_COLORS[l.line]||[]).find(function(c){return c.v===l.color;});
+            var co=lineColorObj(l);/* v19.18 修正31②: 扉だけ別ラインの色も出す */
             var lo=LINES.find(function(x){return x.id===l.line;});
             var to=TYPES.find(function(x){return x.v===l.type;});
             if(l.isFreeInput){
@@ -13502,7 +13524,7 @@ function OrdersPage(p){
           /* v19.17 修正30④: 担当者は出荷指示書に出さなくなったので手修正欄も外した */
           /* v18.85 修正22の確認事項4: 出荷指示日（既定は出力日）。手修正できる */
           fld('shipDate','出荷指示日（例: 2026/09/10）',m0.autoHv.shipDate||'',{flex:1}),
-          fld('slip','伝票コード',m0.autoHv.slip||'',{flex:1}),
+          fld('slip','出荷No',m0.autoHv.slip||'',{flex:1}),/* v19.18 修正31 */
           /* v19.01: 作成者（既定は案件の起票者）。出荷指示書の会社電話番号の下に出る */
           fld('creator','作成者（空欄=起票者）',m0.autoHv.creator||'',{flex:1})
         ),
@@ -13619,7 +13641,7 @@ function orderBomGroups(order){
       groups.push({title:'[自由入力] '+(ln.name||''),rows:[{label:fl,qty:parseInt(ln.qty)||0,unit:ln.unit||'個',wh:'',approx:false}]});
       return;
     }
-    var co=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===ln.color;});
+    var co=lineColorObj(ln);/* v19.18 修正31② */
     var bom,title;
     if(ln.isPartOnly){
       if(ln.isDoor)bom=[{key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub}];
@@ -15788,7 +15810,7 @@ function PartsPage(p){
                 if(l.isFreeInput)return '[自由入力]'+l.name+'×'+l.qty+(l.unit&&l.unit!=='個'?l.unit:'');
                 if(l.isPartOnly)return(l.partLabel||l.partKey)+'×'+l.qty;
                 var ln2=LINES.find(function(x){return x.id===l.line;});
-                var co=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===l.color;});
+                var co=lineColorObj(l);/* v19.18 修正31② */
                 var sz=sizeObj(l.size);
                 var lockObj=LOCK_TYPES.find(function(lt){return lt.v===l.lock;});
                 return (ln2?ln2.mark:'')+' '+(l.line==='sa'?'Sα':sz.l)+(co&&l.type!=='open'?' '+co.l:'')+(l.type==='open'?' オープン':'')+' '+lineSpecLabel(l,'')+(lockObj&&l.lock!=='none'?' '+lockObj.s:'')+'×'+l.qty;/* v18.34 ⑧追随: saはSα表記 */
@@ -16163,7 +16185,7 @@ function PartsPage(p){
         h('table',{className:'tbl',style:{marginTop:4,fontSize:12}},
           h('thead',null,h('tr',null,h('th',null,'製品'),h('th',null,'サイズ'),h('th',null,'カラー'),h('th',null,'タイプ'),h('th',null,'構成'),h('th',null,'数量'))),
           h('tbody',null,heldDetail[0].lines.map(function(l,i){
-            var co=(LINE_COLORS[l.line]||[]).find(function(c){return c.v===l.color;});
+            var co=lineColorObj(l);/* v19.18 修正31②: 扉だけ別ラインの色も出す */
             var lo=LINES.find(function(x){return x.id===l.line;});
             var to=TYPES.find(function(x){return x.v===l.type;});
             if(l.isFreeInput){
@@ -16347,7 +16369,7 @@ function PartsPage(p){
                 var c=CUSTS.find(function(x){return x.id===o.cid;});
                 var summary=o.lines.map(function(l){
                   if(l.isPartOnly){return (l.partLabel||'パーツ')+'×'+l.qty;}
-                  var co=(LINE_COLORS[l.line]||[]).find(function(cc){return cc.v===l.color;});
+                  var co=lineColorObj(l);/* v19.18 修正31② */
                   return sizeLabel(l.line,l.size)+(co?' '+co.l:'')+' '+lineSpecLabel(l,'')+' ×'+l.qty;
                 }).join(', ');
                 return h('tr',{key:o.no},h('td',null,h('b',null,o.no)),h('td',null,c?c.name:''),h('td',null,o.date),
