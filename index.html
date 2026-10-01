@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.19（部材在庫一覧のサイズ絞り込み SSα追加・選んだサイズだけ表示）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.20（部材在庫一覧 SSαの部材表示・全倉庫一覧の部材フィルタ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -13794,7 +13794,7 @@ function PartsPage(p){
      　S を選んでもサイドボード M・L、扉 M・L… まで出ていた。
      　残すのは ①そのサイズの行 ②系統の共通部材（例「SS・3S共通」＝sub が sml/ss で同じ系統）
      　③サイズを持たない部材（鍵・ネジ・色違いのキャップ等）。扉は doorSub がそのサイズのものだけ。
-     　★SSα はサイド/バックを SS・3S で組むが、SSα の行ではないので出さない（SSα扉と SS・3S共通部材だけ）。
+     　★SSα は SSα扉＋SS・3S共通部材＋SS・3S のサイド/バック/コネクター（v19.20 ユーザー回答「出してください」）。
      ・そのラインに無いサイズを選んだままラインを替えたときは「全サイズ」扱いにする。 */
   var SIZE_FILTER_BTNS=['3S','SS','SSA','S','M','L','XL'];
   function sizeFilterOf(){
@@ -13807,6 +13807,8 @@ function PartsPage(p){
     if(isDoor)return doorSub===sf;
     if(sub==null||sub==='')return true;
     if(sub===sf)return true;
+    /* v19.20 ユーザー回答: SSα は SS・3S のサイド/バック（とSSコネクター）で組むので、その行も出す */
+    if(sf==='SSA'&&(sub==='SS'||sub==='3S'))return true;
     if(sub==='sml'||sub==='ss')return sub===(sizeObj(sf)||{}).grp;
     if(SIZES.some(function(x){return x.v===sub;}))return false;
     return true;/* 色違いの sub（アンカー穴キャップ bk/gy 等）はサイズに関係しない */
@@ -14951,6 +14953,12 @@ function PartsPage(p){
         /* ===== All warehouses unified view (CSV layout) ===== */
         (function(){
           var uniRows=buildUniRows();/* v18.76 修正18⑤: 並び順は buildUniRows() に集約（各倉庫タブと共通） */
+          /* ===== v19.20 ユーザー回答: 全倉庫一覧でも部材フィルタ（サイズ部材／鍵／オプション）を効かせる =====
+             従来は倉庫タブだけで効き、全倉庫一覧では押しても何も変わらなかった。倉庫タブと同じ判定:
+             「全て」は扉（と扉すべての合算行）も含めて全部、それ以外は扉を出さず区分(cat)が一致する行だけ。 */
+          if(partFilter[0]!=='all'){
+            uniRows=uniRows.filter(function(r){return !r.isDoor&&!r.isDoorTotal&&r.cat===partFilter[0];});
+          }
           /* Apply size filter */
           if(sizeFilterOf()!=='all'){
             var sf3=sizeFilterOf();
