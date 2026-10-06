@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.21（修正31 入金期日・入金アラート・期間絞り込み・未確保部材の出荷元倉庫・発注書付見積書の1枚化）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.22（修正32 入金確認済の請求書の一括印刷）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6816,6 +6816,44 @@ function invAllSheetsHTML(order,docType){
   }
   return first.replace('</body>',rest+'</body>');
 }
+/* ===== v19.22 修正32①: 入金確認済みの請求書を一括で印刷する =====
+   依頼「案件管理にて入金確認チェックが入っている案件の請求書を一括で印刷できるようにして
+   （期間を設定した際はその期間内の請求書のみを出力）→請求書には入金日と入金確認済の文言が赤字で請求書右下に記載」
+   ・対象は★入金確認のチェックが入った紙だけ（請求書を分けた案件は紙ごと。未チェックの紙は出さない）。
+   ・期間（案件管理の「期間:」）が入っていれば、その項目で期間内の紙だけ。入金日・入金期日は★紙ごとの日付で判定、
+   　納品予定日・案件作成日・入金確認日は案件の日付で判定（orderInPeriod と同じ）。
+   ・赤字の「入金確認済　入金日: …」は★この一括印刷の紙にだけ入れる（通常の📄帳票の請求書には出さない）。
+   orders は画面の並び順の案件。戻り値 [{order,idx,at}] */
+function paidInvoiceTargets(orders,periodKey,from,to){
+  var out=[];
+  var f=from?parseDocDate(from):null,t=to?parseDocDate(to):null;
+  function inR(ms){return ms!==null&&ms!==undefined&&!(f&&ms<f.getTime())&&!(t&&ms>t.getTime());}
+  (orders||[]).forEach(function(o){
+    if(!o||isLostOrder(o))return;
+    var pm=paidSheetsOf(o),n=invSplitCount(o),dues=null;
+    for(var i=0;i<n;i++){
+      var st=pm[String(i)];
+      if(!st)continue;
+      if(f||t){
+        if(periodKey==='paidAt'){var pd=parseDocDate(st.at);if(!inR(pd?pd.getTime():null))continue;}
+        else if(periodKey==='payDue'){dues=dues||payDueListOf(o);if(!inR(dues[i]&&dues[i].ms))continue;}
+        else if(!orderInPeriod(o,periodKey,from,to))continue;
+      }
+      out.push({order:o,idx:i,at:st.at||''});
+    }
+  });
+  return out;
+}
+function paidInvoicesHTML(targets){
+  if(!targets||!targets.length)return '';
+  function one(tg){return generateQuoteHTML(tg.order,'invoice',null,{invSheet:tg.idx,paidStamp:{at:tg.at}}).html;}
+  var first=one(targets[0]),rest='';
+  for(var i=1;i<targets.length;i++){
+    var m=/<body>([\s\S]*)<\/body>/.exec(one(targets[i]));
+    rest+='<div style="page-break-before:always;break-before:page"></div>'+(m?m[1]:'');
+  }
+  return first.replace('</body>',rest+'</body>');
+}
 function shipAllSplitsHTML(order){
   var sp=shipDocSplits(order);
   if(sp.length<=1)return generateQuoteHTML(order,'shipping').html;
@@ -7500,7 +7538,14 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
   if(!notesAbove)html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（v19.05: 請求書は上へ移動） */
-  html+='</div></div>'+(isQuoteDoc?QUOTE_PAGINATE_SCRIPT:'')+'</body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
+  html+='</div>';
+  /* v19.22 修正32①: 入金確認済みの一括印刷のときだけ、請求書の右下に赤字で「入金確認済　入金日: …」 */
+  if(docType==='invoice'&&scope.paidStamp){
+    var psAt=String(scope.paidStamp.at||'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$1/$2/$3');
+    html+='<div class="paid-stamp" style="margin-top:14px;text-align:right;color:#c53030;font-size:15px;font-weight:900;line-height:1.6">入金確認済'
+      +(psAt?('<br><span style="font-size:13px">入金日: '+psAt.replace(/</g,'&lt;')+'</span>'):'')+'</div>';
+  }
+  html+='</div>'+(isQuoteDoc?QUOTE_PAGINATE_SCRIPT:'')+'</body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
   return{html:html,subtotal:subtotal,tax:tax10,total:total,rows:rows,subject:subject,slipCode:slipCode};
 }
 
@@ -12056,6 +12101,21 @@ function OrdersPage(p){
           baseTab[0]==='done'?h('button',{className:'btn btn-xs '+(alertOnly[0]?'btn-rd':'btn-ol'),style:{fontWeight:700},
             title:'入金期日の'+PAY_ALERT_BDAYS+'営業日前を過ぎても入金確認のチェックが無い案件だけを表示します',
             onClick:function(){alertOnly[1](!alertOnly[0]);}},(alertOnly[0]?'✓ ':'')+'⚠ 入金アラートのみ（'+payAlertCount+'）'):null,
+          /* v19.22 修正32①: 入金確認済みの請求書を一括印刷。対象は★いま一覧に出ている案件（検索・期間の絞り込みが効く）の
+             入金確認済みの紙。期間が入っていれば期間内の紙だけ（paidInvoiceTargets）。 */
+          baseTab[0]==='done'?(function(){
+            var tg=paidInvoiceTargets(fl,periodK,periodFrom[0],periodTo[0]);
+            return h('button',{className:'btn btn-xs btn-nv',style:{fontWeight:700},disabled:!tg.length,
+              title:'入金確認のチェックが入っている請求書をまとめて印刷します（いま一覧に出ている案件が対象。期間を入れているときはその期間内の請求書だけ）。請求書の右下に赤字で「入金確認済・入金日」が入ります',
+              onClick:function(){
+                var tg2=paidInvoiceTargets(fl,periodK,periodFrom[0],periodTo[0]);
+                if(!tg2.length){p.toast('印刷する請求書がありません');return;}
+                var nO={};tg2.forEach(function(x){nO[x.order.no]=1;});
+                var per=(periodFrom[0]||periodTo[0])?('\n期間: '+((PERIOD_KEYS.find(function(k){return k.v===periodK;})||{}).l||'')+' '+(periodFrom[0]||'')+' 〜 '+(periodTo[0]||'')):'';
+                if(!confirm('入金確認済みの請求書 '+tg2.length+'枚（'+Object.keys(nO).length+'件）を印刷します。'+per))return;
+                if(!openPrintWindow(paidInvoicesHTML(tg2)))p.toast('ポップアップを許可してください');
+              }},'🖨 入金確認済の請求書を一括印刷（'+tg.length+'枚）');
+          })():null,
           /* v18.54 修正８①: 年間の売上集計。棚卸単価はここでだけ使う */
           h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:4,fontWeight:700},title:'期間を指定して売上・原価・粗利と棚卸評価額を集計します',onClick:function(){salesRep[1](true);}},'📊 売上集計')
         )
