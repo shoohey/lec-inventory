@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.22（修正32 入金確認済の請求書の一括印刷）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.23（修正32 一括印刷の入金確認済を純赤に）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -7276,6 +7276,12 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var dv=isBill?docEditHeader(order,cust,docType,invSheetIdx):null;/* v18.97 修正27⑥⑦: 分けた紙はその紙の手修正 */
   /* v18.95 修正26③: 分けて出す請求書は伝票コードに枚数の枝番を付ける（手修正があればそちらが優先） */
   if(dv&&invSheetIdx!=null&&!dv.edited.slip)dv.slip=dv.slip+'-'+(invSheetIdx+1);
+  var paidStampHTML='';
+  if(docType==='invoice'&&scope.paidStamp){
+    var psAt=String(scope.paidStamp.at||'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$1/$2/$3');
+    paidStampHTML='<div class="paid-stamp" style="float:right;margin-left:12px;text-align:right;color:#FF0000;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:15px;font-weight:900;line-height:1.6">入金確認済'
+      +(psAt?('<br><span style="font-size:13px">入金日: '+psAt.replace(/</g,'&lt;')+'</span>'):'')+'</div>';
+  }
 
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+cfg.title+' '+order.no+'</title>';
   html+='<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">';
@@ -7511,6 +7517,13 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   if(notesAbove&&order.notes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(order.notes)+'</div>';
   if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
   html+='<div class="qfoot" style="margin-top:16px;font-size:11px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
+  /* ===== v19.22 修正32①（v19.23 再修正）: 入金確認済みの一括印刷のときだけ、請求書の右下に赤字で「入金確認済／入金日」 =====
+     ★再修正「赤字になってない」:
+     　① v19.22 は文末の欄の★さらに下に足していたため、紙いっぱいの請求書では赤字だけが2枚目に送られていた
+     　　（1枚目には赤字が無い）。→ 文末の欄（振込先・支払期日）の★右側に float で置き、高さを増やさないようにした。
+     　② 色を #c53030（暗い赤＝紙だと黒っぽい）→ 純赤 #FF0000。印刷でも色を落とさないよう print-color-adjust:exact。
+     　　（プリンタ側が白黒設定なら黒になる） */
+  if(paidStampHTML)html+=paidStampHTML;
   /* v19.03 口頭依頼: 支払期日は★振込先の下（依頼の指定位置）。空欄のときは行ごと出さない */
   if(docType==='invoice'){
     html+='お振込手数料はお客様にてご負担ください。<br>振込先: 商工組合中央金庫 上野支店 普通 1300806 カ)レック';
@@ -7538,13 +7551,8 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
   if(!notesAbove)html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（v19.05: 請求書は上へ移動） */
+  if(paidStampHTML)html+='<div style="clear:both"></div>';
   html+='</div>';
-  /* v19.22 修正32①: 入金確認済みの一括印刷のときだけ、請求書の右下に赤字で「入金確認済　入金日: …」 */
-  if(docType==='invoice'&&scope.paidStamp){
-    var psAt=String(scope.paidStamp.at||'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$1/$2/$3');
-    html+='<div class="paid-stamp" style="margin-top:14px;text-align:right;color:#c53030;font-size:15px;font-weight:900;line-height:1.6">入金確認済'
-      +(psAt?('<br><span style="font-size:13px">入金日: '+psAt.replace(/</g,'&lt;')+'</span>'):'')+'</div>';
-  }
   html+='</div>'+(isQuoteDoc?QUOTE_PAGINATE_SCRIPT:'')+'</body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
   return{html:html,subtotal:subtotal,tax:tax10,total:total,rows:rows,subject:subject,slipCode:slipCode};
 }
