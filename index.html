@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.25（新単価は2027年1月以降の納品から・単価マスタ取込を廃止）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.26（マスタ一覧の現行・新単価を反映／SS・Sαレールの商品コード）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5189,7 +5189,8 @@ var PART_CODE_MAP={
   'shelf|sml':['ＭＹＰＬ-E－ＳＦG','ＭｙプラECOロッカー棚板（グレー）'],'shelf_bk|sml':['ＭＹＰＬ-E－ＳＦ','ＭｙプラECOロッカー棚板（黒）'],
   'shelf|ss':['MYPL-E-SSSFG','ＭｙプラECOロッカーＳＳ　棚板（グレー）'],'shelf_bk|ss':['MYPL-E-SSSF','ＭｙプラECOロッカーＳＳ　棚板（黒）'],
   'railSideSML|':['F00053','サイドレール（２本）'],'railBackSML|':['F00054','バックレール'],
-  'railSideSS|':['F00053','サイドレール（２本）'],'railBackSS|':['F00054','バックレール'],
+  /* v19.26（2026-10-07 ユーザー回答）: SS・3S共通のレールは専用コード F00200／F00201 */
+  'railSideSS|':['F00200','SS･3S共通サイドレール（２本）'],'railBackSS|':['F00201','SS･3S共通バックレール'],
   /* v18.70 修正16③: CSVに行があるのに未紐づけだった部材を追加 */
   'masterKey|':['F00031','コインリターン錠マスターキー'],
   'dialKeyDST|':['F00133','DST4桁ダイヤル錠用検索キー'],/* 修正15⑥で追加した検索キー */
@@ -5238,8 +5239,8 @@ var PART_CODE_MAP_SA={
   'door|S':['MYPL-SαD','単品　Sαサイズ扉'],
   'base|sml':['MYPL-SαーB','MyプラロッカーSα用ベースボード（７ｃｍ）'],/* v19.15 */
   'connector|SS':['MYPL-SSαC','SSα用コネクター'],
-  /* v19.24: Sαのレール（マスタ一覧_20261006 の部材シートの紐づけ: 長＝台湾サイドレール／短＝台湾バックレール） */
-  'railLong|':['F00053TW','サイドレール（２本）'],'railShort|':['F00054TW','バックレール']
+  /* v19.26（2026-10-07 ユーザー回答）: Sαのレール 長（新柏 LR）＝F00202、短（新柏 SR）＝F00203 */
+  'railLong|':['F00202','Sαサイドレール（２本）'],'railShort|':['F00203','Sαバックレール']
 };
 /* ===== v18.70 修正16④: 新柏・尼高・八木熊の商品コードを部材在庫のアイテムに紐づける =====
    出典: 商品コード_連携用.xlsx（2026-08-28提供・107行）。
