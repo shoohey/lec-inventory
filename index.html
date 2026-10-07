@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.24（マスタ一覧20261006の商品コード反映）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.25（新単価は2027年1月以降の納品から・単価マスタ取込を廃止）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1027,7 +1027,8 @@ function rentalName(n){var s=String(n||'');return s.indexOf(RENTAL_SUFFIX)>=0?s:
 /* v18.72 修正17⑪: サイドジョイントも他のレンタル品と同じく明細へ載せる。
    単価は単価マスタ（ＭＹＰＬ－ＳＪ）優先、未取込のときは下記の既定単価を使う。 */
 var SJ_PRICE={sml:600,ss:800};
-function rentalSjRows(order){
+function rentalSjRows(order){return withPriceDate(order,function(){return rentalSjRows0(order);});}
+function rentalSjRows0(order){
   var m={},out=[];
   (order&&order.lines||[]).forEach(function(l){
     if(!l||l.isPartOnly||l.isFreeInput)return;
@@ -4998,9 +4999,21 @@ function priceRec(code,nameHint){
   if(nameHint){var r=PRICE_MASTER.byCodeName[code+'#'+pmNorm(nameHint)];if(r)return r;}
   return PRICE_MASTER.byCode[code]||null;
 }
-function sellOf(code,nameHint){var r=priceRec(code,nameHint);return r&&r.sell>0?r.sell:0;}
-function buyOf(code,nameHint){var r=priceRec(code,nameHint);return r&&r.buy>0?r.buy:0;}
-function stockUnitOf(code,nameHint){var r=priceRec(code,nameHint);return r&&r.stockUnit>0?r.stockUnit:0;}
+/* v19.25（2026-10-07 ユーザー回答）: 新単価（マスタ一覧_20261006 の「新 仕入れ単価・棚卸し単価・新 販売単価」）は
+   ★納品予定日が 2027-01-01 以降の案件にだけ使う。行の buy/stockUnit/sell が現行単価、buyN/stockUnitN/sellN が新単価
+   （新単価の無い行は N を持たない＝期間に関係なく現行単価）。
+   どちらの単価を使うかは PM_AT_MS（基準日）で決まる。既定は今日。案件ごとの計算は withPriceDate(order,fn) で
+   その案件の基準日（納品予定日。未入力なら今日）に切り替えて呼ぶ。在庫評価額は今日の日付で判定する。 */
+var PRICE_NEW_FROM_MS=new Date(2027,0,1).getTime();
+var PM_AT_MS=null;
+function pmUseNew(){return (PM_AT_MS!=null?PM_AT_MS:Date.now())>=PRICE_NEW_FROM_MS;}
+function pmVal(r,k){if(!r)return 0;var v=(pmUseNew()&&r[k+'N']!=null)?r[k+'N']:r[k];return v>0?v:0;}
+function orderPriceMs(order){var t=order?deliveryPlanMs(order):null;return t!=null?t:Date.now();}
+function withPriceDate(order,fn){var prev=PM_AT_MS;PM_AT_MS=orderPriceMs(order);try{return fn();}finally{PM_AT_MS=prev;}}
+function orderUsesNewPrice(order){return orderPriceMs(order)>=PRICE_NEW_FROM_MS;}
+function sellOf(code,nameHint){return pmVal(priceRec(code,nameHint),'sell');}
+function buyOf(code,nameHint){return pmVal(priceRec(code,nameHint),'buy');}
+function stockUnitOf(code,nameHint){return pmVal(priceRec(code,nameHint),'stockUnit');}
 
 /* --- 商品コード対応表（コードのみ。金額は持たないので公開リポジトリに置いても問題ない） ---
    キー: ライン群|サイズ|タイプ|扉種
@@ -5137,7 +5150,7 @@ var PART_CODE_MAP={
   'door|XL':['MYPL-XLD','単品　XＬサイズ　扉'],'door|SSA':['MYPL-E-SSαD','単品SSα扉'],
   'doorH|S':['MYPL-E-SDH','単品　Sサイズ　扉　ホタタイプ'],'doorH|M':['MYPL-E-MDH','単品　Ｍサイズ　扉　ホタタイプ'],
   'doorH|L':['MYPL-E-LDH','単品　Lサイズ　扉　ホタタイプ'],
-  'doorH|SS':['MYPL-E-SSDH','単品　ＳＳサイズ　扉　ホタタイプ'],'doorH|3S':['MYPL-E-３SDH','単品　３Ｓサイズ　扉　ホタタイプ'],/* v19.24 */
+  'doorH|SS':['MYPL-E-SSDH','単品　ＳＳサイズ　扉　ホタタイプ'],'doorH|3S':['MYPL-E-3SDH','単品　３Ｓサイズ　扉　ホタタイプ'],/* v19.24 */
   'side|S':['MYPL-E-S-SB','単品　Ｓサイズ　サイドボード'],'side|M':['MYPL-E-M-SB','単品　Ｍサイズ　サイドボード'],
   'side|L':['MYPL-E-L-SB','単品　Ｌサイズ　サイドボード'],'side|SS':['MYPL-E-SS-SB','単品　SSサイズ　サイドボード　'],
   'side|3S':['MYPL-E-3S-SB','単品　３Ｓサイズ　サイドボード　'],
@@ -5501,6 +5514,9 @@ function bodyStockUnit(ln){
    保存済みの案件は priceVer を持たないので従来単価（SIZES.p / SHELF_PRICE / BASE_PRICE）のまま表示される。 */
 function applyPriceSnapshot(order){
   if(!order||!hasPriceMaster())return order;
+  return withPriceDate(order,function(){return applyPriceSnapshot0(order);});
+}
+function applyPriceSnapshot0(order){
   /* v18.70 修正16①: 粗利計算表で売価を手修正した案件は、保存のたびに単価マスタで上書きしない。
      戻したいときは「単価マスタの金額に戻す」（resetGrossSellOverride）を使う。 */
   if(order.sellEdited)return order;
@@ -5606,35 +5622,6 @@ function resetGrossSellOverride(order){
   order.sellEditSeq=(order.sellEditSeq||0)+1;
   applyPriceSnapshot(order);
   return order;
-}
-/* 価格マスタCSV/Excelの取込。列は 商品コード/商品名称/タイプ/商品区分/仕入単価/棚卸単価/販売単価。
-   「\9,900」のような通貨表記も数値化する。 */
-function parsePriceMasterAoa(aoa){
-  var hdr=-1,ci={};
-  var COLS={code:/商品コード/,name:/商品名称|商品名/,type:/^タイプ$/,kubun:/商品区分/,buy:/仕入単価/,stockUnit:/棚卸単価/,sell:/販売単価/};
-  for(var r=0;r<Math.min(aoa.length,5);r++){
-    var row=aoa[r]||[],found={};
-    row.forEach(function(x,i){var s=String(x||'');Object.keys(COLS).forEach(function(k){if(COLS[k].test(s)&&found[k]==null)found[k]=i;});});
-    if(found.code!=null&&found.sell!=null){hdr=r;ci=found;break;}
-  }
-  if(hdr<0)return {error:'ヘッダ行（商品コード・販売単価）を認識できません'};
-  function num(v){var s=String(v==null?'':v).replace(/[¥\\￥,\s　]/g,'');if(!s)return 0;var n=parseFloat(s);return isNaN(n)?0:n;}
-  var rows=[],dup={},seen={};
-  for(var rr=hdr+1;rr<aoa.length;rr++){
-    var rw=aoa[rr]||[];
-    var code=String((ci.code!=null?rw[ci.code]:'')||'').trim();
-    var name=String((ci.name!=null?rw[ci.name]:'')||'').trim();
-    if(!code&&!name)continue;
-    if(!code)continue;
-    if(seen[code])dup[code]=true;else seen[code]=true;
-    rows.push({code:code,name:name,
-      type:String((ci.type!=null?rw[ci.type]:'')||'').trim(),
-      kubun:String((ci.kubun!=null?rw[ci.kubun]:'')||'').trim(),
-      buy:num(ci.buy!=null?rw[ci.buy]:''),
-      stockUnit:num(ci.stockUnit!=null?rw[ci.stockUnit]:''),
-      sell:num(ci.sell!=null?rw[ci.sell]:'')});
-  }
-  return {rows:rows,count:rows.length,dupCodes:Object.keys(dup)};
 }
 /* 対応表の充足状況。未紐づけの組合せを画面から確認できるようにする */
 function priceMappingReport(){
@@ -5789,7 +5776,8 @@ function yagiCodeFor(key,sub,color){
 /* 鍵類・付属（=粗利区分「鍵類」）の判定: 共通プールキー＋錠前系 */
 function isLockCostKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0||/^dial|^cylinder|^padlock|^totte|^searchKey|^masterKey|^coinReturn/.test(key);}
 /* 案件→粗利区分別の売価・原価集計。原価はBOM数量×COST_MASTER[品番]。品番or原価が無い部材は missing にカウント */
-function calcGrossProfit(order){
+function calcGrossProfit(order){return withPriceDate(order,function(){return calcGrossProfit0(order);});}
+function calcGrossProfit0(order){
   var cat={body:{sell:0,cost:0,missing:0},lock:{sell:0,cost:0,missing:0},base:{sell:0,cost:0,missing:0},shelf:{sell:0,cost:0,missing:0}};
   /* v18.54 修正８①: 原価は「商品コード別の仕入単価」を最優先で使う（商品／部材ごとの単価マスタ）。
      マスタに無い部材だけ、従来の八木熊品番×COST_MASTER のBOM積み上げで補う。
@@ -11179,42 +11167,17 @@ function InvPage(p){
              ★COST_MASTER 本体・localStorage・クラウド同期（lec_state.costMaster）は残してある。
                変数ごと消すと cloudSave が costMaster:{} で上書きして既存データを消してしまうため。
                復活させるときは git の v19.01 以前から onUpCost/parseCostMasterAoa を戻せばよい。 */
-          /* v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタの取込。
-             ★原価は社外秘のため index.html には持たせず、クラウド(lec_state)にだけ保存する */
-          function onUpPrice(e){
-            var f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
-            if(p.isReadOnly){p.toast('読み取り専用モード中は単価マスタを更新できません');return;}
-            var rd=new FileReader();
-            rd.onload=function(ev){
-              try{
-                var buf=ev.target.result,aoa;
-                if(/\.(xlsx|xls)$/i.test(f.name)){
-                  var wb=XLSX.read(buf,{type:'array'});
-                  aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false});
-                }else{
-                  var txt;
-                  try{txt=new TextDecoder('utf-8',{fatal:true}).decode(buf);}catch(e2){txt=new TextDecoder('shift_jis').decode(buf);}
-                  aoa=parseCsvText(txt);
-                }
-                var pr=parsePriceMasterAoa(aoa);
-                if(pr.error){p.toast(pr.error);return;}
-                if(!pr.count){p.toast('単価データを認識できませんでした（商品コード・販売単価の列が必要です）');return;}
-                PRICE_MASTER={rows:pr.rows,byCode:{},byCodeName:{},updatedAt:new Date().toLocaleString('ja-JP')};
-                indexPriceMaster();savePriceMaster();cloudSave(p.userName);
-                quoteOrder[1](Object.assign({},quoteOrder[0]));
-                p.toast('単価マスタを取込みました: '+pr.count+'件・全端末共有'+(pr.dupCodes.length?'（同一商品コードが複数行: '+pr.dupCodes.length+'件は商品名称で判別）':''));
-              }catch(err){p.toast('単価マスタの読込に失敗: '+(err&&err.message||err));}
-            };
-            rd.readAsArrayBuffer(f);
-          }
+          /* v19.25（2026-10-07 ユーザー回答）: 「単価マスタ取込」は廃止した。単価は NAS の
+             在庫管理システム_マスタ一覧（Excel）を直し、それをシステムへ反映する運用に変わった（作業メモ参照）。
+             取込はExcelの1列目の仕入・棚卸・販売しか読めず、新単価（2027年1月〜）を消してしまうため。 */
           return h('div',{className:'no-print',style:{marginBottom:10,padding:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6}},/* v18.34 ⑱追随: @media printで非表示 */
             h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:4}},
               h('div',{style:{fontSize:10,fontWeight:700,color:'#276749'}},'📊 粗利計算表（社内用・印刷されません）'),
-              /* v18.54 修正８①: 単価マスタ（販売単価・仕入単価・棚卸単価）の取込 */
-              h('label',{className:'btn btn-xs btn-gn',style:{cursor:'pointer',fontSize:9}},'単価マスタ取込（販売単価・原価のCSV）',
-                h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:onUpPrice})),
               h('span',{style:{fontSize:8,color:hasPriceMaster()?'var(--g500)':'#C53030',fontWeight:hasPriceMaster()?400:700}},
-                hasPriceMaster()?('単価マスタ: '+PRICE_MASTER.rows.length+'件'+(PRICE_MASTER.updatedAt?'（'+PRICE_MASTER.updatedAt+'）':'')):'⚠ 単価マスタ未取込（従来の暫定単価で計算中）'),
+                hasPriceMaster()?('単価マスタ: '+PRICE_MASTER.rows.length+'件'+(PRICE_MASTER.updatedAt?'（'+PRICE_MASTER.updatedAt+'）':'')):'⚠ 単価マスタ未登録（従来の暫定単価で計算中）'),
+              /* v19.25: どちらの単価で計算しているか（納品予定日が2027/1/1以降なら新単価） */
+              hasPriceMaster()?h('span',{style:{fontSize:8,fontWeight:700,color:orderUsesNewPrice(quoteOrder[0])?'#975a16':'var(--g500)'}},
+                orderUsesNewPrice(quoteOrder[0])?'適用単価: 新単価（2027/1/1以降の納品）':'適用単価: 現行単価（2026年内の納品）'):null,
               /* v19.02: 「原価表アップロード」ボタンと「原価マスタ: N件登録済」表示はここにあったが削除（上のコメント参照） */
             ),
             h('table',{style:{borderCollapse:'collapse',width:'100%'}},
