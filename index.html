@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.27（SSα標準は扉ありの単価）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.28（SS横連結ネジ・混載便の送料コード・Sαの送料入数）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -944,6 +944,10 @@ var SHIP_NAME_MIX='送料(混載便・時間指定不可)';
 /* v18.72 修正17⑲: チャーター便の既定文言に「日祝・お盆期間・年末年始別途」を追記（1枠2行になってもよい） */
 var SHIP_NAME_CHARTER='送料（9時チャーター便・軒先渡し）日祝・お盆期間・年末年始別途';
 function shipRowNameDefault(order){return (order&&order.shipMethod==='charter')?SHIP_NAME_CHARTER:SHIP_NAME_MIX;}
+/* v19.28（2026-10-08 ユーザー回答）: 送料行の商品コード。送付方法で「混載便」を選んだ案件は単価マスタの混載便の行
+   「F00063ｋ」（ｋは全角。マスタ一覧Excelの表記どおり）、それ以外（チャーター便・未選択）は従来どおり F00063。 */
+var SHIP_CODE='F00063',SHIP_CODE_MIX='F00063ｋ';
+function shipRowCode(order){return (order&&order.shipMethod==='mix')?SHIP_CODE_MIX:SHIP_CODE;}
 function shipRowName(order){
   var m=((order&&order.shipLabel)||'').trim();
   return m||shipRowNameDefault(order);
@@ -3855,30 +3859,57 @@ function shipExtraBoxes(units){
   return 10;
 }
 /* v18.76 修正18④: BOM集計(key|sub|color→数量) → 実重量・容積重量・箱数（予備箱は含まない） */
-function shipWeightOfAgg(agg){
+function shipWeightOfAgg(agg,lineIri){
   var bySub={};
   Object.keys(agg).forEach(function(kk){var p=kk.split('|');var ks=p[0]+'|'+p[1];bySub[ks]=(bySub[ks]||0)+agg[kk];});
   var aw=0,vw=0,boxes=0,unmapped=[];
   Object.keys(bySub).forEach(function(ks){
     var p=ks.split('|');var d=shipPartDim(p[0],p[1]);
     if(!d){if(bySub[ks]>0)unmapped.push(ks);return;}
-    var box=bySub[ks]/d.iri;boxes+=box;aw+=box*d.jitsu;vw+=box*d.yoseki;
+    /* v19.28: ライン別の入数（Sα のサイド/バック/扉＝16）で数える数量は先に箱にする（1箱の実重・容積は同じ部材の値） */
+    var rest=bySub[ks];
+    ((lineIri&&lineIri[ks])||[]).forEach(function(x){
+      var q=Math.min(rest,x.qty);if(!(q>0))return;rest-=q;
+      var bx=q/x.iri;boxes+=bx;aw+=bx*d.jitsu;vw+=bx*d.yoseki;
+    });
+    var box=rest/d.iri;boxes+=box;aw+=box*d.jitsu;vw+=box*d.yoseki;
   });
   return {aw:aw,vw:vw,boxes:boxes,unmapped:unmapped};
+}
+/* ===== v19.28（2026-10-08 ユーザー回答「入数マスタに記載の値で正当」）: 送料計算の入数をライン別に =====
+   Sα はサイド/バックボード・扉の在庫キーを日本製Sサイズと共有しているため、送料の箱数は PART_DIMS（送料計算表の入数20）で
+   数えていた。入数マスタ（IRISU_LINE.sa＝16）が正なので、ライン別の入数がある明細の数量だけ抜き出してその入数で箱にする。
+   戻り値: {'side|S':[{qty,iri}],…}。予備パーツはそのラインのもの（lineId）だけ含める。 */
+function shipLineIriOf(order,whOnly){
+  var out={};
+  Object.keys(IRISU_LINE).forEach(function(lid){
+    var ls=((order&&order.lines)||[]).filter(function(l){return l&&l.line===lid&&!l.isFreeInput;});
+    if(!ls.length)return;
+    var o=Object.assign({},order,{lines:ls,spareParts:((order&&order.spareParts)||[]).filter(function(sp){return sp&&sp.lineId===lid;})});
+    var a=whOnly?aggregateOrderBOMByWh(o,whOnly):aggregateOrderBOM(o);
+    var by={};
+    Object.keys(a).forEach(function(kk){var p=kk.split('|');var ks=p[0]+'|'+p[1];by[ks]=(by[ks]||0)+a[kk];});
+    Object.keys(by).forEach(function(ks){
+      var p=ks.split('|');var iri=irisuLineVal(lid,p[0]==='doorH'?'door':p[0],p[1]);
+      if(!(iri>0)||!(by[ks]>0))return;
+      (out[ks]=out[ks]||[]).push({qty:by[ks],iri:iri});
+    });
+  });
+  return out;
 }
 function calcShipWeight(order){
   /* v18.76 修正18④: order._whOnly が指定されていれば「その倉庫から出る部材」だけで重量を出す
      （複数倉庫の案件は倉庫ごとに別便になるため、送料も倉庫ごとに計算する） */
   var whOnly=order&&order._whOnly;
   var agg=whOnly?aggregateOrderBOMByWh(order,whOnly):aggregateOrderBOM(order);/* key|sub|color → qty */
-  var b=shipWeightOfAgg(agg);
+  var b=shipWeightOfAgg(agg,shipLineIriOf(order,whOnly));
   var aw=b.aw,vw=b.vw,boxes=b.boxes,unmapped=b.unmapped;
   /* v18.33 要望⑨: 追加箱数（予備箱）を台数から自動加算 */
   var units=((order&&order.lines)||[]).reduce(function(s,l){return s+((l&&!l.isPartOnly&&!l.isFreeInput)?lineUnits(l):0);},0);
   if(whOnly){
     /* 予備箱は「1回の出荷ごと」に必要なので倉庫ごとに算入する。
        その倉庫から出る台数は正確には持っていないため、箱数の比率で按分して切り上げる。 */
-    var all=shipWeightOfAgg(aggregateOrderBOM(order));
+    var all=shipWeightOfAgg(aggregateOrderBOM(order),shipLineIriOf(order,null));
     units=all.boxes>0?Math.min(units,Math.ceil(units*(boxes/all.boxes))):0;
   }
   /* ★予備箱は1箱=30kgとして箱数にも重量にも算入する（v18.33 要望⑨）。
@@ -5201,7 +5232,8 @@ var PART_CODE_MAP={
   /* v19.24（マスタ一覧_20261006 の部材_アイテム別シートで紐づけ）。全ライン共通（ライン別の表に無ければここを引く） */
   'connector|XL':['MYPL-E-XLC','XLコネクター'],
   'hanger_gy|':['MYPL-E-HP-G','ハンガーパイプ（グレー）'],
-  'jointScrew_ss_gy|':['F00128','SML横連結ネジ（6個入り）'],
+  /* v19.28（2026-10-08 ユーザー回答）: SS・3S用のジョイントネジは「SS横連結ネジ」F00131（従来 F00128 SML横連結ネジ） */
+  'jointScrew_ss_gy|':['F00131','SS横連結ネジ（6個入り）'],
   'dialD003|':['F00027','４桁ダイヤル錠（固定式）'],
   'masterKeyF|':['F00037','ＤSS-909シリンダー錠　マスターキー'],'masterKeyB|':['F00037','ＤSS-909シリンダー錠　マスターキー'],
   'masterKeyC|':['F00037','ＤSS-909シリンダー錠　マスターキー'],'masterKeyD|':['F00037','ＤSS-909シリンダー錠　マスターキー'],
@@ -6160,7 +6192,7 @@ function buildQuoteRows(order){
   var ship=parseInt(order.shipping)||0;
   /* v18.62 修正12⑥: 送料行の名称は送付方法（混載／チャーター）で切り替え、手入力(shipLabel)があればそれを使う */
   /* v18.99 修正28: 送料の行の備考は既定で「※組立工事費別途」（見積書作成画面の備考欄で消す・書き換えることができる） */
-  if(ship>0)rows.push({rkey:'SHIP',code:'F00063',name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP',SHIP_ROW_REMARK_DEFAULT)});
+  if(ship>0)rows.push({rkey:'SHIP',code:shipRowCode(order),name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP',SHIP_ROW_REMARK_DEFAULT)});
   /* v18.62 修正12②: 値引きは項目名付きで複数行。金額が入っていない行は出力しない
      修正17⑬: 値引き単価と数量が入っていれば「単価×数量」で表記する
      ★v18.73: 行キー(DISC/DISC1…)は order.discounts の★元の並び順で振る。
