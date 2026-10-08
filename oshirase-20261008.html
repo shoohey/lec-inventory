@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】10月8日の更新のお知らせ（v19.34）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>パーソナル貸与品（学校保管のレンタル品）の管理と<br>次年度のレンタル品過不足のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.34</span>
+      <span>2026年10月8日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。今回は、パーソナルを導入している学校に貸し出している<b>ベース・上下ジョイント・サイドジョイント（学校保管のレンタル品）</b>と扉色をシステムに登録し、<b>次年度の見積でレンタル品が足りるか・足りないか</b>を自動で出せるようにしました。</p>
+    <p>パーソナルの見積を作る方は、まず 3番・4番 をご確認ください。<b>見積・在庫確認に載るレンタル品の数が、これまでと変わります。</b></p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.34</b> になっていない場合は、ページを再読み込みしてください。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a><br>
+    登録したデータは、マスタデータの「各学校詳細一覧(西日本）.xlsx」「各学校詳細一覧(東日本).xlsx」の <b>149校</b> 分です（2027年の列は未定のため取り込んでいません）。
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">学校ごとの貸与品データを見られるようになりました</a></li>
+      <li><a href="#s2">商品選択に「レンタル品の過不足」欄ができました</a></li>
+      <li><a href="#s3">学校を選ぶと、前年の導入内容が商品選択に入ります</a><span class="tag">重要</span></li>
+      <li><a href="#s4">レンタル品は「不足分だけ」を在庫確認・仮押さえ・見積に載せます</a><span class="tag">重要</span></li>
+      <li><a href="#s5">「納品完了」にすると、その年の納品が自動で登録されます</a></li>
+      <li><a href="#s6">顧客DBに学校のエンド納品先を追加しました</a></li>
+      <li><a href="#s7">学校ごとの注意点</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 顧客選択 ============ -->
+  <h2 class="sec">顧客選択・貸与品データ</h2>
+
+  <section class="item" id="s1">
+    <h3><span class="n">1</span><span>学校ごとの貸与品データを見られるようになりました<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>開き方</b>
+      顧客選択 → 上部の <kbd>📋 パーソナル貸与品</kbd>（全149校の一覧）<br>
+      顧客選択 → 学校の行の <kbd>📋 貸与品</kbd>（その顧客の学校。代理店は経由している学校をまとめて表示）<br>
+      在庫確認・見積 → 「レンタル品の過不足」欄の <kbd>📋 貸与品データ</kbd>
+    </div>
+    <ul>
+      <li>Excel と同じ並びで、納品ごとの台数・扉色・ベース・上下ジョイント・サイドジョイントの数と、学年ごとの使用数を表示します。</li>
+      <li>右上の「対象年度」で年度を選ぶと、<b>青い列＝その年度も在校する学年</b>、<b>橙の列＝前年度末に卒業する学年</b>（部材を新入生へ回す）に色が付きます。</li>
+      <li>下の表で、その年度の新入生に<b>回せる数</b>（学校保管の数 − 在校学年が使用中の数）が分かります。</li>
+      <li>在学年数は3年で計算します。専門学校（2年制）など違う学校は、各区分の右上で1〜6年に変えられます（全員共通の設定になります）。</li>
+      <li>学校名・販売店名で検索できます。</li>
+    </ul>
+    <div class="ex">
+      <span class="lbl">考え方</span>
+      レンタル品は原則回収せず、余りは学校保管です。<br>
+      <strong>学校保管の数 ＝ これまでに貸し出した数の合計</strong>（回収したものは差し引き）<br>
+      <strong>回せる数 ＝ 学校保管の数 − 次年度も在校する学年が使っている数</strong>
+    </div>
+  </section>
+
+  <!-- ============ 在庫確認・見積 ============ -->
+  <h2 class="sec">在庫確認・見積（商品選択）</h2>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>商品選択に「レンタル品の過不足」欄ができました<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>タイプを<b>パーソナル</b>にすると、ネジ欄と <kbd>＋ 在庫確認・明細追加</kbd> の間に表示されます。島構成（列×段）を入れると、その場で過不足が出ます。</p>
+    <div class="ex">
+      <span class="lbl">例：滋賀県立草津東高等学校　2027年度・SSサイズ 150列×3段（450台）</span>
+      ベース　　　　　　必要 150　回せる 138　→　<strong style="color:var(--er)">不足 12（追加レンタル）</strong><br>
+      上下ジョイント　　必要 1,350　回せる 1,158　→　<strong style="color:var(--er)">不足 192（追加レンタル）</strong><br>
+      サイドジョイント　必要 6　回せる 69　→　<strong style="color:var(--ok)">OK（余り 63）</strong>
+    </div>
+    <ul>
+      <li>必要数は、これまでの見積と同じ式です（ベース＝列数の合計、上下ジョイント＝台数×3、サイドジョイント＝ネジ欄の計算式）。</li>
+      <li>比べるのは<b>日本製Ver.2のベース（黒）・上下ジョイント（黒）・サイドジョイント（日本）</b>です。台湾製ベースやオレンジの上下ジョイントは「別に ○○」として参考に表示します。</li>
+      <li>学校は、選んだ顧客（代理店の場合はエンド納品先）から自動で選ばれます。違う場合や自動で出ない場合は、欄の中の選択欄で選び直してください。<kbd>この顧客にひも付け</kbd> を押すと、次回から自動で出ます。</li>
+      <li>中学・高校などで分かれている学校は、区分（サイズ）も選べます。年度も変えられます。</li>
+    </ul>
+  </section>
+
+  <section class="item key" id="s3">
+    <h3><span class="n">3</span><span>学校を選ぶと、前年の導入内容が商品選択に入ります</span></h3>
+    <p>貸与品データのある学校で在庫確認・見積に進むと、商品選択に次の内容が最初から入ります。<b>島数（列×段）は入りません</b>ので、毎回入力してください。</p>
+    <ul>
+      <li>タイプ（パーソナル）・製品ライン・サイズ・錠前</li>
+      <li>扉色：<b>毎年同じ色の学校はその色</b>、<b>学年で色を替えている学校は、春に卒業する学年の色</b>（例：草津東 → パステルブルー）</li>
+      <li>ホタ扉の学校はホタ扉、ベースはブラック</li>
+    </ul>
+    <p class="sub">何を入れたかは、過不足欄の下に「🔁 前年の導入内容を商品選択に反映しました」と出ます。シリンダー錠の学校（種類が Excel に無い）や、製品ラインに無い色の学校は自動で選ばないので、前年の見積をご確認ください。案件修正・リピート発注のときは入りません。</p>
+  </section>
+
+  <section class="item key" id="s4">
+    <h3><span class="n">4</span><span>レンタル品は「不足分だけ」を在庫確認・仮押さえ・見積に載せます</span></h3>
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        <p class="step">150列×3段で明細追加</p>
+        <p class="step"><span class="arw">↓</span> ベース150枚・上下ジョイント1,350個を<b>全数</b>載せていた（学校に残っている分を考えていなかった）</p>
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        <p class="step">150列×3段で明細追加</p>
+        <p class="step"><span class="arw">↓</span> <b>不足分のベース12枚・上下ジョイント192個だけ</b>を載せる（足りている部材は載せない）</p>
+      </div>
+    </div>
+    <ul>
+      <li>在庫確認・仮押さえ・見積書（レンタル品の行）・アンカー穴キャップのすべてで不足分の数になります。見積書の構成表記【150列3段】は変わりません。</li>
+      <li>明細の下に「レンタル品は不足分のみ計上（学校名）：ベース12・上下ジョイント192・サイドジョイント0」と出ます。</li>
+      <li>同じ学校で2つ目の明細（別サイズなど）を追加すると、1つ目で使った分を差し引いて計算します。</li>
+    </ul>
+    <div class="how">
+      <b>全数で載せたいとき</b>
+      過不足欄のチェック「明細追加時、…不足分だけを計上する」を外してから <kbd>＋ 在庫確認・明細追加</kbd> を押してください（最初はチェックが入っています）。
+    </div>
+  </section>
+
+  <!-- ============ 案件管理 ============ -->
+  <h2 class="sec">案件管理</h2>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>「納品完了」にすると、その年の納品が自動で登録されます</span></h3>
+    <ul>
+      <li>過不足欄を使って作った案件を<b>「納品完了」</b>に進めると、台数・扉色・追加レンタルした数・使用数が、その学校の貸与品データに1列追加されます（列の見出しに「自動登録」と出ます）。</li>
+      <li>次の年度の過不足は、この列も含めて計算します。</li>
+      <li>「納品完了」から差し戻したり、失注にしたりすると、登録は取り消されます。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 顧客DB ============ -->
+  <h2 class="sec">顧客DB</h2>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>顧客DBに学校のエンド納品先を追加しました</span></h3>
+    <p>貸与品データとひも付けるため、次のエンド納品先を追加しました（住所・電話は空欄です。必要に応じて顧客編集で入れてください）。</p>
+    <ul>
+      <li>光葉スチール（D00748）：岡山白陵高等学校</li>
+      <li>プラロッカー（D00620）：ヴェリタス城星学園高等学校</li>
+      <li>オフィスサポーター（D00844）：岡山商科大学附属高等学校</li>
+    </ul>
+    <p class="sub">初芝富田林中学校高等学校は学校名変更のため、利晶学園中学校高等学校（D01294）にひも付けています（貸与品データでは「利晶学園中学校高等学校（旧 初芝富田林中学校高等学校）」と表示）。</p>
+  </section>
+
+  <section class="item" id="s7">
+    <h3><span class="n">7</span><span>学校ごとの注意点</span></h3>
+    <ul>
+      <li><b>武蔵野中学高等学校</b>：特殊案件です。前の会社（フジプラ）で導入していたときのベース225枚を使っています（当社の貸出記録はありません）。画面にも注意書きが出ます。</li>
+      <li><b>大宮ビューティ＆ブライダル・大宮スイーツ</b>：貸出の合計を正としています（使用数の記録が貸出より多い分は数えていません）。</li>
+      <li><b>長野日大中高</b>：パーソナル終了のため、画面に「パーソナル終了」と出ます。</li>
+      <li><b>千代田中学校・高等学校</b>：中学の使用数が中学への貸出記録より22枚多くなっています（高校側にまとめて記録されている分）。中学の過不足は少し厳しめに出ます。</li>
+      <li>次の学校は顧客DBとのひも付けがありません。見積のときに過不足欄で学校を選んでください：<br>
+        <span class="sub">埼玉栄・栄北・中央学院大中央・花咲徳栄（JGS）／日本航空 青梅・山梨・石川（文祥堂）／国立音大附属（コイヌマ）／日本文理・新潟清心石代・新潟青陵／中央大学高校・織田学園・千代田・横浜ビューティー・我孫子二階堂</span></li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>画面のどこで何をしたか</b>を添えてご連絡ください。数字が実際と違う学校があれば、学校名と正しい数をお知らせください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.34】パーソナル貸与品（学校保管のレンタル品）
+・各学校詳細一覧（西日本・東日本）の149校分の貸与品（ベース・上下ジョイント・サイドジョイント・扉色）を登録しました。顧客選択の「📋 パーソナル貸与品」「📋 貸与品」から見られます
+・パーソナルの商品選択に「レンタル品の過不足」欄：島構成を入れると、学校保管で回せる数と比べて不足・OKを表示
+・★学校を選ぶと前年の導入内容（製品ライン・サイズ・錠前・扉色）が商品選択に入ります（島数は入りません）
+・★レンタル品は不足分だけを在庫確認・仮押さえ・見積に載せます（全数にしたいときは過不足欄のチェックを外す）
+・「納品完了」にするとその年の納品が自動で登録されます
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261008.html
+表示が古いときは再読み込みしてください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
