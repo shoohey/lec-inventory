@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.36（パーソナル貸与品: 未ひも付け校の登録・期中の追加）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.38（受注確定で全帳票・「出荷指示」→「出荷指示書送付済」）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2061,6 +2061,12 @@ var WH_MAP={
   kansai:{n:'関西営業所',s:'関西',pref:'大阪府',region:'kansai'}
 };
 var STATUS_FLOW=['見積作成','仮押さえ','受注確定','出荷指示','出荷完了','納品完了'];
+/* ===== v19.38 運用変更（2026-10-08 ユーザー指示）: ステータス「出荷指示」の表示名は「出荷指示書送付済」 =====
+   倉庫に出荷指示書を送付した時点でこのステータスへ進め、在庫から引き落とす（引き落としの仕組みは従来どおり）。
+   ★保存している値は '出荷指示' のまま（既存の案件データの変換をしない・古い画面が残っていても値が食い違わないように）。
+   画面・確認メッセージ・Excel に出すときは stLabel() を通す。 */
+var STATUS_LABELS={'出荷指示':'出荷指示書送付済'};
+function stLabel(st){return STATUS_LABELS[st]||st;}
 /* ===== v18.84 修正22①: 案件管理「📄帳票」はステータスに応じて出せる帳票を切り替える =====
    v18.79 では受注確定以降の案件にしかボタンを出していなかったため、見積作成・仮押さえの案件から
    見積書を出せなかった（依頼22①「全ての案件でステータスに応じて帳票が出せるように」）。
@@ -2074,7 +2080,8 @@ var DOCS_BY_STATUS={
   '仮押さえ':['quote'],
   /* v18.85 修正22の確認事項1: 受注確定は★見積書と請求書の2帳票（ユーザー回答 2026-09-10）。
      v18.84 では v18.79 からの5帳票をそのまま残していたが、回答により2帳票へ絞った。 */
-  '受注確定':['quote','invoice'],
+  /* v19.38 運用変更（2026-10-08 ユーザー指示）: 受注確定になったら全帳票を出せる（出荷指示書を作って倉庫へ送付 →「出荷指示書送付済」へ進める運用） */
+  '受注確定':DOC_TYPES_ALL,
   '出荷指示':DOC_TYPES_ALL,
   '出荷完了':DOC_TYPES_ALL,
   '納品完了':DOC_TYPES_ALL,
@@ -3191,7 +3198,7 @@ function restoreShippedStock(order){
       if(delta===0)return;
       var r=_rbAddStock(e.lineId,e.wh,e.key,e.sub,e.color,delta);
       restored++;
-      EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:e.lineId,key:e.key,sub:e.sub,color:e.color,wh:e.wh,oldVal:r.oldV,newVal:r.newV,label:(e.color?'扉':'')+'差戻し入庫 '+order.no,editor:'差戻し処理'});
+      EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:e.lineId,key:e.key,sub:e.sub,color:e.color,wh:e.wh,oldVal:r.oldV,newVal:r.newV,label:(e.color?'扉':'')+'差戻し入庫 '+order.no,editor:'差戻し処理'});
     });
     return restored;
   }
@@ -3204,7 +3211,7 @@ function restoreShippedStock(order){
       var subArg=b.isDoor?b.size:b.sub,colorArg=b.isDoor?b.color:undefined;
       var r=_rbAddStock(b.heldLine||ln.line,wh,b.key,subArg,colorArg,b.qty);
       restored++;
-      EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:b.heldLine||ln.line,key:b.key,sub:subArg,color:colorArg,wh:wh,oldVal:r.oldV,newVal:r.newV,label:(b.isDoor?'扉':'')+'差戻し入庫(snap) '+order.no,editor:'差戻し処理'});
+      EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:b.heldLine||ln.line,key:b.key,sub:subArg,color:colorArg,wh:wh,oldVal:r.oldV,newVal:r.newV,label:(b.isDoor?'扉':'')+'差戻し入庫(snap) '+order.no,editor:'差戻し処理'});
     });
   });
   return restored;
@@ -3354,7 +3361,7 @@ function deleteOrderConfirmMsg(order){
   if(si>=STATUS_FLOW.indexOf('出荷指示'))eff='この案件で出荷済みの在庫を倉庫へ戻します（在庫数が復元されます）。';
   else if(si===1||si===2)eff='仮押さえしていた在庫の引当を解除します（在庫は空きに戻ります）。';
   else eff='この案件は在庫を確保していないため、在庫の増減はありません。';
-  return '案件 '+order.no+'（'+order.status+'）を削除します。\n\n'+eff+'\n\n本当によろしいですか？';
+  return '案件 '+order.no+'（'+stLabel(order.status)+'）を削除します。\n\n'+eff+'\n\n本当によろしいですか？';
 }
 /* v17.2 要望26: リピート発注用に明細を複製し、在庫追跡フィールドを除去（前回の引当は引き継がない／元配列は非破壊） */
 function cloneLinesForRepeat(srcLines){
@@ -4885,7 +4892,7 @@ function applyStockImport(diffs,editorNm){
       var deltaD=(parseInt(d.imported)||0)-curD;
       if(deltaD===0)return;
       var rd=_rbAddStock(d.line,d.wh,d.key,d.size,d.color,deltaD);
-      EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:d.line,key:d.key,sub:d.size,color:d.color,wh:d.wh,oldVal:rd.oldV,newVal:rd.newV,label:(d.item||d.key)+'（在庫表取込）',editor:editorNm||'在庫表取込'});
+      EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:d.line,key:d.key,sub:d.size,color:d.color,wh:d.wh,oldVal:rd.oldV,newVal:rd.newV,label:(d.item||d.key)+'（在庫表取込）',editor:editorNm||'在庫表取込'});
       applied++;return;
     }
     var wl=normalizeStockLine(d.line,d.key);/* 鍵類はjp2へ集約 */
@@ -4896,7 +4903,7 @@ function applyStockImport(diffs,editorNm){
        (物理在庫がjp01/tw等に分散するため、取込値まで下がらず残deltaが出続けた)。
        transferStock(v18.21)と同じく_rbDrainCommonで全バケット横断で確実に減らす。 */
     var r=(delta<0&&isCommonStockKey(d.key))?_rbDrainCommon(d.wh,d.key,(d.sub==null?undefined:d.sub),-delta):_rbAddStock(wl,d.wh,d.key,d.sub,null,delta);
-    EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:d.key,sub:d.sub,color:null,wh:d.wh,oldVal:r.oldV,newVal:r.newV,label:(d.item||d.key)+'（在庫表取込）',editor:editorNm||'在庫表取込'});
+    EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:d.key,sub:d.sub,color:null,wh:d.wh,oldVal:r.oldV,newVal:r.newV,label:(d.item||d.key)+'（在庫表取込）',editor:editorNm||'在庫表取込'});
     applied++;
   });
   return applied;
@@ -4913,8 +4920,8 @@ function transferStock(lineId,key,sub,fromWh,toWh,qty,label,editorNm){
   var ts=new Date().toLocaleString('ja-JP');
   var rOut=isCommonStockKey(key)?_rbDrainCommon(fromWh,key,sub,qty):_rbAddStock(wl,fromWh,key,sub,null,-qty);
   var rIn=_rbAddStock(wl,toWh,key,sub,null,qty);
-  EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:(label||key)+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
-  EDIT_LOG.push({timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:(label||key)+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
+  EDIT_LOG.push({by:curUserName(),timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:(label||key)+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
+  EDIT_LOG.push({by:curUserName(),timestamp:ts,lineId:wl,key:key,sub:sub,color:null,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:(label||key)+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
   return {ok:true,moved:qty};
 }
 /* ===== v18.97 修正27③: 扉の倉庫間移動 =====
@@ -4933,8 +4940,8 @@ function transferDoorStock(lineId,doorKey,color,size,fromWh,toWh,qty,label,edito
   var rOut=_rbAddStock(lineId,fromWh,dk,size,color,-qty);
   var rIn=_rbAddStock(lineId,toWh,dk,size,color,qty);
   var nm=(label||dk)+' '+size;
-  EDIT_LOG.push({timestamp:ts,lineId:lineId,key:dk,sub:size,color:color,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:nm+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
-  EDIT_LOG.push({timestamp:ts,lineId:lineId,key:dk,sub:size,color:color,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:nm+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
+  EDIT_LOG.push({by:curUserName(),timestamp:ts,lineId:lineId,key:dk,sub:size,color:color,wh:fromWh,oldVal:rOut.oldV,newVal:rOut.newV,label:nm+'（倉庫間移動 出庫→'+((WH_MAP[toWh]||{}).n||toWh)+'）',editor:editorNm||'倉庫間移動'});
+  EDIT_LOG.push({by:curUserName(),timestamp:ts,lineId:lineId,key:dk,sub:size,color:color,wh:toWh,oldVal:rIn.oldV,newVal:rIn.newV,label:nm+'（倉庫間移動 入庫←'+((WH_MAP[fromWh]||{}).n||fromWh)+'）',editor:editorNm||'倉庫間移動'});
   return {ok:true,moved:qty};
 }
 /* ========== v18.55 修正９④: 予備パーツ管理 ==========
@@ -5031,7 +5038,7 @@ function spareShipOut(sp,editorNm){
   if(sp.color){r=_rbAddStock(sp.lineId,sp.wh,sp.key,sp.sub,sp.color,-q);}
   else if(isCommonStockKey(sp.key)){r=_rbDrainCommon(sp.wh,sp.key,(sp.sub===''||sp.sub==null)?undefined:sp.sub,q);}
   else{r=_rbAddStock(wl,sp.wh,sp.key,sp.sub,null,-q);}
-  EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:sp.key,sub:sp.sub,color:sp.color||null,wh:sp.wh,oldVal:r.oldV,newVal:r.newV,label:(sp.label||sp.key)+'（予備パーツ 持ち出し）',editor:editorNm||'予備パーツ'});
+  EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:sp.key,sub:sp.sub,color:sp.color||null,wh:sp.wh,oldVal:r.oldV,newVal:r.newV,label:(sp.label||sp.key)+'（予備パーツ 持ち出し）',editor:editorNm||'予備パーツ'});
   sp.status='shipped';
   sp.shippedAt=new Date().toLocaleString('ja-JP');
   sp.shippedBy=editorNm||'';
@@ -5046,7 +5053,7 @@ function spareReturnIn(sp,retQty,toWh,editorNm){
   if(q>0){
     var wl=sparePartStockLine(sp);
     var r=sp.color?_rbAddStock(sp.lineId,toWh,sp.key,sp.sub,sp.color,q):_rbAddStock(wl,toWh,sp.key,sp.sub,null,q);
-    EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:sp.key,sub:sp.sub,color:sp.color||null,wh:toWh,oldVal:r.oldV,newVal:r.newV,label:(sp.label||sp.key)+'（予備パーツ 返却入庫）',editor:editorNm||'予備パーツ'});
+    EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:wl,key:sp.key,sub:sp.sub,color:sp.color||null,wh:toWh,oldVal:r.oldV,newVal:r.newV,label:(sp.label||sp.key)+'（予備パーツ 返却入庫）',editor:editorNm||'予備パーツ'});
   }
   sp.status='returned';
   sp.returnQty=q;
@@ -5088,7 +5095,7 @@ function exportFullBackup(editorNm){
   var stamp=((typeof td2==='function'?td2():'')||'').replace(/\//g,'-')||'backup';
   XLSX.writeFile(wb,'LECバックアップ_顧客在庫_'+stamp+'.xlsx');
   try{lsSet('lec_last_backup',new Date().toISOString().slice(0,10));}catch(_){}
-  try{EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),label:'データバックアップ書き出し（顧客+在庫）',editor:editorNm||'バックアップ'});}catch(_){}
+  try{EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),label:'データバックアップ書き出し（顧客+在庫）',editor:editorNm||'バックアップ'});}catch(_){}
   return true;
 }
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
@@ -5252,9 +5259,18 @@ function _heldQtyAt(ln,wh,b,dcColor){
    ・差し戻し（restoreShippedStock）で在庫を戻したら記録も消す
    ・案件詳細で「出荷指示以降なのに記録も台帳も無い」案件に警告を出す（stockConsumedState）
    ・出荷指示を2回押しても在庫が二重に引かれないよう runShipOrder（v19.11以前は confirmShipOrder）で確認を挟む */
+/* v19.37: 操作したアカウント名（ログイン中の氏名）。在庫の変更履歴（EDIT_LOG.by）と引き落とし済みの記録に残す。
+   出荷の引き落とし・差し戻し・入庫処理などは editor が「出荷処理」等の処理名なので、誰が操作したかは by で分かる */
+function curUserName(){try{return String(lsGet('lec_user_name')||'').trim();}catch(e){return '';}}
+/* 履歴の「編集者」表示: アカウント名（処理名） */
+function editLogWho(e){
+  if(!e)return '';
+  if(e.by)return (e.editor&&e.editor!==e.by)?(e.by+'（'+e.editor+'）'):e.by;
+  return e.editor||'';
+}
 function markStockConsumed(order){
   if(!order)return;
-  order._stockConsumed={at:new Date().toLocaleString('ja-JP'),whs:orderWhs(order).slice()};
+  order._stockConsumed={at:new Date().toLocaleString('ja-JP'),whs:orderWhs(order).slice(),by:curUserName()};
 }
 function clearStockConsumed(order){if(order)delete order._stockConsumed;}
 /* 'consumed'（記録あり）/'legacy'（記録は無いが出荷台帳がある＝v18.75以前の出荷）/'none'（証拠なし） */
@@ -5347,7 +5363,7 @@ function shipOrderMulti(order){
             var oV=STK[dLs][w][dk][dc.color][ln.size]||0;
             var nV=Math.max(0,oV-take[wi]);
             STK[dLs][w][dk][dc.color][ln.size]=nV;
-            EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:dLs,key:dk,sub:ln.size,color:dc.color,wh:w,oldVal:oV,newVal:nV,label:'扉('+dc.color+' '+ln.size+')出荷消費 '+order.no,editor:'出荷処理'});
+            EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:dLs,key:dk,sub:ln.size,color:dc.color,wh:w,oldVal:oV,newVal:nV,label:'扉('+dc.color+' '+ln.size+')出荷消費 '+order.no,editor:'出荷処理'});
           });
         });
       }else if(b.sub!==undefined){
@@ -5363,7 +5379,7 @@ function shipOrderMulti(order){
           var oV1=STK[sl][w][b.key][b.sub]||0;
           var nV1=Math.max(0,oV1-take2[wi]);
           STK[sl][w][b.key][b.sub]=nV1;
-          EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:sl,key:b.key,sub:b.sub,wh:w,oldVal:oV1,newVal:nV1,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
+          EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:sl,key:b.key,sub:b.sub,wh:w,oldVal:oV1,newVal:nV1,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
         });
       }else{
         var sl2=normalizeStockLine(ln.line,b.key);
@@ -5377,7 +5393,7 @@ function shipOrderMulti(order){
           var oV2=STK[sl2][w][b.key]||0;
           var nV2=Math.max(0,oV2-take3[wi]);
           STK[sl2][w][b.key]=nV2;
-          EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:sl2,key:b.key,wh:w,oldVal:oV2,newVal:nV2,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
+          EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:sl2,key:b.key,wh:w,oldVal:oV2,newVal:nV2,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
         });
       }
     });
@@ -5480,7 +5496,7 @@ function shipOrder(order){
             var newV=Math.max(0,oldV-dc.qty);
             STK[dLo][order.wh][dk][dc.color][ln.size]=newV;
             /* v14.2 Codex P2対応: 出荷分を EDIT_LOG に記録（過去日付スナップショット用） */
-            EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:dLo,key:dk,sub:ln.size,color:dc.color,wh:order.wh,oldVal:oldV,newVal:newV,label:'扉('+dc.color+' '+ln.size+')出荷消費 '+order.no,editor:'出荷処理'});
+            EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:dLo,key:dk,sub:ln.size,color:dc.color,wh:order.wh,oldVal:oldV,newVal:newV,label:'扉('+dc.color+' '+ln.size+')出荷消費 '+order.no,editor:'出荷処理'});
           }
         });
       }else if(b.sub!==undefined){
@@ -5490,7 +5506,7 @@ function shipOrder(order){
           var oV1=STK[shipLine][order.wh][b.key][b.sub]||0;
           var nV1=Math.max(0,oV1-b.qty);
           STK[shipLine][order.wh][b.key][b.sub]=nV1;
-          EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:shipLine,key:b.key,sub:b.sub,wh:order.wh,oldVal:oV1,newVal:nV1,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
+          EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:shipLine,key:b.key,sub:b.sub,wh:order.wh,oldVal:oV1,newVal:nV1,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
         }
       }else{
         var shipLine2=normalizeStockLine(ln.line,b.key);
@@ -5498,7 +5514,7 @@ function shipOrder(order){
           var oV2=STK[shipLine2][order.wh][b.key]||0;
           var nV2=Math.max(0,oV2-b.qty);
           STK[shipLine2][order.wh][b.key]=nV2;
-          EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:shipLine2,key:b.key,wh:order.wh,oldVal:oV2,newVal:nV2,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
+          EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:shipLine2,key:b.key,wh:order.wh,oldVal:oV2,newVal:nV2,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
         }
       }
     });
@@ -12656,19 +12672,21 @@ function OrdersPage(p){
          へ変更した。在庫の引き落としとステータス変更はここで済ませる。
          ★納品予定日は案件管理の「📅 納品予定日の変更」、記載内容は帳票一覧の
          　「✎ 記載内容の手修正」から入れる（どちらも従来どおり残っている）。 */
+      /* v19.38 運用変更: 出荷指示書は受注確定の時点で帳票から出して倉庫へ送付する。
+         ここは「送付した」ことの記録と在庫の引き落としだけ（帳票一覧は開かない） */
+      if(!confirm('案件 '+order.no+' を「'+stLabel('出荷指示')+'」にします。\n\n倉庫に出荷指示書を送付しましたか？\n進めると、この案件の部材を在庫から引き落とします。'))return;
       if(!runShipOrder(order))return;
-      p.toast('ステータス変更: '+order.no+' → 出荷指示（在庫を引き落としました）');
+      p.toast('ステータス変更: '+order.no+' → '+stLabel('出荷指示')+'（在庫を引き落としました）');
       detail[1](null);
-      docPick[1](order);/* ★帳票一覧を開く。出荷指示書はここから出す */
       return;
     }
     order.status=ns;
     if(typeof rentalSyncOrder==='function')rentalSyncOrder(order);/* v19.32: 納品完了でパーソナル貸与品の納品を登録（cloudSave は下の broadcastOrderUpdate） */
     /* v18.38 修正箇所3⑥: 再度仮押さえ以降へ進めた案件は、過去の仮押さえ解除の記録を消す（現状と食い違う表示を残さない） */
     if(ns!=='見積作成'){delete order.holdReleasedAt;delete order.holdReleasedBy;}
-    p.toast('ステータス変更: '+order.no+' → '+ns);
+    p.toast('ステータス変更: '+order.no+' → '+stLabel(ns));
     /* v14 D30: 他セッションへ同期 */
-    broadcastOrderUpdate(p.userName||'',order.no+' ステータス→'+ns);
+    broadcastOrderUpdate(p.userName||'',order.no+' ステータス→'+stLabel(ns));
     /* v18.68 修正15⑧: 一覧・在庫画面も即座に更新する（従来は p.bump が無く反映が遅れて見えることがあった） */
     detail[1](null);saveAll();p.bump&&p.bump();
   }
@@ -12685,7 +12703,7 @@ function OrdersPage(p){
     var eff=(si>=STATUS_FLOW.indexOf('出荷指示'))?'⚠️ この案件で出荷済みの在庫を倉庫へ戻します（在庫数が復元されます）。'
       :(si===1||si===2)?'確保していた在庫の引当を解除します（在庫は空きに戻ります）。'
       :'この案件は在庫を確保していないため、在庫の増減はありません。';
-    if(!confirm('案件 '+order.no+'（'+order.status+'）を「失注」にします。\n\n'+eff+'\n\n案件は「❌ 失注」タブへ移ります。\n「🔁 コピー再発注」は引き続き使えるので、この内容から別見積を作れます。\n\nよろしいですか？'))return;
+    if(!confirm('案件 '+order.no+'（'+stLabel(order.status)+'）を「失注」にします。\n\n'+eff+'\n\n案件は「❌ 失注」タブへ移ります。\n「🔁 コピー再発注」は引き続き使えるので、この内容から別見積を作れます。\n\nよろしいですか？'))return;
     var r=rollbackInventory(order,order.status,'見積作成');
     order.lostFrom=order.status;/* 戻すときの参考に、どのステータスから失注したかを残す */
     order.status=STATUS_LOST;
@@ -12715,18 +12733,18 @@ function OrdersPage(p){
     var SHIP=SF.indexOf('出荷指示');
     var msg;
     if(fi>=SHIP&&ti<SHIP){
-      msg='【差し戻し】'+order.no+' を「'+order.status+'」→「'+target+'」に戻します。\n\n⚠️ 出荷済みの在庫を倉庫に戻します（在庫数が復元されます）。'+(ti>=1?'\n復元した在庫はこの案件で再度引当（仮押さえ）されます。':'\n引当も解除され、在庫は空きに戻ります。')+'\n\n本当に差し戻しますか？';
+      msg='【差し戻し】'+order.no+' を「'+stLabel(order.status)+'」→「'+stLabel(target)+'」に戻します。\n\n⚠️ 出荷済みの在庫を倉庫に戻します（在庫数が復元されます）。'+(ti>=1?'\n復元した在庫はこの案件で再度引当（仮押さえ）されます。':'\n引当も解除され、在庫は空きに戻ります。')+'\n\n本当に差し戻しますか？';
     }else if((fi===1||fi===2)&&ti<1){
-      msg='【差し戻し】'+order.no+' を「'+order.status+'」→「'+target+'」に戻します。\n\n確保していた在庫の引当を解除します。\n\nよろしいですか？';
+      msg='【差し戻し】'+order.no+' を「'+stLabel(order.status)+'」→「'+stLabel(target)+'」に戻します。\n\n確保していた在庫の引当を解除します。\n\nよろしいですか？';
     }else{
-      msg='【差し戻し】'+order.no+' を「'+order.status+'」→「'+target+'」に戻します。\n（在庫の増減はありません）\n\nよろしいですか？';
+      msg='【差し戻し】'+order.no+' を「'+stLabel(order.status)+'」→「'+stLabel(target)+'」に戻します。\n（在庫の増減はありません）\n\nよろしいですか？';
     }
     if(!confirm(msg))return;
     var r=rollbackInventory(order,order.status,target);
     order.status=target;
     if(typeof rentalSyncOrder==='function')rentalSyncOrder(order);/* v19.32: 納品完了から戻したら登録を取り消す */
     var tail=r&&r.mode==='unship_rehold'?'（在庫を復元し再引当）':r&&r.mode==='unship_to_quote'?'（在庫を復元・引当解除）':r&&r.mode==='release_held'?'（引当解除）':'';
-    p.toast('差し戻し: '+order.no+' → '+target+tail);
+    p.toast('差し戻し: '+order.no+' → '+stLabel(target)+tail);
     broadcastOrderUpdate(p.userName||'',order.no+' 差し戻し→'+target);
     detail[1](null);saveAll();p.bump&&p.bump();
   }
@@ -12753,13 +12771,13 @@ function OrdersPage(p){
        （v18.68 修正15⑧ で直したステータスの取りこぼしと同じ場面で起きていた事故の再発防止）。 */
     if(stockConsumedState(order)!=='none'){
       var _sc=order._stockConsumed;
-      if(!confirm('この案件はすでに在庫を引き落としています'+(_sc&&_sc.at?'（'+_sc.at+'）':'（過去の出荷指示）')+'。\nこのまま進めると同じ数量がもう一度在庫から引かれます。\n\n在庫を引き直したい場合は、いったん「受注確定」へ差し戻してから出荷指示してください。\n\nそれでも続けますか？'))return false;
+      if(!confirm('この案件はすでに在庫を引き落としています'+(_sc&&_sc.at?'（'+_sc.at+'）':'（過去の出荷指示）')+'。\nこのまま進めると同じ数量がもう一度在庫から引かれます。\n\n在庫を引き直したい場合は、いったん「受注確定」へ差し戻してから「出荷指示書送付済」へ進めてください。\n\nそれでも続けますか？'))return false;
     }
     if(orderWhs(order).length>1){shipOrderMulti(order);}else{shipOrder(order);}/* v18.68 修正15⑤ */
     order.status='出荷指示';
     /* v14.5 E1: 在庫消費の永続化・同期を確実に実行する（以前は印刷ウィンドウより先に行っていた） */
     saveAll();
-    broadcastOrderUpdate(p.userName||'',order.no+' 出荷指示');
+    broadcastOrderUpdate(p.userName||'',order.no+' '+stLabel('出荷指示'));
     p.bump&&p.bump();
     return true;
   }
@@ -12984,7 +13002,7 @@ function OrdersPage(p){
             var on=filter[0].indexOf(s)>=0;
             return h('button',{key:s,className:'btn btn-xs '+(on?'btn-nv':'btn-ol'),title:'クリックで選択/解除（複数選択できます）',onClick:function(){
               filter[1](on?filter[0].filter(function(x){return x!==s;}):filter[0].concat([s]));
-            }},(on?'✓ ':'')+s);
+            }},(on?'✓ ':'')+stLabel(s));
           }),
           /* v18.46 修正４④/修正５③: 並び替え */
           h('span',{style:{margin:'0 2px',color:'var(--g300)'}},'|'),
@@ -13122,7 +13140,7 @@ function OrdersPage(p){
                 var isEnd=o.shipDest==='end';
                 return h('div',{style:{fontSize:8,fontWeight:700,color:isEnd?'#0E7490':'var(--g500)'},title:isEnd?'送付先: エンドユーザー宛（エンド納品先の住所で送料を試算）':'送付先: 代理店宛（顧客住所で送料を試算）'},shipDestLabel(isEnd?'end':'cust')+'宛');
               })()),
-            h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},o.status),
+            h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},stLabel(o.status)),
               (function(){var rd=orderReadiness(o);if(!rd.has)return null;
                 /* v18.40 修正１⑧: 在庫不足で仮押さえしきれなかった分は、その不足数量を赤字で明示する */
                 var shortQty=(o.unsecuredParts||[]).reduce(function(s,it){return s+(parseInt(it.qty)||0);},0);
@@ -13507,7 +13525,7 @@ function OrdersPage(p){
           if(STATUS_FLOW.indexOf(o.status)<STATUS_FLOW.indexOf('出荷指示'))return null;
           var st=stockConsumedState(o);
           if(st==='consumed')return h('div',{style:{padding:'5px 10px',marginBottom:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6,fontSize:10,color:'#065F46'}},
-            '✅ 在庫の引き落とし済み（'+o._stockConsumed.at+' ／ '+((o._stockConsumed.whs||[]).map(function(w){return (WH_MAP[w]||{}).n||w;}).join(' + ')||orderWhLabel(o))+'）');
+            '✅ 在庫の引き落とし済み（'+o._stockConsumed.at+(o._stockConsumed.by?' ／ '+o._stockConsumed.by:'')+' ／ '+((o._stockConsumed.whs||[]).map(function(w){return (WH_MAP[w]||{}).n||w;}).join(' + ')||orderWhLabel(o))+'）');
           /* 在庫を引き直す（引き落としが抜けている案件の手当て）。
              _hadActualHeld が立っているので仮押さえ(HELD)には触らず、実在庫(STK)だけを引く。 */
           var reconsume=function(){
@@ -13531,8 +13549,8 @@ function OrdersPage(p){
             canFix?h('button',{className:'btn btn-xs btn-ol',title:'実在庫と付き合わせて「引かれていない」と分かった場合だけ使ってください。二重に引くと在庫が減りすぎます',onClick:reconsume},'在庫が引かれていない場合はここから引き直す'):null
           );
           return h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#FEE2E2',border:'1.5px solid #FCA5A5',borderRadius:8,fontSize:11,color:'#991B1B',fontWeight:700}},
-            '⚠️ この案件は「'+o.status+'」ですが、在庫を引き落とした記録が見つかりません（在庫数がずれている可能性があります）。',
-            h('div',{style:{fontWeight:400,marginTop:3}},'いったん「受注確定」へ差し戻してから、もう一度「出荷指示」へ進めると在庫が正しく引かれます。差し戻しでは在庫は戻りません（引かれていないため）。'),
+            '⚠️ この案件は「'+stLabel(o.status)+'」ですが、在庫を引き落とした記録が見つかりません（在庫数がずれている可能性があります）。',
+            h('div',{style:{fontWeight:400,marginTop:3}},'いったん「受注確定」へ差し戻してから、もう一度「出荷指示書送付済」へ進めると在庫が正しく引かれます。差し戻しでは在庫は戻りません（引かれていないため）。'),
             canFix?h('button',{className:'btn btn-xs btn-rd',style:{marginTop:4},onClick:reconsume},'在庫を引き直す'):null
           );
         })(),
@@ -13666,9 +13684,9 @@ function OrdersPage(p){
             return h('button',{key:s,className:'btn btn-xs '+(isCurrent?'btn-gn':isNext?'btn-or':'btn-ol'),
               disabled:!(isNext||isBack||isCurrent),
               style:Object.assign({opacity:(isNext||isCurrent||isBack)?1:.4},isBack?{background:'#FEF2F2',color:'#991B1B',borderColor:'#FCA5A5'}:{}),
-              title:isBack?'「'+s+'」へ差し戻し':isNext?'「'+s+'」へ進める':'',
+              title:isBack?'「'+stLabel(s)+'」へ差し戻し':isNext?'「'+stLabel(s)+'」へ進める':'',
               onClick:function(){if(isNext)changeStatus(detail[0],s);else if(isBack)rollbackStatus(detail[0],s);}
-            },(isCurrent?'● ':isBack?'◀ ':'')+s);
+            },(isCurrent?'● ':isBack?'◀ ':'')+stLabel(s));
           })),
           h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:3}},'※ オレンジ=次へ進める / ◀赤枠=差し戻し（在庫も自動で巻き戻します）'),
           /* ===== v18.94 修正26⑨: 失注 =====
@@ -14228,7 +14246,7 @@ function OrdersPage(p){
           (function(){var c=CUSTS.find(function(x){return x.id===docPick[0].cid;});return c?c.name:'';})(),
           h('br'),'出したい帳票を選ぶと印刷用のウィンドウが開きます。',
           /* v18.84 修正22①: 出せる帳票はステータスで決まる（DOCS_BY_STATUS）。何が出せるかを画面にも書く */
-          h('br'),h('span',{style:{color:'#975a16'}},'※ステータス「'+docPick[0].status+'」の案件で出せるのは '
+          h('br'),h('span',{style:{color:'#975a16'}},'※ステータス「'+stLabel(docPick[0].status)+'」の案件で出せるのは '
             +docsForStatus(docPick[0].status).map(function(t){return DOC_TYPE_LABELS[t];}).join('・')+' です。')),
         [['quote','見積書','この案件の内容で御見積書を出します（発注書付にするかは見積書作成画面のチェックで切り替えます）'],
          ['shipping','出荷指示書','倉庫会社宛。部材ごとに 入数／出荷総数／出荷箱数／出荷バラ を出します'],
@@ -14638,7 +14656,7 @@ function OrdersPage(p){
         /* v18.84 修正22⑤: 依頼書の記載項目をすべて手修正できるようにした */
         h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'空欄の項目は自動値（顧客/エンド納品先・案件の担当営業・在庫計算の数量）が使われます。入力した内容は案件に保存され、全端末で共有されます（帳票にペンのマークは付きません）。',
           h('span',{style:{color:'#975a16'}},'※数量を 0 にするとその部材は出荷指示書に載りません。'),
-          h('div',{style:{color:'#0E7490',marginTop:3}},'※ここは記載内容の手修正だけです。在庫の引き落としとステータス変更は案件の「出荷指示」操作で行います（v19.12 修正29②）。')),
+          h('div',{style:{color:'#0E7490',marginTop:3}},'※ここは記載内容の手修正だけです。在庫の引き落としとステータス変更は、案件のステータスを「出荷指示書送付済」へ進める操作で行います（v19.38）。')),
         /* ===== v18.89 修正25②: 「記載内容　空欄＝自動」の右側にシートタブ =====
            倉庫別／タイプ別に紙が分かれる案件は、ここで紙を切り替えて1枚ずつ編集する。
            タブの並びは実際に出力される紙（shipDocSplits）と1対1。 */
@@ -15276,7 +15294,7 @@ function PartsPage(p){
           if(!STK[e.lineId][w][dk][e.color])STK[e.lineId][w][dk][e.color]={};
           STK[e.lineId][w][dk][e.color][s]=v;
           if(v!==oldVal){
-            EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:e.lineId,key:dk,sub:s,color:e.color,wh:w,oldVal:oldVal,newVal:v,label:e.label+' '+s,editor:editorName[0]||'（未入力）'});
+            EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:e.lineId,key:dk,sub:s,color:e.color,wh:w,oldVal:oldVal,newVal:v,label:e.label+' '+s,editor:editorName[0]||'（未入力）'});
           }
         });
       });
@@ -15293,7 +15311,7 @@ function PartsPage(p){
         if(delta===0)return;
         if(delta>0){_rbAddStock('jp2',w,e.key,e.sub,null,delta);}
         else{_rbDrainCommon(w,e.key,e.sub,-delta);}
-        EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:'jp2',key:e.key,sub:e.sub,color:e.color,wh:w,oldVal:cur,newVal:v,label:e.label,editor:editorName[0]||'（未入力）'});
+        EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:'jp2',key:e.key,sub:e.sub,color:e.color,wh:w,oldVal:cur,newVal:v,label:e.label,editor:editorName[0]||'（未入力）'});
       });
     }else{
       WH_IDS.forEach(function(w){
@@ -15311,7 +15329,7 @@ function PartsPage(p){
           STK[e.lineId][w][e.key]=v;
         }
         if(v!==oldVal){
-          EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:e.lineId,key:e.key,sub:e.sub,color:e.color,wh:w,oldVal:oldVal,newVal:v,label:e.label,editor:editorName[0]||'（未入力）'});
+          EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:e.lineId,key:e.key,sub:e.sub,color:e.color,wh:w,oldVal:oldVal,newVal:v,label:e.label,editor:editorName[0]||'（未入力）'});
         }
       });
     }
@@ -17238,7 +17256,7 @@ function PartsPage(p){
           h('div',null,h('b',null,'顧客: '),(CUSTS.find(function(c){return c.id===heldDetail[0].cid;})||{}).name||''),
           h('div',null,h('b',null,'倉庫: '),orderWhLabel(heldDetail[0])),
           h('div',null,h('b',null,'送料: '),heldDetail[0].shipping?'¥'+fm(heldDetail[0].shipping):'-'),
-          h('div',null,h('b',null,'ステータス: '),h('span',{className:'bg '+STATUS_CLS[heldDetail[0].status]},heldDetail[0].status))
+          h('div',null,h('b',null,'ステータス: '),h('span',{className:'bg '+STATUS_CLS[heldDetail[0].status]},stLabel(heldDetail[0].status)))
         ),
         /* v14 B12 / v14.2: 倉庫×アイテム×個数の表示（日本語ラベル＋パーツ毎の数量編集対応）
            Codex P2対応: 2倉庫分割時は _actualHeld(_heldWh) を見て正しく分配 */
@@ -17474,7 +17492,7 @@ function PartsPage(p){
             conf2.forEach(function(o){
               var c=CUSTS.find(function(x){return x.id===o.cid;});
               var totalQty=o.lines.reduce(function(s,l){return l.isFreeInput?s:s+l.qty;},0);
-              allData.push([o.no,c?c.name:'',o.date,o.status,WH_MAP[o.wh]?WH_MAP[o.wh].n:'',totalQty,o.shipping||0]);
+              allData.push([o.no,c?c.name:'',o.date,stLabel(o.status),WH_MAP[o.wh]?WH_MAP[o.wh].n:'',totalQty,o.shipping||0]);
             });
             XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(allData),'全体一覧');
             /* Ver別シート */
@@ -17487,7 +17505,7 @@ function PartsPage(p){
                   if(l.isPartOnly)return (l.partLabel||'パーツ')+'×'+l.qty;
                   return sizeLabel(l.line,l.size)+' '+lineSpecLabel(l,'')+'×'+l.qty;
                 }).join(' / ');
-                lineData.push([o.no,c?c.name:'',o.date,o.status,WH_MAP[o.wh]?WH_MAP[o.wh].n:'',summary]);
+                lineData.push([o.no,c?c.name:'',o.date,stLabel(o.status),WH_MAP[o.wh]?WH_MAP[o.wh].n:'',summary]);
               });
               XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lineData),lnObj.name);
             });
@@ -17617,7 +17635,7 @@ function PartsPage(p){
                   return sizeLabel(l.line,l.size)+(co?' '+co.l:'')+' '+lineSpecLabel(l,'')+' ×'+l.qty;
                 }).join(', ');
                 return h('tr',{key:o.no},h('td',null,h('b',null,o.no)),h('td',null,c?c.name:''),h('td',null,o.date),
-                  h('td',null,h('span',{className:'bg '+STATUS_CLS[o.status]},o.status)),
+                  h('td',null,h('span',{className:'bg '+STATUS_CLS[o.status]},stLabel(o.status))),
                   h('td',null,WH_MAP[o.wh]?WH_MAP[o.wh].s:''),
                   h('td',{style:{fontSize:9}},summary),
                   h('td',null,h('button',{className:'btn btn-xs btn-gn',onClick:function(){var q=generateQuoteHTML(o,'quote');if(!openPrintWindow(q.html))p.toast('ポップアップを許可してください');}},'見積書'))
@@ -17737,7 +17755,7 @@ function PartsPage(p){
                       }else{
                         STK[inLine][inc.wh][it.key]=(STK[inLine][inc.wh][it.key]||0)+it.qty;
                       }
-                      EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:inLine,key:it.key,sub:it.sub,color:it.color,wh:inc.wh,oldVal:'入庫前',newVal:'+'+it.qty,label:it.label+'（入庫）'+(inLine!==it.lineId?' [共通在庫: jp2集約]':''),editor:'入庫処理'});
+                      EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:inLine,key:it.key,sub:it.sub,color:it.color,wh:inc.wh,oldVal:'入庫前',newVal:'+'+it.qty,label:it.label+'（入庫）'+(inLine!==it.lineId?' [共通在庫: jp2集約]':''),editor:'入庫処理'});
                     });
                     inc.status='入庫済';bump[1](bump[0]+1);p.toast('入庫処理完了: INC-'+inc.id);saveAll();broadcastEdit(p.userName||editorName[0]||'不明','入庫処理 INC-'+inc.id);
                   }},'入庫処理'),
@@ -17772,7 +17790,7 @@ function PartsPage(p){
                       }else{
                         STK[inLine][inc.wh][it.key]=Math.max(0,(STK[inLine][inc.wh][it.key]||0)-it.qty);
                       }
-                      EDIT_LOG.push({timestamp:new Date().toLocaleString('ja-JP'),lineId:inLine,key:it.key,sub:it.sub,color:it.color,wh:inc.wh,oldVal:'入庫済',newVal:'-'+it.qty,label:it.label+'（入庫差戻し）'+(inLine!==it.lineId?' [共通在庫: jp2集約]':''),editor:'入庫差戻し'});
+                      EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:inLine,key:it.key,sub:it.sub,color:it.color,wh:inc.wh,oldVal:'入庫済',newVal:'-'+it.qty,label:it.label+'（入庫差戻し）'+(inLine!==it.lineId?' [共通在庫: jp2集約]':''),editor:'入庫差戻し'});
                     });
                     inc.status='予定';bump[1](bump[0]+1);p.toast('入庫を差し戻しました: INC-'+inc.id);saveAll();broadcastEdit(p.userName||editorName[0]||'不明','入庫差戻し INC-'+inc.id);
                   }},'差戻し')
@@ -18306,7 +18324,7 @@ function PartsPage(p){
             EDIT_LOG.forEach(function(e){
               var diff=(parseInt(e.newVal)||0)-(parseInt(e.oldVal)||0);
               wsData.push([
-                e.timestamp||'',e.editor||'',
+                e.timestamp||'',editLogWho(e),
                 (LINES.find(function(l){return l.id===e.lineId;})||{name:''}).name,
                 e.label||'',e.sub||'',e.color||'',
                 WH_MAP[e.wh]?WH_MAP[e.wh].n:e.wh,
@@ -18330,7 +18348,7 @@ function PartsPage(p){
             h('thead',null,h('tr',null,h('th',null,'日時'),h('th',null,'編集者'),h('th',null,'部材'),h('th',null,'倉庫'),h('th',null,'旧値'),h('th',null,'→'),h('th',null,'新値'),h('th',null,'増減'))),
             h('tbody',null,EDIT_LOG.slice().reverse().map(function(e,i){
               var diff=(parseInt(e.newVal)||0)-(parseInt(e.oldVal)||0);
-              return h('tr',{key:i},h('td',{style:{fontSize:10}},e.timestamp),h('td',{style:{fontWeight:600,color:'var(--nv)'}},e.editor||''),h('td',null,e.label),h('td',null,WH_MAP[e.wh]?WH_MAP[e.wh].s:e.wh),h('td',{style:{textAlign:'right'}},e.oldVal),h('td',null,'→'),h('td',{style:{textAlign:'right',fontWeight:700}},e.newVal),h('td',{style:{textAlign:'right',fontWeight:700,color:diff>0?'#276749':diff<0?'#c53030':'#64748B'}},(diff>0?'+':'')+diff));
+              return h('tr',{key:i},h('td',{style:{fontSize:10}},e.timestamp),h('td',{style:{fontWeight:600,color:'var(--nv)'}},editLogWho(e)),h('td',null,e.label),h('td',null,WH_MAP[e.wh]?WH_MAP[e.wh].s:e.wh),h('td',{style:{textAlign:'right'}},e.oldVal),h('td',null,'→'),h('td',{style:{textAlign:'right',fontWeight:700}},e.newVal),h('td',{style:{textAlign:'right',fontWeight:700,color:diff>0?'#276749':diff<0?'#c53030':'#64748B'}},(diff>0?'+':'')+diff));
             }))
           );
         })()
@@ -18417,7 +18435,7 @@ function PartsPage(p){
               else if(typeof e.newVal==='string'&&e.newVal.charAt(0)==='-')diff=-(parseInt(e.newVal.slice(1))||0);
               else diff=(newN||0)-(oldN||0);
               detailData.push([
-                e.timestamp||'',e.editor||'',
+                e.timestamp||'',editLogWho(e),
                 (LINES.find(function(l){return l.id===e.lineId;})||{name:e.lineId||''}).name,
                 WH_MAP[e.wh]?WH_MAP[e.wh].n:(e.wh||''),
                 e.label||e.key||'',e.sub||'',e.color||'',
