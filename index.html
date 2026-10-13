@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.39（修正35 貸与品の列固定・顧客の支払条件・送料0円の行・定型文・ホタ表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.40（定型文を【】で囲む・構成表記の下へ行を移動）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -6869,7 +6869,7 @@ function applyRowOrder(order,rows){
 /* 修正17⑨（v18.73 追加修正）: 明細の自由入力行。
    ★数量・単位・単価・金額は既定で空欄。空欄のままなら見積書にも何も表示しない。 */
 /* v19.39 修正35④: 見積書作成画面の「定型文を追加」の選択肢 */
-var QUOTE_TPL_ROWS=['生徒様ご負担分','学校様ご負担分'];
+var QUOTE_TPL_ROWS=['【生徒様ご負担分】','【学校様ご負担分】'];/* v19.40: 【】で囲む */
 function extraQuoteRows(order){
   return ((order&&order.extraRows)||[]).filter(function(x){return x&&x.rkey;}).map(function(x){
     var hasQ=(x.qty!==''&&x.qty!=null),hasP=(x.price!==''&&x.price!=null);
@@ -7032,6 +7032,20 @@ function buildQuoteRows(order){
       remark:rowRemark(order,r.rkey+'_R',RENTAL_NOTE)});
   });
   rows=applyRowOrder(order,expanded);/* 修正17⑩ */
+  /* v19.40（修正35の追加）: 構成表記の下に行を入れる（order.cfgLift = {本体の行キー: 構成表記のすぐ下に入れた行キー}）。
+     構成表記は本体行の上に付いて出るため、並べ替えだけでは「構成表記と商品名の間」に行を置けなかった。
+     入れた行が本体行より上にあるときだけ、構成表記をその行の上へ付け替える（帳票側の出し方は変えない）。
+     並べ替えで入れた行が本体行の下へ移ったら、自動で元の出し方に戻る。 */
+  var cfgLift=(order&&order.cfgLift)||{};
+  Object.keys(cfgLift).forEach(function(lk){
+    var li=-1,xi=-1;
+    rows.forEach(function(r,i){if(r.rkey===lk)li=i;if(r.rkey===cfgLift[lk])xi=i;});
+    if(li<0||xi<0||xi>=li)return;
+    var L=rows[li],X=rows[xi];
+    if(L.configNoteAuto===undefined||X.configNoteAuto!==undefined)return;
+    X.configNote=L.configNote||'';L.configNote='';
+    X.cfgFrom=lk;L.cfgLiftedTo=X.rkey;
+  });
   var subtotal=0;
   rows.forEach(function(r,i){r.no=i+1;subtotal+=(parseInt(r.amount)||0);});
   return {rows:rows,subtotal:subtotal};
@@ -10912,6 +10926,7 @@ function InvPage(p){
       order.rentalSel=existing.rentalSel||order.rentalSel;/* v18.73 修正17の追加5: 3品目の記載区分も引き継ぐ */
       order.rowUnit=existing.rowUnit||order.rowUnit;/* v18.73 修正17の追加⑳: 手入力した単価も引き継ぐ */
       order.rowOrder=existing.rowOrder||order.rowOrder;
+      if(existing.cfgLift)order.cfgLift=existing.cfgLift;/* v19.40: 構成表記の下に入れた行も引き継ぐ */
       order.extraRows=existing.extraRows||order.extraRows;
       order.createdBy=existing.createdBy||order.createdBy;/* v18.38 修正箇所3②: 起票者は初回作成者を維持 */
     }
@@ -11795,7 +11810,27 @@ function InvPage(p){
             var fi=keys.indexOf(fromRk),ti=keys.indexOf(toRk);
             if(fi<0||ti<0)return;
             keys.splice(ti,0,keys.splice(fi,1)[0]);
-            updQ({rowOrder:keys});
+            var cl=Object.assign({},qo.cfgLift||{}),clCh=false;
+            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk){delete cl[k];clCh=true;}});
+            updQ(clCh?{rowOrder:keys,cfgLift:cl}:{rowOrder:keys});
+          }
+          /* v19.40（修正35の追加）: 構成表記の欄に落とす＝その構成表記のすぐ下（商品名の上）へ入れる。
+             入れた行を cfgLift[本体の行キー] に記録し、buildQuoteRows が構成表記をその行の上へ付け替える */
+          function moveRowUnderCfg(fromRk,lk){
+            if(!fromRk||!lk||fromRk===lk)return;
+            var fr=qRows.find(function(r){return (r.rkey||('N'+r.no))===fromRk;});
+            if(fr&&fr.configNoteAuto!==undefined){moveRow(fromRk,lk);return;}/* 本体行どうしは通常の並べ替え */
+            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
+            var cl=Object.assign({},qo.cfgLift||{});
+            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk)delete cl[k];});
+            var fi=keys.indexOf(fromRk);if(fi<0)return;
+            keys.splice(fi,1);
+            var li=keys.indexOf(lk);if(li<0)return;
+            var ci=cl[lk]?keys.indexOf(cl[lk]):-1;
+            var at=(ci>=0&&ci<li)?ci:li;/* すでに構成表記の下に行があれば、その上（＝構成表記のすぐ下）へ */
+            keys.splice(at,0,fromRk);
+            cl[lk]=fromRk;
+            updQ({rowOrder:keys,cfgLift:cl});
           }
           function addExtra(){
             var list=(qo.extraRows||[]).map(function(x){return Object.assign({},x);});
@@ -12010,17 +12045,27 @@ function InvPage(p){
                   /* v19.17 修正30③: 本体の明細行（L…）は、帳票で商品名称の上に出る構成表記
                      （【Sサイズ1段積み：H380mm】【2列3段：W…×D…×H…】）を行の上の欄で書き換えられる。
                      手修正した欄は黄色。↺ で自動の表記に戻す。空欄にすると表記を出さない。 */
-                  var cfgEl=null;
-                  if(r.configNoteAuto!==undefined){
-                    var cnMap=qo.cfgNotes||{},cnHas=Object.prototype.hasOwnProperty.call(cnMap,rk);
-                    cfgEl=h('div',{key:rk+'-cfg',style:{display:'flex',gap:3,alignItems:'center',margin:'2px 0 1px 30px'}},
-                      h('span',{style:{fontSize:8,color:'var(--g500)',flexShrink:0}},'構成表記'),
+                  /* v19.40（修正35の追加）: 構成表記の欄にも行を落とせる（＝構成表記のすぐ下・商品名の上へ入る）。
+                     構成表記の下に行を入れた本体行は、構成表記の欄をその行の上に出す（帳票と同じ並び） */
+                  function cfgElOf(Lr){
+                    var lk=Lr.rkey;
+                    var cnMap=qo.cfgNotes||{},cnHas=Object.prototype.hasOwnProperty.call(cnMap,lk);
+                    var cfgDrop=!!dragRk[0]&&dropRk[0]==='CFG:'+lk&&dragRk[0]!==lk;
+                    return h('div',{key:lk+'-cfg',style:{display:'flex',gap:3,alignItems:'center',margin:'2px 0 1px 30px',
+                        borderBottom:cfgDrop?'2px solid #1e3a5f':'2px solid transparent'},
+                        onDragOver:function(e){e.preventDefault();if(dropRk[0]!=='CFG:'+lk)dropRk[1]('CFG:'+lk);},
+                        onDragLeave:function(){if(dropRk[0]==='CFG:'+lk)dropRk[1](null);},
+                        onDrop:function(e){e.preventDefault();moveRowUnderCfg(dragRk[0],lk);dragRk[1](null);dropRk[1](null);}},
+                      h('span',{style:{fontSize:8,color:'var(--g500)',flexShrink:0},title:'行をこの欄にドラッグすると、構成表記のすぐ下（商品名の上）に入ります'},'構成表記'),
                       h('input',{className:'inp',style:{flex:1,minWidth:120,fontSize:9,background:cnHas?'#FEF3C7':'#fff'},
-                        value:cnHas?(cnMap[rk]||''):(r.configNoteAuto||''),placeholder:'（表記なし）',
+                        value:cnHas?(cnMap[lk]||''):(Lr.configNoteAuto||''),placeholder:'（表記なし）',
                         title:'見積書・請求書などで商品名称の上に出る表記です。書き換えるとこの案件の帳票すべてに反映されます（空欄にすると表記を出しません）',
-                        onChange:function(e){updCfgNote(rk,e.target.value);}}),
-                      cnHas?h('button',{className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手修正を取り消して自動の表記に戻す',onClick:function(){updCfgNote(rk,'',true);}},'↺'):h('span',{style:{width:18,flexShrink:0}}));
+                        onChange:function(e){updCfgNote(lk,e.target.value);}}),
+                      cnHas?h('button',{className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手修正を取り消して自動の表記に戻す',onClick:function(){updCfgNote(lk,'',true);}},'↺'):h('span',{style:{width:18,flexShrink:0}}));
                   }
+                  var cfgEl=null;
+                  if(r.cfgFrom){var Lr0=qRows.find(function(x){return x.rkey===r.cfgFrom;});if(Lr0)cfgEl=cfgElOf(Lr0);}
+                  else if(r.configNoteAuto!==undefined&&!r.cfgLiftedTo)cfgEl=cfgElOf(r);
                   var rowEl=h('div',{key:rk,draggable:true,
                     onDragStart:function(){dragRk[1](rk);dropRk[1](null);},
                     onDragEnd:function(){dragRk[1](null);dropRk[1](null);},
@@ -12042,7 +12087,7 @@ function InvPage(p){
                   h('select',{className:'btn btn-xs btn-ol',value:'',title:'選んだ文章を明細に1行追加します',style:{width:'auto',cursor:'pointer'},onChange:function(e){addTplRow(e.target.value);}},
                     h('option',{value:''},'＋ 定型文を追加 ▾'),
                     QUOTE_TPL_ROWS.map(function(t){return h('option',{key:t,value:t},t);})),
-                  (qo.rowOrder&&qo.rowOrder.length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowOrder:[]});p.toast('明細の並び順を既定に戻しました');}},'並び順を既定に戻す'):null,
+                  (qo.rowOrder&&qo.rowOrder.length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowOrder:[],cfgLift:{}});p.toast('明細の並び順を既定に戻しました');}},'並び順を既定に戻す'):null,
                   (qo.rowUnit&&Object.keys(qo.rowUnit).length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowUnit:{}});p.toast('手入力した単価をすべて取り消しました');}},'単価の手入力をすべて取消'):null
                 ),
                 h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'🟩=自由入力の行／🟧=値引きの行。単価を手入力した行は単価欄が黄色になります（↺ で元に戻せます）')
