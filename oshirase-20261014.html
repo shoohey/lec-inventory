@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】10月14日の更新のお知らせ（v19.41）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>見積書作成・顧客登録・パーソナル貸与品の<br>改善のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.41</span>
+      <span>2026年10月14日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。今回は、<b>顧客ごとの支払条件の登録</b>、見積書作成画面の<b>送料0円の行・定型文の行・行の移動</b>、見積書の<b>ホタ扉の表記</b>、パーソナル貸与品の表の見やすさを改善しました。</p>
+    <p>見積を作る方は 1番〜5番を、あわせて<b>10月8日に変わった運用（7番）</b>もご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.41</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">顧客ごとに支払条件を登録できるようになりました</a><span class="tag">重要</span></li>
+      <li><a href="#s2">送料を0円にしても、送料の行が残るようになりました</a></li>
+      <li><a href="#s3">「定型文を追加」ボタン（【生徒様ご負担分】【学校様ご負担分】）</a></li>
+      <li><a href="#s4">行を構成表記の下（商品名の上）へ移動できるようになりました</a></li>
+      <li><a href="#s5">ホタ扉は見積書に「ホタ」と表記されます</a></li>
+      <li><a href="#s6">パーソナル貸与品の表で、左端の項目名が固定されます</a></li>
+      <li><a href="#s7">（10月8日の変更）受注確定で全帳票・「出荷指示書送付済」</a><span class="tag">重要</span></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 顧客DB ============ -->
+  <h2 class="sec">顧客DB</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>顧客ごとに支払条件を登録できるようになりました<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>登録のしかた</b>
+      顧客選択 → <kbd>＋ 新規顧客追加</kbd> または顧客の行の <kbd>編集</kbd> → 一番下の「支払条件（見積作成時の初期値）」を選ぶ → 保存
+    </div>
+    <ul>
+      <li>選択肢は見積書作成画面と同じです（前払い・新規前入金・納品後30日以内・末締め翌月末・○日締め翌月末 など）。<b>「自由入力」</b>を選ぶと文字で入れられます。</li>
+      <li>登録した顧客で見積を作ると、<b>見積書作成画面の「支払条件」に最初からその条件が選ばれています</b>。その案件だけ変えたいときは、見積書作成画面で選び直してください。</li>
+      <li>登録していない顧客は、これまでどおり「末締め翌月末」になります。</li>
+      <li>案件修正・コピー再発注のときは、元の案件の支払条件を引き継ぎます。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 見積書作成 ============ -->
+  <h2 class="sec">見積書作成画面</h2>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>送料を0円にしても、送料の行が残るようになりました<span class="pill fix" style="margin-left:8px">改善</span></span></h3>
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        <p class="step">送料サービスで送料を0円にする</p>
+        <p class="step"><span class="arw">↓</span> 見積書から送料の行が<b>消えていた</b></p>
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        <p class="step">送料サービスで送料を0円にする</p>
+        <p class="step"><span class="arw">↓</span> 送料の行が<b>0円のまま残る</b></p>
+      </div>
+    </div>
+    <ul>
+      <li>送料欄の下に<b>「0円でも送料の行を出す」</b>のチェックができました。送料欄を触ると自動でチェックが入ります。</li>
+      <li>行の名前は、これまでどおり「送料の表記」欄で書き換えられます（例：<b>送料サービス</b>）。</li>
+      <li>送料の行を出したくないときは、チェックを外してください。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>「定型文を追加」ボタン（【生徒様ご負担分】【学校様ご負担分】）<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>使い方</b>
+      明細の行の下、<kbd>＋ 値引きの行を追加</kbd> の右の <kbd>＋ 定型文を追加 ▾</kbd> → 「【生徒様ご負担分】」か「【学校様ご負担分】」を選ぶ
+    </div>
+    <ul>
+      <li>選んだ文言だけの行が明細の一番下に1行入ります（数量・金額は空欄で、見積書には文字だけが出ます）。</li>
+      <li>入った行は自由入力の行（🟩）と同じで、文言の書き換え・⇅での移動・削除ができます。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>行を構成表記の下（商品名の上）へ移動できるようになりました<span class="pill fix" style="margin-left:8px">改善</span></span></h3>
+    <p>これまでは、商品の上に出る構成表記（【2列3段：W…×D…×H…】など）と商品名の間に、行を入れられませんでした。</p>
+    <div class="ex">
+      <span class="lbl">こう並べられます</span>
+      <strong>【2列3段：W…×D…×H…】</strong>　…構成表記<br>
+      <strong>【生徒様ご負担分】</strong><br>
+      MyプラECOロッカーMサイズパーソナル　パステルピンク色
+    </div>
+    <div class="how">
+      <b>動かし方（⇅ をつかんでドラッグ）</b>
+      <b style="display:inline;font-size:14px;letter-spacing:0;color:var(--tx)">構成表記の下に入れる：</b>下の行をつかんで、<b>商品の行に下から重ねる</b>（青い線が構成表記の欄のすぐ下に出ます）<br>
+      <b style="display:inline;font-size:14px;letter-spacing:0;color:var(--tx)">構成表記の上に入れる：</b><b>「構成表記」の欄に重ねる</b>（青い線が構成表記の欄の上に出ます）
+    </div>
+    <ul>
+      <li>青い線が出た位置に入ります。</li>
+      <li>商品の行より下へ動かし直すと、元の並び（構成表記 → 商品名）に戻ります。<kbd>並び順を既定に戻す</kbd> でも元に戻ります。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>ホタ扉は見積書に「ホタ」と表記されます<span class="pill fix" style="margin-left:8px">改善</span></span></h3>
+    <p>在庫確認でホタ扉を選んでも、見積書の商品名に「ホタ」が出ていませんでした。</p>
+    <div class="ex">
+      <span class="lbl">例：Mサイズパーソナル・ホタ扉・パステルピンク</span>
+      これまで　<s>MyプラECOロッカーMサイズパーソナル　パステルピンク色</s><br>
+      これから　MyプラECOロッカーMサイズパーソナル　<strong>ホタパステルピンク色</strong>
+    </div>
+    <ul>
+      <li>扉色が複数あるときの色の行も「＜扉色：ホタパステルピンク2台、ホタ○○2台＞」となります。</li>
+      <li>請求書・納品書など、ほかの帳票も同じ表記になります。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 貸与品 ============ -->
+  <h2 class="sec">パーソナル貸与品</h2>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>パーソナル貸与品の表で、左端の項目名が固定されます<span class="pill fix" style="margin-left:8px">改善</span></span></h3>
+    <ul>
+      <li>貸与品データの表を横にスクロールしても、左端の列（導入年月日・区分・学年・台数・扉色・各部材…）が固定されて見えたままになります。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 10/8 ============ -->
+  <h2 class="sec">10月8日の変更（ご案内がまだだった分）</h2>
+
+  <section class="item key" id="s7">
+    <h3><span class="n">7</span><span>受注確定で全帳票・ステータス「出荷指示」は「出荷指示書送付済」に</span></h3>
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        <p class="step">出荷指示にすると出荷指示書などの帳票が出せた</p>
+        <p class="step"><span class="arw">↓</span> 「出荷指示」にした時点で在庫を引き落とし</p>
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        <p class="step"><b>受注確定</b>で全帳票（見積書・出荷指示書・請求書・物品受領書・納品書）が出せる</p>
+        <p class="step"><span class="arw">↓</span> 倉庫に出荷指示書を送ったら<b>「出荷指示書送付済」</b>へ進める → この時点で在庫を引き落とし</p>
+      </div>
+    </div>
+    <ul>
+      <li>ステータスの名前が「出荷指示」から<b>「出荷指示書送付済」</b>に変わりました（一覧・絞り込み・ボタン・Excel出力）。</li>
+      <li>進めるときに「倉庫に出荷指示書を送付しましたか？」の確認が出ます。</li>
+      <li>在庫の変更履歴に、<b>操作した人（アカウント名）</b>が記録されるようになりました。</li>
+    </ul>
+    <div class="warnbox"><b>古い画面を開いたままにしないでください。</b>何日も前から開きっぱなしの画面があると、案件が古い状態に戻ってしまうことがあります。使う前に必ず再読み込み（F5）してください。</div>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.41】
+・★顧客ごとに支払条件を登録できます（顧客の追加・編集の一番下）。見積書作成画面の支払条件に最初から選ばれます
+・送料を0円にしても送料の行が残ります（「0円でも送料の行を出す」チェック）
+・見積書作成画面の「＋ 値引きの行を追加」の右に「＋ 定型文を追加」：【生徒様ご負担分】【学校様ご負担分】
+・行を構成表記の下（商品名の上）へ移動できます：行をつかんで商品の行に下から重ねる
+・ホタ扉は見積書に「ホタパステルピンク色」のように表記されます
+・パーソナル貸与品の表は、左端の項目名が固定されます
+・（10/8の変更）受注確定で全帳票が出せます。倉庫に出荷指示書を送ったら「出荷指示書送付済」へ進めてください（この時点で在庫を引き落とし）
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261014.html
+表示が古いときは再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
