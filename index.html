@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.40（定型文を【】で囲む・構成表記の下へ行を移動）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.41（構成表記の下へ行を移動の修正・定型文を【】で囲む）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -11814,8 +11814,23 @@ function InvPage(p){
             Object.keys(cl).forEach(function(k){if(cl[k]===fromRk){delete cl[k];clCh=true;}});
             updQ(clCh?{rowOrder:keys,cfgLift:cl}:{rowOrder:keys});
           }
-          /* v19.40（修正35の追加）: 構成表記の欄に落とす＝その構成表記のすぐ下（商品名の上）へ入れる。
+          /* v19.40（修正35の追加）→ v19.41 で落とし方を変更:
+             ・構成表記のすぐ下の行（商品名の行／すでに構成表記の下に入れた先頭の行）に★下から重ねる
+             　＝挿入線が構成表記の欄のすぐ下に出る → 構成表記のすぐ下（商品名の上）へ入れる（moveRowUnderCfg）。
+             　（v19.40 では線は構成表記の下に出るのに、落とすと構成表記の上へ入っていた）
+             ・構成表記の欄に重ねる＝線が構成表記の上に出る → 構成表記の上へ入れる（moveRowAboveCfg）。
              入れた行を cfgLift[本体の行キー] に記録し、buildQuoteRows が構成表記をその行の上へ付け替える */
+          function moveRowAboveCfg(fromRk,anchorRk){
+            if(!fromRk||!anchorRk||fromRk===anchorRk)return;
+            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
+            var cl=Object.assign({},qo.cfgLift||{});
+            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk)delete cl[k];});
+            var fi=keys.indexOf(fromRk);if(fi<0)return;
+            keys.splice(fi,1);
+            var ai=keys.indexOf(anchorRk);if(ai<0)return;
+            keys.splice(ai,0,fromRk);
+            updQ({rowOrder:keys,cfgLift:cl});
+          }
           function moveRowUnderCfg(fromRk,lk){
             if(!fromRk||!lk||fromRk===lk)return;
             var fr=qRows.find(function(r){return (r.rkey||('N'+r.no))===fromRk;});
@@ -11969,7 +11984,17 @@ function InvPage(p){
                   var dr=di>=0?(discountRowsOf(qo)[di]||null):null;
                   var uEditable=rowUnitEditable(r)&&!ex;
                   var uOv=rowUnitOv(qo,rk);
-                  var drop=function(e){e.preventDefault();moveRow(dragRk[0],rk);dragRk[1](null);dropRk[1](null);};
+                  /* v19.41: 構成表記が上に付いている行（cfgTop＝その本体の行キー）に下から重ねたら、構成表記のすぐ下へ入れる */
+                  var cfgTop=r.cfgFrom||((r.configNoteAuto!==undefined&&!r.cfgLiftedTo)?rk:null);
+                  var drop=function(e){
+                    e.preventDefault();
+                    var from=dragRk[0];
+                    var fi2=qRows.findIndex(function(x){return (x.rkey||('N'+x.no))===from;});
+                    var fr2=fi2>=0?qRows[fi2]:null;
+                    if(cfgTop&&fi2>ri&&fr2&&fr2.configNoteAuto===undefined)moveRowUnderCfg(from,cfgTop);
+                    else moveRow(from,rk);
+                    dragRk[1](null);dropRk[1](null);
+                  };
                   /* v18.74: 挿入位置の線。つかんでいる行より上の行に重ねたら「その行の上」、下なら「その行の下」 */
                   var showLine=!!dragRk[0]&&dropRk[0]===rk&&dragRk[0]!==rk;
                   var lineAbove=showLine&&(qRows.findIndex(function(x){return (x.rkey||('N'+x.no))===dragRk[0];})>ri);
@@ -12047,16 +12072,16 @@ function InvPage(p){
                      手修正した欄は黄色。↺ で自動の表記に戻す。空欄にすると表記を出さない。 */
                   /* v19.40（修正35の追加）: 構成表記の欄にも行を落とせる（＝構成表記のすぐ下・商品名の上へ入る）。
                      構成表記の下に行を入れた本体行は、構成表記の欄をその行の上に出す（帳票と同じ並び） */
-                  function cfgElOf(Lr){
+                  function cfgElOf(Lr,anchorRk){
                     var lk=Lr.rkey;
                     var cnMap=qo.cfgNotes||{},cnHas=Object.prototype.hasOwnProperty.call(cnMap,lk);
                     var cfgDrop=!!dragRk[0]&&dropRk[0]==='CFG:'+lk&&dragRk[0]!==lk;
                     return h('div',{key:lk+'-cfg',style:{display:'flex',gap:3,alignItems:'center',margin:'2px 0 1px 30px',
-                        borderBottom:cfgDrop?'2px solid #1e3a5f':'2px solid transparent'},
+                        borderTop:cfgDrop?'2px solid #1e3a5f':'2px solid transparent'},
                         onDragOver:function(e){e.preventDefault();if(dropRk[0]!=='CFG:'+lk)dropRk[1]('CFG:'+lk);},
                         onDragLeave:function(){if(dropRk[0]==='CFG:'+lk)dropRk[1](null);},
-                        onDrop:function(e){e.preventDefault();moveRowUnderCfg(dragRk[0],lk);dragRk[1](null);dropRk[1](null);}},
-                      h('span',{style:{fontSize:8,color:'var(--g500)',flexShrink:0},title:'行をこの欄にドラッグすると、構成表記のすぐ下（商品名の上）に入ります'},'構成表記'),
+                        onDrop:function(e){e.preventDefault();moveRowAboveCfg(dragRk[0],anchorRk);dragRk[1](null);dropRk[1](null);}},
+                      h('span',{style:{fontSize:8,color:'var(--g500)',flexShrink:0},title:'行をこの欄に重ねると構成表記の上に、すぐ下の行に下から重ねると構成表記の下（商品名の上）に入ります'},'構成表記'),
                       h('input',{className:'inp',style:{flex:1,minWidth:120,fontSize:9,background:cnHas?'#FEF3C7':'#fff'},
                         value:cnHas?(cnMap[lk]||''):(Lr.configNoteAuto||''),placeholder:'（表記なし）',
                         title:'見積書・請求書などで商品名称の上に出る表記です。書き換えるとこの案件の帳票すべてに反映されます（空欄にすると表記を出しません）',
@@ -12064,8 +12089,8 @@ function InvPage(p){
                       cnHas?h('button',{className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手修正を取り消して自動の表記に戻す',onClick:function(){updCfgNote(lk,'',true);}},'↺'):h('span',{style:{width:18,flexShrink:0}}));
                   }
                   var cfgEl=null;
-                  if(r.cfgFrom){var Lr0=qRows.find(function(x){return x.rkey===r.cfgFrom;});if(Lr0)cfgEl=cfgElOf(Lr0);}
-                  else if(r.configNoteAuto!==undefined&&!r.cfgLiftedTo)cfgEl=cfgElOf(r);
+                  if(r.cfgFrom){var Lr0=qRows.find(function(x){return x.rkey===r.cfgFrom;});if(Lr0)cfgEl=cfgElOf(Lr0,rk);}
+                  else if(r.configNoteAuto!==undefined&&!r.cfgLiftedTo)cfgEl=cfgElOf(r,rk);
                   var rowEl=h('div',{key:rk,draggable:true,
                     onDragStart:function(){dragRk[1](rk);dropRk[1](null);},
                     onDragEnd:function(){dragRk[1](null);dropRk[1](null);},
