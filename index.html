@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.41（構成表記の下へ行を移動の修正・定型文を【】で囲む）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.42（パーソナル貸与品のタイトル手修正・前年の台数と棚板の反映・転入生分を使用中に）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -987,12 +987,27 @@ var RP_KEYS=[
   {k:'railSet',l:'レールセット'}
 ];
 var RP_GROUPS=[{g:'base',l:'ベース',main:'base_bk'},{g:'vj',l:'上下ジョイント',main:'vj_bk'},{g:'sj',l:'サイドジョイント',main:'sj_jp'}];
-/* v19.35: edits＝貸与品画面の手修正（{'W29#0':{'B':{units:…,parts:{…},_by,_at}}}。取り込んだ値は変えず上書きとして持つ）、memos＝学校ごとのメモ */
-function rentalCfgNorm(o){o=o||{};return {years:o.years||{},links:o.links||{},lots:o.lots||{},edits:o.edits||{},memos:o.memos||{}};}
+/* v19.35: edits＝貸与品画面の手修正（{'W29#0':{'B':{units:…,parts:{…},_by,_at}}}。取り込んだ値は変えず上書きとして持つ）、memos＝学校ごとのメモ
+   v19.42: titles＝ブロックのタイトル（Lサイズ・南京錠・棚板有 など）の手修正（{'W29#0':{title,_by,_at}}） */
+function rentalCfgNorm(o){o=o||{};return {years:o.years||{},links:o.links||{},lots:o.lots||{},edits:o.edits||{},memos:o.memos||{},titles:o.titles||{}};}
 var RENTAL_CFG=rentalCfgNorm();
 try{var _rc=JSON.parse(lsGet('lec_rental_cfg')||'null');if(_rc&&typeof _rc==='object')RENTAL_CFG=rentalCfgNorm(_rc);}catch(e){}
 function saveRentalCfg(){try{lsSet('lec_rental_cfg',JSON.stringify(RENTAL_CFG));}catch(e){}}
 function rentalSchools(){return (typeof RENTAL_SEED!=='undefined'&&RENTAL_SEED.schools)||[];}
+/* v19.42: タイトルからサイズを読む（「Ｍ→Lサイズ」のように複数あれば後ろ＝新しい方） */
+function rentalSizeOfTitle(t){
+  t=String(t||'');try{t=t.normalize('NFKC');}catch(e){}
+  var re=/(XL|3S|SS|Sα|S|M|L)\s*サイズ/g,m,last='';
+  while((m=re.exec(t)))last=m[1];
+  return last;
+}
+/* v19.42: ブロック（タイトルの手修正を反映）。タイトルを直したときはサイズもタイトルから読み直す（読めなければ取り込んだサイズ） */
+function rentalBlockOf(s,bi){
+  var b=s&&s.blocks&&s.blocks[bi];if(!b)return null;
+  var t=((RENTAL_CFG.titles||{})[s.id+'#'+bi])||null;
+  if(!t||t.title==null)return b;
+  return Object.assign({},b,{title:t.title,size:rentalSizeOfTitle(t.title)||b.size,_titleBase:b.title,_titleBy:t._by||'',_titleAt:t._at||''});
+}
 /* v19.32: ブロックの納品列＝Excel から取り込んだ列＋納品完了で自動登録した列（RENTAL_CFG.lots['W29#0']） */
 function rentalBaseLotsOf(s,bi){
   var b=s.blocks[bi];if(!b)return [];
@@ -1149,7 +1164,7 @@ function rentalCandidates(cid,eu){
 function rentalPickBlock(s,bi,size){
   if(bi!=null&&s.blocks[bi])return bi;
   var idx=-1;
-  s.blocks.forEach(function(b,i){if(idx<0&&!b.joset&&size&&b.size===size)idx=i;});
+  s.blocks.forEach(function(b,i){if(idx<0&&!b.joset&&size&&rentalBlockOf(s,i).size===size)idx=i;});/* v19.42: タイトルの手修正で直したサイズ */
   /* v19.31: サイズの指定が無い（またはどれとも合わない）ときは、直近に納品があったブロック（常設以外） */
   if(idx<0){var best=-1;s.blocks.forEach(function(b,i){if(b.joset)return;var m=0;rentalLotsOf(s,i).forEach(function(L){if(L.fy&&L.fy>m)m=L.fy;});if(m>best){best=m;idx=i;}});}
   return idx<0?0:idx;
@@ -1200,6 +1215,22 @@ function rentalStatus(s,bi,T,opt){
   });
   var unknown={};
   var lim=(opt&&opt.mid)?T+1:T;
+  /* v19.42 ④: 使用数の記録がある年度の、使用数が空欄の列（同じ年度の別日付＝転入生などの追加。高槻北 C・D 列）は、
+     その年の同じ学年が使っている数とする（以前は本体の列の使用数に含まれているとみなし、回せる数に入っていた）。
+     ただし本体の列の使用数が貸出より多い分（追加分を合算して書いてある学校）は、その分だけ差し引く（二重に数えない）。
+     cover['入学年度|g']＝その学年の本体の列で、使用数が貸出を上回っている数 */
+  function lentIn(x,g){var v=0;RP_KEYS.forEach(function(pk){if(pk.g===g&&!/_ss$/.test(pk.k))v+=Math.max(0,(x.parts||{})[pk.k]||0);});return v;}
+  var cover={};
+  lots.forEach(function(L){
+    if(!L.fy||L.fy>=lim||dupUse.indexOf(L)>=0)return;
+    var en=L.fy-((L.grade||1)-1);
+    RP_GROUPS.forEach(function(G){
+      if(L.useIn&&L.useIn[G.g])return;
+      if(!L.use||L.use[G.g]===undefined||L.use[G.g]===null)return;
+      var lent=0;lots.forEach(function(x){if(x===L||(x.useIn&&x.useIn[G.g]===L.col))lent+=lentIn(x,G.g);});
+      var k=en+'|'+G.g;cover[k]=(cover[k]||0)+Math.max(0,(L.use[G.g]||0)-lent);
+    });
+  });
   lots.forEach(function(L){
     if(L.fy&&L.fy>=lim)return;
     Object.keys(L.parts||{}).forEach(function(k){held[k]=(held[k]||0)+(L.parts[k]||0);});
@@ -1214,7 +1245,13 @@ function rentalStatus(s,bi,T,opt){
         var u;
         if(dupUse.indexOf(L)>=0)u=0;
         else if(L.use&&L.use[G.g]!==undefined&&L.use[G.g]!==null)u=L.use[G.g];
-        else if(useFy[L.fy])u=0;
+        else if(useFy[L.fy]&&((L.use&&Object.keys(L.use).length)||(L.useIn&&Object.keys(L.useIn).length)))u=0;/* 本体の列（結合で合算した列を含む）で、この部材の使用数だけ空欄（従来どおり） */
+        else if(useFy[L.fy]){
+          /* v19.42 ④: 使用数の記録が無い列＝同じ年度の別日付の追加 → 貸し出した数をその学年の使用数に（本体の列の使用数に含まれている分は除く） */
+          u=lentIn(L,G.g);
+          var ck=entry+'|'+G.g,cv=Math.min(u,cover[ck]||0);
+          if(cv>0){u-=cv;cover[ck]-=cv;}
+        }
         else{u=0;RP_KEYS.forEach(function(pk){if(pk.g===G.g)u+=Math.max(0,(L.parts||{})[pk.k]||0);});}
         if(!(u>0))return;
         /* v19.33: まずその学年に貸し出した種類（黒・台湾など）へ割り当て、残り（学校保管から回した分）は後でまとめて割り当てる */
@@ -1271,6 +1308,7 @@ function RentalViewer(p){
   var sel=us(p.initSid||''),selB=us(p.initBi==null?null:p.initBi),q=us(''),fy=us(rentalDefaultFY()),tick=us(0),showAll=us(false);
   /* v19.35: 手修正（editKey＝編集中のブロック 'W29#0'、draft＝編集中の列のコピー）とメモ（memoEdit＝編集中の文） */
   var editKey=us(''),draft=us(null),memoEdit=us(null);
+  var titleDraft=us('');/* v19.42: 手修正中のブロックのタイトル */
   ue(function(){if(p.show){sel[1](p.initSid||((p.onlyIds&&p.onlyIds.length)?p.onlyIds[0]:''));selB[1](p.initBi==null?null:p.initBi);q[1]('');showAll[1](false);editKey[1]('');draft[1](null);memoEdit[1](null);}},[p.show,p.initSid,p.initBi,(p.onlyIds||[]).join(',')]);
   if(!p.show)return null;
   var all=rentalSchools();
@@ -1303,6 +1341,7 @@ function RentalViewer(p){
       return c;
     });
     editKey[1](s.id+'#'+bi);draft[1](lots);
+    titleDraft[1](rentalBlockOf(s,bi).title||'');
   }
   function setD(i,fn){var d=draft[0].slice();d[i]=Object.assign({},d[i]);fn(d[i]);draft[1](d);}
   function numOrNull(v){var t=String(v==null?'':v).replace(/[,，\s　]/g,'');if(t==='')return null;var n=parseInt(t,10);return isNaN(n)?null:n;}
@@ -1354,6 +1393,13 @@ function RentalViewer(p){
       if(Object.keys(e).length){e._by=by;e._at=at;ed[L.col]=e;}
     });
     if(Object.keys(ed).length)RENTAL_CFG.edits[key]=ed;else delete RENTAL_CFG.edits[key];
+    /* v19.42: タイトル（取り込んだタイトルと同じなら上書きを消す） */
+    if(!RENTAL_CFG.titles)RENTAL_CFG.titles={};
+    var nt=String(titleDraft[0]||'').trim(),ot=String(s.blocks[bi].title||'').trim();
+    if(nt&&nt!==ot){
+      var pt=RENTAL_CFG.titles[key];
+      if(!pt||pt.title!==nt)RENTAL_CFG.titles[key]={title:nt,_by:by,_at:at};
+    }else delete RENTAL_CFG.titles[key];
     /* 手で追加した列（manual）は自動登録の列と同じ置き場。自動登録の列はそのまま残す */
     var keep=((RENTAL_CFG.lots||{})[key]||[]).filter(function(x){return !x.manual;});
     var nl=keep.concat(manual);
@@ -1366,6 +1412,7 @@ function RentalViewer(p){
     var nM=(((RENTAL_CFG.lots||{})[key])||[]).filter(function(x){return x.manual;}).length;
     if(!confirm('このブロックの手修正をすべて取り消して、Excel から取り込んだ値に戻します。'+(nM?'\n（手で追加した列 '+nM+' 列も削除します）':'')+'\nよろしいですか？'))return;
     delete RENTAL_CFG.edits[key];
+    if(RENTAL_CFG.titles)delete RENTAL_CFG.titles[key];/* v19.42 */
     var keep=((RENTAL_CFG.lots||{})[key]||[]).filter(function(x){return !x.manual;});
     if(keep.length)RENTAL_CFG.lots[key]=keep;else delete RENTAL_CFG.lots[key];
     save();
@@ -1375,7 +1422,7 @@ function RentalViewer(p){
     var editing=editKey[0]===key&&draft[0];
     var st=rentalStatus(s,bi,fy[0]);
     var lots=editing?draft[0]:rentalLotsOf(s,bi);
-    var hasEdits=!!(RENTAL_CFG.edits||{})[key]||((RENTAL_CFG.lots||{})[key]||[]).some(function(x){return x.manual;});
+    var hasEdits=!!(RENTAL_CFG.edits||{})[key]||!!(RENTAL_CFG.titles||{})[key]||((RENTAL_CFG.lots||{})[key]||[]).some(function(x){return x.manual;});
     var contSet={},gradSet={};st.cont.forEach(function(L){contSet[L.col]=true;});st.grad.forEach(function(L){gradSet[L.col]=true;});
     var partRows=RP_KEYS.filter(function(pk){
       if(editing&&(pk.k==='base_bk'||pk.k==='vj_bk'||pk.k==='sj_jp'))return true;/* 手修正中は主の部材の行を必ず出す */
@@ -1405,17 +1452,24 @@ function RentalViewer(p){
     }
     return h('div',{key:bi,className:'card',style:{marginBottom:10,padding:10,outline:editing?'2px solid #F59E0B':'none'}},
       h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}},
-        h('b',{style:{fontSize:14,color:'#1e3a5f'}},b.title||'(仕様未記入)'),
-        b.size?h('span',{className:'bg bg-b'},b.size):null,
+        /* v19.42: タイトル（サイズ・錠前・棚板）も手修正できる。在庫確認・見積へ遷移したときの商品選択はこのタイトルで決まる */
+        editing?h('input',{className:'inp',value:titleDraft[0],placeholder:'例: Lサイズ・南京錠・棚板有',style:{fontSize:13,fontWeight:700,minWidth:260,flex:'1 1 260px',background:'#FFFBEB'},
+            title:'サイズ（Lサイズ など）・錠前（南京錠／ダイヤル錠（H110）など）・棚板（棚板有／棚板無／棚板2枚）を書くと、在庫確認・見積の商品選択に反映されます',
+            onChange:function(e){titleDraft[1](e.target.value);}})
+          :h('b',{style:{fontSize:14,color:'#1e3a5f',background:b._titleBase!=null?EDBG:'transparent',padding:b._titleBase!=null?'0 4px':0,borderRadius:3},
+            title:b._titleBase!=null?('手修正 '+(b._titleBy||'')+' '+(b._titleAt||'')+'（取り込んだタイトル: '+(b._titleBase||'')+'）'):''},b.title||'(仕様未記入)'),
+        (b.size&&!editing)?h('span',{className:'bg bg-b'},b.size):null,
+        (!editing&&!b.joset)?(function(){var sh=rentalShelfOf(b.title);return sh.n>0?h('span',{className:'bg bg-g',title:'在庫確認・見積へ遷移したとき 台数×'+sh.n+'枚 を棚板に入れます'},'棚板'+sh.n+'枚/台'):null;})():null,
         b.joset?h('span',{className:'bg bg-o'},'常設（過不足の計算対象外）'):null,
         hasEdits&&!editing?h('span',{className:'bg bg-y',title:'黄色のセルが手修正した値です'},'手修正あり'):null,
         h('span',{style:{flex:1}}),
         editing?null:yearsSel(s.id,bi),
-        editing?null:h('button',{className:'btn btn-xs btn-or',disabled:!!editKey[0],onClick:function(){startEdit(bi);},title:'表の数字・日付・扉色・備考を手で直します（全端末共有）'},'✎ 手修正'),
+        editing?null:h('button',{className:'btn btn-xs btn-or',disabled:!!editKey[0],onClick:function(){startEdit(bi);},title:'タイトル・表の数字・日付・扉色・備考を手で直します（全端末共有）'},'✎ 手修正'),
         (!editing&&hasEdits)?h('button',{className:'btn btn-xs btn-ol',disabled:!!editKey[0],onClick:function(){resetEdits(bi);}},'↺ 手修正を元に戻す'):null
       ),
       editing?h('div',{style:{fontSize:11,color:'#92400E',background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:5,padding:'4px 8px',marginBottom:6,lineHeight:1.6}},
         '✎ 手修正中: 数字を直して「保存」を押してください。空欄にするとその項目は無しになります。日付は 2027/4/8 の形（年度は日付から自動。3月納品は翌年度）。',
+        h('br'),'一番上のタイトル（Lサイズ・南京錠・棚板有 など）も直せます。在庫確認・見積へ進んだときのサイズ・錠前・棚板はこのタイトルで決まります。',
         h('br'),'取り込んだ Excel の値は残っているので、あとで「元に戻す」ができます。追加した列は「追加1」のような名前になります。'):null,
       h('div',{style:{overflowX:'auto'}},h('table',{className:'tbl',style:{fontSize:12,width:'auto',minWidth:'100%'}},
         h('thead',null,h('tr',null,h('th',{style:Object.assign({},thS,{left:0,zIndex:4})},'列'),lots.map(function(L,i){
@@ -1542,7 +1596,7 @@ function RentalViewer(p){
           h('div',{style:{fontSize:11,color:'var(--g500)',marginBottom:8}},
             '顧客DBとのひも付け: ',rentalLinksOf(s).length?rentalLinksOf(s).map(rentalLinkLabel).join('、'):'なし（見積画面の過不足欄で学校を選んで「この顧客にひも付け」できます）',
             '　／　Excelシート名: ',s.sheet),
-          (selB[0]!=null&&s.blocks[selB[0]]?[selB[0]]:s.blocks.map(function(_,i){return i;})).map(function(i){return blockView(s.blocks[i],i);}),
+          (selB[0]!=null&&s.blocks[selB[0]]?[selB[0]]:s.blocks.map(function(_,i){return i;})).map(function(i){return blockView(rentalBlockOf(s,i),i);}),
           (s.sheetNotes||[]).length?h('div',{style:{fontSize:11,color:'var(--g600)',background:'#f5f7fa',border:'1px solid var(--g200)',borderRadius:6,padding:'6px 8px'}},
             h('b',null,'シート上のメモ: '),s.sheetNotes.join(' ／ ')):null,
           selB[0]!=null&&s.blocks.length>1?h('button',{className:'btn btn-xs btn-ol',style:{marginTop:6},onClick:function(){selB[1](null);}},'この学校の全ブロックを表示'):null
@@ -1607,6 +1661,32 @@ function rentalLockOf(s,b){
   if(last==='シリンダー'||last==='DSS')return {v:null,note:'シリンダー錠（種類は前年の見積をご確認ください）'};
   return {v:null};
 }
+/* v19.42 ②: タイトルの棚板。n=1台あたりの枚数（棚板有＝1、棚板2枚＝2、棚板無・不明＝0） */
+function rentalShelfOf(title){
+  var t=String(title||'');try{t=t.normalize('NFKC');}catch(e){}
+  if(!/棚/.test(t))return {n:0};
+  if(/棚板?\s*(無|なし)/.test(t))return {n:0};
+  if(/棚板?\s*有無/.test(t))return {n:0,note:'棚板の有無が不明（タイトルが「棚板有無」）'};
+  if(/棚板?\s*リユース/.test(t))return {n:0,note:'棚板はリユース'};
+  var color=/棚板?[^・、,/]*グレー/.test(t)?'gy':'bk';
+  var m=/棚板?\s*(?:有り?|あり|付き?)?\s*([0-9]+)\s*枚/.exec(t);
+  return {n:m?Math.max(1,parseInt(m[1])):1,color:color};
+}
+/* v19.42 ③: 前年の台数（対象年度より前で一番新しい年度の主な納品＝台数が最大の列）。
+   同じ年度の別日付の列（転入生などの追加）は含めない。ベースの数はその列の使用数（無ければ貸出数） */
+function rentalUnitsGuess(s,bi,fy){
+  var byFy={};
+  rentalLotsOf(s,bi).forEach(function(L){
+    if(!L.fy||L.fy>=fy||!(L.units>0)||L.mid||(L.grade||1)!==1)return;
+    if(!byFy[L.fy]||L.units>byFy[L.fy].units)byFy[L.fy]=L;
+  });
+  var ys=Object.keys(byFy).map(Number).sort(function(a,b){return b-a;});
+  if(!ys.length)return null;
+  var L=byFy[ys[0]];
+  var base=(L.use&&L.use.base>0)?L.use.base:0;
+  if(!base)RP_KEYS.forEach(function(pk){if(pk.g==='base'&&!/_ss$/.test(pk.k))base+=Math.max(0,(L.parts||{})[pk.k]||0);});
+  return {fy:ys[0],units:L.units,base:base>0&&base<=L.units?base:0};
+}
 /* 扉色: 直近3年の主な納品（各年度で台数が最大の列）の色が同じならその色、学年で色を替えているなら卒業する学年の色 */
 function rentalColorGuess(s,bi,fy){
   var b=s.blocks[bi];var byFy={};
@@ -1623,7 +1703,7 @@ function rentalColorGuess(s,bi,fy){
   return {color:rentalColorBase(g),how:st.nextColors.length?'卒業する学年の色':'直近の色',hota:/ホタ/.test(g||(latest&&latest.color)||'')};
 }
 function rentalPrefillOf(s,bi,fy){
-  var b=s.blocks[bi];if(!b)return null;
+  var b=rentalBlockOf(s,bi);if(!b)return null;/* v19.42: タイトルの手修正を反映 */
   var cg=rentalColorGuess(s,bi,fy);
   var size=b.size||'';
   var line='jp2';
@@ -1632,7 +1712,9 @@ function rentalPrefillOf(s,bi,fy){
   if(size&&(LINE_SIZES[line]||[]).indexOf(size)<0)size='';
   var col=(LINE_COLORS[line]||[]).find(function(c){return c.l===cg.color;});
   var lock=rentalLockOf(s,b);
-  return {line:line,size:size,lock:lock.v,lockNote:lock.note||'',color:col?col.v:null,colorName:cg.color,colorHow:cg.how,hota:!!cg.hota};
+  var ug=rentalUnitsGuess(s,bi,fy),sh=rentalShelfOf(b.title);
+  return {line:line,size:size,lock:lock.v,lockNote:lock.note||'',color:col?col.v:null,colorName:cg.color,colorHow:cg.how,hota:!!cg.hota,
+    units:ug?ug.units:0,unitsFy:ug?ug.fy:0,base:ug?ug.base:0,shelfPer:sh.n,shelfColor:sh.color||'bk',shelfNote:sh.note||''};
 }
 
 /* ===== 商品選択画面の「レンタル品の過不足」欄（ネジ欄と「＋ 在庫確認・明細追加」の間） =====
@@ -1655,7 +1737,7 @@ function RentalShortPanel(p){
       h('div',{style:{color:'var(--g500)',marginBottom:3,lineHeight:1.5}},p.cust?'この顧客'+(p.endUser&&p.endUser.name?'（エンド納品先: '+p.endUser.name+'）':'')+'にひも付いた貸与品データがありません。新規導入でなければ学校を選んでください。':'顧客を選ぶと表示します。'),
       p.cust?schoolSel:null);
   }
-  var s=res.s,bi=res.bi,b=s.blocks[bi];
+  var s=res.s,bi=res.bi,b=rentalBlockOf(s,bi);
   var st=rentalStatusMinus(rentalStatus(s,bi,p.fy,p.mid?{mid:true}:null),p.used);
   var midColor=p.mid?rentalCohortColor(s,bi,p.fy,p.grade):'';
   var cmp=rentalCompare(st,p.need||{});
@@ -1671,7 +1753,7 @@ function RentalShortPanel(p){
     p.setPick({sid:s.id,bi:bi});
     p.toast&&p.toast('ひも付けました: '+s.name);
   }
-  var blocks=s.blocks.map(function(x,i){return {x:x,i:i};}).filter(function(o){return !o.x.joset;});
+  var blocks=s.blocks.map(function(x,i){return {x:rentalBlockOf(s,i),i:i};}).filter(function(o){return !o.x.joset;});
   var th={padding:'3px 4px',fontSize:9,fontWeight:700,textAlign:'center',borderBottom:'1px solid #BFDBFE'};
   var td={padding:'3px 4px',textAlign:'right',borderBottom:'1px solid #E0ECFF',verticalAlign:'top'};
   return h('div',{style:box},
@@ -10234,11 +10316,17 @@ function InvPage(p){
     if(pf.color)cl[1](pf.color);
     if(pf.line==='jp01'||pf.line==='jp2'){doorType[1](pf.hota?'doorH':'door');baseColor[1]('bk');hasCap[1](false);/* v19.35: ベース黒は原則キャップなし */}
     hasBase[1](true);
+    /* v19.42 ③: 台数は前年の台数（「台数・ベース数で入力」に前年の台数とベースの数）。②: 棚板有なら 台数×1台あたりの枚数 */
+    if(pf.units>0){inputMode[1]('direct');dQty[1](String(pf.units));dBase[1](pf.base>0?String(pf.base):'');}
+    var shQ=(pf.units>0&&pf.shelfPer>0)?pf.units*pf.shelfPer:0;
+    if(shQ>0){shelfQty[1](shQ);shelfColor[1](pf.line==='tw'?'gy':pf.shelfColor);}
     var lo=LINES.find(function(x){return x.id===pf.line;});
     var lt=pf.lock?LOCK_TYPES.find(function(x){return x.v===pf.lock;}):null;
     rentalPrefillNote[1]([(lo?lo.name:pf.line),(pf.size?sizeLabel(pf.line,pf.size):''),(lt?lt.l:''),
       (pf.colorName?('扉 '+(pf.hota?'ホタ ':'')+pf.colorName+'（'+pf.colorHow+'）'+(pf.color?'':' ※この製品ラインに無い色のため未選択')):''),
-      pf.lockNote].filter(Boolean).join('・'));
+      (pf.units>0?(pf.units+'台（'+pf.unitsFy+'年度と同じ'+(pf.base>0?'・ベース'+pf.base+'枚':'')+'）'):''),
+      (shQ>0?('棚板'+shQ+'枚（'+pf.units+'台×'+pf.shelfPer+'枚）'):''),
+      pf.lockNote,pf.shelfNote].filter(Boolean).join('・'));
   },[cust&&cust.id,endUser[0].id||'',endUser[0].name||'',rentalPick[0]&&rentalPick[0].sid,rentalPick[0]&&rentalPick[0].bi]);
   /* v18.31: 入力方式に応じて 台数(qty)・ベース枚数(baseCount=常設のベースボード数) を導出。
      grid=Σ(列i×段i)/Σ列i、direct=入力値そのまま。従来の isl/tier 単独入力は blocks 1件と等価 */
