@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.43（春先モード）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.44（春先モード: 倉庫別の編集権限・同時編集で消えない保存）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -164,6 +164,59 @@ var SPRING_LS_KEYS=['lec_orders','lec_nextON','lec_stk','lec_held','lec_incoming
 function lsKey(k){return (SPRING&&SPRING_LS_KEYS.indexOf(k)>=0)?('lec_spring'+SPRING_FY+'_'+k.slice(4)):k;}
 /* 春先の年度: 7〜12月は翌年の春、1〜6月はその年の春（10月なら2027年度、5月なら2027年度） */
 function springDefaultFY(){var d=new Date();return d.getMonth()>=6?d.getFullYear()+1:d.getFullYear();}
+/* ===== v19.44 春先の倉庫別の編集権限（ユーザー指示 2026-10-15。春先の画面だけ） =====
+   ・尼高倉庫の案件・在庫 … 事務/片岡 が優先
+   ・それ以外の倉庫 … 事務/岩上・事務/高山 が優先（2人同時に編集できる）。尼高と他の倉庫が混ざった案件もこちら
+   ・管理者/中辻 … すべて
+   「優先」＝その人がログインしている間はその人（たち）が編集でき、いなければ従来どおり先勝ち（最初にログインした人）。
+   名前はアカウント名（役割/氏名）の氏名部分に含まれるかで見る。 */
+var SPRING_RIGHTS={amago:['片岡'],main:['岩上','高山'],all:['中辻']};
+var SPRING_GROUP_L={amago:'尼高',main:'尼高以外'};
+var SPRING_PRESENCE={names:[],primary:'',ready:false};/* App が同時利用の一覧から更新する */
+function springNameHas(name,list){
+  var n=String(name||'').split('/').pop().replace(/[\s　]/g,'');
+  return !!n&&(list||[]).some(function(k){return n.indexOf(k)>=0;});
+}
+function springOrderWhs(o){
+  var ws={};
+  function add(w){if(w)ws[w]=1;}
+  if(!o)return [];
+  add(o.wh);add(o.whA);add(o.whB);(o.whs||[]).forEach(add);
+  (o.lines||[]).forEach(function(ln){add(ln._heldWh);(ln._actualHeld||[]).forEach(function(b){add(b&&b._wh);});});
+  return Object.keys(ws);
+}
+/* 倉庫の一覧 → 'amago'（すべて尼高）／'main'（それ以外。混在も） */
+function springGroupOfWhs(ws){ws=(ws||[]).filter(Boolean);return (ws.length&&ws.every(function(w){return w==='amago';}))?'amago':'main';}
+function springGroupOf(t){
+  if(!t)return 'main';
+  if(typeof t==='string')return (t==='amago'||t==='main')?t:springGroupOfWhs([t]);
+  if(Array.isArray(t))return springGroupOfWhs(t);
+  return springGroupOfWhs(springOrderWhs(t));
+}
+function springPriorityOnline(g){return SPRING_PRESENCE.names.filter(function(n){return springNameHas(n,SPRING_RIGHTS[g]);});}
+function springCanEdit(g,me){
+  if(!SPRING)return true;
+  me=me||curUserName();
+  if(springNameHas(me,SPRING_RIGHTS.all))return true;
+  if(!SPRING_PRESENCE.ready)return true;/* 同期サーバーに接続していない（ローカル動作）ときは制限しない */
+  var pri=springPriorityOnline(g);
+  if(pri.length)return springNameHas(me,SPRING_RIGHTS[g]);
+  return SPRING_PRESENCE.primary===me;
+}
+function springWhoFor(g){var pri=springPriorityOnline(g);return pri.length?pri.join('・'):(SPRING_PRESENCE.primary||'');}
+/* 編集できなければメッセージを出して true（呼び出し側は return する）。target＝案件／倉庫の配列／'amago'|'main' */
+function springDeny(target,toast){
+  if(!SPRING)return false;
+  var g=springGroupOf(target);
+  if(springCanEdit(g))return false;
+  var msg='🌸 春先: '+SPRING_GROUP_L[g]+'の案件・在庫は「'+springWhoFor(g)+'」さんが編集中です（あなたは閲覧のみ）';
+  if(toast)toast(msg);else alert(msg);
+  return true;
+}
+function springEditableLabel(me){
+  var gs=['amago','main'].filter(function(g){return springCanEdit(g,me);});
+  return gs.length===2?'すべて':gs.length?SPRING_GROUP_L[gs[0]]:'閲覧のみ';
+}
 function enterSpring(fy){
   fy=parseInt(fy,10)||springDefaultFY();
   if(!confirm('🌸 春先モード（'+fy+'年度）に切り替えます。\n\n・春先の案件・部材在庫は通常とは別管理です（顧客・マスタは共通）\n・切り替えは このタブだけ です。別のタブで通常の画面も開けます\n\nよろしいですか？'))return;
@@ -465,6 +518,9 @@ function cloudLoad(cb){
         if(r2.error){console.warn('[Cloud] 春先の行の読込失敗',r2.error.message);CLOUD_READY=false;if(cb)cb(false);return;}
         var d2=r2.data&&r2.data.doc;
         if(d2)applyCloudDoc(docPick(d2,CLOUD_SPLIT_KEYS),{replace:true});
+        /* v19.44: 同時編集の基準（最後にクラウドと揃えた内容） */
+        if(d2){SPRING_BASE=JSON.parse(JSON.stringify(docPick(d2,CLOUD_SPLIT_KEYS)));SPRING_BASE.orders=normOrders(SPRING_BASE.orders||[]);SPRING_ROW_TS=r2.data.updated_at||null;}
+        else{SPRING_BASE=null;SPRING_ROW_TS=null;}
         if(cb)cb(true,!!d2);
       },function(err){console.warn('[Cloud] 春先の行の読込失敗',err);CLOUD_READY=false;if(cb)cb(false);});
     },function(err){console.warn('[Cloud] load失敗',err);CLOUD_READY=false;if(cb)cb(false);});
@@ -488,6 +544,150 @@ function loadOtherSide(cb){
       if(cb)cb();
     },function(){if(cb)cb();});
   }catch(e){if(cb)cb();}
+}
+/* ===== v19.44 春先: 同時に編集しても消えない保存 =====
+   ・SPRING_BASE＝最後にクラウドと揃えたときの春先の行（案件・在庫など）。手元の変更＝手元とBASEの差。
+   ・保存: 最新の行を読み直し、手元の変更だけを重ねて（springMergeSplit）、「読んだ時点から誰も保存していない」ときだけ書く
+     （updated_at が読んだときと同じ行だけを update。だめなら読み直してやり直す）。
+   ・案件・入庫予定は番号単位: 手元で変えたものは手元、変えていないものはクラウド。両方が同じ番号を新しく作っていたら手元の方を振り直す。
+   ・在庫は数の増減で重ねる（クラウドの数＋手元で増減した分）。変更履歴は足し合わせ。仮押さえは案件から作り直す。 */
+var SPRING_BASE=null,SPRING_ROW_TS=null,_springSaving=false,_springSaveAgain=false;
+var SPRING_NOTIFY=null,SPRING_ONCHANGE=null;/* App が通知・再描画をつなぐ */
+function _jsonEq(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function springSplitNow(){
+  return JSON.parse(JSON.stringify({orders:ORDERS,nextON:nextON,held:HELD,stk:STK,incoming:INCOMING,nextIncId:nextIncId,
+    editLog:(EDIT_LOG||[]).slice(-500),deletedNos:DELETED_ORDER_NOS.slice(-500),stkSnapshot:STK_SNAPSHOT_DATE}));
+}
+function springMergeList(L,B,R,key,onClash){
+  function idx(a){var m={};(a||[]).forEach(function(x){if(x&&x[key]!=null)m[x[key]]=x;});return m;}
+  var lm=idx(L),bm=idx(B),out=[],seen={};
+  (R||[]).forEach(function(r){
+    if(!r||r[key]==null)return;
+    var id=r[key],l=lm[id],b=bm[id];seen[id]=1;
+    if(_jsonEq(l,b)){out.push(r);return;}/* 手元で変えていない → クラウド */
+    if(l===undefined){if(b!==undefined&&!_jsonEq(r,b))out.push(r);return;}/* 手元で消した（クラウドで変わっていれば残す） */
+    if(b===undefined&&!_jsonEq(l,r)){out.push(r);var nl=onClash(l);seen[nl[key]]=1;out.push(nl);return;}/* 同じ番号を別々に作った */
+    out.push(l);/* 手元で変えた → 手元 */
+  });
+  (L||[]).forEach(function(l){
+    if(!l||l[key]==null||seen[l[key]])return;
+    var b=bm[l[key]];
+    if(b!==undefined&&_jsonEq(l,b))return;/* クラウドで消された */
+    seen[l[key]]=1;out.push(l);
+  });
+  return out;
+}
+function springMergeNum(l,b,r){
+  var isN=function(x){return typeof x==='number';};
+  if(isN(l)||isN(b)||isN(r)){
+    if((l!==undefined&&!isN(l))||(r!==undefined&&!isN(r)))return r!==undefined?r:l;
+    return (isN(r)?r:0)+((isN(l)?l:0)-(isN(b)?b:0));
+  }
+  var isO=function(x){return x&&typeof x==='object'&&!Array.isArray(x);};
+  if(isO(l)||isO(r)){
+    var o={},ks={};[l,b,r].forEach(function(x){if(isO(x))Object.keys(x).forEach(function(k){ks[k]=1;});});
+    Object.keys(ks).forEach(function(k){var v=springMergeNum(isO(l)?l[k]:undefined,isO(b)?b[k]:undefined,isO(r)?r[k]:undefined);if(v!==undefined)o[k]=v;});
+    return o;
+  }
+  return l!==undefined?l:r;
+}
+function springMergeSplit(L,B,R,notes){
+  L=L||{};B=B||{};R=R||{};notes=notes||[];
+  var out={};
+  out.nextON=Math.max(L.nextON||1,R.nextON||1);
+  out.nextIncId=Math.max(L.nextIncId||1,R.nextIncId||1);
+  out.orders=springMergeList(L.orders,B.orders,R.orders,'no',function(l){
+    var nl=JSON.parse(JSON.stringify(l));var pre=String(l.no).split('-')[0]||'QT';
+    nl.no=pre+'-'+SPRING_FY+'-S'+String(out.nextON++).padStart(3,'0');
+    notes.push('案件番号が他の人と重なったため '+l.no+' → '+nl.no+' に変えました');
+    return nl;
+  });
+  out.incoming=springMergeList(L.incoming,B.incoming,R.incoming,'id',function(l){
+    var nl=JSON.parse(JSON.stringify(l));nl.id=out.nextIncId++;return nl;
+  });
+  var del={},dl=[];[R.deletedNos,L.deletedNos].forEach(function(a){(a||[]).forEach(function(n){if(!del[n]){del[n]=1;dl.push(n);}});});
+  out.deletedNos=dl.slice(-500);
+  out.orders=out.orders.filter(function(o){return !del[o.no];});
+  out.stk=springMergeNum(L.stk,B.stk,R.stk)||L.stk||R.stk;
+  var ek=function(e){return [e.timestamp,e.label,e.lineId,e.key,e.sub,e.color,e.wh,e.oldVal,e.newVal,e.by].join('|');};
+  var seenE={},el=[];
+  (R.editLog||[]).concat(L.editLog||[]).forEach(function(e){if(!e)return;var k=ek(e);if(seenE[k])return;seenE[k]=1;el.push(e);});
+  out.editLog=el.slice(-500);
+  out.stkSnapshot=R.stkSnapshot||L.stkSnapshot;
+  out.held=L.held||R.held||{};
+  return out;
+}
+/* マージ結果を画面のデータへ。中身が同じ案件・入庫予定は今のオブジェクトをそのまま使う（開いている画面の参照を切らない） */
+function springApplySplit(m){
+  var curO={};ORDERS.forEach(function(o){curO[o.no]=o;});
+  ORDERS=normOrders((m.orders||[]).map(function(o){var c=curO[o.no];return (c&&_jsonEq(c,o))?c:o;}));
+  var curI={};INCOMING.forEach(function(i){curI[i.id]=i;});
+  INCOMING=(m.incoming||[]).map(function(i){var c=curI[i.id];return (c&&_jsonEq(c,i))?c:i;});
+  if(m.nextON)nextON=m.nextON;
+  if(m.nextIncId)nextIncId=m.nextIncId;
+  if(m.stk&&m.stkSnapshot===STK_SNAPSHOT_DATE)STK=m.stk;
+  EDIT_LOG=m.editLog||[];
+  DELETED_ORDER_NOS=m.deletedNos||[];saveDeletedNos();
+  ensureStkLateAdditions();
+  rebuildHeldFromOrders();
+  saveAll();
+}
+function springTsEq(a,b){if(!a||!b)return false;var x=new Date(a).getTime(),y=new Date(b).getTime();return !isNaN(x)&&x===y;}
+/* 他の人の保存（リアルタイム）を手元の変更を残したまま取り込む */
+function springApplyRemote(row){
+  if(!row||!row.doc)return false;
+  if(springTsEq(row.updated_at,SPRING_ROW_TS))return false;/* 自分の保存 */
+  var R=docPick(row.doc,CLOUD_SPLIT_KEYS);R.orders=normOrders(R.orders||[]);
+  var notes=[];
+  var M=springMergeSplit(springSplitNow(),SPRING_BASE,R,notes);
+  SPRING_BASE=JSON.parse(JSON.stringify(R));SPRING_ROW_TS=row.updated_at||SPRING_ROW_TS;
+  springApplySplit(M);
+  if(notes.length&&SPRING_NOTIFY)SPRING_NOTIFY(notes.join(' ／ '));
+  return true;
+}
+function springCloudSave(userName){
+  if(!supaClient||!CLOUD_READY)return;
+  if(_springSaving){_springSaveAgain=true;return;}
+  _springSaving=true;
+  var snap=springSplitNow(),base0=SPRING_BASE,attempt=0;
+  function fin(){_springSaving=false;if(_springSaveAgain){_springSaveAgain=false;setTimeout(function(){springCloudSave(userName);},50);}}
+  function retry(why){
+    if(attempt<6){setTimeout(tryOnce,120*attempt);return;}
+    console.warn('[Cloud] 春先の保存: やり直しの上限',why);
+    if(SPRING_NOTIFY)SPRING_NOTIFY('⚠ 春先の保存が他の人の保存と重なり続けたため保存できませんでした。少し待ってからもう一度操作してください');
+    fin();
+  }
+  function tryOnce(){
+    attempt++;
+    try{
+      supaClient.from(CLOUD_TABLE).select('doc,updated_at').eq('id',CLOUD_SPRING_ID).maybeSingle().then(function(res){
+        if(res.error){console.warn('[Cloud] 春先の保存: 読込失敗',res.error.message);fin();return;}
+        var row=res.data,notes=[];
+        var R=row&&row.doc?docPick(row.doc,CLOUD_SPLIT_KEYS):null;
+        if(R)R.orders=normOrders(R.orders||[]);
+        var M=R?springMergeSplit(snap,base0,R,notes):snap;
+        var doc=Object.assign({},M,{_ts:Date.now(),springFy:SPRING_FY});
+        var ts=new Date().toISOString();
+        var q=row
+          ?supaClient.from(CLOUD_TABLE).update({doc:doc,updated_at:ts,updated_by:userName||''}).eq('id',CLOUD_SPRING_ID).eq('updated_at',row.updated_at).select('updated_at')
+          :supaClient.from(CLOUD_TABLE).insert({id:CLOUD_SPRING_ID,doc:doc,updated_at:ts,updated_by:userName||''}).select('updated_at');
+        q.then(function(r2){
+          if(!r2||r2.error||!r2.data||!r2.data.length){retry(r2&&r2.error?r2.error.message:'更新0件');return;}
+          SPRING_ROW_TS=r2.data[0].updated_at||ts;
+          SPRING_BASE=JSON.parse(JSON.stringify(M));
+          /* 保存している間に手元で変えた分は残す */
+          var cur=springSplitNow();
+          var M2=springMergeSplit(cur,snap,M,[]);
+          springApplySplit(M2);
+          if(!_jsonEq(docPick(cur,['orders','stk','incoming']),docPick(snap,['orders','stk','incoming'])))_springSaveAgain=true;
+          if(notes.length&&SPRING_NOTIFY)SPRING_NOTIFY(notes.join(' ／ '));
+          if(SPRING_ONCHANGE)SPRING_ONCHANGE();
+          fin();
+        },function(e){retry(e&&e.message);});
+      },function(e){console.warn('[Cloud] 春先の保存: 読込例外',e);fin();});
+    }catch(e){console.warn('[Cloud] 春先の保存例外',e);fin();}
+  }
+  tryOnce();
 }
 /* v19.43 春先: 共通の項目（顧客・マスタ・貸与品など）を通常の行へ書き戻す。
    通常の行を読み直し、共通の項目だけを差し替えて保存する（通常の案件・在庫は読み直した内容のまま＝春先からは変えない） */
@@ -629,12 +829,9 @@ function cloudSave(userName,immediate){
     /* v19.43 春先: 案件・在庫は春先の行へ。共通の項目が変わっていれば通常の行へも（その項目だけ） */
     if(SPRING){
       try{
+        _cloudSelfWrite=false;/* 春先の行は updated_at で自分の保存を見分ける（springApplyRemote） */
         var full=buildCloudDoc();
-        var sp=docPick(full,CLOUD_SPLIT_KEYS);sp._ts=full._ts;sp.springFy=SPRING_FY;
-        supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_SPRING_ID,doc:sp,updated_at:new Date().toISOString(),updated_by:userName||''}).then(function(res){
-          if(res&&res.error)console.warn('[Cloud] 春先の保存失敗',res.error.message);
-          setTimeout(function(){_cloudSelfWrite=false;},800);
-        },function(err){console.warn('[Cloud] 春先の保存例外',err);_cloudSelfWrite=false;});
+        springCloudSave(userName);/* v19.44: 同時に編集しても消えない保存 */
         var part=sharedPartOf(full),sig=JSON.stringify(part);
         if(sig!==_sharedSig){_sharedSig=sig;springPushShared(part,userName);}
       }catch(e){console.warn('[Cloud] 春先の保存例外2',e);_cloudSelfWrite=false;}
@@ -9186,6 +9383,9 @@ function App(){
     }catch(e){}
   },[]);
 
+  /* v19.44 春先: 保存・取り込みの通知と再描画 */
+  SPRING_NOTIFY=function(m){notif[1](m);setTimeout(function(){notif[1](null);},8000);};
+  SPRING_ONCHANGE=function(){bump[1](function(v){return v+1;});};
   /* Setup Supabase Presence & Broadcast */
   ue(function(){
     if(!loggedIn[0]||!supaClient||!userName[0])return;
@@ -9226,6 +9426,12 @@ function App(){
       var res=resolveEditor(allKeys,users,SYSTEM_LOCK.overrideName,myPresenceKey.current,SYSTEM_LOCK.primary);
       SYSTEM_LOCK.primary=res.primaryKey;
       var newRO=!res.amIPrimary&&allKeys.length>1;
+      /* v19.44 春先: 全体の先勝ちロックは使わず、倉庫別の権限（springCanEdit）で判定する。先勝ちは優先の人がいない倉庫の決め手に使う */
+      if(SPRING){
+        var pu=users.find(function(u){return u.presenceKey===res.primaryKey;});
+        SPRING_PRESENCE={names:users.filter(function(u){return canHoldEditRight(u.name);}).map(function(u){return u.name;}),primary:pu?pu.name:'',ready:true};
+        newRO=false;
+      }
       /* v18.25 要望⑤: 編集中に読み取り専用へ切り替わった瞬間に通知（入力内容は保持・権限が戻れば保存可）。 */
       if(newRO&&!SYSTEM_LOCK._roWas){
         notif[1]('🔒 別のユーザーが編集中のため読み取り専用になりました。入力中の内容は保持され、編集権限が戻れば保存できます。');
@@ -9273,6 +9479,7 @@ function App(){
       if(d&&d.user!==userName[0]){
         notif[1]('📝 '+d.user+'（'+d.time+'）: '+d.detail);
         setTimeout(function(){notif[1](null);},5000);
+        if(SPRING)return;/* v19.44 春先: 在庫の丸ごと置き換えはしない（クラウド経由で手元の変更を残して取り込む） */
         /* v14.4: STK を同梱されていれば即時反映 */
         try{
           if(d.stk){STK=d.stk;ensureStkLateAdditions();saveAll();bump[1](function(v){return v+1;});}/* v15.0: broadcast受信STKにもレール補充(過渡期に旧端末からレール無STKが来ても表示が0にならない) */
@@ -9291,6 +9498,7 @@ function App(){
       if(d&&d.user!==userName[0]){
         notif[1]('🔔 案件更新('+d.user+' '+d.time+'): '+d.detail+(d.heavy?' ⚠軽量同期':''));
         setTimeout(function(){notif[1](null);},6000);
+        if(SPRING)return;/* v19.44 春先: 案件の丸ごと置き換えはしない（同時編集で他の人の変更を消さないため） */
         try{
           if(d.orders){
             d.orders=normOrders(d.orders);/* v14.7: lines欠落の不正payloadでも画面が落ちないよう正規化 */
@@ -9326,6 +9534,7 @@ function App(){
     bch.on('broadcast',{event:'sync_request'},function(payload){
       var d=payload.payload;
       if(!d||d.fromKey===myPresenceKey.current)return;
+      if(SPRING)return;/* v19.44 春先: 初期状態はクラウドから読む */
       /* 応答の重複を避けるため primary(最古参加者) のみ応答 */
       if(SYSTEM_LOCK.primary&&SYSTEM_LOCK.primary!==myPresenceKey.current)return;
       try{
@@ -9337,6 +9546,7 @@ function App(){
     bch.on('broadcast',{event:'sync_state'},function(payload){
       var d=payload.payload;
       if(!d||d.toKey!==myPresenceKey.current)return;
+      if(SPRING)return;/* v19.44 */
       try{
         /* v18.17 要望5: 遅延参加者へ編集権限の指定を伝播 */
         if(d.overrideName!==undefined){SYSTEM_LOCK.overrideName=d.overrideName||null;editorOverrideName[1](d.overrideName||null);if(recomputeLockRef.current)recomputeLockRef.current();}
@@ -9423,9 +9633,9 @@ function App(){
                 bump[1](function(v){return v+1;});
               })
               .on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.'+CLOUD_SPRING_ID},function(payload){
-                if(_cloudSelfWrite)return;
                 var row=payload.new||payload.record;
-                if(row&&row.doc){applyCloudDoc(docPick(row.doc,CLOUD_SPLIT_KEYS),{replace:false});bump[1](function(v){return v+1;});}
+                /* v19.44: 手元の変更を残したまま取り込む（自分の保存は updated_at で見分けて無視） */
+                if(springApplyRemote(row))bump[1](function(v){return v+1;});
               }).subscribe();
           }else{
           cloudCh=supaClient.channel('lec-cloud-state')
@@ -9549,6 +9759,9 @@ function App(){
       TRAINING?h('div',{style:{background:'#7C3AED',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:900,marginLeft:8,letterSpacing:1},title:'練習モードです。ここでの操作は本番データ（クラウド・他の端末）へ一切反映されません'},'🎓 トレーニングモード（本番データに反映されません）'):null,
       /* v19.43: 春先モード */
       SPRING?h('div',{style:{background:'#fff',color:SPRING_PINK,padding:'2px 10px',borderRadius:4,fontSize:11,fontWeight:900,marginLeft:8,letterSpacing:1},title:'春先の案件・部材在庫は通常とは別管理です'},'🌸 春先モード（'+SPRING_FY+'年度）'):null,
+      SPRING?h('div',{style:{background:'rgba(255,255,255,.2)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:10,fontWeight:800,marginLeft:4},
+        title:'春先の編集権限: 尼高＝片岡さん優先、尼高以外（混在を含む）＝岩上さん・高山さん優先（同時編集可）、中辻さんはすべて。優先の人がいなければ先にログインした人'},
+        '✏ 編集できる倉庫: '+springEditableLabel(userName[0])):null,
       /* v14 D32: 読み取り専用バナー */
       roleReadOnly?h('div',{style:{background:'#975a16',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 閲覧専用（営業ロール：見積確認のみ可）'):(isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（編集中: '+(lockEditorName(onlineUsers[0])||'別のユーザー')+'）'):null),
       /* v14.4 hotfix2: 'offline'は「同期サーバー無効」と表現変更（エラー→機能無効通知へ）
@@ -10961,6 +11174,7 @@ function InvPage(p){
     if(!lines[0].length||!selWH[0])return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
+    if(springDeny([selWH[0]],p.toast))return;/* v19.44 春先: 倉庫別の編集権限 */
     /* 重複仮押さえ防止: 既に同じ顧客の仮押さえドラフトがある場合は警告
        v18.67 修正14①: 案件修正モードで上書きしようとしている案件そのものは警告の対象外。
        上書き＝押さえ直しなので在庫は追加消費されない（直後の releaseEditingHold で一度解放する）。 */
@@ -11024,6 +11238,8 @@ function InvPage(p){
     if(!lines[0].length||selMulti[0]===null||!multiWH[0][selMulti[0]])return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
+    var mo0=multiWH[0][selMulti[0]];
+    if(springDeny((mo0.whs&&mo0.whs.length)?mo0.whs:[mo0.whA,mo0.whB],p.toast))return;/* v19.44 */
     releaseEditingHold();/* v18.67 修正14①: 2回目以降の上書きで在庫を二重に押さえない */
     var mo=multiWH[0][selMulti[0]];
     /* v18.68 修正15⑤: 組合せは2〜4倉庫。先頭が主倉庫（order.wh） */
@@ -11163,6 +11379,7 @@ function InvPage(p){
     /* v18.66 修正13①: 割当は [{wh,qty},…]。v18.68 修正15⑤: 倉庫数の上限は撤廃 */
     var whList=usedWhList();
     if(!whList.length)whList=usedWhList(true);/* 押さえる数量が0の案件（受発注色の扉のみ等）でも従来どおり登録できるようにする */
+    if(springDeny(whList,p.toast))return;/* v19.44 */
     if(!whList.length){p.toast('倉庫と数量を指定してください');return;}
     releaseEditingHold();/* v18.67 修正14①: 2回目以降の上書きで在庫を二重に押さえない */
     /* 割当数量が多い倉庫を主倉庫の既定にする（従来は割当された部材の「件数」で決めていた） */
@@ -11355,6 +11572,7 @@ function InvPage(p){
     if(!lines[0].length||!selWH[0])return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
+    if(springDeny([selWH[0]],p.toast))return;/* v19.44 */
     /* 重複仮押さえ防止 */
     var existingR=quoteOrder[0];
     if(existingR&&existingR.status==='仮押さえ'&&existingR.cid===cust.id&&existingR.no!==editingNo[0]){
@@ -12946,6 +13164,10 @@ function OrdersPage(p){
      拠点タブは「顧客登録の弊社営業担当」→「ユーザー管理の拠点情報」で振り分ける（orderBaseOf）。
      納品完了の案件は 'done' タブへ自動的に移り、他のタブ（進行中の案件一覧）には出さない。 */
   var baseTab=us('all');
+  /* v19.44 春先: 倉庫の切替（すべて／尼高／尼高以外）。選んだ側を編集できる人だけが操作できる（「すべて」は両方を編集できる人だけ）。
+     既定はその人が編集できる側。画面内の読み取り専用の判定（RO_）はこれで決まる */
+  var whGrp=us(SPRING?(function(){var me=curUserName();if(springNameHas(me,SPRING_RIGHTS.all))return 'all';if(springNameHas(me,SPRING_RIGHTS.amago))return 'amago';return 'main';})():'all');
+  var RO_=p.isReadOnly||(SPRING&&(whGrp[0]==='all'?!(springCanEdit('amago')&&springCanEdit('main')):!springCanEdit(whGrp[0])));
   var showBom=us(false);/* v18.58 修正10①: 案件詳細の「部材内訳」を開いているか（案件詳細を開き直すたびに閉じる） */
   /* v18.46 修正４④/修正５③: 並び替え。既定は納品予定日の近い順（修正５③） */
   var sortKey=us('delivery');
@@ -12980,7 +13202,7 @@ function OrdersPage(p){
   var dlvEdit=us(null);
   /* 納品予定日を保存する。★order.deliveryDate は請求書・納品書の日付、出荷指示書の納品日時（自動値）にも使われる */
   function saveDeliveryDate(o,val){
-    if(p.isReadOnly){p.toast('読み取り専用モード中は変更できません');return false;}
+    if(RO_){p.toast('読み取り専用モード中は変更できません');return false;}
     var lo=liveOrder(o)||o;
     if(isOrderLocked(lo)){p.toast('納品完了の案件は変更できません（ステータスを戻してから変更してください）');return false;}
     var v=String(val||'').trim();
@@ -13109,6 +13331,7 @@ function OrdersPage(p){
       /* v18.67 修正14②: 拠点タブは担当拠点で絞り込む（拠点未判定の案件は「全案件」でのみ表示） */
       if(baseTab[0]!=='all'&&baseOfOrder(o)!==baseTab[0])return false;
     }
+    if(SPRING&&whGrp[0]!=='all'&&springGroupOf(o)!==whGrp[0])return false;/* v19.44 */
     /* v18.46 修正４④: 空配列＝全て。複数選択時はいずれかに一致すれば表示 */
     if(filter[0].length&&filter[0].indexOf(o.status)<0)return false;
     /* v19.21 修正31②: 期間の絞り込み・入金アラートのみ */
@@ -13133,7 +13356,7 @@ function OrdersPage(p){
   /* v19.07 口頭依頼: 請求書を分けた案件は紙ごとにチェックする。idx は紙の番号（0始まり）。
      ★1枚の案件は idx=0 だけなので、従来（v19.06 まで）とまったく同じ動きになる。 */
   function togglePaidSheet(o0,idx,on){
-    if(p.isReadOnly){p.toast('読み取り専用モード中は入金確認を登録できません');return;}
+    if(RO_){p.toast('読み取り専用モード中は入金確認を登録できません');return;}
     var o=liveOrder(o0);
     var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0));
     var m=paidSheetsOf(o);
@@ -13157,7 +13380,7 @@ function OrdersPage(p){
   /* v19.08 口頭依頼: 入金日・口座の変更。チェック済みの紙だけが対象（未チェックなら何もしない）。
      ★o.paid が立っている（全枚そろっている）ときは案件直下の paidAt/paidBy/paidBank も追随させる。 */
   function setPaidSheetField(o0,idx,patch){
-    if(p.isReadOnly){p.toast('読み取り専用モード中は入金内容を変更できません');return;}
+    if(RO_){p.toast('読み取り専用モード中は入金内容を変更できません');return;}
     var o=liveOrder(o0);
     var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0)),k=String(i);
     var m=paidSheetsOf(o);
@@ -13173,7 +13396,7 @@ function OrdersPage(p){
 
   function changeStatus(order0,ns){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
-    if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
+    if(RO_){p.toast('読み取り専用モード中はステータス変更できません');return;}
     /* v18.68 修正15⑧: 詳細モーダルが保持しているのがコピーでも、必ずORDERS内の実体を書き換える */
     var order=liveOrder(order0);
     /* v14 Codex P1対応: 未確保パーツがある状態での出荷指示・出荷完了を防止 */
@@ -13222,7 +13445,7 @@ function OrdersPage(p){
      　解放しないと、受注しなかった案件が倉庫の在庫を押さえ続けてしまう。
      ★戻すときは「見積作成」へ戻す。在庫は失注時に解放済みなので、ここでは動かさない。 */
   function markLost(order0){
-    if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
+    if(RO_){p.toast('読み取り専用モード中はステータス変更できません');return;}
     var order=liveOrder(order0);
     if(isLostOrder(order))return;
     if(isOrderLocked(order)){p.toast('納品完了の案件は失注にできません（先にステータスを差し戻してください）');return;}
@@ -13241,7 +13464,7 @@ function OrdersPage(p){
     detail[1](null);saveAll();p.bump&&p.bump();
   }
   function restoreFromLost(order0){
-    if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
+    if(RO_){p.toast('読み取り専用モード中はステータス変更できません');return;}
     var order=liveOrder(order0);
     if(!isLostOrder(order))return;
     if(!confirm('案件 '+order.no+' の失注を取り消して「見積作成」に戻します。\n\n在庫は失注にしたときに解放済みのため増減しません。\n（改めて仮押さえし直してください）\n\nよろしいですか？'))return;
@@ -13253,7 +13476,7 @@ function OrdersPage(p){
   }
   /* v17 要望24: ステータス差し戻し（過去ステータスへ戻す。在庫は rollbackInventory が整合的に巻き戻す） */
   function rollbackStatus(order0,target){
-    if(p.isReadOnly){p.toast('読み取り専用モード中はステータス変更できません');return;}
+    if(RO_){p.toast('読み取り専用モード中はステータス変更できません');return;}
     var order=liveOrder(order0);/* v18.68 修正15⑧ */
     var SF=STATUS_FLOW,fi=SF.indexOf(order.status),ti=SF.indexOf(target);
     if(ti<0||ti>=fi)return;
@@ -13513,6 +13736,20 @@ function OrdersPage(p){
         title:'顧客登録の「弊社営業担当」が未設定、またはユーザー管理にその担当者の拠点が登録されていない案件です。顧客登録で担当者を設定すると拠点タブに振り分けられます'},
         '※ 拠点未判定 '+fm(tabCount.nobase)+'件は「全案件」タブにのみ表示されます'):null
     ),
+    /* v19.44 春先: 倉庫の切替と、いま誰が編集できるか */
+    SPRING?h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',margin:'0 0 6px',padding:'5px 10px',background:'#FDF2F8',border:'1px solid #F9A8D4',borderRadius:8,fontSize:11}},
+      h('b',{style:{color:SPRING_PINK}},'🌸 倉庫'),
+      [['all','すべて'],['amago','🏭 尼高'],['main','尼高以外（混在を含む）']].map(function(t){
+        var on=whGrp[0]===t[0];
+        var cnt=ORDERS.filter(function(o){return t[0]==='all'||springGroupOf(o)===t[0];}).filter(function(o){return o.status!=='納品完了'&&!isLostOrder(o);}).length;
+        var can=t[0]==='all'?(springCanEdit('amago')&&springCanEdit('main')):springCanEdit(t[0]);
+        return h('button',{key:t[0],className:'btn btn-xs',onClick:function(){whGrp[1](t[0]);},
+          style:{background:on?SPRING_PINK:'#fff',color:on?'#fff':SPRING_PINK,border:'1px solid '+SPRING_PINK,fontWeight:on?800:600},
+          title:can?'編集できます':'閲覧のみ（編集中: '+(t[0]==='all'?'':springWhoFor(t[0]))+'）'},t[1]+'（'+fm(cnt)+'）'+(can?' ✏':' 🔒'));
+      }),
+      h('span',{style:{color:'var(--g500)',fontSize:10}},'編集できる人: 尼高＝'+(springWhoFor('amago')||'−')+' ／ 尼高以外＝'+(springWhoFor('main')||'−')+'（管理者/中辻はすべて）'),
+      RO_&&!p.isReadOnly?h('span',{style:{color:'#C53030',fontWeight:700,fontSize:10}},'🔒 この倉庫は閲覧のみです'):null
+    ):null,
     h('div',{className:'card'},
       h('div',{className:'chd'},h('h3',null,(baseTab[0]==='done'?'納品完了':baseTab[0]==='lost'?'失注':baseTab[0]==='all'?'案件管理':('案件管理 — '+orderBaseLabel(baseTab[0])))+'（'+fl.length+'/'+(baseTab[0]==='done'?tabCount.done:baseTab[0]==='lost'?tabCount.lost:tabCount.all)+'件）'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
@@ -13636,7 +13873,7 @@ function OrdersPage(p){
                   (o.shipEdit&&o.shipEdit.delivery)||(o.shipEdits&&Object.keys(o.shipEdits).some(function(k){return o.shipEdits[k]&&o.shipEdits[k].delivery;}))
                     ?h('div',{style:{fontSize:8,color:'#975a16',lineHeight:1.4,maxWidth:160}},'※出荷指示書の納品日時は手修正されているため、そちらは変わりません'):null
                 )
-              :(!isOrderLocked(o)&&!p.isReadOnly)?h('button',{className:'btn btn-xs btn-ol',style:{marginTop:3,fontSize:8,padding:'1px 5px'},title:'カレンダーから納品予定日を選んで変更します',
+              :(!isOrderLocked(o)&&!RO_)?h('button',{className:'btn btn-xs btn-ol',style:{marginTop:3,fontSize:8,padding:'1px 5px'},title:'カレンダーから納品予定日を選んで変更します',
                   onClick:function(){
                     /* 初期値は今の納品予定日（納期欄の文言しか無い案件は、日付として読めるときだけ入れる） */
                     var cur=String(o.deliveryDate||'');
@@ -13720,9 +13957,9 @@ function OrdersPage(p){
                 function chk(i,text){
                   var st=pm[String(i)];
                   return h('div',{key:'ps'+i},
-                    h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:p.isReadOnly?'not-allowed':'pointer',color:st?'#065F46':'var(--g500)'},
+                    h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:RO_?'not-allowed':'pointer',color:st?'#065F46':'var(--g500)'},
                       title:st?('入金確認済み'+(st.at?'（'+st.at+(st.by?' '+st.by:'')+'）':'')):'入金が確認できたらチェックを入れてください'},
-                      h('input',{type:'checkbox',checked:!!st,disabled:!!p.isReadOnly,onChange:function(e){togglePaidSheet(o,i,e.target.checked);}}),
+                      h('input',{type:'checkbox',checked:!!st,disabled:!!RO_,onChange:function(e){togglePaidSheet(o,i,e.target.checked);}}),
                       text
                     ),
                     /* ===== v19.08 口頭依頼: チェックを入れたら入金日（カレンダー）と口座（選択式）を入れる =====
@@ -13730,11 +13967,11 @@ function OrdersPage(p){
                     st?h('div',{style:{marginLeft:16,marginTop:2,display:'flex',flexDirection:'column',gap:2}},
                       h('label',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'var(--g500)'}},'入金日',
                         h('input',{className:'inp',type:'date',style:{fontSize:9,padding:'1px 3px',height:20,width:118},
-                          value:st.at||'',disabled:!!p.isReadOnly,title:'入金日',
+                          value:st.at||'',disabled:!!RO_,title:'入金日',
                           onChange:function(e){setPaidSheetField(o,i,{at:e.target.value});}})),
                       h('label',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'var(--g500)'}},'口座',
                         h('select',{className:'inp',style:{fontSize:9,padding:'1px 3px',height:20,width:118},
-                          value:st.bank||'',disabled:!!p.isReadOnly,title:'入金された口座',
+                          value:st.bank||'',disabled:!!RO_,title:'入金された口座',
                           onChange:function(e){setPaidSheetField(o,i,{bank:e.target.value});}},
                           st.bank?null:h('option',{value:''},'（未選択）'),
                           PAID_BANKS.map(function(b){return h('option',{key:b,value:b},b);})))
@@ -13760,7 +13997,7 @@ function OrdersPage(p){
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){showBom[1](false);detail[1](o);}},'詳細'),
               /* v17.2 要望26: 前回コピーでリピート発注 */
               h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2,fontWeight:700},title:'この案件の内容をコピーして新規見積（リピート発注）',onClick:function(){
-                if(p.isReadOnly){p.toast('読み取り専用モード中はコピーできません');return;}
+                if(RO_){p.toast('読み取り専用モード中はコピーできません');return;}
                 var rc=CUSTS.find(function(x){return x.id===o.cid;});
                 if(!rc){p.toast('顧客情報が見つかりません');return;}
                 if(!p.requestRepeat){p.toast('この環境ではリピート発注を利用できません');return;}
@@ -13787,7 +14024,7 @@ function OrdersPage(p){
                    編集権限（先勝ちロック）を持っていなくても修正できるようにした。修正10②で見積作成そのものを
                    全員に開放したのに、作った見積を直せないままだったため。
                    仮押さえ・受注確定の案件は引当の解除を伴うので従来どおり編集権限が必要。 */
-                if(p.isReadOnly&&o.status!=='見積作成'){p.toast('編集権限がないため、仮押さえ済みの案件は修正できません（ステータスが「見積作成」の案件のみ修正できます）');return;}
+                if(RO_&&o.status!=='見積作成'){p.toast('編集権限がないため、仮押さえ済みの案件は修正できません（ステータスが「見積作成」の案件のみ修正できます）');return;}
                 var ec=CUSTS.find(function(x){return x.id===o.cid;});
                 if(!ec){p.toast('顧客情報が見つかりません');return;}
                 if(!p.requestEdit||!p.requestRepeat){p.toast('この環境では案件修正を利用できません');return;}
@@ -13821,7 +14058,7 @@ function OrdersPage(p){
               h('button',{className:'btn btn-xs btn-rd',style:Object.assign({marginLeft:2,background:'#991B1B'},isOrderLocked(o)?{opacity:.35,cursor:'not-allowed'}:{}),
                 title:isOrderLocked(o)?'納品完了の案件は削除できません（ステータスを差し戻してから操作してください）':'この案件を削除します',onClick:function(){
                 /* v14 Codex P1対応: 読み取り専用モードでは削除禁止 */
-                if(p.isReadOnly){p.toast('読み取り専用モード中は削除できません');return;}
+                if(RO_){p.toast('読み取り専用モード中は削除できません');return;}
                 /* v18.49 修正６⑨: 納品完了の案件は削除禁止 */
                 if(isOrderLocked(o)){p.toast('納品完了の案件は削除できません。修正が必要な場合は詳細画面でステータスを差し戻してください');return;}
                 if(!confirm(deleteOrderConfirmMsg(o)))return;
@@ -13967,7 +14204,7 @@ function OrdersPage(p){
     detail[0]?h(Modal,{show:true,title:'案件詳細 — '+detail[0].no,w:650,onClose:function(){showBom[1](false);detail[1](null);},
       footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
         detail[0].status==='仮押さえ'?h('button',{className:'btn btn-or',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
           var od=liveOrder(detail[0]);/* v18.68 修正15⑧: ORDERS内の実体を書き換える */
           /* v14 Codex P1対応: actualHeld優先で解放 */
           od.lines.forEach(function(ln){
@@ -13985,7 +14222,7 @@ function OrdersPage(p){
            v18.49 修正６⑨: 納品完了の案件は編集不可 */
         h('button',{className:'btn btn-tl',style:isOrderLocked(detail[0])?{opacity:.35,cursor:'not-allowed'}:null,
           title:isOrderLocked(detail[0])?'納品完了の案件は編集できません（下のステータス遷移で差し戻してから編集してください）':'',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
           if(isOrderLocked(detail[0])){p.toast('納品完了の案件は編集できません。ステータスを差し戻してから編集してください');return;}
           var od=liveOrder(detail[0]);/* v18.68 修正15⑧: ORDERS内の実体を書き換える */
           var newSubject=prompt('件名を編集',od.subject||'');
@@ -14011,7 +14248,7 @@ function OrdersPage(p){
            v18.49 修正６⑨: 納品完了の案件は削除不可 */
         h('button',{className:'btn btn-rd',style:isOrderLocked(detail[0])?{opacity:.35,cursor:'not-allowed'}:null,
           title:isOrderLocked(detail[0])?'納品完了の案件は削除できません（下のステータス遷移で差し戻してから操作してください）':'',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は削除できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は削除できません');return;}
           if(isOrderLocked(detail[0])){p.toast('納品完了の案件は削除できません。ステータスを差し戻してから操作してください');return;}
           var od=liveOrder(detail[0]);/* v18.68 修正15⑧: ORDERS内の実体を書き換える */
           if(!confirm(deleteOrderConfirmMsg(od)))return;
@@ -14077,7 +14314,7 @@ function OrdersPage(p){
             broadcastOrderUpdate(p.userName||'',lo.no+' 在庫を引き直し');
             p.toast('在庫を引き直しました（'+lo.no+'）。部材在庫一覧で数量をご確認ください');
           };
-          var canFix=!p.isReadOnly;
+          var canFix=!RO_;
           if(st==='legacy')return h('div',{style:{padding:'5px 10px',marginBottom:8,background:'var(--g50)',border:'1px solid var(--g200)',borderRadius:6,fontSize:10,color:'var(--g600)',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
             h('span',null,'📦 出荷済み（v18.76より前の出荷のため、在庫を引いた日時の記録は残っていません）'),
             canFix?h('button',{className:'btn btn-xs btn-ol',title:'実在庫と付き合わせて「引かれていない」と分かった場合だけ使ってください。二重に引くと在庫が減りすぎます',onClick:reconsume},'在庫が引かれていない場合はここから引き直す'):null
@@ -14139,7 +14376,7 @@ function OrdersPage(p){
                 h('span',null,h('b',null,'この案件の送料欄: '),o.shipping?'¥'+fm(o.shipping):'-'),
                 /* v18.76 修正18④: v18.75以前に作った案件は「全量を主倉庫から出す」送料で保存されている。
                    倉庫ごとに計算し直した金額へ、この場で入れ替えられるようにする。 */
-                (!legNG&&legTotal>0&&legTotal!==o.shipping&&!p.isReadOnly&&!isOrderLocked(o))?h('button',{className:'btn btn-xs btn-gn',onClick:function(){
+                (!legNG&&legTotal>0&&legTotal!==o.shipping&&!RO_&&!isOrderLocked(o))?h('button',{className:'btn btn-xs btn-gn',onClick:function(){
                   if(!confirm('この案件の送料を ¥'+fm(o.shipping||0)+' → ¥'+fm(legTotal)+' （倉庫ごとの合計）に入れ替えます。よろしいですか？'))return;
                   var lo=liveOrder(o);lo.shipping=legTotal;
                   detail[1](null);saveAll();p.bump&&p.bump();
@@ -14414,7 +14651,7 @@ function OrdersPage(p){
               h('div',{style:{flex:'2 1 150px'}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'備考（任意）'),
                 h('input',{className:'inp',value:f.note,onChange:function(e){uf('note',e.target.value);},placeholder:'例: 当日調整用'})),
               h('button',{className:'btn btn-gn',style:{fontWeight:700},onClick:function(){
-                if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+                if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
                 var q=parseInt(f.qty)||0;
                 if(q<=0){p.toast('数量を入力してください');return;}
                 if(!f.wh){p.toast('出荷元倉庫を選んでください');return;}
@@ -14460,7 +14697,7 @@ function OrdersPage(p){
                   h('div',{style:{flex:'2 1 150px'}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'備考（任意）'),
                     h('input',{className:'inp',value:sf.note,onChange:function(e){ufs('note',e.target.value);},placeholder:'例: 予備一式'})),
                   h('button',{className:'btn btn-gn',style:{fontWeight:700},onClick:function(){
-                    if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+                    if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
                     if(!sf.wh){p.toast('出荷元倉庫を選んでください');return;}
                     /* v18.69 修正15④追: ネジ類（1袋100個入り）は台数倍しない */
                     var plan=setRows.map(function(r){return Object.assign({},r,{qty:r.bag?r.qty:(r.qty*units)});});
@@ -14501,7 +14738,7 @@ function OrdersPage(p){
             var open=sps.filter(function(s){return s.status!=='returned';});
             if(!open.length)return null;
             function doBulk(useAll){
-              if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+              if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
               var bw=spareBulkWh[0];
               /* 行ごとに返却先が指定されていればそちらを優先。未指定の行は一括指定の倉庫へ返す */
               var plan=[],needBulkWh=false;
@@ -14573,7 +14810,7 @@ function OrdersPage(p){
                     h('select',{className:'inp',value:ret.wh,onChange:function(e){setRet('wh',e.target.value);},style:{width:110}},
                       [h('option',{key:'_',value:''},'返却先倉庫…')].concat(whList.map(function(w){return h('option',{key:w,value:w},(WH_MAP[w]||{}).n||w);}))),
                     h('button',{className:'btn btn-xs btn-gn',style:{fontWeight:700},onClick:function(){
-                      if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+                      if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
                       var rq=parseInt(ret.qty);
                       if(isNaN(rq)||rq<0||rq>(parseInt(sp.qty)||0)){p.toast('返却数は 0〜'+sp.qty+' で入力してください');return;}
                       if(rq>0&&!ret.wh){p.toast('返却先の倉庫を選んでください');return;}
@@ -14585,7 +14822,7 @@ function OrdersPage(p){
                       p.toast('予備パーツを返却しました: '+sp.label+' 返却'+rq+'個'+(used?'／使用'+used+'個':''));
                     }},'返却入庫'),
                     h('button',{className:'btn btn-xs btn-rd',title:'この持ち出しを取り消し、出荷元倉庫へ全数を戻します',onClick:function(){
-                      if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+                      if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
                       if(!confirm(sp.label+' の持ち出しを取り消します。\n'+((WH_MAP[sp.wh]||{}).n||sp.wh)+'へ '+sp.qty+'個を戻して、この行を削除します。\nよろしいですか？'))return;
                       spareReturnIn(sp,parseInt(sp.qty)||0,sp.wh,p.userName||'');
                       od.spareParts.splice(si,1);
@@ -14746,7 +14983,7 @@ function OrdersPage(p){
         footer:h('div',{style:{display:'flex',gap:6}},
           h('button',{className:'btn btn-ol',onClick:function(){cfgEdit[1](null);}},'キャンセル'),
           h('button',{className:'btn btn-rd',onClick:function(){
-            if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+            if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
             var o2=ORDERS.find(function(x){return x.no===m.no;});
             if(!o2){p.toast('案件が見つかりません');return;}
             var cn=Object.assign({},o2.cfgNotes||{});
@@ -14913,7 +15150,7 @@ function OrdersPage(p){
           h('button',{className:'btn btn-ol',onClick:function(){invSplitModal[1](null);}},'キャンセル'),
           !chk.ok?h('span',{style:{fontSize:10,color:'#991B1B',fontWeight:700}},'⚠ 直す点があります（保存はできます）'):null,
           h('button',{className:'btn btn-rd',onClick:function(){
-            if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+            if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
             var o2=liveOrder({no:m.no});
             if(!o2||!o2.no){invSplitModal[1](null);return;}
             if(m.n<=1)delete o2.invSplit;else o2.invSplit={n:m.n,alloc:m.alloc};
@@ -15059,7 +15296,7 @@ function OrdersPage(p){
         footer:h('div',{style:{display:'flex',gap:6}},
           h('button',{className:'btn btn-ol',onClick:function(){docEditModal[1](null);}},'キャンセル'),
           h('button',{className:'btn btn-ol',title:'この帳票の手修正を消して自動値に戻す',onClick:function(){
-            if(p.isReadOnly){p.toast('読み取り専用モード中は変更できません');return;}
+            if(RO_){p.toast('読み取り専用モード中は変更できません');return;}
             var o3=liveOrder(m.order)||m.order;
             if(!hasDocEdit(o3,m.docType)){docEditModal[1](null);return;}
             var map=Object.assign({},o3.docEdit||{});delete map[m.docType];
@@ -15069,7 +15306,7 @@ function OrdersPage(p){
             p.toast('手修正をクリアしました（自動値に戻ります）');docEditModal[1](null);p.bump&&p.bump();
           }},'自動値に戻す'),
           h('button',{className:'btn btn-rd',onClick:function(){
-            if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+            if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
             var o2=applyDocEdit(m);
             saveAll();
             broadcastOrderUpdate(p.userName||'',o2.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'を手修正');
@@ -15148,7 +15385,7 @@ function OrdersPage(p){
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){shipEditModal[1](null);}},'キャンセル'),
         h('button',{className:'btn btn-ol',title:'この案件の手修正をすべて消して自動値に戻す（全シートぶん）',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は変更できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は変更できません');return;}
           var o3=liveOrder(shipEditModal[0].order)||shipEditModal[0].order;
           if(!o3.shipEdit&&!o3.shipEdits){shipEditModal[1](null);return;}
           delete o3.shipEdit;delete o3.shipEdits;/* v18.89 修正25②: 紙ごとの手修正もまとめて消す */
@@ -15157,7 +15394,7 @@ function OrdersPage(p){
           p.toast('手修正をクリアしました（自動値に戻ります）');shipEditModal[1](null);p.bump&&p.bump();
         }},'自動値に戻す'),
         h('button',{className:'btn btn-rd',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は保存できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
           var m0=shipEditModal[0];
           var o2=applyShipEdit(m0);
           saveAll();
@@ -15596,6 +15833,8 @@ function SpringClosePanel(p){
   );
 }
 function PartsPage(p){
+  /* v19.44 春先: どちらの倉庫も編集できない人は閲覧のみ。倉庫が分かる操作は springDeny でさらに倉庫ごとに判定する */
+  var RO_=p.isReadOnly||(SPRING&&!springCanEdit('amago')&&!springCanEdit('main'));
   var selLine=us('jp01'),viewMode=us('struct'),editModal=us(null),bump=us(0);
   var showHeldOrders=us(false),showConfirmedOrders=us(false),showEditLog=us(false),heldDetail=us(null);
   var subTab=us('stock'); /* stock, held, shipped */
@@ -15828,7 +16067,17 @@ function PartsPage(p){
   function saveEdit(){
     var e=editModal[0];if(!e)return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
-    if(p.isReadOnly){p.toast('読み取り専用モード中は在庫編集できません');return;}
+    if(RO_){p.toast('読み取り専用モード中は在庫編集できません');return;}
+    if(SPRING){/* v19.44: 値を変えた倉庫（と移動の2倉庫）で判定 */
+      var chW=[];var xf0=xferForm[0]||{};if(xf0.from)chW.push(xf0.from);if(xf0.to)chW.push(xf0.to);
+      WH_IDS.forEach(function(w){
+        if(e.onlyWh&&w!==e.onlyWh)return;
+        if(e.isDoor){var dv=(e.doorVals||{})[w];if(!dv)return;
+          if((e.doorSizes||[]).some(function(sz){return (parseInt(dv[sz])||0)!==(((((STK[e.lineId]||{})[w]||{})[e.key]||{})[e.color]||{})[sz]||0);}))chW.push(w);}
+        else if(e.vals&&e.vals[w]!==undefined&&(parseInt(e.vals[w])||0)!==gs(e.lineId,w,e.key,e.sub))chW.push(w);
+      });
+      if(chW.length&&springDeny(chW,p.toast))return;
+    }
     /* v19.17 修正30①: 移動欄に入力があれば、保存の前に倉庫間移動を実行する。
        入力欄（vals/doorVals）は開いた時点の在庫なので、動かした2倉庫は★±数量だけずらしてから保存する
        （絶対値で上書きすると移動が打ち消されるため）。手で数量を直していた場合もその値に対して±する。 */
@@ -16284,7 +16533,7 @@ function PartsPage(p){
   }
 
   return h('div',{className:'page'+(p.tab==='parts'?' show':'')},
-    SPRING?h(SpringClosePanel,{userName:p.userName,isReadOnly:p.isReadOnly,toast:p.toast,bump:function(){bump[1](bump[0]+1);}}):null,/* v19.43 */
+    SPRING?h(SpringClosePanel,{userName:p.userName,isReadOnly:RO_,toast:p.toast,bump:function(){bump[1](bump[0]+1);}}):null,/* v19.43 */
     h('div',{className:'card'},
       h('div',{className:'chd'},h('h3',null,SPRING?'🌸 部材在庫一覧（春先'+SPRING_FY+'年度）':'部材在庫一覧'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
@@ -16369,7 +16618,7 @@ function PartsPage(p){
                       ),
                       h('div',{style:{marginTop:6,display:'flex',gap:6}},
                         h('button',{className:'btn btn-xs btn-gn',onClick:function(){
-                          if(p.isReadOnly){p.toast('読み取り専用モード中は適用できません');return;}
+                          if(RO_){p.toast('読み取り専用モード中は適用できません');return;}
                           if(!confirm('解析した'+freightUpload[0].list.length+'件を運賃表へ適用します。全端末に共有されます。よろしいですか？'))return;
                           var applied=applyFreightUpload(freightUpload[0].list,who);
                           try{if(typeof broadcastChannel!=='undefined'&&broadcastChannel)broadcastChannel.send({type:'broadcast',event:'freight_tables',payload:{tables:FREIGHT_TABLES_OVR,by:p.userName}});}catch(e){}
@@ -16412,7 +16661,7 @@ function PartsPage(p){
                     )
                   ),
                   h('button',{className:'btn btn-gn',onClick:function(){
-                    if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+                    if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
                     var doc=document;var changed=0;
                     if(!FREIGHT_OVR.shokei)FREIGHT_OVR.shokei={};
                     /* v18.30: 空欄=固定値解除（自動=箱数×100円へ）。数値=固定値として常に優先 */
@@ -16486,8 +16735,9 @@ function PartsPage(p){
           stockImport[0]?(function(){var di=stockImport[0];return h(Modal,{show:true,title:'在庫表 取込差分 → 反映',w:780,onClose:function(){stockImport[1](null);},
             footer:h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
               di.diffs.length?h('input',{className:'inp',style:{width:120},placeholder:'編集者名(任意)',value:editorName[0],onChange:function(e){editorName[1](e.target.value);}}):null,
-              di.diffs.length?h('button',{className:'btn btn-gn',disabled:p.isReadOnly,onClick:function(){
-                if(p.isReadOnly){p.toast('読み取り専用モード中は反映できません');return;}
+              di.diffs.length?h('button',{className:'btn btn-gn',disabled:RO_,onClick:function(){
+                if(RO_){p.toast('読み取り専用モード中は反映できません');return;}
+                if(springDeny(di.diffs.map(function(d){return d.wh;}),p.toast))return;/* v19.44 */
                 if(!confirm('取込差分 '+di.diffs.length+'件を在庫に反映します。\n各アイテムの在庫数を「取込」値へ更新します（在庫スナップショットは変更せず既存の在庫編集を保持）。\n\n反映しますか？'))return;
                 var n=applyStockImport(di.diffs,editorName[0]);
                 broadcastEdit(p.userName||editorName[0]||'不明','在庫表取込で'+n+'件の在庫を反映');
@@ -17036,7 +17286,8 @@ function PartsPage(p){
         /* v14.4 hotfix: 仮押さえ一覧テーブルから直接、案件×パーツのセルをクリックして数量変更
            対象セルの (案件, uniRow) から該当する _actualHeld エントリ群を引き、changePartQty 相当の処理を実施 */
         var changeQtyInList=function(order,uniRow,currentQty){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
+          if(springDeny(order,p.toast))return;/* v19.44 */
           var label=(uniRow.item||uniRow.variant||uniRow.key)+(uniRow.isDoor&&uniRow.doorSub?' '+uniRow.doorSub:(uniRow.variant&&uniRow.item?' '+uniRow.variant:''));
           /* v18.42: 新規押さえを載せる製品ライン。従来は常に選択中ライン(selLine)だったが、全ライン表示で
              他ラインの案件も列に出るようになったため、その案件が選択中ラインを持たない場合は案件側のラインを使う
@@ -17439,10 +17690,10 @@ function PartsPage(p){
                   h('label',{style:{fontSize:8,color:'#475569'}},'納品日'),
                   h('div',{style:{fontSize:10,fontWeight:700,color:op.order.deliveryDate?'#0E7490':'var(--g300)',padding:'2px 4px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4},title:'出荷指示書の作成時に入力した納品予定日です。変更は案件の出荷指示から行ってください'},op.order.deliveryDate||'—'),
                   h('label',{style:{fontSize:8,color:'#475569',marginTop:2}},'出荷日'),
-                  h('input',{className:'inp',type:'date',disabled:p.isReadOnly||locked,value:shipVal,
+                  h('input',{className:'inp',type:'date',disabled:RO_||locked,value:shipVal,
                     title:locked?'納品完了の案件は編集できません':'ステータスを「出荷完了」にしたときに入力した出荷日です',
                     onChange:function(e){
-                      if(p.isReadOnly){p.toast('読み取り専用モード中は出荷日を変更できません');return;}
+                      if(RO_){p.toast('読み取り専用モード中は出荷日を変更できません');return;}if(springDeny(op.order,p.toast))return;/* v19.44 */
                       if(locked){p.toast('納品完了の案件は編集できません');return;}
                       op.order.shippedDate=e.target.value;saveAll();bump[1](bump[0]+1);
                     },style:{fontSize:9,padding:'2px 4px'}})
@@ -17527,7 +17778,8 @@ function PartsPage(p){
                     [h('option',{key:'_t',value:''},'移動先')].concat(WH_IDS.map(function(w){return h('option',{key:w,value:w},WH_MAP[w].n);}))),
                   h('input',{className:'inp',type:'number',min:1,style:{width:64},placeholder:'数量',value:f0.qty,onChange:function(e){setF({qty:e.target.value});}}),
                   h('button',{className:'btn btn-xs btn-pr',onClick:function(){
-                    if(p.isReadOnly){p.toast('読み取り専用モード中は移動できません');return;}
+                    if(RO_){p.toast('読み取り専用モード中は移動できません');return;}
+                    if(springDeny([xferForm[0].from,xferForm[0].to],p.toast))return;/* v19.44 */
                     var em=editModal[0],f=Object.assign({},xferForm[0],{size:sz});
                     var xr=runXfer(em,f);/* v19.17 修正30①: 保存ボタンと共通の処理 */
                     if(!xr.ok){p.toast(xr.msg);return;}
@@ -17564,7 +17816,8 @@ function PartsPage(p){
                   [h('option',{key:'_t',value:''},'移動先')].concat(WH_IDS.map(function(w){return h('option',{key:w,value:w},WH_MAP[w].n);}))),
                 h('input',{className:'inp',type:'number',min:1,style:{width:64},placeholder:'数量',value:xferForm[0].qty,onChange:function(e){xferForm[1](Object.assign({},xferForm[0],{qty:e.target.value}));}}),
                 h('button',{className:'btn btn-xs btn-pr',onClick:function(){
-                  if(p.isReadOnly){p.toast('読み取り専用モード中は移動できません');return;}
+                  if(RO_){p.toast('読み取り専用モード中は移動できません');return;}
+                  if(springDeny([xferForm[0].from,xferForm[0].to],p.toast))return;/* v19.44 */
                   var em=editModal[0],f=xferForm[0];
                   var xr=runXfer(em,f);/* v19.17 修正30①: 保存ボタンと共通の処理 */
                   if(!xr.ok){p.toast(xr.msg);return;}
@@ -17686,7 +17939,8 @@ function PartsPage(p){
       footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
         /* v14 B13: 仮押さえから受注確定（Codex P2対応: 読み取り専用チェック） */
         heldDetail[0].status==='仮押さえ'?h('button',{className:'btn btn-pr',style:{fontWeight:700},onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
+          if(springDeny(heldDetail[0],p.toast))return;/* v19.44 */
           if(!confirm('案件 '+heldDetail[0].no+' を受注確定にします。\n仮押さえ在庫はそのまま維持されます。\nよろしいですか？'))return;
           heldDetail[0].status='受注確定';
           p.toast('受注確定: '+heldDetail[0].no);
@@ -17696,7 +17950,8 @@ function PartsPage(p){
         }},'✓ 受注確定にする'):null,
         /* v14 B14: 仮押さえ内容の編集（数量・倉庫・部材構成） */
         heldDetail[0].status==='仮押さえ'?h('button',{className:'btn btn-tl',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
+          if(springDeny(heldDetail[0],p.toast))return;/* v19.44 */
           var od=heldDetail[0];
           /* 数量編集 */
           var newQtyStr=prompt('全パーツの数量を一括編集（パーツ単品の数量を倍率で増減、例:1.2 で20%増、空欄でキャンセル）:','');
@@ -17742,7 +17997,8 @@ function PartsPage(p){
         }},'✎ 数量編集'):null,
         /* 倉庫変更 */
         heldDetail[0].status==='仮押さえ'?h('button',{className:'btn btn-ol',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
+          if(springDeny(heldDetail[0],p.toast))return;/* v19.44 */
           var od=heldDetail[0];
           var whList=WH_IDS.map(function(w){return w+':'+WH_MAP[w].n;}).join('\n');
           var newWh=prompt('変更先の倉庫IDを入力してください:\n\n'+whList+'\n\n現在: '+od.wh,od.wh);
@@ -17811,7 +18067,8 @@ function PartsPage(p){
           heldDetail[1](Object.assign({},od));bump[1](bump[0]+1);saveAll();
         }},'🏭 倉庫変更'):null,
         heldDetail[0].status==='仮押さえ'?h('button',{className:'btn btn-or',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は操作できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は操作できません');return;}
+          if(springDeny(heldDetail[0],p.toast))return;/* v19.44 */
           var od=heldDetail[0];
           /* v14 Codex P1対応: actualHeld優先で解放 */
           od.lines.forEach(function(ln){
@@ -17877,7 +18134,8 @@ function PartsPage(p){
              増量時は対象倉庫の空き在庫から追加で押さえ、不足分は未確保パーツに追加する。
              出荷時の二重消費防止のため _actualHeld への新規エントリ追加 + _partialReleases へマイナス（増量）も記録する。 */
           var changePartQty=function(group){
-            if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+            if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
+            if(springDeny(heldDetail[0],p.toast))return;/* v19.44 */
             if(!group.refs||group.refs.length===0){p.toast('このパーツは旧データのため個別編集できません。一度仮押さえ解除→再仮押さえしてください');return;}
             var newQtyStr=prompt(
               group.label+'\n\n現在の押さえ数: '+group.qty+'\n\n新しい数量を入力してください（増量・減量どちらも可）。\n（0 で全解放、最大は倉庫の空き在庫まで）',
@@ -18316,7 +18574,8 @@ function PartsPage(p){
                 h('td',null,h('span',{className:'bg '+(inc.status==='入庫済'?'bg-g':'bg-o')},inc.status)),
                 h('td',null,inc.status!=='入庫済'?h('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
                   h('button',{className:'btn btn-xs btn-gn',onClick:function(){
-                    if(p.isReadOnly){p.toast('読み取り専用モード中は入庫処理できません');return;}
+                    if(RO_){p.toast('読み取り専用モード中は入庫処理できません');return;}
+                    if(springDeny([inc.wh],p.toast))return;/* v19.44 */
                     inc.items.forEach(function(it){
                       /* v14 Codex P1対応: 鍵類はjp2バケットに入庫（出荷もjp2から引くため整合性確保） */
                       var inLine=isCommonStockKey(it.key)?'jp2':it.lineId;
@@ -18336,12 +18595,14 @@ function PartsPage(p){
                     inc.status='入庫済';bump[1](bump[0]+1);p.toast('入庫処理完了: INC-'+inc.id);saveAll();broadcastEdit(p.userName||editorName[0]||'不明','入庫処理 INC-'+inc.id);
                   }},'入庫処理'),
                   h('button',{className:'btn btn-xs btn-tl',onClick:function(){
-                    if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+                    if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
+                    if(springDeny([inc.wh],p.toast))return;/* v19.44 */
                     incForm[1]({expectedDate:inc.expectedDate,wh:inc.wh,note:inc.note||'',items:(inc.items||[]).map(function(it){return Object.assign({},it);})});
                     editIncId[1](inc.id);showAddIncoming[1](true);
                   }},'編集'),
                   h('button',{className:'btn btn-xs btn-rd',onClick:function(){
-                    if(p.isReadOnly){p.toast('読み取り専用モード中は取消できません');return;}
+                    if(RO_){p.toast('読み取り専用モード中は取消できません');return;}
+                    if(springDeny([inc.wh],p.toast))return;/* v19.44 */
                     if(!confirm('入庫予定 INC-'+inc.id+' を取り消します。よろしいですか？'))return;
                     var ix=INCOMING.findIndex(function(x){return x.id===inc.id;});
                     if(ix>=0)INCOMING.splice(ix,1);
@@ -18350,7 +18611,8 @@ function PartsPage(p){
                 ):h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
                   h('span',{style:{fontSize:9,color:'var(--gn)'}},'完了'),
                   h('button',{className:'btn btn-xs btn-ol',onClick:function(){
-                    if(p.isReadOnly){p.toast('読み取り専用モード中は差戻しできません');return;}
+                    if(RO_){p.toast('読み取り専用モード中は差戻しできません');return;}
+                    if(springDeny([inc.wh],p.toast))return;/* v19.44 */
                     if(!confirm('入庫済 INC-'+inc.id+' を差し戻します。入庫処理で加算した在庫を減算し、状態を「予定」に戻します。よろしいですか？'))return;
                     inc.items.forEach(function(it){
                       /* 入庫処理の加算と厳密に対称: 鍵類はjp2集約バケットから減算 */
@@ -18405,7 +18667,7 @@ function PartsPage(p){
             }},
               structRowsAll.filter(function(r){return r.cat===vcForm[0].cat;}).map(function(sr){return h('option',{key:sr.label,value:sr.key+(sr.sub!==undefined?'|'+sr.sub:'')},sr.label);}))),
           h('button',{className:'btn btn-gn btn-xs',onClick:function(){
-            if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+            if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
             var code=String(vcForm[0].code||'').trim();
             if(!code){p.toast('商品コードを入力してください');return;}
             if(VENDOR_CODES[code]&&!confirm('コード「'+code+'」は登録済みです（'+VENDOR_CODES[code].label+'）。上書きしますか？'))return;
@@ -18421,7 +18683,7 @@ function PartsPage(p){
           h('label',{className:'btn btn-xs btn-tl',style:{cursor:'pointer'}},'📂 CSV/Excelから一括登録（列: 業者・コード・アイテム名）',
             h('input',{type:'file',accept:'.xlsx,.xls,.csv',style:{display:'none'},onChange:function(e){
               var file=e.target.files&&e.target.files[0];if(!file)return;e.target.value='';
-              if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+              if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
               var reader=new FileReader();
               reader.onload=function(ev){
                 try{
@@ -18478,7 +18740,7 @@ function PartsPage(p){
                 h('td',{style:{fontWeight:700}},cd),
                 h('td',null,vc.label),
                 h('td',null,h('button',{className:'btn btn-xs btn-rd',onClick:function(){
-                  if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+                  if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
                   if(!confirm('コード「'+cd+'」の紐づけを削除しますか？'))return;
                   delete VENDOR_CODES[cd];saveVendorCodes();cloudSave(p.userName);
                   try{if(typeof broadcastChannel!=='undefined'&&broadcastChannel)broadcastChannel.send({type:'broadcast',event:'vendor_codes',payload:{codes:VENDOR_CODES,by:p.userName}});}catch(e){}
@@ -18494,7 +18756,7 @@ function PartsPage(p){
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){showVendorImport[1](false);vendorImport[1](null);}},'キャンセル'),
         h('button',{className:'btn btn-gn',disabled:!vendorImport[0].rows.some(function(r){return r.item;}),onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は登録できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は登録できません');return;}
           var vi=vendorImport[0];
           var items=vi.rows.filter(function(r){return r.item;}).map(function(r){return {key:r.item.key,sub:r.item.sub,color:r.item.color||'',qty:r.qty,label:r.item.label,cat:r.item.cat};});
           if(!items.length){p.toast('取込できる行がありません');return;}
@@ -18532,7 +18794,8 @@ function PartsPage(p){
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){showAddIncoming[1](false);editIncId[1](null);}},'キャンセル'),
         h('button',{className:'btn btn-gn',onClick:function(){
-          if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+          if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
+          if(springDeny([incForm[0].wh],p.toast))return;/* v19.44 */
           var f=incForm[0];
           if(!f.expectedDate){p.toast('入庫予定日を入力してください');return;}
           var validItems=f.items.filter(function(it){return it.qty>0;});
@@ -18677,8 +18940,8 @@ function PartsPage(p){
             var cost=row.sub!==undefined?(UNIT_COST[row.key]&&UNIT_COST[row.key][row.sub]||0):(UNIT_COST[row.key]||0);
             return h('tr',{key:row.label},
               h('td',{style:{fontWeight:600}},row.label),
-              h('td',null,h('input',{className:'inp',type:'number',min:0,disabled:p.isReadOnly,value:cost,onChange:function(e){
-                if(p.isReadOnly){p.toast('読み取り専用モード中は単価を変更できません');return;}
+              h('td',null,h('input',{className:'inp',type:'number',min:0,disabled:RO_,value:cost,onChange:function(e){
+                if(RO_){p.toast('読み取り専用モード中は単価を変更できません');return;}
                 var v=parseInt(e.target.value)||0;
                 if(row.sub!==undefined){
                   if(typeof UNIT_COST[row.key]!=='object')UNIT_COST[row.key]={};
@@ -19082,7 +19345,7 @@ function PartsPage(p){
               h('input',{className:'inp',type:'number',min:0,value:newItemForm[0].irisu,onChange:function(e){var f=Object.assign({},newItemForm[0]);f.irisu=parseInt(e.target.value)||0;newItemForm[1](f);}})
             ),
             h('button',{className:'btn btn-gn',onClick:function(){
-              if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+              if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
               var f=newItemForm[0];
               if(!f.key||!f.label){p.toast('キーとラベルを入力してください');return;}
               try{
@@ -19112,7 +19375,7 @@ function PartsPage(p){
           h('label',{className:'btn btn-xs btn-nv',style:{cursor:'pointer'}},'📥 入数マスタExcel取込',
             h('input',{type:'file',accept:'.xlsx,.xls',style:{display:'none'},onChange:function(e){
               var f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
-              if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+              if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
               var rd=new FileReader();
               rd.onload=function(ev){
                 try{
@@ -19176,7 +19439,7 @@ function PartsPage(p){
                   h('td',{style:{fontSize:9,color:'var(--g500)'}},r.key),
                   h('td',{style:{textAlign:'right'}},
                     h('input',{className:'inp',type:'number',min:0,value:r.irisu||0,onChange:function(e){
-                      if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+                      if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
                       var v=parseInt(e.target.value)||0;
                       try{
                         var ci=JSON.parse(lsGet('lec_custom_irisu')||'{}');
@@ -19211,7 +19474,7 @@ function PartsPage(p){
                   h('td',{style:{textAlign:'center',fontSize:9,color:(r.custom||r.dup)?'#7C2D12':'var(--g500)'}},r.custom?'カスタム':(r.dup?'標準＋カスタム登録':(r.lineOv==='sa'?'標準（Sαの入数）':'標準'))),/* v19.12 修正29⑧ / v19.13 */
                   h('td',{style:{textAlign:'center'}},
                     (r.custom||r.dup)?h('button',{className:'btn btn-xs btn-rd',title:r.dup?'標準部材と重複しているカスタム登録だけを削除します（標準部材の行と在庫は残ります）':'このカスタム部材を削除します',onClick:function(){
-                      if(p.isReadOnly){p.toast('読み取り専用モード中は編集できません');return;}
+                      if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
                       if(!confirm(r.dup
                         ?('「'+r.label+'」は標準部材と同じキー（'+r.baseKey+'）のカスタム登録が残っています。\nこのカスタム登録だけを削除します。\n（部材在庫一覧の「＋カスタム部材」の重複行が消えます。標準部材の行と在庫データはそのまま残ります）\n\nよろしいですか？')
                         :('部材「'+r.label+'」を削除します。\n在庫データはそのまま残ります。\nよろしいですか？')))return;
