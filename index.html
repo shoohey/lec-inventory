@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.42（パーソナル貸与品のタイトル手修正・前年の台数と棚板の反映・転入生分を使用中に）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.43（春先モード）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -147,16 +147,47 @@ var APP_VERSION=(function(){
 var TRAINING=false;
 try{TRAINING=(sessionStorage.getItem('lec_training')==='1');}catch(e){}
 var _lsOverlay={};/* トレーニング中の localStorage 書き込み先。値=文字列 / null=削除済み */
+/* ========== v19.43 春先モード ==========
+   入学シーズン（2〜5月）のパーソナル（学校）案件を、通常とは別の案件・在庫で管理する画面。
+   ・顧客・マスタ・パーソナル貸与品データは通常と共通。案件・仮押さえ・在庫・入庫予定・在庫の変更履歴は春先だけのもの（最初は0）。
+   ・モードの保持は sessionStorage（トレーニングと同じくタブ単位）。切替はリロードして作り直す。
+   ・ブラウザ内の保存先: 案件・在庫などのキーは 'lec_spring2027_orders' のように年度付きの別キー（lsKey）。
+   ・クラウド: 春先の案件・在庫は lec_state の別の行（id='spring2027'）。共通の項目（顧客など）は通常の行（'shared'）へ、
+     その項目だけを読み直してから書き戻す（cloudSave）。通常の行の案件・在庫には春先から一切書き込まない。
+   ・締め（管理者）: 春先の在庫のうち仮押さえされていない分を、通常の在庫へ足し込む（springMergeToNormal）。 */
+var SPRING_FY=0;
+try{SPRING_FY=parseInt(sessionStorage.getItem('lec_spring'),10)||0;}catch(e){}
+var SPRING=SPRING_FY>0;
+var SPRING_PINK='#DB2777',SPRING_HDR_BG='linear-gradient(135deg,#9D174D,#DB2777,#F472B6)';
+/* 春先で別にするブラウザ保存のキー（通常のキー名） */
+var SPRING_LS_KEYS=['lec_orders','lec_nextON','lec_stk','lec_held','lec_incoming','lec_nextIncId','lec_editLog','lec_deleted_nos','lec_stk_snapshot'];
+function lsKey(k){return (SPRING&&SPRING_LS_KEYS.indexOf(k)>=0)?('lec_spring'+SPRING_FY+'_'+k.slice(4)):k;}
+/* 春先の年度: 7〜12月は翌年の春、1〜6月はその年の春（10月なら2027年度、5月なら2027年度） */
+function springDefaultFY(){var d=new Date();return d.getMonth()>=6?d.getFullYear()+1:d.getFullYear();}
+function enterSpring(fy){
+  fy=parseInt(fy,10)||springDefaultFY();
+  if(!confirm('🌸 春先モード（'+fy+'年度）に切り替えます。\n\n・春先の案件・部材在庫は通常とは別管理です（顧客・マスタは共通）\n・切り替えは このタブだけ です。別のタブで通常の画面も開けます\n\nよろしいですか？'))return;
+  try{sessionStorage.setItem('lec_spring',String(fy));}catch(e){alert('この環境では春先モードを利用できません');return;}
+  location.reload();
+}
+function exitSpring(){
+  if(!confirm('春先モードを終了して通常の画面へ戻ります。よろしいですか？\n（春先の案件・在庫は保存されています。いつでも戻れます）'))return;
+  try{sessionStorage.removeItem('lec_spring');}catch(e){}
+  location.reload();
+}
 /* ★以降アプリ内では localStorage を直接触らず、必ずこの3つを経由すること（トレーニングの穴を作らないため） */
 function lsGet(k){
+  k=lsKey(k);/* v19.43: 春先モードは案件・在庫のキーを別にする */
   if(TRAINING&&Object.prototype.hasOwnProperty.call(_lsOverlay,k))return _lsOverlay[k];
   try{return localStorage.getItem(k);}catch(e){return null;}
 }
 function lsSet(k,v){
+  k=lsKey(k);
   if(TRAINING){_lsOverlay[k]=String(v);return;}
   try{localStorage.setItem(k,v);}catch(e){}
 }
 function lsDel(k){
+  k=lsKey(k);
   if(TRAINING){_lsOverlay[k]=null;return;}
   try{localStorage.removeItem(k);}catch(e){}
 }
@@ -211,6 +242,20 @@ try{supaClient=supabase.createClient(SUPA_URL,SUPA_KEY);}catch(e){console.warn('
    テーブルが未作成(SQL未実行)でも安全にローカルモードへフォールバックする設計。 */
 var CLOUD_STATE_ID='shared';   /* 全社で1行を共有 */
 var CLOUD_TABLE='lec_state';
+/* v19.43 春先モード: 春先の案件・在庫を置く行（'spring2027'）と、春先で別にする項目 */
+var CLOUD_SPRING_ID=SPRING?('spring'+SPRING_FY):'';
+var CLOUD_SPLIT_KEYS=['orders','nextON','held','stk','incoming','nextIncId','editLog','deletedNos','stkSnapshot'];
+function docPick(d,keys){var o={};keys.forEach(function(k){if(d&&d[k]!==undefined)o[k]=d[k];});return o;}
+function docOmit(d,keys){var o={};Object.keys(d||{}).forEach(function(k){if(keys.indexOf(k)<0)o[k]=d[k];});return o;}
+/* 春先の画面で、共通の項目（顧客・マスタ・貸与品など）を最後にクラウドと揃えたときの内容。変わったときだけ通常の行へ書き戻す */
+var _sharedSig='';
+function sharedPartOf(full){return docOmit(full,CLOUD_SPLIT_KEYS.concat(['_ts']));}
+function sharedSigNow(){try{return JSON.stringify(sharedPartOf(buildCloudDoc()));}catch(e){return '';}}
+/* もう一方（通常の画面なら春先、春先の画面なら通常）の案件・在庫。売上集計の「合算」用で、読むだけ */
+var OTHER_SIDE={orders:[],stk:null,loaded:false};
+/* 春先の年度の一覧（通常の行で共有）と、締め（通常の在庫へ戻した記録） */
+function springCfgNorm(o){o=o||{};return {years:Array.isArray(o.years)?o.years.slice():[],merges:o.merges||{}};}
+var SPRING_CFG=springCfgNorm();
 var CLOUD_READY=false;         /* テーブルが存在し読み書きできた=true */
 var CLOUD_LAST_SAVE=0;         /* 連続保存のデバウンス用 */
 var _cloudSaveTimer=null;
@@ -267,6 +312,7 @@ function buildCloudDoc(){
     quoteOpts:(typeof QUOTE_OPTS!=='undefined'?QUOTE_OPTS:null),/* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタを全端末共有 */
     honorifics:(typeof HONORIFICS!=='undefined'?HONORIFICS:null),/* v18.52 修正７①: 先方担当者の敬称マスタを全端末共有 */
     rentalCfg:(typeof RENTAL_CFG!=='undefined'?RENTAL_CFG:null),/* v19.30: パーソナル貸与品の在学年数・手動ひも付けを全端末共有 */
+    springCfg:SPRING_CFG,/* v19.43: 春先の年度一覧・締めの記録 */
     deletedNos:DELETED_ORDER_NOS.slice(-500),
     stkSnapshot:STK_SNAPSHOT_DATE,
     _ts:Date.now()
@@ -366,6 +412,14 @@ function applyCloudDoc(doc,opts){
     if(doc.rentalCfg&&typeof doc.rentalCfg==='object'&&typeof RENTAL_CFG!=='undefined'){
       try{RENTAL_CFG=rentalCfgNorm(doc.rentalCfg);saveRentalCfg();}catch(e){}
     }
+    /* v19.43: 春先の年度一覧は足し合わせる（古い画面の保存で年度が消えないように）。締めの記録は年度ごとに新しい方 */
+    if(doc.springCfg&&typeof doc.springCfg==='object'){
+      var nsc=springCfgNorm(doc.springCfg);
+      SPRING_CFG.years.forEach(function(y){if(nsc.years.indexOf(y)<0)nsc.years.push(y);});
+      nsc.years.sort();
+      Object.keys(SPRING_CFG.merges||{}).forEach(function(y){var a=SPRING_CFG.merges[y]||[],b=nsc.merges[y]||[];if(a.length>b.length)nsc.merges[y]=a;});
+      SPRING_CFG=nsc;
+    }
     if(doc.customIrisu&&typeof doc.customIrisu==='object'){
       try{
         /* v19.13 入数訂正: クラウドに残った古い入数（D003の暫定50など）は1回だけ消してから反映する。
@@ -392,12 +446,177 @@ function cloudLoad(cb){
       }
       CLOUD_READY=true;
       _stkLateAdded=false;/* v15.0: この回のクラウドロードでレール補充が発生したか判定するためリセット */
-      if(res.data&&res.data.doc){applyCloudDoc(res.data.doc,{replace:true});}
-      if(cb)cb(true,!!(res.data&&res.data.doc));
+      var d0=res.data&&res.data.doc;
+      if(!SPRING){
+        if(d0){applyCloudDoc(d0,{replace:true});}
+        _sharedSig=sharedSigNow();
+        if(cb)cb(true,!!d0);
+        loadOtherSide();/* v19.43: 春先の案件（売上集計の合算用） */
+        return;
+      }
+      /* v19.43 春先: 通常の行からは共通の項目だけ、案件・在庫は春先の行から */
+      if(d0){
+        applyCloudDoc(docOmit(d0,CLOUD_SPLIT_KEYS),{replace:true});
+        OTHER_SIDE={orders:normOrders(d0.orders||[]),stk:(d0.stkSnapshot===STK_SNAPSHOT_DATE?d0.stk:null)||null,loaded:true};
+      }
+      _sharedSig=sharedSigNow();
+      if(SPRING_CFG.years.indexOf(SPRING_FY)<0){SPRING_CFG.years.push(SPRING_FY);SPRING_CFG.years.sort();}/* 初めての年度 → 次の保存で通常の行へ */
+      supaClient.from(CLOUD_TABLE).select('doc,updated_at').eq('id',CLOUD_SPRING_ID).maybeSingle().then(function(r2){
+        if(r2.error){console.warn('[Cloud] 春先の行の読込失敗',r2.error.message);CLOUD_READY=false;if(cb)cb(false);return;}
+        var d2=r2.data&&r2.data.doc;
+        if(d2)applyCloudDoc(docPick(d2,CLOUD_SPLIT_KEYS),{replace:true});
+        if(cb)cb(true,!!d2);
+      },function(err){console.warn('[Cloud] 春先の行の読込失敗',err);CLOUD_READY=false;if(cb)cb(false);});
     },function(err){console.warn('[Cloud] load失敗',err);CLOUD_READY=false;if(cb)cb(false);});
   }catch(e){console.warn('[Cloud] load例外',e);CLOUD_READY=false;if(cb)cb(false);}
 }
 
+/* v19.43: 通常の画面で、春先の案件・在庫を読む（売上集計の合算用。読むだけ）。全年度の案件をまとめ、在庫は一番新しい年度 */
+function loadOtherSide(cb){
+  if(SPRING||!supaClient||!SPRING_CFG.years.length){if(cb)cb();return;}
+  var ids=SPRING_CFG.years.map(function(y){return 'spring'+y;});
+  try{
+    supaClient.from(CLOUD_TABLE).select('id,doc').in('id',ids).then(function(res){
+      if(res.error||!res.data){if(cb)cb();return;}
+      var orders=[],stk=null,last=0;
+      res.data.forEach(function(r){
+        var d=r.doc||{};orders=orders.concat(normOrders(d.orders||[]));
+        var y=parseInt(String(r.id).slice(6),10)||0;
+        if(y>=last&&d.stkSnapshot===STK_SNAPSHOT_DATE){last=y;stk=d.stk||null;}
+      });
+      OTHER_SIDE={orders:orders,stk:stk,loaded:true};
+      if(cb)cb();
+    },function(){if(cb)cb();});
+  }catch(e){if(cb)cb();}
+}
+/* v19.43 春先: 共通の項目（顧客・マスタ・貸与品など）を通常の行へ書き戻す。
+   通常の行を読み直し、共通の項目だけを差し替えて保存する（通常の案件・在庫は読み直した内容のまま＝春先からは変えない） */
+function springPushShared(part,userName){
+  if(!supaClient||!CLOUD_READY)return;
+  try{
+    supaClient.from(CLOUD_TABLE).select('doc').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
+      var cur=res&&res.data&&res.data.doc;
+      if(res.error||!cur){console.warn('[Cloud] 共通項目の書き戻し: 通常の行を読めませんでした');_sharedSig='';return;}
+      var nd=Object.assign({},cur,part,{_ts:Date.now()});
+      _cloudSelfWrite=true;
+      supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:nd,updated_at:new Date().toISOString(),updated_by:userName||''}).then(function(r2){
+        if(r2&&r2.error){console.warn('[Cloud] 共通項目の書き戻し失敗',r2.error.message);_sharedSig='';}
+        setTimeout(function(){_cloudSelfWrite=false;},800);
+      },function(){_cloudSelfWrite=false;_sharedSig='';});
+    },function(){_sharedSig='';});
+  }catch(e){_sharedSig='';}
+}
+/* ===== v19.43 春先の締め: 春先の在庫のうち仮押さえされていない分を、通常の在庫へ足し込む =====
+   ・残っている春先の案件（未納品）が仮押さえしている分は春先に残す（その案件は春先で作業を続ける）。何度でも実行できる。
+   ・通常の行を読み直して在庫だけ足し、変更履歴（部材ごと）と締めの記録（springCfg.merges）を付けて保存する。
+   ・春先の在庫からは同じ数を引く。 */
+function springFreeLeaves(){
+  var out=[];
+  /* 鍵類（COMMON_STOCK_KEYS）は全製品ラインの合計が実在庫で、仮押さえも別のラインに付くことがある
+     → 倉庫・部材ごとに全ラインを合算して「在庫−仮押さえ」を出し、在庫のあるラインから順に割り当てる */
+  var common={};
+  function walk(sv,hv,path){
+    if(typeof sv==='number'){
+      var hq=(typeof hv==='number')?Math.max(0,hv):0;
+      if(path.length>=3&&isCommonStockKey(path[2])){
+        var ck=path.slice(1).join('|');
+        var g=common[ck]||(common[ck]={stk:0,held:0,leaves:[]});
+        g.stk+=sv;g.held+=hq;if(sv>0)g.leaves.push({path:path,v:sv});
+        return;
+      }
+      var f=sv-hq;if(f>0)out.push({path:path,qty:f});
+      return;
+    }
+    if(!sv||typeof sv!=='object')return;
+    Object.keys(sv).forEach(function(k){walk(sv[k],(hv&&typeof hv==='object')?hv[k]:undefined,path.concat([k]));});
+  }
+  walk(STK,HELD,[]);
+  /* 仮押さえだけがあって在庫の枠が無いライン（HELD にだけある鍵類）も合算に入れる */
+  Object.keys(HELD||{}).forEach(function(ln){
+    Object.keys(HELD[ln]||{}).forEach(function(wh){
+      Object.keys(HELD[ln][wh]||{}).forEach(function(key){
+        if(!isCommonStockKey(key))return;
+        var hv=HELD[ln][wh][key],sv=((STK[ln]||{})[wh]||{})[key];
+        function addH(sub,h1,s1){
+          if(typeof h1!=='number'||typeof s1==='number')return;/* 在庫の枠があれば walk で数え済み */
+          var ck=wh+'|'+key+(sub!=null?'|'+sub:'');var g=common[ck]||(common[ck]={stk:0,held:0,leaves:[]});g.held+=Math.max(0,h1);
+        }
+        if(typeof hv==='number')addH(null,hv,sv);
+        else if(hv&&typeof hv==='object')Object.keys(hv).forEach(function(sub){addH(sub,hv[sub],(sv&&typeof sv==='object')?sv[sub]:undefined);});
+      });
+    });
+  });
+  Object.keys(common).forEach(function(ck){
+    var g=common[ck],free=g.stk-g.held;
+    g.leaves.forEach(function(l){
+      if(free<=0)return;
+      var t=Math.min(free,l.v);
+      if(t>0){out.push({path:l.path,qty:t});free-=t;}
+    });
+  });
+  return out;
+}
+/* 葉の位置 → 変更履歴の項目（在庫の増減レポートが巻き戻せる形: lineId/wh/key/sub/color） */
+function springLeafLog(path){
+  var o={lineId:path[0],wh:path[1],key:path[2],sub:null,color:null};
+  if(path.length===4)o.sub=path[3];
+  else if(path.length>=5){o.color=path[3];o.sub=path[4];}
+  return o;
+}
+function springLeafAdd(stk,path,d){
+  var o=stk;
+  for(var i=0;i<path.length-1;i++){if(!o[path[i]]||typeof o[path[i]]!=='object')o[path[i]]={};o=o[path[i]];}
+  var k=path[path.length-1],old=typeof o[k]==='number'?o[k]:0;
+  o[k]=old+d;
+  return {oldV:old,newV:old+d};
+}
+function springMergeToNormal(by,cb){
+  if(!SPRING){cb(false,'春先モードではありません');return;}
+  if(TRAINING){cb(false,'トレーニングモードでは実行できません');return;}
+  if(!supaClient||!CLOUD_READY){cb(false,'クラウドに接続していないため実行できません');return;}
+  var leaves=springFreeLeaves();
+  if(!leaves.length){cb(false,'通常へ戻せる在庫（仮押さえされていない在庫）がありません');return;}
+  try{
+    supaClient.from(CLOUD_TABLE).select('doc').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
+      var cur=res&&res.data&&res.data.doc;
+      if(res.error||!cur||!cur.stk){cb(false,'通常の在庫を読み込めませんでした');return;}
+      if(cur.stkSnapshot!==STK_SNAPSHOT_DATE){cb(false,'通常の在庫の基準日が違うため実行できません（画面を再読み込みしてください）');return;}
+      var nd=JSON.parse(JSON.stringify(cur));
+      var ts=new Date().toLocaleString('ja-JP'),total=0;
+      var label='春先'+SPRING_FY+'年度の在庫を統合';
+      if(!Array.isArray(nd.editLog))nd.editLog=[];
+      var applied=[];
+      leaves.forEach(function(l){
+        var r=springLeafAdd(nd.stk,l.path,l.qty);total+=l.qty;
+        nd.editLog.push(Object.assign({by:by,timestamp:ts,oldVal:r.oldV,newVal:r.newV,label:label,editor:'春先の締め'},springLeafLog(l.path)));
+        applied.push(l);
+      });
+      if(nd.editLog.length>500)nd.editLog=nd.editLog.slice(-500);
+      var rec={at:ts,by:by,items:applied.length,qty:total,detail:applied.map(function(l){return [l.path.join('|'),l.qty];})};
+      var sc=springCfgNorm(nd.springCfg);
+      SPRING_CFG.years.forEach(function(y){if(sc.years.indexOf(y)<0)sc.years.push(y);});
+      if(sc.years.indexOf(SPRING_FY)<0)sc.years.push(SPRING_FY);
+      sc.years.sort();
+      sc.merges[SPRING_FY]=(sc.merges[SPRING_FY]||[]).concat([rec]);
+      nd.springCfg=sc;nd._ts=Date.now();
+      _cloudSelfWrite=true;
+      supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:nd,updated_at:new Date().toISOString(),updated_by:by||''}).then(function(r2){
+        setTimeout(function(){_cloudSelfWrite=false;},800);
+        if(r2&&r2.error){cb(false,'通常の在庫へ保存できませんでした: '+r2.error.message);return;}
+        /* 春先の在庫から同じ数を引く */
+        applied.forEach(function(l){
+          var r=springLeafAdd(STK,l.path,-l.qty);
+          EDIT_LOG.push(Object.assign({by:by,timestamp:ts,oldVal:r.oldV,newVal:r.newV,label:'通常の在庫へ統合（春先の締め）',editor:'春先の締め'},springLeafLog(l.path)));
+        });
+        SPRING_CFG=sc;
+        OTHER_SIDE={orders:normOrders(nd.orders||[]),stk:nd.stk,loaded:true};
+        _sharedSig=sharedSigNow();
+        saveAll();cloudSave(by,true);
+        cb(true,{items:applied.length,qty:total});
+      },function(e){_cloudSelfWrite=false;cb(false,'通常の在庫へ保存できませんでした');});
+    },function(){cb(false,'通常の在庫を読み込めませんでした');});
+  }catch(e){cb(false,'実行できませんでした: '+e.message);}
+}
 /* 現在状態をクラウドへ保存(upsert)。デバウンスで連続保存を間引く。 */
 function cloudSave(userName,immediate){
   /* v18.58 修正10④: トレーニングモード中は全社共有データ(lec_state)を絶対に書き換えない。
@@ -407,6 +626,20 @@ function cloudSave(userName,immediate){
   if(_cloudSaveTimer){clearTimeout(_cloudSaveTimer);_cloudSaveTimer=null;}
   var doFn=function(){
     _cloudSaveTimer=null;CLOUD_LAST_SAVE=Date.now();_cloudSelfWrite=true;
+    /* v19.43 春先: 案件・在庫は春先の行へ。共通の項目が変わっていれば通常の行へも（その項目だけ） */
+    if(SPRING){
+      try{
+        var full=buildCloudDoc();
+        var sp=docPick(full,CLOUD_SPLIT_KEYS);sp._ts=full._ts;sp.springFy=SPRING_FY;
+        supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_SPRING_ID,doc:sp,updated_at:new Date().toISOString(),updated_by:userName||''}).then(function(res){
+          if(res&&res.error)console.warn('[Cloud] 春先の保存失敗',res.error.message);
+          setTimeout(function(){_cloudSelfWrite=false;},800);
+        },function(err){console.warn('[Cloud] 春先の保存例外',err);_cloudSelfWrite=false;});
+        var part=sharedPartOf(full),sig=JSON.stringify(part);
+        if(sig!==_sharedSig){_sharedSig=sig;springPushShared(part,userName);}
+      }catch(e){console.warn('[Cloud] 春先の保存例外2',e);_cloudSelfWrite=false;}
+      return;
+    }
     try{
       supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:buildCloudDoc(),updated_at:new Date().toISOString(),updated_by:userName||''}).then(function(res){
         if(res&&res.error)console.warn('[Cloud] save失敗',res.error.message);
@@ -2545,6 +2778,15 @@ var STK={
   }
 };
 
+/* v19.43: 春先モードの在庫は 0 から（部材の並び・倉庫の枠はそのまま、数だけ 0） */
+function stkZeroed(o){
+  if(typeof o==='number')return 0;
+  if(!o||typeof o!=='object')return o;
+  var r=Array.isArray(o)?[]:{};
+  Object.keys(o).forEach(function(k){r[k]=stkZeroed(o[k]);});
+  return r;
+}
+if(SPRING)STK=stkZeroed(STK);
 /* ========== HELD TRACKING ========== */
 var HELD={};
 (function(){
@@ -5176,7 +5418,7 @@ function exportFullBackup(editorNm){
   });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(stkAoa),'在庫データ');
   var stamp=((typeof td2==='function'?td2():'')||'').replace(/\//g,'-')||'backup';
-  XLSX.writeFile(wb,'LECバックアップ_顧客在庫_'+stamp+'.xlsx');
+  XLSX.writeFile(wb,'LECバックアップ_'+(SPRING?('春先'+SPRING_FY+'_'):'')+'顧客在庫_'+stamp+'.xlsx');/* v19.43: 春先は春先の在庫 */
   try{lsSet('lec_last_backup',new Date().toISOString().slice(0,10));}catch(_){}
   try{EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),label:'データバックアップ書き出し（顧客+在庫）',editor:editorNm||'バックアップ'});}catch(_){}
   return true;
@@ -6599,9 +6841,24 @@ function orderSalesFigures(order){
   return {sell:sell,goods:gp.total.sell,ship:order.shipping||0,disc:disc,
     buyCost:gp.total.cost,stockCost:gp.stockCost||0,missing:gp.total.missing,hasCost:gp.hasCost};
 }
-function buildSalesReport(fromMs,toMs,basis){
+/* v19.43: 売上集計の対象（通常／春先／合算）。通常の画面では OTHER_SIDE が春先、春先の画面では OTHER_SIDE が通常 */
+function salesScopeOrders(scope){
+  var own=ORDERS||[],other=(OTHER_SIDE&&OTHER_SIDE.orders)||[];
+  var normal=SPRING?other:own,spring=SPRING?own:other;
+  if(scope==='normal')return normal;
+  if(scope==='spring')return spring;
+  return normal.concat(spring);
+}
+function salesScopeStks(scope){
+  var own=STK,other=OTHER_SIDE&&OTHER_SIDE.stk;
+  var normal=SPRING?other:own,spring=SPRING?own:other;
+  if(scope==='normal')return [normal].filter(Boolean);
+  if(scope==='spring')return [spring].filter(Boolean);
+  return [normal,spring].filter(Boolean);
+}
+function buildSalesReport(fromMs,toMs,basis,orders){
   var rows=[],months={};
-  (ORDERS||[]).forEach(function(o){
+  (orders||ORDERS||[]).forEach(function(o){
     if(o.status!=='納品完了')return;
     var t=reportBasisMs(o,basis);
     if(t==null)return;
@@ -6624,9 +6881,10 @@ function buildSalesReport(fromMs,toMs,basis){
 }
 /* 現在庫の棚卸評価額（在庫数×棚卸単価）。STKを直接たどるので、在庫表の行定義に依存しない。
    STK[line][wh][key] は 数値 / {sub:数量} / door・doorHは {色:{サイズ:数量}} の3形。 */
-function buildStockValuation(){
+function buildStockValuation(stks){
   var byWh={},total=0,totQty=0,missQty=0,missKeys={};
   WH_IDS.forEach(function(w){byWh[w]={wh:w,val:0,qty:0};});
+  (stks||[STK]).forEach(function(STK){/* v19.43: 合算は通常と春先の在庫を足す */
   LINES.forEach(function(L){
     WH_IDS.forEach(function(w){
       var box=STK[L.id]&&STK[L.id][w];
@@ -6652,6 +6910,7 @@ function buildStockValuation(){
         Object.keys(v).forEach(function(sub){if(typeof v[sub]==='number')add(v[sub],sub);});
       });
     });
+  });
   });
   return {byWh:WH_IDS.map(function(w){return byWh[w];}),total:total,qty:totQty,missQty:missQty,missKeys:Object.keys(missKeys)};
 }
@@ -8949,7 +9208,9 @@ function App(){
     /* Presence channel */
     var pKey=userName[0]+'_'+Date.now();
     myPresenceKey.current=pKey;
-    var ch=supaClient.channel('lec-inventory-presence',{config:{presence:{key:pKey}}});
+    /* v19.43: 春先の画面は同時利用・編集権限・案件の受け渡しを通常と別にする（チャンネル名に年度を付ける） */
+    var chSfx=SPRING?('-spring'+SPRING_FY):'';
+    var ch=supaClient.channel('lec-inventory-presence'+chSfx,{config:{presence:{key:pKey}}});
     /* v18.17 要望5: ロック再計算（presence変化時＋override変更時に呼ぶ）。SYSTEM_LOCK.overrideName指定で編集者を任意指定可。 */
     var recomputeLock=function(){
       var state=ch.presenceState();
@@ -9006,7 +9267,7 @@ function App(){
     channelRef.current=ch;
 
     /* Broadcast channel for edit notifications */
-    var bch=supaClient.channel('lec-inventory-broadcast');
+    var bch=supaClient.channel('lec-inventory-broadcast'+chSfx);
     bch.on('broadcast',{event:'inventory_edit'},function(payload){
       var d=payload.payload;
       if(d&&d.user!==userName[0]){
@@ -9149,15 +9410,45 @@ function App(){
         if(hadData&&_rentalEuAdded){_rentalEuAdded=false;cloudSave(userName[0],true);}/* v19.32: 貸与品の学校のエンド納品先を追加した→一度だけ保存 */
         /* 他端末の保存をリアルタイム購読(postgres_changes) */
         try{
+          if(SPRING){
+            /* v19.43 春先: 通常の行からは共通の項目だけ（＋合算用に通常の案件・在庫）、春先の行からは案件・在庫 */
+            cloudCh=supaClient.channel('lec-cloud-state'+chSfx)
+              .on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.'+CLOUD_STATE_ID},function(payload){
+                var row=payload.new||payload.record;
+                if(!row||!row.doc)return;
+                OTHER_SIDE={orders:normOrders(row.doc.orders||[]),stk:(row.doc.stkSnapshot===STK_SNAPSHOT_DATE?row.doc.stk:null)||null,loaded:true};
+                if(_cloudSelfWrite)return;
+                applyCloudDoc(docOmit(row.doc,CLOUD_SPLIT_KEYS),{replace:false});
+                _sharedSig=sharedSigNow();
+                bump[1](function(v){return v+1;});
+              })
+              .on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.'+CLOUD_SPRING_ID},function(payload){
+                if(_cloudSelfWrite)return;
+                var row=payload.new||payload.record;
+                if(row&&row.doc){applyCloudDoc(docPick(row.doc,CLOUD_SPLIT_KEYS),{replace:false});bump[1](function(v){return v+1;});}
+              }).subscribe();
+          }else{
           cloudCh=supaClient.channel('lec-cloud-state')
             .on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.'+CLOUD_STATE_ID},function(payload){
               if(_cloudSelfWrite)return;/* 自分の保存は無視 */
               var row=payload.new||payload.record;
               if(row&&row.doc){
+                var ny=(SPRING_CFG.years||[]).join(',');
                 applyCloudDoc(row.doc,{replace:false});/* マージで取り込み(同時追加を消さない) */
+                if((SPRING_CFG.years||[]).join(',')!==ny)loadOtherSide();/* v19.43: 春先の年度が増えた */
                 bump[1](function(v){return v+1;});
               }
-            }).subscribe();
+            });
+          /* v19.43: 春先の行（今の年度と登録済みの年度）が更新されたら合算用の春先の案件を読み直す（通常の画面は春先の行へ書かない） */
+          var spYears=(SPRING_CFG.years||[]).slice();if(spYears.indexOf(springDefaultFY())<0)spYears.push(springDefaultFY());
+          spYears.forEach(function(y){
+            cloudCh=cloudCh.on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.spring'+y},function(){
+              if(SPRING_CFG.years.indexOf(y)<0){SPRING_CFG.years.push(y);SPRING_CFG.years.sort();}
+              loadOtherSide();
+            });
+          });
+          cloudCh.subscribe();
+          }
         }catch(e){console.warn('cloud realtime購読失敗',e);}
       }
     });
@@ -9249,13 +9540,15 @@ function App(){
   var effRO=isReadOnly[0]||roleReadOnly;
 
   return h('div',null,
-    h('div',{className:'hdr'},
+    h('div',{className:'hdr',style:SPRING?{background:SPRING_HDR_BG}:null},/* v19.43: 春先モードはヘッダーもピンク */
       h('div',{className:'logo'},h('b',null,'LEC'),h('span',null,'MyプラECO 在庫・見積')),
       h('div',{className:'tabs'},TABS.map(function(t){
         return h('button',{key:t.k,className:'tab'+(tab[0]===t.k?' on':''),onClick:function(){tab[1](t.k);}},t.l);
       })),
       /* v18.58 修正10④: トレーニング中であることを常時はっきり出す（本番と取り違えないように） */
       TRAINING?h('div',{style:{background:'#7C3AED',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:900,marginLeft:8,letterSpacing:1},title:'練習モードです。ここでの操作は本番データ（クラウド・他の端末）へ一切反映されません'},'🎓 トレーニングモード（本番データに反映されません）'):null,
+      /* v19.43: 春先モード */
+      SPRING?h('div',{style:{background:'#fff',color:SPRING_PINK,padding:'2px 10px',borderRadius:4,fontSize:11,fontWeight:900,marginLeft:8,letterSpacing:1},title:'春先の案件・部材在庫は通常とは別管理です'},'🌸 春先モード（'+SPRING_FY+'年度）'):null,
       /* v14 D32: 読み取り専用バナー */
       roleReadOnly?h('div',{style:{background:'#975a16',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 閲覧専用（営業ロール：見積確認のみ可）'):(isReadOnly[0]?h('div',{style:{background:'#DC2626',color:'#fff',padding:'2px 10px',borderRadius:4,fontSize:10,fontWeight:700,marginLeft:8}},'🔒 読み取り専用モード（編集中: '+(lockEditorName(onlineUsers[0])||'別のユーザー')+'）'):null),
       /* v14.4 hotfix2: 'offline'は「同期サーバー無効」と表現変更（エラー→機能無効通知へ）
@@ -9273,6 +9566,7 @@ function App(){
         h('span',{className:'hdr-me',style:{fontSize:8,opacity:.7}},myLocLabel+': '+userName[0]),
         /* v14 D31: ユーザー管理ボタン */
         h('button',{className:'hdr-mini-btn',style:{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:4,color:'#fff',fontSize:7,padding:'1px 5px',cursor:'pointer'},onClick:function(){showUserMgmt[1](true);}},'👥 ユーザー管理'),
+        SPRING?h('button',{className:'hdr-mini-btn',style:{background:'#fff',border:'1px solid #fff',borderRadius:4,color:SPRING_PINK,fontSize:7,fontWeight:900,padding:'1px 5px',cursor:'pointer'},title:'通常の画面へ戻ります（春先の案件・在庫は保存されています）',onClick:exitSpring},'🌸 春先を出る'):null,
         /* v18.58 修正10④: トレーニングモードの開始／終了。どちらもリロードして状態を作り直す */
         TRAINING
           ?h('button',{className:'hdr-mini-btn',style:{background:'#fff',border:'1px solid #fff',borderRadius:4,color:'#7C3AED',fontSize:7,fontWeight:900,padding:'1px 5px',cursor:'pointer'},title:'練習を終了して通常モード（本番データ）に戻ります',onClick:exitTraining},'🎓 トレーニング終了')
@@ -9287,6 +9581,12 @@ function App(){
          バージョンを上げるときは <title> の1か所を直すだけでここも自動で追従する（v14.7 の固定表示に戻さないこと）。 */
       h('div',{className:'ver',title:document.title},APP_VERSION)
     ),
+    /* v19.43: 春先モードの帯（ヘッダーの下と画面下端。トレーニングモードと同じ出し方） */
+    SPRING?h('div',{style:{background:SPRING_PINK,color:'#fff',fontSize:12,fontWeight:900,textAlign:'center',padding:'4px 8px',letterSpacing:1,position:'sticky',top:48,zIndex:99}},
+      '🌸 春先モード（'+SPRING_FY+'年度）— 案件・部材在庫は通常とは別管理です（顧客・マスタは共通）',
+      h('button',{style:{marginLeft:10,background:'#fff',color:SPRING_PINK,border:'none',borderRadius:4,fontSize:10,fontWeight:900,padding:'1px 8px',cursor:'pointer'},onClick:exitSpring},'春先を出る')):null,
+    SPRING?h('div',{style:{position:'fixed',left:0,right:0,bottom:TRAINING?22:0,zIndex:9998,background:SPRING_PINK,color:'#fff',fontSize:10,fontWeight:900,textAlign:'center',padding:'3px 8px',letterSpacing:1,boxShadow:'0 -2px 8px rgba(0,0,0,.2)'}},
+      '🌸 春先モード（'+SPRING_FY+'年度）— ここで登録した案件・入庫・在庫は春先だけのものです。通常の画面へ戻るには「春先を出る」を押してください'):null,
     /* v18.58 修正10④: ヘッダーが狭い画面で見切れても分かるよう、画面下端にも常時表示する */
     TRAINING?h('div',{style:{position:'fixed',left:0,right:0,bottom:0,zIndex:9998,background:'#7C3AED',color:'#fff',fontSize:10,fontWeight:900,textAlign:'center',padding:'3px 8px',letterSpacing:1,boxShadow:'0 -2px 8px rgba(0,0,0,.2)'}},
       '🎓 トレーニングモード（練習用）— 入力・保存した内容は本番データに一切反映されません。終了するには右上の「🎓 トレーニング終了」を押してください'
@@ -9822,6 +10122,13 @@ function CustPage(p){
         h('button',{className:'btn btn-gn',onClick:function(){showAdd[1](true);}},'＋ 新規顧客追加'),
         /* v19.30: パーソナル貸与品（学校保管のレンタル品）の一覧 */
         h('button',{className:'btn btn-tl',onClick:function(){rentalView[1]({});}},'📋 パーソナル貸与品'),
+        /* v19.43: 春先モード（入学シーズンのパーソナル案件を別の案件・在庫で管理）。過去の年度が残っていれば選べる */
+        SPRING?h('button',{className:'btn',style:{background:SPRING_PINK,color:'#fff',fontWeight:800},onClick:exitSpring,title:'通常の画面へ戻ります'},'🌸 春先を出る'):
+          h('button',{className:'btn',style:{background:SPRING_PINK,color:'#fff',fontWeight:800},onClick:function(){enterSpring(springDefaultFY());},
+            title:'入学シーズンのパーソナル案件を、通常とは別の案件・部材在庫で管理する画面へ切り替えます（このタブだけ）'},'🌸 春先（'+springDefaultFY()+'年度）'),
+        (!SPRING&&(SPRING_CFG.years||[]).some(function(y){return y!==springDefaultFY();}))?h('select',{className:'inp',style:{width:'auto',fontSize:11},value:'',
+            title:'過去の年度の春先（残っている案件の作業など）',onChange:function(e){if(e.target.value)enterSpring(e.target.value);}},
+          [h('option',{key:'',value:''},'🌸 他の年度…')].concat((SPRING_CFG.years||[]).filter(function(y){return y!==springDefaultFY();}).map(function(y){return h('option',{key:y,value:y},y+'年度の春先');}))):null,
         /* v18.33 追B: AccessエクスポートCSV/Excelの顧客取込 */
         h('label',{className:'btn btn-tl',style:{cursor:'pointer'}},'📥 顧客CSV取込',
           h('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},onChange:importCustFile})),
@@ -10037,6 +10344,7 @@ function InvPage(p){
   /* v18.46 修正５⑤: 案件番号の採番。修正モード中は元の案件番号をそのまま使う（新規採番しない） */
   function takeOrderNo(prefix){
     if(editingNo[0])return editingNo[0];
+    if(SPRING)return prefix+'-'+SPRING_FY+'-S'+String(nextON++).padStart(3,'0');/* v19.43: 春先は QT-2027-S001（通常と番号が重ならない） */
     return prefix+'-2026-'+String(nextON++).padStart(3,'0');
   }
   /* v18.46 修正５⑤: 修正モードで作った案件は同じ案件番号の既存案件へ上書きし、作成日・起票者は引き継ぐ。
@@ -12707,6 +13015,7 @@ function OrdersPage(p){
   /* v18.54 修正８①: 売上集計。期間を指定して集計する（ユーザー指示）。対象は「納品完了」の案件のみ。 */
   var salesRep=us(false);
   var repFrom=us(''),repTo=us(''),repBasis=us('delivery');
+  var repScope=us(SPRING?'spring':'normal');/* v19.43: 通常／春先／合算 */
   ue(function(){
     if(!salesRep[0]||repFrom[0])return;
     /* 初期表示は今年度（4/1〜翌3/31）。プリセットで暦年などにも切り替えられる */
@@ -13536,8 +13845,9 @@ function OrdersPage(p){
     /* ===== v18.54 修正８①: 売上集計（期間指定・納品完了のみ・棚卸単価はここで使う） ===== */
     salesRep[0]?(function(){
       var fromMs=ymdToMs(repFrom[0],false),toMs=ymdToMs(repTo[0],true);
-      var rep=buildSalesReport(fromMs,toMs,repBasis[0]);
-      var val=buildStockValuation();
+      var rep=buildSalesReport(fromMs,toMs,repBasis[0],salesScopeOrders(repScope[0]));
+      var val=buildStockValuation(salesScopeStks(repScope[0]));
+      var scopeL={normal:'通常',spring:'春先',all:'合算（通常＋春先）'}[repScope[0]];
       var thS={border:'1px solid var(--g200)',padding:'3px 8px',fontSize:10,background:'var(--g50)',fontWeight:700,whiteSpace:'nowrap'};
       var tdS={border:'1px solid var(--g200)',padding:'3px 8px',fontSize:10,textAlign:'right',whiteSpace:'nowrap'};
       var tdL=Object.assign({},tdS,{textAlign:'left'});
@@ -13556,7 +13866,7 @@ function OrdersPage(p){
         try{
           if(typeof XLSX==='undefined'){p.toast('SheetJS未読込');return;}
           var wb=XLSX.utils.book_new();
-          var sum=[['売上集計'],['期間',repFrom[0]+' 〜 '+repTo[0]],['基準日',repBasis[0]==='ship'?'出荷日':'納品日'],['対象','納品完了の案件のみ'],[],
+          var sum=[['売上集計'],['対象',scopeL],['期間',repFrom[0]+' 〜 '+repTo[0]],['基準日',repBasis[0]==='ship'?'出荷日':'納品日'],['対象','納品完了の案件のみ'],[],
             ['件数',rep.total.cnt],['売上高',rep.total.sell],['原価(仕入単価)',rep.total.buyCost],['粗利(仕入単価)',gpBuy],['粗利率',pct(gpBuy,rep.total.sell)],[],
             ['原価(棚卸単価)',rep.total.stockCost],['粗利(棚卸単価)',gpStk],['粗利率',pct(gpStk,rep.total.sell)],[],
             ['棚卸評価額(現在庫×棚卸単価)',val.total],['評価対象在庫数',val.qty]];
@@ -13592,7 +13902,13 @@ function OrdersPage(p){
             preset('今年度',fy+'-04-01',(fy+1)+'-03-31'),
             preset('前年度',(fy-1)+'-04-01',fy+'-03-31'),
             preset('今年',nowY+'-01-01',nowY+'-12-31'),
-            preset('前年',(nowY-1)+'-01-01',(nowY-1)+'-12-31')
+            preset('前年',(nowY-1)+'-01-01',(nowY-1)+'-12-31'),
+            /* v19.43: 通常／春先／合算 */
+            h('span',{style:{marginLeft:6,color:'var(--g300)'}},'|'),
+            [['normal','通常'],['spring','🌸 春先'],['all','合算']].map(function(x){
+              return h('button',{key:x[0],className:'btn btn-xs'+(repScope[0]===x[0]?' btn-nv':' btn-ol'),style:x[0]==='spring'&&repScope[0]==='spring'?{background:SPRING_PINK,borderColor:SPRING_PINK}:null,onClick:function(){repScope[1](x[0]);}},x[1]);
+            }),
+            (repScope[0]!==(SPRING?'spring':'normal')&&!OTHER_SIDE.loaded)?h('span',{style:{fontSize:9,color:'#C53030'}},(SPRING?'通常':'春先')+'のデータをまだ読み込めていません'):null
           ),
           !hasPriceMaster()?h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#FEF2F2',border:'1.5px solid #FCA5A5',borderRadius:8,fontSize:10,color:'#991B1B'}},
             '⚠ 単価マスタが未取込のため、原価（仕入単価・棚卸単価）は集計できません。見積書作成画面の「単価マスタ取込」から取り込んでください。'):null,
@@ -15238,6 +15554,47 @@ function uniRowPartKey(r){
 }
 
 /* ========== PARTS INVENTORY PAGE ========== */
+/* v19.43: 部材在庫一覧（春先モード）の上に出す「春先の締め」欄。実行は管理者だけ */
+function SpringClosePanel(p){
+  var busy=us(false),open=us(false);
+  if(!SPRING)return null;
+  var me=findUserByName(p.userName||'');
+  var isAdmin=!!(me&&me.role==='admin');
+  var leaves=springFreeLeaves();
+  var freeQty=leaves.reduce(function(a,l){return a+l.qty;},0);
+  var lost=function(o){return typeof isLostOrder==='function'&&isLostOrder(o);};
+  var open1=ORDERS.filter(function(o){return o.status!=='納品完了'&&!lost(o);});
+  var heldN=ORDERS.filter(function(o){return (o.status==='仮押さえ'||o.status==='受注確定')&&!lost(o);}).length;
+  var hist=(SPRING_CFG.merges||{})[SPRING_FY]||[];
+  function run(){
+    if(p.isReadOnly){alert('読み取り専用モード中は実行できません');return;}
+    if(!isAdmin){alert('春先の締めは管理者だけが実行できます');return;}
+    if(!confirm('🌸 春先'+SPRING_FY+'年度の在庫を通常の在庫へ戻します。\n\n・戻す数: '+leaves.length+'品目 計'+fm(freeQty)+'個（仮押さえされていない分）\n'+
+      '・残っている春先の案件（未納品 '+open1.length+'件）が仮押さえしている分は春先に残します\n・通常の在庫一覧に「春先'+SPRING_FY+'年度の在庫を統合」として履歴が残ります\n\n'+
+      '★通常の画面で在庫を編集中の人がいないときに実行してください。実行しますか？'))return;
+    busy[1](true);
+    springMergeToNormal(p.userName||'',function(ok,r){
+      busy[1](false);
+      if(ok){p.toast&&p.toast('通常の在庫へ戻しました（'+r.items+'品目 計'+fm(r.qty)+'個）');p.bump&&p.bump();}
+      else alert(r);
+    });
+  }
+  return h('div',{style:{margin:'0 0 8px',padding:'8px 12px',background:'#FDF2F8',border:'2px solid '+SPRING_PINK,borderRadius:8,fontSize:11}},
+    h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+      h('b',{style:{color:SPRING_PINK,fontSize:13}},'🌸 春先'+SPRING_FY+'年度の在庫'),
+      h('span',null,'未納品の案件 ',h('b',null,open1.length+'件'),'（仮押さえ・受注確定 '+heldN+'件）'),
+      h('span',null,'通常へ戻せる在庫 ',h('b',null,leaves.length+'品目 計'+fm(freeQty)+'個')),
+      h('span',{style:{flex:1}}),
+      h('button',{className:'btn btn-xs',disabled:busy[0]||!isAdmin||!leaves.length,style:{background:SPRING_PINK,color:'#fff',fontWeight:800,opacity:(!isAdmin||!leaves.length)?.5:1},
+        title:isAdmin?'仮押さえされていない春先の在庫を、通常の在庫へ足し込みます（何度でも実行できます）':'管理者だけが実行できます',onClick:run},busy[0]?'実行中…':'📦 空いている在庫を通常へ戻す（締め）'),
+      hist.length?h('button',{className:'btn btn-xs btn-ol',onClick:function(){open[1](!open[0]);}},'締めの履歴（'+hist.length+'）'):null
+    ),
+    h('div',{style:{fontSize:10,color:'var(--g500)',marginTop:3}},'春先の入庫・在庫表取込で入れた在庫は春先だけのものです。春先が終わったら、管理者が「通常へ戻す」で通常の在庫へ統合します。未納品の案件は春先に残り、その案件が押さえている在庫も春先に残ります。'),
+    open[0]?h('table',{className:'tbl',style:{width:'auto',marginTop:6,fontSize:11}},
+      h('thead',null,h('tr',null,['日時','実行者','品目数','個数'].map(function(t){return h('th',{key:t},t);}))),
+      h('tbody',null,hist.map(function(r,i){return h('tr',{key:i},h('td',null,r.at),h('td',null,r.by),h('td',{style:{textAlign:'right'}},fm(r.items)),h('td',{style:{textAlign:'right'}},fm(r.qty)));}))):null
+  );
+}
 function PartsPage(p){
   var selLine=us('jp01'),viewMode=us('struct'),editModal=us(null),bump=us(0);
   var showHeldOrders=us(false),showConfirmedOrders=us(false),showEditLog=us(false),heldDetail=us(null);
@@ -15927,8 +16284,9 @@ function PartsPage(p){
   }
 
   return h('div',{className:'page'+(p.tab==='parts'?' show':'')},
+    SPRING?h(SpringClosePanel,{userName:p.userName,isReadOnly:p.isReadOnly,toast:p.toast,bump:function(){bump[1](bump[0]+1);}}):null,/* v19.43 */
     h('div',{className:'card'},
-      h('div',{className:'chd'},h('h3',null,'部材在庫一覧'),
+      h('div',{className:'chd'},h('h3',null,SPRING?'🌸 部材在庫一覧（春先'+SPRING_FY+'年度）':'部材在庫一覧'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
           h('input',{className:'inp',style:{width:170},value:itemSearch[0],onChange:function(e){itemSearch[1](e.target.value);},placeholder:'🔍 アイテム名で検索…'}),
           LINES.map(function(l){return h('button',{key:l.id,className:'btn btn-xs '+(selLine[0]===l.id?'btn-nv':'btn-ol'),onClick:function(){selLine[1](l.id);}},l.mark+' '+l.name);}),
