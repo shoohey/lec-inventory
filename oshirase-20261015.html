@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】10月15日の更新のお知らせ（v19.44）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>「🌸 春先モード」の追加と<br>パーソナル貸与品の改善のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.44</span>
+      <span>2026年10月15日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。今回は、入学シーズン（2〜5月）のパーソナル案件を通常とは別に管理できる<b>「🌸 春先モード」</b>を追加しました。あわせて、<b>パーソナル貸与品</b>のデータが在庫確認・見積に反映されるところを改善しています。</p>
+    <p>春先の作業をする方は<b>4番〜9番</b>を、パーソナルの見積を作る方は<b>1番〜3番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.44</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>開いたままの古い画面は必ず再読み込みしてください。</b>古い画面のまま保存すると、貸与品のタイトルの手修正などが消えることがあります。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">貸与品のタイトル（Lサイズ・南京錠・棚板有 など）も手修正できます</a></li>
+      <li><a href="#s2">在庫確認・見積へ進むと、前年の台数と棚板の枚数が入ります</a></li>
+      <li><a href="#s3">転入生などの追加分は「回せる数」に入らなくなりました</a></li>
+      <li><a href="#s4">「🌸 春先モード」を追加しました</a><span class="tag">重要</span></li>
+      <li><a href="#s5">春先で別になるもの・共通のもの</a></li>
+      <li><a href="#s6">春先の画面は倉庫ごとに編集できる人が決まります</a><span class="tag">重要</span></li>
+      <li><a href="#s7">売上集計を「通常／春先／合算」で見られます</a></li>
+      <li><a href="#s8">春先が終わったら：在庫を通常へ戻す（締め）</a></li>
+      <li><a href="#s9">春先の画面で同時に作業したとき</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 貸与品 ============ -->
+  <h2 class="sec">パーソナル貸与品</h2>
+
+  <section class="item" id="s1">
+    <h3><span class="n">1</span><span>貸与品のタイトル（Lサイズ・南京錠・棚板有 など）も手修正できます<span class="pill add" style="margin-left:8px">改善</span></span></h3>
+    <div class="how">
+      <b>直しかた</b>
+      顧客選択 → <kbd>📋 パーソナル貸与品</kbd> → 学校を選ぶ → <kbd>✎ 手修正</kbd> → 一番上のタイトルを書き換える → <kbd>保存</kbd>
+    </div>
+    <ul>
+      <li>在庫確認・見積へ進んだときの<b>サイズ・錠前・棚板は、このタイトルで決まります</b>。例：「Lサイズ・ダイヤル錠（H111）・棚板2枚」と書くと、Lサイズ・ダイヤル錠H111・棚板2枚/台 で選ばれます。</li>
+      <li>直したタイトルは黄色で表示されます（マウスを当てると元のタイトルが出ます）。<kbd>↺ 手修正を元に戻す</kbd> でタイトルも元に戻ります。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>在庫確認・見積へ進むと、前年の台数と棚板の枚数が入ります<span class="pill add" style="margin-left:8px">改善</span></span></h3>
+    <ul>
+      <li>貸与品データのある学校で在庫確認・見積へ進むと、入力方式が<b>「台数・ベース数で入力」</b>になり、<b>台数＝前年の台数</b>、ベースの数＝前年のベース枚数が入ります。</li>
+      <li>タイトルが「棚板有」なら、<b>棚板＝台数×1台あたりの枚数</b>が入ります（棚板有＝1枚、棚板2枚＝2枚）。</li>
+      <li>前年の台数は、その年いちばん台数が多い納品の台数です。同じ年の別日付の追加（転入生など）は含めません。</li>
+    </ul>
+    <div class="ex">
+      <span class="lbl">例：高槻北高校（Mサイズ・南京錠・棚板有）</span>
+      台数 244台・ベース 82枚・棚板 244枚 が入った状態で始まります
+    </div>
+    <p class="sub">島の構成（列×段）は入りません。サイドジョイントを自動計算したいときは「列×段で入力」に切り替えて入力してください。</p>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>転入生などの追加分は「回せる数」に入らなくなりました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>同じ年度に別の日付で入れた列（転入生などの追加）が、新入生に回せる数として数えられていました。</p>
+    <ul>
+      <li>使用数が空欄の、同じ年度の別日付の列は、<b>その年の同じ学年が使っている数</b>として扱うようにしました。卒業する年に回せる数になります。</li>
+      <li>例：高槻北高校の2027年度の回せる数は、ベース 1→0、上下ジョイント 9→0 になります。</li>
+      <li>学年が書かれていない列は在校中として扱います。卒業する学年の列なら、手修正で学年を入れてください。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 春先 ============ -->
+  <h2 class="sec">🌸 春先モード（新機能）</h2>
+
+  <section class="item key" id="s4">
+    <h3><span class="n">4</span><span>「🌸 春先モード」を追加しました<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>入学シーズン（2〜5月）のパーソナル（学校）案件を、<b>普段の案件とは別の画面・別の在庫</b>で管理できます。</p>
+    <div class="how">
+      <b>入りかた・出かた</b>
+      入る：顧客選択 → <kbd>🌸 春先（2027年度）</kbd> → 確認で OK<br>
+      出る：ヘッダー右上・ピンクの帯・顧客選択のいずれかの <kbd>🌸 春先を出る</kbd>
+    </div>
+    <ul>
+      <li>春先の画面では、<b>ヘッダーがピンク</b>になり、ヘッダーの下と画面の下端に<b>ピンクの帯</b>が出ます。</li>
+      <li>切り替わるのは<b>そのタブだけ</b>です。別のタブで通常の画面を開いたまま作業できます。</li>
+      <li>春先の案件番号は <b>QT-2027-S001</b> のように「S」が付きます（通常の番号と重なりません）。</li>
+      <li>年度が変わったあとも、<kbd>🌸 他の年度…</kbd> から過去の春先を開けます（残った案件の作業用）。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>春先で別になるもの・共通のもの</span></h3>
+    <div class="ba">
+      <div class="now">
+        <h4>春先だけのもの（最初は0）</h4>
+        <p class="step">案件（見積・仮押さえ・受注確定・出荷・納品）</p>
+        <p class="step">部材在庫一覧（在庫・仮押さえ・入庫予定・変更履歴）</p>
+      </div>
+      <div>
+        <h4>通常と共通のもの</h4>
+        <p class="step">顧客・エンド納品先（春先で追加・修正すると通常にも反映）</p>
+        <p class="step">単価などのマスタ・パーソナル貸与品データ</p>
+      </div>
+    </div>
+    <ul>
+      <li>春先の画面で行った<b>入庫確定・在庫表取込は、春先の在庫に入ります</b>。</li>
+      <li>春先の案件が「納品完了」になると、これまでどおりパーソナル貸与品データに登録されます。</li>
+    </ul>
+  </section>
+
+  <section class="item key" id="s6">
+    <h3><span class="n">6</span><span>春先の画面は倉庫ごとに編集できる人が決まります<span class="pill imp" style="margin-left:8px">重要</span></span></h3>
+    <div class="ex">
+      <span class="lbl">優先して編集できる人</span>
+      <strong>尼高倉庫</strong>の案件・在庫 …… 片岡さん<br>
+      <strong>尼高以外</strong>（尼高と他が混ざった案件も） …… 岩上さん・高山さん（2人同時に編集できます）<br>
+      <strong>すべて</strong> …… 中辻さん
+    </div>
+    <ul>
+      <li>優先の人がログインしていない倉庫は、これまでどおり<b>先にログインした人</b>が編集できます。</li>
+      <li>ヘッダーに<b>「✏ 編集できる倉庫：○○」</b>と、自分が編集できる範囲が出ます。</li>
+      <li>案件管理に<b>「🌸 倉庫：すべて／🏭 尼高／尼高以外（混在を含む）」</b>の切替があります。自分の担当側が最初から選ばれています。編集できない側は「閲覧のみ」です。</li>
+      <li>編集できない倉庫の仮押さえ・在庫編集・入庫などを行うと、「○○さんが編集中です」と出て止まります。</li>
+      <li>通常の画面の編集権限はこれまでどおりです（変わりません）。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s7">
+    <h3><span class="n">7</span><span>売上集計を「通常／春先／合算」で見られます<span class="pill add" style="margin-left:8px">改善</span></span></h3>
+    <ul>
+      <li>案件管理の <kbd>📊 売上集計</kbd> に <kbd>通常</kbd> <kbd>🌸 春先</kbd> <kbd>合算</kbd> の切替ができました。通常の画面・春先の画面のどちらからでも使えます。</li>
+      <li>在庫評価額も、合算では通常と春先の在庫を足して出します。Excel に出すと「対象」の行が付きます。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s8">
+    <h3><span class="n">8</span><span>春先が終わったら：在庫を通常へ戻す（締め）</span></h3>
+    <div class="how">
+      <b>操作（管理者だけ）</b>
+      春先の画面 → 部材在庫一覧の上のピンクの欄 → <kbd>📦 空いている在庫を通常へ戻す（締め）</kbd>
+    </div>
+    <ul>
+      <li>春先の在庫のうち、<b>仮押さえされていない分</b>を通常の在庫へ足し込みます。通常・春先の両方の変更履歴に残ります。</li>
+      <li>未納品の春先の案件は春先に残り、その案件が押さえている在庫も春先に残ります。片付いたらもう一度押すと、残りも戻せます。</li>
+    </ul>
+    <div class="warnbox">締めは、<b>通常の画面で在庫を編集している人がいないとき</b>に実行してください。</div>
+  </section>
+
+  <section class="item" id="s9">
+    <h3><span class="n">9</span><span>春先の画面で同時に作業したとき</span></h3>
+    <ul>
+      <li>春先の画面は、複数の人が同時に保存しても、<b>それぞれの変更が消えないように</b>保存します。</li>
+      <li>在庫の数は両方の増減が残ります（例：10個から2個使う＋同時に5個入庫 → 13個）。</li>
+      <li>同じ番号で別々に新規作成したときは、あとの方が次の番号に振り直され、画面に通知が出ます。</li>
+      <li><b>同じ案件</b>を2人が同時に直したときは、あとから保存した方の内容になります。同じ案件は1人で触るようにしてください。</li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.44】
+・★「🌸 春先モード」を追加：顧客選択の「🌸 春先（2027年度）」から。春先の案件・部材在庫は通常と別管理（最初は0）、顧客・マスタは共通。画面はピンク、タブ単位で切替
+・★春先の編集権限：尼高＝片岡さん、尼高以外（混在含む）＝岩上さん・高山さん（同時編集可）、中辻さんはすべて。優先の人がいなければ先にログインした人
+・春先の案件番号は QT-2027-S001。売上集計は「通常／春先／合算」で見られます
+・春先が終わったら管理者が「空いている在庫を通常へ戻す（締め）」で在庫を統合
+・パーソナル貸与品：タイトル（Lサイズ・南京錠・棚板有など）も手修正可。見積へ進むと前年の台数と棚板（台数×枚数）が入ります
+・転入生など同じ年の追加分は「回せる数」に入らなくなりました（例：高槻北）
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261015.html
+表示が古いときは再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
