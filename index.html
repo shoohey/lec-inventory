@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.44（春先モード: 倉庫別の編集権限・同時編集で消えない保存）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.45（顧客を選び直したら新しい案件・Sαの部材表記）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -3297,6 +3297,9 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   var n=(_uo>0)?_uo:islands*tiers,so=sizeObj(size),grp=so.grp,bom=[];
   /* type: 'standard'(常設) / 'personal'(パーソナル)。noDoor=true で扉なし */
   var isPersonal=type==='personal',isStandard=type==='standard';
+  /* v19.45 ③: Sα（line='sa'）は在庫キーに S／SML を流用しているため、部材の表記が「サイドボード(S)」「棚板(SML・…)」のように
+     Sサイズの部材に見えていた（RS-2026-241）。表記だけ Sα にする（在庫キーは従来どおり）。 */
+  var isSa=opts.line==='sa';
   var noDoor=opts.noDoor===true||type==='open'||so.ssw===true;/* オープンタイプは廃止予定だが過去データ互換のためtype==='open'も扉なし扱い。v18.33 要望⑤: SSWは扉なし固定 */
   /* v14 A10: XLサイズはMサイズ×2セット引きを全製品ラインで適用 */
   var isXL=size==='XL';
@@ -3324,8 +3327,8 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     bom.push({key:'side',sub:'M',qty:n*4,label:'サイドボード(M) ※XL用',reason:n+'台×4 (XL1台=Mサイド4枚)'});
     bom.push({key:'back',sub:'M',qty:n*2,label:'バックボード(M) ※XL用',reason:n+'台×2 (XL1台=Mバック2枚)'});
   }else{
-    bom.push({key:'side',sub:size,qty:n*2,label:'サイドボード('+size+')',reason:n+'台×2'});
-    bom.push({key:'back',sub:size,qty:n*1,label:'バックボード('+size+')',reason:n+'台×1'});
+    bom.push({key:'side',sub:size,qty:n*2,label:'サイドボード('+(isSa?'Sα':size)+')',reason:n+'台×2'});
+    bom.push({key:'back',sub:size,qty:n*1,label:'バックボード('+(isSa?'Sα':size)+')',reason:n+'台×1'});
   }
   /* Door: doorType from opts overrides default. noDoor=true で扉なし */
   if(!noDoor){
@@ -3335,12 +3338,13 @@ function calcBOM(size,islands,tiers,lock,type,opts){
        扉の製品ライン（doorLine）を明細ごとに持てるようにした。未指定なら本体と同じライン。
        在庫照会・仮押さえ・出荷消費は、このBOM行の doorLine のライン在庫に対して行う。 */
     var dLine=opts.doorLine||opts.line||null;
-    bom.push({key:dk,qty:n,label:(dk==='doorH'?'扉〈ホタ〉':'扉')+'('+size+')'+((dLine&&opts.line&&dLine!==opts.line)?('【'+((LINES.find(function(l){return l.id===dLine;})||{name:dLine}).name)+'】'):''),reason:n+'台×1',isDoor:true,doorSub:size,doorLine:dLine});
+    bom.push({key:dk,qty:n,label:(dk==='doorH'?'扉〈ホタ〉':'扉')+'('+(dLine==='sa'?'Sα':size)+')'+((dLine&&opts.line&&dLine!==opts.line)?('【'+((LINES.find(function(l){return l.id===dLine;})||{name:dLine}).name)+'】'):''),reason:n+'台×1',isDoor:true,doorSub:size,doorLine:dLine});
   }
   /* Base - optional. baseColor='bk'時は base_bk キー、'gy'時は base キーで在庫照会
      v14.3: 上下共通ボードはtop側でn*2に変更したため、baseはパーソナルでもn台×1枚に戻す */
   if(opts.hasBase!==false){
     var baseColor=opts.baseColor||'gy';
+    if(isSa)baseColor='gy';/* v19.45 ③: Sαのベースはグレーのみ（黒のベースは Sα の部材に無い） */
     var baseColorLabel=baseColor==='bk'?'ブラック':'グレー';
     var baseKey=baseColor==='bk'?'base_bk':'base';
     /* v18.32 要望①: direct入力のパーソナルは islands=ベース指定枚数を尊重
@@ -3350,17 +3354,17 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     /* v19.31: パーソナル貸与品の不足分のみ（学校保管で回せる分を差し引いた枚数）。0なら計上しない */
     var rsBase=rentalShortOf(opts,'base');
     if(rsBase!==null){baseReason='不足分のみ'+rsBase+'枚（必要'+baseQty+'枚・学校保管分を差引）';baseQty=rsBase;}
-    if(baseQty>0)bom.push({key:baseKey,sub:grp,qty:baseQty,label:'ベースボード('+grp.toUpperCase()+'・'+baseColorLabel+')',reason:baseReason,baseColor:baseColor});
+    if(baseQty>0)bom.push({key:baseKey,sub:grp,qty:baseQty,label:'ベースボード('+(isSa?'Sα':grp.toUpperCase())+'・'+baseColorLabel+')',reason:baseReason,baseColor:baseColor});
   }
   /* Shelf - optional. shelfColor='bk'時は shelf_bk キー、'gy'時は shelf キーで在庫照会
      台湾製(tw)は棚板グレーのみ取扱 */
   var shelfQty=parseInt(opts.shelfQty)||0;
   if(shelfQty>0){
     var shelfColor=opts.shelfColor||'gy';
-    if(opts.line==='tw')shelfColor='gy';/* tw強制グレー */
+    if(opts.line==='tw'||isSa)shelfColor='gy';/* tw強制グレー。v19.45 ③: Sαの棚板もグレーのみ（黒の棚板は Sα の部材に無い） */
     var shelfColorLabel=shelfColor==='bk'?'ブラック':'グレー';
     var shelfKey=shelfColor==='bk'?'shelf_bk':'shelf';
-    bom.push({key:shelfKey,sub:grp,qty:shelfQty,label:'棚板('+grp.toUpperCase()+'・'+shelfColorLabel+')',reason:shelfQty+'枚',shelfColor:shelfColor});
+    bom.push({key:shelfKey,sub:grp,qty:shelfQty,label:'棚板('+(isSa?'Sα':grp.toUpperCase())+'・'+shelfColorLabel+')',reason:shelfQty+'枚',shelfColor:shelfColor});
   }
   /* Vertical joints: 常設タイプは不要。パーソナルは1台につき3個必要 (1台=島×段) */
   /* v18.25 要望⑧: Sα(新台湾製/line='sa')はパーソナルでも上下ジョイント(SML)が存在しないため除外（アンカー穴キャップ854行と同様にopts.line判定） */
@@ -3414,7 +3418,7 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   }
   /* v14 A3/A4: ジョイントネジ・目隠しネジは自動加算を廃止。完全に手動入力(opts.jointScrewQty/opts.capScrewQty)に。
      常設・パーソナル両タイプで手動入力欄から個別に指定する。 */
-  if(opts.jointScrewQty){var jq=parseInt(opts.jointScrewQty)||0;if(jq>0)bom.push({key:'jointScrew_'+grp+'_bk',qty:jq,label:'ジョイントネジ('+grp.toUpperCase()+'・ブラック)',reason:'手動入力'});}
+  if(opts.jointScrewQty){var jq=parseInt(opts.jointScrewQty)||0;if(jq>0)bom.push({key:'jointScrew_'+grp+'_bk',qty:jq,label:(isSa?'横連結ネジ(Sα・ブラック)':'ジョイントネジ('+grp.toUpperCase()+'・ブラック)'),reason:'手動入力'});}
   if(opts.capScrewQty){var cq=parseInt(opts.capScrewQty)||0;if(cq>0)bom.push({key:'capScrew_bk',qty:cq,label:'目隠しネジ(ブラック)',reason:'手動入力'});}
   if(opts.capScrewGyQty){var cqg=parseInt(opts.capScrewGyQty)||0;if(cqg>0)bom.push({key:'capScrew_gy',qty:cqg,label:'目隠しネジ(グレー)',reason:'手動入力'});}
   /* Nameplate & name paper: optional */
@@ -9317,6 +9321,7 @@ function openPrintWindow(html){
 /* ========== APP ========== */
 function App(){
   var tab=us('cust'),cust=us(null),toast=us(null),bump=us(0);
+  var custPick=us(0);/* v19.45 ①②: 顧客選択画面で顧客を選んだ回数（同じ顧客を選び直しても在庫確認・見積を新しい案件として始めるため） */
   var repeatOrder=us(null);/* v17.2 要望26: 前回コピーでリピート発注（OrdersPage→ビルダーへ読込） */
   /* v18.46 修正５⑤: 登録済み案件の修正。案件管理で仮押さえを解除してから内容をビルダーへ読み込み、
      再度「仮押さえ」した際に新規採番せず同じ案件番号へ上書きする（OrdersPage→InvPage） */
@@ -9808,8 +9813,8 @@ function App(){
        後発ログインによるロック(lockReadOnly)と営業ロール込みの読み取り専用(isReadOnly)を分けて渡す。
        削除・顧客一括取込は従来どおり isReadOnly（＝営業は不可）で制限。 */
     /* v18.39: 顧客の追加・編集をクラウド保存するため userName を渡す（保存者の記録に使用） */
-    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,userName:userName[0]}),
-    h(InvPage,{tab:tab[0],selCust:cust[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);},editOrder:editOrder[0],clearEditOrder:function(){editOrder[1](null);}}),
+    h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);custPick[1](custPick[0]+1);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,userName:userName[0]}),
+    h(InvPage,{tab:tab[0],selCust:cust[0],custPick:custPick[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);},editOrder:editOrder[0],clearEditOrder:function(){editOrder[1](null);}}),
     h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:effRO,setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);},requestEdit:function(o){editOrder[1](o);}}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:effRO}),
     /* v14.4 hotfix2: 同時ログイン可視化バナー
@@ -10710,8 +10715,17 @@ function InvPage(p){
     if(jp2XLNoDoor&&hasDoor[0]){jp2XLForcedOff.current=true;hasDoor[1](false);}
     else if(!jp2XLNoDoor&&jp2XLForcedOff.current){jp2XLForcedOff.current=false;hasDoor[1](true);}
   },[jp2XLNoDoor,hasDoor[0]]);
-  /* 顧客変更時に明細・見積ドラフトをクリア */
+  /* 顧客変更時に明細・見積ドラフトをクリア
+     v19.45 ①②: 顧客選択画面で顧客を選んだときは（同じ顧客を選び直したときも＝p.custPick）、
+     商品選択の入力内容・見積書の入力内容もすべて初期値に戻し、新しい案件として始める。
+     ①従来は商品選択欄（製品ライン・台数・色・レンタル品の過不足欄で手で選んだ学校など）が前の顧客のまま残り、
+     　さらに前年の導入内容の自動入力も「明細あり」と判定されて動かなかった（選び直した学校の貸与品データが入らない）。
+     ②代理店で続けて別のエンドユーザーの見積を作ると、同じ顧客を選び直しても前の見積（quoteOrder）が残っていたため
+     　「既存の見積ドラフトを上書き」になり、前の案件が書き換わっていた。
+     ★案件管理からの案件修正・コピー再発注（setCust 経由）は custPick を変えないので従来どおり（顧客が同じなら読み込み内容を保つ）。 */
+  var custResetR=ur(false);
   ue(function(){
+    custResetR.current=true;
     lines[1]([]);
     quoteOrder[1](null);
     showQuote[1](false);
@@ -10727,7 +10741,23 @@ function InvPage(p){
     endUser[1]({name:'',postal:'',address:'',phone:''});
     endSearch[1]('');/* v18.55 修正９⑤: 納品先の検索語も顧客ごとの状態なのでクリアする */
     ptFromOrder.current=false;shipKeepR.current=false;/* v19.39 修正35②③: 前の顧客の案件から読み込んだ値を持ち越さない */
-  },[p.selCust&&p.selCust.id]);
+    /* v19.45 ①: 商品選択欄を初期値へ（上の us(...) の初期値と同じ） */
+    ln[1]('jp2');sz[1]('M');tp[1]('standard');cl[1]('und');lk[1]('dialH110new');
+    doorType[1]('door');hasDoor[1](true);doorLn[1]('');hasNameplate[1](false);hasNamePaper[1](false);
+    inputMode[1]('grid');blocks[1]([{c:'1',t:'1',g:0}]);dQty[1]('');dBase[1]('');
+    extraJointScrew[1](0);extraCapScrew[1](0);extraCapScrewGy[1](0);extraSideJoint[1](0);
+    selWH[1](null);selMulti[1](null);shipMethod[1]('');showPartWh[1](false);partWhSel[1]({});
+    baseColor[1]('gy');hasBase[1](true);hasCap[1](true);shelfQty[1](0);shelfColor[1]('bk');
+    vjNeed[1](null);vjQty[1]('');multiColor[1](false);colorBreak[1]([]);hasSideJt[1](true);
+    rentalView[1](null);rentalPick[1](null);rentalFy[1](rentalDefaultFY());rentalApply[1](true);rentalPrefillNote[1]('');
+    rentalMid[1](false);rentalGrade[1](2);rentalPrefillKey.current='';
+    partLine[1]('jp2');partType[1]('side');partSub[1]('M');partColor[1]('pb');partQty[1](1);partPrice[1](0);
+    /* v19.45 ②: 見積書の入力内容も新しい案件として始める */
+    quoteSubject[1]('');paymentTerms[1]('末締め翌月末');paymentCustom[1]('');quoteNotes[1]('');quoteSalesPerson[1]('');
+    discountRows[1]([]);shipLabelSt[1]('');optFree[1]({});discFree[1]({});unitDraft[1]({});notesTplKey[1]('');notesTplPick[1]({});
+    dragRk[1](null);dropRk[1](null);
+    freeInputName[1]('');freeInputQty[1](1);freeInputUnit[1]('個');freeInputPrice[1](0);freeInputRemark[1]('');
+  },[p.selCust&&p.selCust.id,p.custPick]);
   /* v17.2 要望26: リピート発注 — OrdersPageでコピーされた案件の製品構成をビルダーへ読み込む。
      在庫追跡フィールドは除外し、見積/仮押さえは新規に行う（前回の引当は引き継がない）。
      顧客変更クリアの後に定義しているため、同一レンダーでクリア→読込の順となり読込が確定する。 */
@@ -10822,8 +10852,11 @@ function InvPage(p){
      製品ライン・サイズ・錠前・扉色（毎年同じ色ならその色／学年色なら卒業する学年の色）＋パーソナル・ベース黒。
      学校（エンド納品先・手動選択）ごとに1回だけ。案件修正・リピート発注・明細追加済みのときは上書きしない。 */
   ue(function(){
-    if(!cust||p.editOrder||p.repeatOrder||editingNo[0]||lines[0].length)return;
-    var r=rentalResolve(cust,endUser[0],rentalPick[0],null);
+    /* v19.45 ①: 顧客を選んだ直後は、上の効果でクリアした明細・案件修正・手動の学校選択が★まだ古い値で見えるので、それらを見ない */
+    var fresh=custResetR.current;custResetR.current=false;
+    if(!cust||p.editOrder||p.repeatOrder)return;
+    if(!fresh&&(editingNo[0]||lines[0].length))return;
+    var r=rentalResolve(cust,fresh?{name:''}:endUser[0],fresh?null:rentalPick[0],null);
     if(!r.s||!r.s.blocks[r.bi]||r.s.blocks[r.bi].joset)return;
     var key=cust.id+'|'+r.s.id+'#'+r.bi;
     if(rentalPrefillKey.current===key)return;
@@ -10831,16 +10864,17 @@ function InvPage(p){
     var pf=rentalPrefillOf(r.s,r.bi,rentalFy[0]);
     if(!pf)return;
     tp[1]('personal');
-    if(pf.line!==ln[0])changeLine(pf.line);
+    if(fresh||pf.line!==ln[0])changeLine(pf.line);/* v19.45 ①: 直前に初期値（Ver.2）へ戻しているので必ず入れ直す */
     if(pf.size)sz[1](pf.size);
     if(pf.lock)lk[1](pf.lock);
     if(pf.color)cl[1](pf.color);
     if(pf.line==='jp01'||pf.line==='jp2'){doorType[1](pf.hota?'doorH':'door');baseColor[1]('bk');hasCap[1](false);/* v19.35: ベース黒は原則キャップなし */}
+    else if(pf.line==='sa'){doorType[1]('door');baseColor[1]('gy');shelfColor[1]('gy');/* v19.45 ③: Sαは同色扉・ベース/棚板グレーのみ（前の学校のホタ扉・黒を持ち越さない） */}
     hasBase[1](true);
     /* v19.42 ③: 台数は前年の台数（「台数・ベース数で入力」に前年の台数とベースの数）。②: 棚板有なら 台数×1台あたりの枚数 */
     if(pf.units>0){inputMode[1]('direct');dQty[1](String(pf.units));dBase[1](pf.base>0?String(pf.base):'');}
     var shQ=(pf.units>0&&pf.shelfPer>0)?pf.units*pf.shelfPer:0;
-    if(shQ>0){shelfQty[1](shQ);shelfColor[1](pf.line==='tw'?'gy':pf.shelfColor);}
+    if(shQ>0){shelfQty[1](shQ);shelfColor[1]((pf.line==='tw'||pf.line==='sa')?'gy':pf.shelfColor);}/* v19.45 ③: Sαの棚板もグレーのみ */
     var lo=LINES.find(function(x){return x.id===pf.line;});
     var lt=pf.lock?LOCK_TYPES.find(function(x){return x.v===pf.lock;}):null;
     rentalPrefillNote[1]([(lo?lo.name:pf.line),(pf.size?sizeLabel(pf.line,pf.size):''),(lt?lt.l:''),
@@ -10848,7 +10882,7 @@ function InvPage(p){
       (pf.units>0?(pf.units+'台（'+pf.unitsFy+'年度と同じ'+(pf.base>0?'・ベース'+pf.base+'枚':'')+'）'):''),
       (shQ>0?('棚板'+shQ+'枚（'+pf.units+'台×'+pf.shelfPer+'枚）'):''),
       pf.lockNote,pf.shelfNote].filter(Boolean).join('・'));
-  },[cust&&cust.id,endUser[0].id||'',endUser[0].name||'',rentalPick[0]&&rentalPick[0].sid,rentalPick[0]&&rentalPick[0].bi]);
+  },[cust&&cust.id,p.custPick,endUser[0].id||'',endUser[0].name||'',rentalPick[0]&&rentalPick[0].sid,rentalPick[0]&&rentalPick[0].bi]);
   /* v18.31: 入力方式に応じて 台数(qty)・ベース枚数(baseCount=常設のベースボード数) を導出。
      grid=Σ(列i×段i)/Σ列i、direct=入力値そのまま。従来の isl/tier 単独入力は blocks 1件と等価 */
   var qty,baseCount;
@@ -10931,7 +10965,7 @@ function InvPage(p){
         spec={islands:bl[0].c,tiers:bl[0].t};
       }
     }
-    var lineObj={id:Date.now(),line:ln[0],doorLine:((doorLn[0]&&doorLn[0]!==ln[0])?doorLn[0]:undefined),/* v18.70 修正16②: 扉だけ別ラインのとき記録 */size:sz[0],type:tp[0],noDoor:!hasDoor[0]||jp2XLNoDoor,color:(!hasDoor[0]||jp2XLNoDoor)?'':(cb?cb[0].color:cl[0]),qty:qty,islands:spec.islands,tiers:spec.tiers,lock:lock,doorType:dt,hasBase:hasBase[0],baseColor:isJP?baseColor[0]:'gy',hasCap:isJP?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:ln[0]==='tw'?'gy':shelfColor[0],hasNameplate:hasNameplate[0],hasNamePaper:hasNamePaper[0],jointScrewQty:parseInt(extraJointScrew[0])||0,capScrewQty:parseInt(extraCapScrew[0])||0,capScrewGyQty:parseInt(extraCapScrewGy[0])||0,sideJointQty:parseInt(extraSideJoint[0])||0};
+    var lineObj={id:Date.now(),line:ln[0],doorLine:((doorLn[0]&&doorLn[0]!==ln[0])?doorLn[0]:undefined),/* v18.70 修正16②: 扉だけ別ラインのとき記録 */size:sz[0],type:tp[0],noDoor:!hasDoor[0]||jp2XLNoDoor,color:(!hasDoor[0]||jp2XLNoDoor)?'':(cb?cb[0].color:cl[0]),qty:qty,islands:spec.islands,tiers:spec.tiers,lock:lock,doorType:dt,hasBase:hasBase[0],baseColor:isJP?baseColor[0]:'gy',hasCap:isJP?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:(ln[0]==='tw'||ln[0]==='sa')?'gy':shelfColor[0],hasNameplate:hasNameplate[0],hasNamePaper:hasNamePaper[0],jointScrewQty:parseInt(extraJointScrew[0])||0,capScrewQty:parseInt(extraCapScrew[0])||0,capScrewGyQty:parseInt(extraCapScrewGy[0])||0,sideJointQty:parseInt(extraSideJoint[0])||0};
     /* v18.55 修正９⑥／v18.56 確認項目①: 上下ジョイントの必要/不要と個数。
        常設タイプ・Sα は対象外（画面にも出していない）ので明細には持たせない。
        パーソナルで未操作(null)なら従来どおり「必要・計算式どおり」なので何も持たせない。 */
@@ -11853,7 +11887,7 @@ function InvPage(p){
               h('input',{className:'inp',type:'number',min:0,value:shelfQty[0],onChange:function(e){shelfQty[1](e.target.value);},style:{width:50,textAlign:'center'}}),
               h('span',{style:{fontSize:8}},'枚'),
               /* v18.30: 初期値ブラック。台湾製は棚板グレーのみ取扱のため固定表示（calcBOM 854行の強制と表示を一致させる） */
-              parseInt(shelfQty[0])>0?h('select',{className:'inp',value:ln[0]==='tw'?'gy':shelfColor[0],disabled:ln[0]==='tw',title:ln[0]==='tw'?'台湾製の棚板はグレーのみ取扱です':'',onChange:function(e){shelfColor[1](e.target.value);},style:{width:80}},SHELF_COLORS.map(function(sc){return h('option',{key:sc.v,value:sc.v},sc.l);})):null,
+              parseInt(shelfQty[0])>0?h('select',{className:'inp',value:(ln[0]==='tw'||ln[0]==='sa')?'gy':shelfColor[0],disabled:ln[0]==='tw'||ln[0]==='sa',title:ln[0]==='tw'?'台湾製の棚板はグレーのみ取扱です':(ln[0]==='sa'?'Sαの棚板はグレーのみ取扱です':''),onChange:function(e){shelfColor[1](e.target.value);},style:{width:80}},SHELF_COLORS.map(function(sc){return h('option',{key:sc.v,value:sc.v},sc.l);})):null,
               /* v18.55 修正９⑥: 上下ジョイントの「必要／不要」チェックボックスと必要個数（依頼どおり棚板選択の右側に配置）。
                  v18.56 確認項目①: 常設タイプは上下ジョイントがそもそも不要のため、要・不要の欄自体を出さない。
                  パーソナルのみ表示し、既定は「必要」。個数ブランクなら計算式どおり（1台×3個）、
