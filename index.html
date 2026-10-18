@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.45（顧客を選び直したら新しい案件・Sαの部材表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.46（パーソナル貸与品の紐づけ修正・代理店でも学校を先に選べる・岡山理科大附属中学校を登録）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1399,6 +1399,44 @@ var RENTAL_SEED={"src":"各学校詳細一覧(西日本）.xlsx・各学校詳�
    データ構造: school={id,name,dealer?,links[],blocks:[{title,size,joset,lots:[{col,date,fy,grade?,units,color,fill,parts{base_bk..},use{base,vj,sj},useIn{g:col},buy[],notes[]}]}]}
      ・parts=Excel上段（その納品で貸し出した数。マイナスは回収）／use=Excel下段（その学年が使っている数。セル結合の追加納品は先頭列に合算、後ろの列は useIn で先頭列を指す）
    設定（学年の在学年数・手動のひも付け）は RENTAL_CFG としてクラウド共有（buildCloudDoc の rentalCfg）。 */
+/* v19.46（2026-10-19「パーソナル貸与品の紐づけ修正依頼.xlsx」）: 学校名を正式名称に・ひも付けを代理店（LEC顧客）のエンド納品先へ付け替え。
+   RENTAL_SEED を作り直しても消えないよう、読み込み後に上書きする表として持つ（旧PCの build_seed2.py で再生成しても効く）。
+   links を書いた学校は、その一覧で★置き換える（学校そのものの顧客への旧ひも付けは外す＝ユーザー回答）。
+   linkNames＝顧客名でのひも付け（自動登録する顧客で ID が公開時まで決まらないもの。RENTAL_CUST_REQUIRED を参照）。
+   ★保留: JGS／埼玉自動車大学校（貸与品データに該当する学校が無い。「越生自動車」E51 は今のまま） */
+var RENTAL_SEED_FIX={
+  W36:{name:'蒼明学院中等部'},
+  E12:{dealer:'プラロッカー・さくら総合サービス',links:['D00620/EU_RENTAL_E12']},
+  E14:{name:'翔凜中学校・高等学校',dealer:'プラロッカー',links:['D00620/EU_RENTAL_E14']},
+  E07:{dealer:'プラスチックロッカー・文祥堂',links:['D00881/EU_RENTAL_E07']},
+  E08:{dealer:'プラスチックロッカー・文祥堂',links:['D00881/EU_RENTAL_E08']},
+  E09:{dealer:'プラスチックロッカー・文祥堂',links:['D00881/EU_RENTAL_E09']},
+  W65:{name:'海星高等学校',links:['D00449/EU_RENTAL_W65']},
+  W57:{name:'大阪桐蔭中学校高等学校',links:['D00821/EU1786324580742225','D00821/EU1786324646024796']},
+  W39:{name:'京都外大西高等学校',dealer:'京都外大パートナーズ'},
+  W49:{name:'福岡女学院中学校・高等学校',links:['D00277/EU_RENTAL_W49']},
+  W76:{name:'伊勢学園高等学校'},
+  E29:{name:'埼玉栄中学校・高等学校'},
+  E30:{name:'栄東中学校・高等学校'},
+  E31:{name:'栄北高等学校'},
+  E32:{name:'中央学院大学中央高等学校'},
+  E33:{name:'花咲徳栄高等学校'},
+  E15:{name:'織田学園中野高等専修学校',dealer:'伊藤産業・ほうとくC＆I'},
+  /* 岡山理科大学附属: 中学校は高校（D00968）と見積を分けるため、新しい顧客「岡山理科大学附属中学校」へ */
+  W51:{name:'岡山理科大学附属高等学校 GSコース'},
+  W52:{name:'岡山理科大学附属中学校',links:[],linkNames:['岡山理科大学附属中学校']},
+  W53:{name:'岡山理科大学附属高等学校 IBコース'}
+};
+(function(){
+  if(typeof RENTAL_SEED==='undefined'||!RENTAL_SEED.schools)return;
+  RENTAL_SEED.schools.forEach(function(s){
+    var f=RENTAL_SEED_FIX[s.id];if(!f)return;
+    if(f.name&&s.name!==f.name){s.nameOrig=s.name;s.name=f.name;}
+    if(f.dealer)s.dealer=f.dealer;
+    if(f.links){s.linksOrig=s.links||[];s.links=f.links.slice();}
+    if(f.linkNames)s.linkNames=f.linkNames.slice();
+  });
+})();
 var RP_KEYS=[
   {k:'base_bk',l:'ベース（黒）',g:'base',main:true},
   {k:'base_tw',l:'ベース（台湾）',g:'base'},
@@ -1521,7 +1559,20 @@ var RENTAL_EU_REQUIRED=[
   {cid:'D00367',id:'EU_RENTAL_E06',name:'新潟青陵高等学校'},
   {cid:'D00367',id:'EU_RENTAL_E15',name:'織田学園'},
   {cid:'D00620',id:'EU_RENTAL_E13',name:'中央大学高等学校'},
-  {cid:'D00620',id:'EU_RENTAL_E48',name:'明秀学園日立高等学校'}/* 2026-10-08 ユーザー指示 */
+  {cid:'D00620',id:'EU_RENTAL_E48',name:'明秀学園日立高等学校'},/* 2026-10-08 ユーザー指示 */
+  /* v19.46（パーソナル貸与品の紐づけ修正依頼.xlsx）: LEC顧客＝代理店の下に学校を置く。間に入る代理店は名前の（ ）に書く（蒼明学院と同じ書き方）。
+     from＝住所・電話をそこから写す（これまで学校そのものを顧客にしていた行。公開リポジトリに住所を書かないため実行時に写す） */
+  {cid:'D00620',id:'EU_RENTAL_E12',name:'佐野日本大学高等学校(さくら総合サービス㈱)',from:'D00970'},
+  {cid:'D00620',id:'EU_RENTAL_E14',name:'翔凜中学校・高等学校',from:'D00873'},
+  {cid:'D00881',id:'EU_RENTAL_E07',name:'日本航空学園 青梅(㈱文祥堂オフィスファシリティーズ)'},
+  {cid:'D00881',id:'EU_RENTAL_E08',name:'日本航空学園 山梨(㈱文祥堂オフィスファシリティーズ)'},
+  {cid:'D00881',id:'EU_RENTAL_E09',name:'日本航空学園 石川(㈱文祥堂オフィスファシリティーズ)'},
+  {cid:'D00449',id:'EU_RENTAL_W65',name:'海星高等学校',from:'D00653'},
+  {cid:'D00277',id:'EU_RENTAL_W49',name:'福岡女学院中学校・高等学校',from:'D00314'}
+];
+/* v19.46: 貸与品のために自動で登録する顧客（無ければ1回だけ追加。ID は nextCustId）。from＝住所・電話・営業担当などを写す顧客 */
+var RENTAL_CUST_REQUIRED=[
+  {name:'岡山理科大学附属中学校',kana:'オカヤマリカダイガクフゾクチュウガッコウ',from:'D00968'}/* 2026-10-19: 高校と見積を分けるため */
 ];
 var _rentalEuAdded=false;
 function ensureRentalEndUsers(){
@@ -1531,7 +1582,19 @@ function ensureRentalEndUsers(){
     if(!c)return;
     var eus=c.endUsers||[];
     if(eus.some(function(e){return e.id===q.id||rentalNameNorm(e.name)===rentalNameNorm(q.name);}))return;
-    c.endUsers=eus.concat([{id:q.id,name:q.name,postal:'',address:'',phone:''}]);
+    var src=q.from?(CUSTS||[]).find(function(x){return x.id===q.from;}):null;
+    var addr=src?((src.pref||'')+(src.city||'')):'';
+    c.endUsers=eus.concat([{id:q.id,name:q.name,postal:src?(src.postal||''):'',address:addr,phone:src?(src.phone||''):''}]);
+    added++;
+  });
+  RENTAL_CUST_REQUIRED.forEach(function(q){
+    if(!CUSTS||!CUSTS.length)return;
+    if(CUSTS.some(function(x){return x&&rentalNameNorm(x.name)===rentalNameNorm(q.name);}))return;
+    var src=CUSTS.find(function(x){return x.id===q.from;})||{};
+    var nc={id:nextCustId(),name:q.name,kana:q.kana||'',pref:src.pref||'',city:src.city||'',contact:'',postal:src.postal||'',phone:src.phone||'',fax:src.fax||'',
+      email:'',mobile:'',contactPerson:'',honorific:'',salesPerson:src.salesPerson||'',attr:src.attr||'学校',endUsers:[],
+      note:'v19.46 で自動登録（住所・電話・営業担当は '+(src.name||q.from)+' と同じ）'};
+    CUSTS.unshift(nc);
     added++;
   });
   if(added){_rentalEuAdded=true;try{saveCusts();}catch(e){}}
@@ -1558,7 +1621,11 @@ function rentalCohortColor(s,bi,fy,grade){
   });
   return best?best.color:'';
 }
-function rentalLinksOf(s){return (s.links||[]).concat((RENTAL_CFG.links||{})[s.id]||[]);}
+function rentalLinksOf(s){
+  var byName=[];/* v19.46: 顧客名でのひも付け（RENTAL_SEED_FIX の linkNames） */
+  (s.linkNames||[]).forEach(function(n){var nn=rentalNameNorm(n);(CUSTS||[]).forEach(function(c){if(c&&c.id&&rentalNameNorm(c.name)===nn)byName.push(c.id);});});
+  return (s.links||[]).concat(byName,(RENTAL_CFG.links||{})[s.id]||[]);
+}
 function rentalNameNorm(s){
   s=String(s||'');try{s=s.normalize('NFKC');}catch(e){}
   return s.replace(/学校法人|株式会社|有限会社|\(株\)|\(有\)|㈱|㈲|[\s・]/g,'').replace(/高等学校/g,'高校');
@@ -10915,6 +10982,8 @@ function InvPage(p){
   var vjAutoQtyUI=qty*3;
   /* v19.31: レンタル品の過不足（過不足欄の表示と明細追加の「不足分のみ計上」で同じ値を使う） */
   var rentalRes=rentalResolve(cust,endUser[0],rentalPick[0],sz[0]);
+  /* v19.46: 貸与品データにひも付いたエンド納品先（商品選択の先頭で選べるようにする） */
+  var rentalEuOpts=cust?(cust.endUsers||[]).filter(function(eu){return eu&&eu.id&&rentalCandidates(cust.id,{id:eu.id,name:eu.name}).some(function(c){return c.how==='link';});}):[];
   var rentalNeed={base:hasBase[0]?baseCount:0,vj:vjNeedEff?qty*3:0,sj:(tp[0]==='personal'&&hasSideJt[0]&&ln[0]!=='sa')?(screwCalc?screwCalc.total.sj:(parseInt(extraSideJoint[0])||0)):0};
   var rentalUsed=rentalRes.s?rentalUsedByLines(lines[0],rentalRes.s.id,rentalRes.bi,rentalFy[0]):null;
   /* v19.36: 期中の追加では、足す学年の扉色を商品選択へ入れる（色名が製品ラインにあるときだけ） */
@@ -11684,6 +11753,19 @@ function InvPage(p){
         h('div',{className:'card',style:{marginBottom:8}},
           h('div',{className:'chd'},h('h3',null,'商品選択')),
           h('div',{style:{padding:10}},
+            /* v19.46: 代理店の顧客では、エンド納品先（学校）を選ぶまで貸与品データを探せず、パーソナル貸与品の欄が出なかった
+               （エンド納品先の欄は明細を追加した後の「見積オプション」にしか無い）。貸与品データにひも付いたエンド納品先がある顧客は、ここで先に選べるようにする。
+               選ぶと見積オプションのエンド納品先にも入り、前年の導入内容の自動入力（パーソナル・貸与品の欄）が動く。 */
+            rentalEuOpts.length?h('div',{style:{marginBottom:6,padding:'5px 6px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:4}},
+              h('label',{style:{fontSize:8,fontWeight:700,color:'#1e3a5f'}},'エンド納品先（パーソナル貸与品のある学校）'),
+              h('select',{className:'inp',style:{fontSize:10},value:(endUser[0].id&&rentalEuOpts.some(function(e){return e.id===endUser[0].id;}))?endUser[0].id:'',onChange:function(e){
+                var eu=rentalEuOpts.find(function(x){return x.id===e.target.value;});
+                if(eu)endUser[1]({id:eu.id||'',name:eu.name||'',postal:eu.postal||'',address:eu.address||'',phone:eu.phone||''});
+                else endUser[1]({name:'',postal:'',address:'',phone:''});
+              }},
+                h('option',{value:''},'選択しない（'+rentalEuOpts.length+'校）'),
+                rentalEuOpts.map(function(eu){return h('option',{key:eu.id,value:eu.id},eu.name);}))
+            ):null,
             h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'製品ライン'),
             h('div',{style:{display:'flex',gap:3,marginBottom:6}},LINES.map(function(l){
               return h('button',{key:l.id,className:'btn btn-xs '+(ln[0]===l.id?'btn-nv':'btn-ol'),onClick:function(){changeLine(l.id);}},l.mark+' '+l.name);
