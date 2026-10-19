@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.46（パーソナル貸与品の紐づけ修正・代理店でも学校を先に選べる・岡山理科大附属中学校を登録）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.47（JGS のエンド納品先に埼玉自動車大学校を追加）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1403,7 +1403,7 @@ var RENTAL_SEED={"src":"各学校詳細一覧(西日本）.xlsx・各学校詳�
    RENTAL_SEED を作り直しても消えないよう、読み込み後に上書きする表として持つ（旧PCの build_seed2.py で再生成しても効く）。
    links を書いた学校は、その一覧で★置き換える（学校そのものの顧客への旧ひも付けは外す＝ユーザー回答）。
    linkNames＝顧客名でのひも付け（自動登録する顧客で ID が公開時まで決まらないもの。RENTAL_CUST_REQUIRED を参照）。
-   ★保留: JGS／埼玉自動車大学校（貸与品データに該当する学校が無い。「越生自動車」E51 は今のまま） */
+   JGS／埼玉自動車大学校はレンタル品の貸与なし（v19.47: JGS のエンド納品先の登録だけ。「越生自動車」E51 は今のまま） */
 var RENTAL_SEED_FIX={
   W36:{name:'蒼明学院中等部'},
   E12:{dealer:'プラロッカー・さくら総合サービス',links:['D00620/EU_RENTAL_E12']},
@@ -1568,7 +1568,9 @@ var RENTAL_EU_REQUIRED=[
   {cid:'D00881',id:'EU_RENTAL_E08',name:'日本航空学園 山梨(㈱文祥堂オフィスファシリティーズ)'},
   {cid:'D00881',id:'EU_RENTAL_E09',name:'日本航空学園 石川(㈱文祥堂オフィスファシリティーズ)'},
   {cid:'D00449',id:'EU_RENTAL_W65',name:'海星高等学校',from:'D00653'},
-  {cid:'D00277',id:'EU_RENTAL_W49',name:'福岡女学院中学校・高等学校',from:'D00314'}
+  {cid:'D00277',id:'EU_RENTAL_W49',name:'福岡女学院中学校・高等学校',from:'D00314'},
+  /* v19.47（2026-10-19 ユーザー）: 埼玉自動車大学校はレンタル品の貸与なし → JGS のエンド納品先の登録だけ（貸与品のひも付けはしない） */
+  {cid:'D00003',id:'EU_JGS_SAITAMA_JIDOSHA',name:'埼玉自動車大学校'}
 ];
 /* v19.46: 貸与品のために自動で登録する顧客（無ければ1回だけ追加。ID は nextCustId）。from＝住所・電話・営業担当などを写す顧客 */
 var RENTAL_CUST_REQUIRED=[
