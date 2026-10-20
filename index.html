@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.48（帳票に「チャーター発注書」を追加）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.49（帳票の一覧でチャーター発注書を出荷指示書と請求書の間に）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2679,7 +2679,8 @@ function docsForStatus(status,order){
   var a=DOCS_BY_STATUS[status];
   a=a?a.slice():['quote'];
   /* v19.48: チャーター発注書は★送付方法がチャーターの案件だけ。出せる時期は出荷指示書と同じ（受注確定から） */
-  if(order&&order.shipMethod==='charter'&&a.indexOf('shipping')>=0)a.push('charter');
+  /* v19.49: 並びは出荷指示書のすぐ後（請求書の前） */
+  if(order&&order.shipMethod==='charter'&&a.indexOf('shipping')>=0)a.splice(a.indexOf('shipping')+1,0,'charter');
   return a;
 }
 /* ===== v19.48（2026-10-20 依頼書「帳票出力の一覧に『チャーター発注書』を追加」）=====
@@ -15263,11 +15264,11 @@ function OrdersPage(p){
             +docsForStatus(docPick[0].status,docPick[0]).map(function(t){return DOC_TYPE_LABELS[t];}).join('・')+' です。')),
         [['quote','見積書','この案件の内容で御見積書を出します（発注書付にするかは見積書作成画面のチェックで切り替えます）'],
          ['shipping','出荷指示書','倉庫会社宛。部材ごとに 入数／出荷総数／出荷箱数／出荷バラ を出します'],
+         /* v19.48: 送付方法がチャーターの案件だけ（docsForStatus）。押すと記載内容の画面 → 保存して印刷。v19.49: 出荷指示書と請求書の間 */
+         ['charter','チャーター発注書','運送会社宛。御中・積込場所・担当者の携帯番号などを確認してから印刷します（金額は送料計算のチャーター料金・税抜）'],
          ['invoice','請求書','請求日は案件の納品予定日。振込先・支払案内付き'],
          ['receipt','物品受領書','金額欄なし。商品コード／商品名称／数量／単位／備考と受領欄'],
-         ['delivery','納品書','納品日は案件の納品予定日'],
-         /* v19.48: 送付方法がチャーターの案件だけ（docsForStatus）。押すと記載内容の画面 → 保存して印刷 */
-         ['charter','チャーター発注書','運送会社宛。御中・積込場所・担当者の携帯番号などを確認してから印刷します（金額は送料計算のチャーター料金・税抜）']].filter(function(d){
+         ['delivery','納品書','納品日は案件の納品予定日']].filter(function(d){
           return docsForStatus(docPick[0].status,docPick[0]).indexOf(d[0])>=0;
         }).map(function(d){
           /* v18.88 修正24③④: 倉庫が複数／部材のタイプが複数の案件は、出荷指示書が複数枚になる */
