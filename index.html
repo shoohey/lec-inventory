@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.50（チャーター発注書: ブラウザの見出し・日時を出さない・小計〜合計を罫線で囲む）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.51（チャーター発注書の納入先担当者＝出荷指示書の荷受人・納品先電話番号）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2689,7 +2689,7 @@ function docsForStatus(status,order){
      それ以外の倉庫は空欄（手入力。ユーザー回答 2026-10-20）。
    ・金額＝送料計算のチャーター料金（推奨車格の原価。×1.1・見積記載価格にする前の値）。品名＝その車格（例 4t車）。
    ・備考＝【積込場所】（新柏倉庫・第一倉庫・第二倉庫＋自由入力。住所・電話は手入力し、場所ごとに記録して次回から自動で入る＝CHARTER_LOADS）
-     ＋【納入先担当者】㈱LEC 営業担当（携帯番号は毎回手入力＝ユーザー回答）＋注意書き。
+     ＋【納入先担当者】（v19.51: 出荷指示書の荷受人／納品先電話番号）＋注意書き。
    ・記載内容は全部 order.charterPO に上書きとして保存（空欄＝自動値）。出力の前に必ず記載内容の画面を通す。 */
 DOC_TYPE_LABELS.charter='チャーター発注書';
 /* v19.48 追加（2026-10-20 ユーザー）: 新柏倉庫は有限会社ダイレクトのみ（新柏倉庫株式会社にはチャーターの出荷指示書で対応するため） */
@@ -2729,7 +2729,6 @@ function charterPOAuto(order,cust){
   var fee=charterFeeOf(order,cust);
   var toOpts=CHARTER_TO_OPTS[order&&order.wh]||[];
   var load=CHARTER_LOAD_OF_WH[order&&order.wh]||'';
-  var sp=orderSalesPersonRaw(order,cust)||'';
   return {
     date:tdSlash(),
     to:toOpts[0]||'',
@@ -2743,7 +2742,8 @@ function charterPOAuto(order,cust){
     price:fee?String(fee.price):'',
     load:load,
     loadDetail:load?(CHARTER_LOADS[load]||''):'',
-    contact:'㈱LEC　'+(sp?resolveSalesPerson(sp):'')+'　/　',
+    /* v19.51（2026-10-20 ユーザー）: 納入先担当者＝出荷指示書の荷受人、電話＝納品先電話番号（どちらも出荷指示書の手修正があればその値） */
+    contact:[shv.consignee||'',shv.phone||''].filter(Boolean).join('　/　'),
     note:CHARTER_NOTE_DEFAULT,
     extra:''
   };
@@ -15595,7 +15595,7 @@ function OrdersPage(p){
               h('div',{style:{flex:1}},h('label',{style:LBL},'住所・電話番号（入力すると、この場所の内容として記録され次回から自動で入ります）'),
                 h('textarea',{className:'inp',rows:2,style:{resize:'vertical',fontFamily:'inherit'},value:(v.loadDetail!=null)?v.loadDetail:detailAuto,placeholder:(curLoad&&curLoad!=='-'?'例）〒277-0831　千葉県柏市根戸1797　TEL：04-7132-0332':'（積込場所を選ぶと入力できます）'),
                   disabled:!curLoad||curLoad==='-',onChange:function(e){setV({loadDetail:e.target.value});}}))),
-            h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('【納入先担当者】（携帯番号は「/」の後ろに入力）','contact',{flex:1})),
+            h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('【納入先担当者】（自動値＝出荷指示書の荷受人　/　納品先電話番号）','contact',{flex:1})),
             h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('注意書き','note',{flex:1})),
             h('div',{style:{display:'flex',gap:8}},fld('その他の備考（任意・改行可）','extra',{flex:1},true)))
         ));
