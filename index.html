@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.49（帳票の一覧でチャーター発注書を出荷指示書と請求書の間に）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.50（チャーター発注書: ブラウザの見出し・日時を出さない・小計〜合計を罫線で囲む）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2766,16 +2766,18 @@ function charterPOHTML(order,cust){
   var v=charterPOValues(order,cust),am=charterAmounts(v);
   function e(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function br(s){return e(s).replace(/\n/g,'<br>');}
-  var css='@page{size:A4 portrait;margin:14mm 14mm}body{font-family:"Yu Gothic","Meiryo",sans-serif;color:#000;margin:0;font-size:13px}'
-    +'.pg{width:182mm;margin:0 auto}.dt{text-align:right;font-size:12px}.hd{display:flex;align-items:flex-end;justify-content:space-between;margin-top:6px}'
+  /* v19.50: @page の余白を 0 にしてブラウザが印字するヘッダー（ページ名「チャーター発注書 案件番号」・日付と時刻）を出さない。
+     余白は .pg の padding で作る（他の帳票と同じやり方） */
+  var css='@page{size:A4 portrait;margin:0}body{font-family:"Yu Gothic","Meiryo",sans-serif;color:#000;margin:0;font-size:13px}'
+    +'.pg{width:210mm;box-sizing:border-box;padding:14mm;margin:0 auto}.dt{text-align:right;font-size:12px}.hd{display:flex;align-items:flex-end;justify-content:space-between;margin-top:6px}'
     +'.ttl{font-size:26px;font-weight:700;letter-spacing:14px;margin-left:30mm}.no{font-size:13px}.no b{display:inline-block;min-width:34mm;border-bottom:1px solid #000;text-align:center;font-size:14px}'
     +'.row{display:flex;justify-content:space-between;align-items:flex-start;margin-top:16px}.to{font-size:16px;font-weight:700;border-bottom:1px solid #000;min-width:80mm;padding-bottom:2px}'
     +'.lec{font-size:12px;line-height:1.7;text-align:left;min-width:62mm}.lec .nm{font-size:14px;font-weight:700}'
     +'.f{margin-top:4px;line-height:2}.f div{border-bottom:1px dotted #999}.tot{margin-top:14px;font-size:15px;font-weight:700}.tot b{display:inline-block;min-width:50mm;border-bottom:2px solid #000;font-size:18px;text-align:right;padding-right:4px}'
     +'table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #000;padding:5px 6px;font-size:13px;height:22px}th{background:#eee;font-weight:700}td.n{text-align:right}'
-    +'.sum td{border:none}.sum td.l{text-align:right;font-weight:700}.sum td.n{border:1px solid #000}'
+    +'.sum td{border:none}.sum td.l{text-align:center;font-weight:700;border:1px solid #000;background:#eee}.sum td.n{border:1px solid #000}'/* v19.50: 小計〜合計金額の見出しも罫線で囲む */
     +'.bk{margin-top:16px;border:1px solid #000;padding:6px 8px;min-height:60mm;line-height:1.9;font-size:13px}.bk .h{font-weight:700}'
-    +'@media screen{body{background:#f3f4f6}.pg{background:#fff;padding:14mm;margin:10px auto;box-shadow:0 2px 8px rgba(0,0,0,.15)}}';
+    +'@media screen{body{background:#f3f4f6}.pg{background:#fff;margin:10px auto;box-shadow:0 2px 8px rgba(0,0,0,.15)}}';
   var s='<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>チャーター発注書 '+e(order.no)+'</title><style>'+css+'</style></head><body><div class="pg">';
   s+='<div class="dt">'+e(v.date)+'</div>';
   s+='<div class="hd"><div class="ttl">発注書</div><div class="no">注文番号&nbsp;<b>'+e(order.no)+'</b></div></div>';
