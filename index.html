@@ -2684,14 +2684,15 @@ function docsForStatus(status,order){
 }
 /* ===== v19.48（2026-10-20 依頼書「帳票出力の一覧に『チャーター発注書』を追加」）=====
    見本: デスクトップ「チャーター発注書.xlsx」（尼高運輸宛）・「ダイレクト発注書.xlsx」（積込場所の書き方）。
-   ・注文番号＝案件番号。御中＝尼高倉庫は「尼高運輸株式会社」、新柏倉庫は「新柏倉庫株式会社」か「有限会社ダイレクト」を選ぶ。
+   ・注文番号＝案件番号。御中＝尼高倉庫は「尼高運輸株式会社」、新柏倉庫は「有限会社ダイレクト」（どちらも自動値。書き換え可）。
      それ以外の倉庫は空欄（手入力。ユーザー回答 2026-10-20）。
    ・金額＝送料計算のチャーター料金（推奨車格の原価。×1.1・見積記載価格にする前の値）。品名＝その車格（例 4t車）。
    ・備考＝【積込場所】（新柏倉庫・第一倉庫・第二倉庫＋自由入力。住所・電話は手入力し、場所ごとに記録して次回から自動で入る＝CHARTER_LOADS）
      ＋【納入先担当者】㈱LEC 営業担当（携帯番号は毎回手入力＝ユーザー回答）＋注意書き。
    ・記載内容は全部 order.charterPO に上書きとして保存（空欄＝自動値）。出力の前に必ず記載内容の画面を通す。 */
 DOC_TYPE_LABELS.charter='チャーター発注書';
-var CHARTER_TO_OPTS={amago:['尼高運輸株式会社'],kashiwa:['新柏倉庫株式会社','有限会社ダイレクト']};
+/* v19.48 追加（2026-10-20 ユーザー）: 新柏倉庫は有限会社ダイレクトのみ（新柏倉庫株式会社にはチャーターの出荷指示書で対応するため） */
+var CHARTER_TO_OPTS={amago:['尼高運輸株式会社'],kashiwa:['有限会社ダイレクト']};
 var CHARTER_LOAD_DEFAULTS=['新柏倉庫','第一倉庫','第二倉庫'];
 var CHARTER_LOAD_OF_WH={kashiwa:'新柏倉庫',dai1:'第一倉庫',dai2:'第二倉庫'};
 var CHARTER_PAY_TERMS='末締め翌月末現金振込';
@@ -15559,7 +15560,8 @@ function OrdersPage(p){
             '金額: 送料計算のチャーター料金（'+(fee?charterCarLabel(fee.car)+' ¥'+fm(fee.price)+'・税抜・×1.1前':'この倉庫・行先ではチャーター料金表に該当がありません。単価を手入力してください')+'）'),
           h('div',{style:{display:'flex',gap:8,marginBottom:6}},
             h('div',{style:{flex:2}},h('label',{style:LBL},'御中（宛先）'),
-              /* 新柏は2社から選ぶ（その他は手入力）。尼高は尼高運輸が自動値。それ以外の倉庫は手入力 */
+              /* 尼高＝尼高運輸・新柏＝ダイレクトが自動値（入力欄の薄い文字。書き換え可）。それ以外の倉庫は手入力。
+                 ★CHARTER_TO_OPTS に2社以上を書いた倉庫だけ選択欄になる */
               toOpts.length>1?h('select',{className:'inp',value:toFree?'__free':(v.to||toOpts[0]),onChange:function(e){
                   var x=e.target.value;setV(x==='__free'?{_toFree:true,to:''}:{_toFree:false,to:x});}},
                   toOpts.map(function(t){return h('option',{key:t,value:t},t);}),h('option',{value:'__free'},'その他（手入力）'))
