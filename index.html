@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.47（JGS のエンド納品先に埼玉自動車大学校を追加）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.48（帳票に「チャーター発注書」を追加）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -364,6 +364,7 @@ function buildCloudDoc(){
     priceMaster:(typeof PRICE_MASTER!=='undefined'?{rows:PRICE_MASTER.rows||[],updatedAt:PRICE_MASTER.updatedAt||''}:null),/* v18.54 修正８①: 販売単価・仕入単価・棚卸単価マスタ（社外秘のためリポジトリには置かずクラウドで共有） */
     quoteOpts:(typeof QUOTE_OPTS!=='undefined'?QUOTE_OPTS:null),/* v18.37 修正箇所2③: 納期・受渡地・有効期限の選択肢マスタを全端末共有 */
     honorifics:(typeof HONORIFICS!=='undefined'?HONORIFICS:null),/* v18.52 修正７①: 先方担当者の敬称マスタを全端末共有 */
+    charterLoads:(typeof CHARTER_LOADS!=='undefined'?CHARTER_LOADS:{}),/* v19.48: チャーター発注書の積込場所（場所→住所・電話）を全端末共有 */
     rentalCfg:(typeof RENTAL_CFG!=='undefined'?RENTAL_CFG:null),/* v19.30: パーソナル貸与品の在学年数・手動ひも付けを全端末共有 */
     springCfg:SPRING_CFG,/* v19.43: 春先の年度一覧・締めの記録 */
     deletedNos:DELETED_ORDER_NOS.slice(-500),
@@ -458,6 +459,10 @@ function applyCloudDoc(doc,opts){
       try{QUOTE_OPT_KEYS.forEach(function(k){if(Array.isArray(doc.quoteOpts[k]))QUOTE_OPTS[k]=doc.quoteOpts[k].slice();});ensureQuoteOptDefaults();saveQuoteOpts();}catch(e){}
     }
     /* v18.52 修正７①: 先方担当者の敬称マスタ（規定4件は欠けていても復元してから保存する） */
+    /* v19.48: チャーター発注書の積込場所。場所ごとに足し合わせ（同じ場所はクラウドの内容） */
+    if(doc.charterLoads&&typeof doc.charterLoads==='object'&&typeof CHARTER_LOADS!=='undefined'){
+      try{CHARTER_LOADS=Object.assign({},CHARTER_LOADS,doc.charterLoads);saveCharterLoads();}catch(e){}
+    }
     if(Array.isArray(doc.honorifics)&&typeof HONORIFICS!=='undefined'){
       try{HONORIFICS=doc.honorifics.slice();ensureHonorificDefaults();saveHonorifics();}catch(e){}
     }
@@ -2670,9 +2675,126 @@ var DOCS_BY_STATUS={
   /* v18.94 修正26⑨: 失注した案件から出せるのは見積書だけ（金額の記録として残す） */
   '失注':['quote']
 };
-function docsForStatus(status){
+function docsForStatus(status,order){
   var a=DOCS_BY_STATUS[status];
-  return a?a.slice():['quote'];
+  a=a?a.slice():['quote'];
+  /* v19.48: チャーター発注書は★送付方法がチャーターの案件だけ。出せる時期は出荷指示書と同じ（受注確定から） */
+  if(order&&order.shipMethod==='charter'&&a.indexOf('shipping')>=0)a.push('charter');
+  return a;
+}
+/* ===== v19.48（2026-10-20 依頼書「帳票出力の一覧に『チャーター発注書』を追加」）=====
+   見本: デスクトップ「チャーター発注書.xlsx」（尼高運輸宛）・「ダイレクト発注書.xlsx」（積込場所の書き方）。
+   ・注文番号＝案件番号。御中＝尼高倉庫は「尼高運輸株式会社」、新柏倉庫は「新柏倉庫株式会社」か「有限会社ダイレクト」を選ぶ。
+     それ以外の倉庫は空欄（手入力。ユーザー回答 2026-10-20）。
+   ・金額＝送料計算のチャーター料金（推奨車格の原価。×1.1・見積記載価格にする前の値）。品名＝その車格（例 4t車）。
+   ・備考＝【積込場所】（新柏倉庫・第一倉庫・第二倉庫＋自由入力。住所・電話は手入力し、場所ごとに記録して次回から自動で入る＝CHARTER_LOADS）
+     ＋【納入先担当者】㈱LEC 営業担当（携帯番号は毎回手入力＝ユーザー回答）＋注意書き。
+   ・記載内容は全部 order.charterPO に上書きとして保存（空欄＝自動値）。出力の前に必ず記載内容の画面を通す。 */
+DOC_TYPE_LABELS.charter='チャーター発注書';
+var CHARTER_TO_OPTS={amago:['尼高運輸株式会社'],kashiwa:['新柏倉庫株式会社','有限会社ダイレクト']};
+var CHARTER_LOAD_DEFAULTS=['新柏倉庫','第一倉庫','第二倉庫'];
+var CHARTER_LOAD_OF_WH={kashiwa:'新柏倉庫',dai1:'第一倉庫',dai2:'第二倉庫'};
+var CHARTER_PAY_TERMS='末締め翌月末現金振込';
+var CHARTER_NOTE_DEFAULT='※現地に到着しましたら、入場前に上記担当者に一度ご連絡ください。';
+/* 積込場所の住所・電話（場所の名前→記載する文）。localStorage＋クラウド（charterLoads）で全端末共有 */
+var CHARTER_LOADS={};
+try{var _cl=JSON.parse(lsGet('lec_charter_loads')||'null');if(_cl&&typeof _cl==='object')CHARTER_LOADS=_cl;}catch(e){}
+function saveCharterLoads(){try{lsSet('lec_charter_loads',JSON.stringify(CHARTER_LOADS));}catch(e){}}
+function charterLoadNames(){
+  var a=CHARTER_LOAD_DEFAULTS.slice();
+  Object.keys(CHARTER_LOADS||{}).forEach(function(k){if(k&&a.indexOf(k)<0)a.push(k);});
+  return a;
+}
+/* 送料計算のチャーター料金（推奨車格の原価）。送付先がエンド宛なら送料の試算と同じくエンドの都道府県で引く */
+function charterFeeOf(order,cust){
+  try{
+    if(!order||!cust||!(order.lines||[]).length)return null;
+    var sc=cust;
+    if(order.shipDest==='end'&&order.endUser&&order.endUser.address){var ep=prefFromAddress(order.endUser.address);if(ep)sc=Object.assign({},cust,{pref:ep,city:''});}
+    var fr=calcFreight({wh:order.wh,lines:order.lines,spareParts:order.spareParts},sc.city||'',sc.pref||'');
+    if(!fr)return null;
+    var chDist=fr.distance;
+    if(fr.yamato&&chDist==null&&order.wh==='kansai'){var dd=destDistanceFor('r5_amago',sc.city||'',sc.pref||'');chDist=dd?dd.km:null;}
+    var ch=charterCost(order.wh,chDist,fr.weight,sc.city||'',fr.actualWeight,fr.volumeWeight);
+    if(!ch||!ch.ok||!ch.suggest||!ch.prices[ch.suggest]||ch.prices[ch.suggest].price==null)return null;
+    return {car:ch.suggest,price:ch.prices[ch.suggest].price};
+  }catch(e){return null;}
+}
+function charterCarLabel(k){return k?(String(k).replace(/t$/,'')+'ｔ車'):'';}
+/* 自動値 */
+function charterPOAuto(order,cust){
+  var shv=shipEditHeader(order,cust,null);
+  var fee=charterFeeOf(order,cust);
+  var toOpts=CHARTER_TO_OPTS[order&&order.wh]||[];
+  var load=CHARTER_LOAD_OF_WH[order&&order.wh]||'';
+  var sp=orderSalesPersonRaw(order,cust)||'';
+  return {
+    date:tdSlash(),
+    to:toOpts[0]||'',
+    subject:(shv.name||'')+(shv.name?' 様':''),
+    delivery:shipDeliveryDisplay(shv.delivery,order),
+    dest:(shv.address||''),
+    payTerms:CHARTER_PAY_TERMS,
+    staff:curUserName().replace(/^[^\/]*\//,''),
+    item:fee?charterCarLabel(fee.car):'',
+    qty:'1',unit:'車',
+    price:fee?String(fee.price):'',
+    load:load,
+    loadDetail:load?(CHARTER_LOADS[load]||''):'',
+    contact:'㈱LEC　'+(sp?resolveSalesPerson(sp):'')+'　/　',
+    note:CHARTER_NOTE_DEFAULT,
+    extra:''
+  };
+}
+var CHARTER_PO_KEYS=['date','to','subject','delivery','dest','payTerms','staff','item','qty','unit','price','load','loadDetail','contact','note','extra'];
+/* 記載する値＝手修正（order.charterPO）＞自動値。積込場所を手で選んだ場合は、その場所の記録済みの住所を使う */
+function charterPOValues(order,cust){
+  var a=charterPOAuto(order,cust),e=(order&&order.charterPO)||{},v={};
+  CHARTER_PO_KEYS.forEach(function(k){v[k]=(e[k]!==undefined&&e[k]!==null&&e[k]!=='')?String(e[k]):a[k];});
+  if(e.load==='-'){v.load='';v.loadDetail='';}
+  else if(e.load&&(e.loadDetail===undefined||e.loadDetail===''))v.loadDetail=CHARTER_LOADS[e.load]||'';
+  return v;
+}
+function charterAmounts(v){
+  var q=parseFloat(String(v.qty||'').replace(/,/g,''))||0,pr=parseFloat(String(v.price||'').replace(/,/g,''))||0;
+  var sub=Math.round(q*pr),tax=Math.floor(sub*0.1);
+  return {qty:q,price:pr,sub:sub,tax:tax,total:sub+tax};
+}
+function charterPOHTML(order,cust){
+  var v=charterPOValues(order,cust),am=charterAmounts(v);
+  function e(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function br(s){return e(s).replace(/\n/g,'<br>');}
+  var css='@page{size:A4 portrait;margin:14mm 14mm}body{font-family:"Yu Gothic","Meiryo",sans-serif;color:#000;margin:0;font-size:13px}'
+    +'.pg{width:182mm;margin:0 auto}.dt{text-align:right;font-size:12px}.hd{display:flex;align-items:flex-end;justify-content:space-between;margin-top:6px}'
+    +'.ttl{font-size:26px;font-weight:700;letter-spacing:14px;margin-left:30mm}.no{font-size:13px}.no b{display:inline-block;min-width:34mm;border-bottom:1px solid #000;text-align:center;font-size:14px}'
+    +'.row{display:flex;justify-content:space-between;align-items:flex-start;margin-top:16px}.to{font-size:16px;font-weight:700;border-bottom:1px solid #000;min-width:80mm;padding-bottom:2px}'
+    +'.lec{font-size:12px;line-height:1.7;text-align:left;min-width:62mm}.lec .nm{font-size:14px;font-weight:700}'
+    +'.f{margin-top:4px;line-height:2}.f div{border-bottom:1px dotted #999}.tot{margin-top:14px;font-size:15px;font-weight:700}.tot b{display:inline-block;min-width:50mm;border-bottom:2px solid #000;font-size:18px;text-align:right;padding-right:4px}'
+    +'table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #000;padding:5px 6px;font-size:13px;height:22px}th{background:#eee;font-weight:700}td.n{text-align:right}'
+    +'.sum td{border:none}.sum td.l{text-align:right;font-weight:700}.sum td.n{border:1px solid #000}'
+    +'.bk{margin-top:16px;border:1px solid #000;padding:6px 8px;min-height:60mm;line-height:1.9;font-size:13px}.bk .h{font-weight:700}'
+    +'@media screen{body{background:#f3f4f6}.pg{background:#fff;padding:14mm;margin:10px auto;box-shadow:0 2px 8px rgba(0,0,0,.15)}}';
+  var s='<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>チャーター発注書 '+e(order.no)+'</title><style>'+css+'</style></head><body><div class="pg">';
+  s+='<div class="dt">'+e(v.date)+'</div>';
+  s+='<div class="hd"><div class="ttl">発注書</div><div class="no">注文番号&nbsp;<b>'+e(order.no)+'</b></div></div>';
+  s+='<div class="row"><div><div class="to">'+(e(v.to)||'&nbsp;')+'　御中</div>';
+  s+='<div class="f"><div>■件名：'+e(v.subject)+'</div><div>■納品日時：'+e(v.delivery)+'</div><div>■納入場所：'+e(v.dest)+'</div><div>■支払条件：'+e(v.payTerms)+'</div></div></div>';
+  s+='<div class="lec"><div class="nm">株式会社LEC</div><div>東京都足立区綾瀬7-4-1</div><div>TEL 03-5849-5563 / FAX 03-5849-5564</div><div>担当：'+e(v.staff)+'</div></div></div>';
+  s+='<div class="tot">合計金額&nbsp;<b>&yen;'+fm(am.total)+'</b>&nbsp;<span style="font-size:12px;font-weight:400">(消費税含む)</span></div>';
+  s+='<table><thead><tr><th style="width:44%">品　　名</th><th style="width:10%">数量</th><th style="width:10%">単位</th><th style="width:16%">単価</th><th style="width:20%">金額</th></tr></thead><tbody>';
+  s+='<tr><td>'+e(v.item)+'</td><td class="n">'+(am.qty?fm(am.qty):'')+'</td><td style="text-align:center">'+e(v.unit)+'</td><td class="n">'+(am.price?fm(am.price):'')+'</td><td class="n">'+(am.sub?fm(am.sub):'')+'</td></tr>';
+  s+='<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr></tbody></table>';
+  s+='<table class="sum" style="margin-top:0"><tbody>';
+  s+='<tr><td style="width:64%"></td><td class="l" style="width:16%">小計</td><td class="n" style="width:20%">'+fm(am.sub)+'</td></tr>';
+  s+='<tr><td></td><td class="l">消費税(10%)</td><td class="n">'+fm(am.tax)+'</td></tr>';
+  s+='<tr><td></td><td class="l">合計金額</td><td class="n"><b>'+fm(am.total)+'</b></td></tr></tbody></table>';
+  s+='<div class="bk"><div class="h">備考</div>';
+  if(v.load||v.loadDetail){s+='<div class="h">【積込場所】</div>';if(v.load)s+='<div>★'+e(v.load)+'</div>';if(v.loadDetail)s+='<div>　'+br(v.loadDetail).replace(/<br>/g,'<br>　')+'</div>';s+='<div>&nbsp;</div>';}
+  if(v.contact){s+='<div class="h">【納入先担当者】</div><div>'+br(v.contact)+'</div>';}
+  if(v.note)s+='<div>'+br(v.note)+'</div>';
+  if(v.extra)s+='<div>'+br(v.extra)+'</div>';
+  s+='</div></div></body></html>';
+  return s;
 }
 /* v18.49 修正６⑨: 「納品完了」の案件は完了記録として確定させ、ステータス変更（差し戻し）以外の
    編集・削除をできなくする。誤操作で完了済みの実績が書き換わる/消えるのを防ぐ。
@@ -13316,6 +13438,7 @@ function OrdersPage(p){
   var shipEditModal=us(null);
   /* v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル {order,docType,v,auto} */
   var docEditModal=us(null);
+  var charterModal=us(null);/* v19.48: チャーター発注書の記載内容 {order,v:{手修正}} */
   /* v18.98 修正27の再修正: 案件一覧の納品予定日をその場で変更する（{no, value}。null＝閉じている） */
   var dlvEdit=us(null);
   /* 納品予定日を保存する。★order.deliveryDate は請求書・納品書の日付、出荷指示書の納品日時（自動値）にも使われる */
@@ -14128,7 +14251,7 @@ function OrdersPage(p){
                  従来の「受注確定→詳細→出荷指示」で出荷指示書が出る運用はそのまま残している。
                  v18.84 修正22①: ★全ステータスでボタンを出し、出せる帳票は DOCS_BY_STATUS で切り替える。 */
               (function(){
-                var dts=docsForStatus(o.status);
+                var dts=docsForStatus(o.status,o);
                 if(!dts.length)return null;
                 return h('button',{className:'btn btn-xs btn-gn',style:{marginLeft:2,fontWeight:700},
                   title:'この案件の帳票（'+dts.map(function(t){return DOC_TYPE_LABELS[t];}).join('・')+'）を出力します',
@@ -15136,13 +15259,15 @@ function OrdersPage(p){
           h('br'),'出したい帳票を選ぶと印刷用のウィンドウが開きます。',
           /* v18.84 修正22①: 出せる帳票はステータスで決まる（DOCS_BY_STATUS）。何が出せるかを画面にも書く */
           h('br'),h('span',{style:{color:'#975a16'}},'※ステータス「'+stLabel(docPick[0].status)+'」の案件で出せるのは '
-            +docsForStatus(docPick[0].status).map(function(t){return DOC_TYPE_LABELS[t];}).join('・')+' です。')),
+            +docsForStatus(docPick[0].status,docPick[0]).map(function(t){return DOC_TYPE_LABELS[t];}).join('・')+' です。')),
         [['quote','見積書','この案件の内容で御見積書を出します（発注書付にするかは見積書作成画面のチェックで切り替えます）'],
          ['shipping','出荷指示書','倉庫会社宛。部材ごとに 入数／出荷総数／出荷箱数／出荷バラ を出します'],
          ['invoice','請求書','請求日は案件の納品予定日。振込先・支払案内付き'],
          ['receipt','物品受領書','金額欄なし。商品コード／商品名称／数量／単位／備考と受領欄'],
-         ['delivery','納品書','納品日は案件の納品予定日']].filter(function(d){
-          return docsForStatus(docPick[0].status).indexOf(d[0])>=0;
+         ['delivery','納品書','納品日は案件の納品予定日'],
+         /* v19.48: 送付方法がチャーターの案件だけ（docsForStatus）。押すと記載内容の画面 → 保存して印刷 */
+         ['charter','チャーター発注書','運送会社宛。御中・積込場所・担当者の携帯番号などを確認してから印刷します（金額は送料計算のチャーター料金・税抜）']].filter(function(d){
+          return docsForStatus(docPick[0].status,docPick[0]).indexOf(d[0])>=0;
         }).map(function(d){
           /* v18.88 修正24③④: 倉庫が複数／部材のタイプが複数の案件は、出荷指示書が複数枚になる */
           var dsp=(d[0]==='shipping')?shipDocSplits(docPick[0]):[];
@@ -15156,6 +15281,7 @@ function OrdersPage(p){
               onClick:function(){
                 if(multi){if(!openPrintWindow(shipAllSplitsHTML(docPick[0])))p.toast('ポップアップを許可してください');return;}
                 if(invMulti){if(!openPrintWindow(invAllSheetsHTML(docPick[0],d[0])))p.toast('ポップアップを許可してください');return;}
+                if(d[0]==='charter'){var lo=liveOrder(docPick[0])||docPick[0];docPick[1](null);charterModal[1]({order:lo,v:Object.assign({},lo.charterPO||{})});return;}
                 openQuote(docPick[0],d[0]);
               }},
               h('div',{style:{fontWeight:700,fontSize:12,color:'var(--nv)'}},'📄 '+d[1]+(multi?('（全'+dsp.length+'枚）'):'')+(invMulti?('（全'+invN+'枚）'):'')),
@@ -15379,6 +15505,96 @@ function OrdersPage(p){
     /* ===== v18.93 修正26②⑤: 請求書・物品受領書・納品書の記載内容モーダル =====
        空欄＝自動値。保存内容は order.docEdit[帳票] に入り、全端末へ同期される。
        ★プレビューは印刷用HTMLと同じ docEditHeader() を通るので、画面と紙がズレない。 */
+    /* ===== v19.48: チャーター発注書の記載内容（空欄＝自動値。保存すると order.charterPO に入る） ===== */
+    charterModal[0]?(function(){
+      var m=charterModal[0],o=liveOrder(m.order)||m.order;
+      var c=CUSTS.find(function(x){return x.id===o.cid;});
+      var a=charterPOAuto(o,c),v=m.v||{};
+      function setV(ch){charterModal[1]({order:m.order,v:Object.assign({},v,ch)});}
+      var LBL={fontSize:9,fontWeight:700,color:'var(--g500)',display:'block',marginBottom:1};
+      function fld(label,k,style,ta){
+        return h('div',{style:style||{flex:1}},h('label',{style:LBL},label),
+          h(ta?'textarea':'input',{className:'inp',value:v[k]||'',placeholder:a[k]||'',rows:ta?2:undefined,style:ta?{resize:'vertical',fontFamily:'inherit'}:null,
+            onChange:function(e){var x={};x[k]=e.target.value;setV(x);}}));
+      }
+      var toOpts=CHARTER_TO_OPTS[o.wh]||[];
+      var toFree=toOpts.length>1&&(v._toFree||(v.to&&toOpts.indexOf(v.to)<0));
+      var loadNames=charterLoadNames();
+      var curLoad=(v.load==='-')?'-':(v.load||a.load||'');
+      var loadIsFree=curLoad&&curLoad!=='-'&&loadNames.indexOf(curLoad)<0;
+      var loadSel=v._loadFree?'__free':(curLoad==='-'||!curLoad?'-':(loadIsFree?'__free':curLoad));
+      var detailAuto=(curLoad&&curLoad!=='-')?(CHARTER_LOADS[curLoad]||''):'';
+      var fee=charterFeeOf(o,c);
+      var am=charterAmounts(charterPOValues(Object.assign({},o,{charterPO:v}),c));
+      function persist(){
+        if(RO_){p.toast('読み取り専用モード中は保存できません');return null;}
+        var o2=liveOrder(m.order)||m.order,e={};
+        CHARTER_PO_KEYS.forEach(function(k){var x=v[k];if(x!==undefined&&x!==null&&String(x)!==''&&String(x)!==String(a[k]))e[k]=String(x);});
+        if(v.load==='-')e.load='-';
+        /* 積込場所の住所・電話は場所ごとに記録（次回からその場所を選ぶと自動で入る・全端末共有） */
+        var ln=(v.load&&v.load!=='-')?v.load:(v.load==='-'?'':a.load);
+        var det=(v.loadDetail!=null)?String(v.loadDetail):'';
+        if(ln&&det.trim()&&CHARTER_LOADS[ln]!==det){CHARTER_LOADS[ln]=det;saveCharterLoads();}
+        delete e.loadDetail;/* 住所・電話は場所の記録（CHARTER_LOADS）から出す */
+        if(Object.keys(e).length)o2.charterPO=e;else delete o2.charterPO;
+        saveAll();
+        broadcastOrderUpdate(p.userName||'',o2.no+' チャーター発注書の記載内容');
+        p.bump&&p.bump();
+        return o2;
+      }
+      return h(Modal,{show:true,w:820,title:'🚚 チャーター発注書の記載内容 — '+o.no,onClose:function(){charterModal[1](null);},
+        footer:h('div',{style:{display:'flex',gap:6}},
+          h('button',{className:'btn btn-ol',onClick:function(){charterModal[1](null);}},'キャンセル'),
+          h('button',{className:'btn btn-ol',title:'この案件の手修正を消して自動値に戻す（記録済みの積込場所の住所は残ります）',onClick:function(){charterModal[1]({order:m.order,v:{}});}},'自動値に戻す'),
+          h('button',{className:'btn btn-ol',onClick:function(){if(persist()){p.toast('保存しました');charterModal[1](null);}}},'保存'),
+          h('button',{className:'btn btn-rd',onClick:function(){
+            var o2=persist();if(!o2)return;
+            var c2=CUSTS.find(function(x){return x.id===o2.cid;});
+            if(!openPrintWindow(charterPOHTML(o2,c2)))p.toast('ポップアップを許可してください');
+            charterModal[1](null);
+          }},'保存して印刷'))},
+        h('div',{style:{fontSize:12}},
+          h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.6}},
+            '空欄の項目は自動値（薄い文字）が使われます。入力した内容は案件に保存され、全端末で共有されます。',h('br'),
+            '金額: 送料計算のチャーター料金（'+(fee?charterCarLabel(fee.car)+' ¥'+fm(fee.price)+'・税抜・×1.1前':'この倉庫・行先ではチャーター料金表に該当がありません。単価を手入力してください')+'）'),
+          h('div',{style:{display:'flex',gap:8,marginBottom:6}},
+            h('div',{style:{flex:2}},h('label',{style:LBL},'御中（宛先）'),
+              /* 新柏は2社から選ぶ（その他は手入力）。尼高は尼高運輸が自動値。それ以外の倉庫は手入力 */
+              toOpts.length>1?h('select',{className:'inp',value:toFree?'__free':(v.to||toOpts[0]),onChange:function(e){
+                  var x=e.target.value;setV(x==='__free'?{_toFree:true,to:''}:{_toFree:false,to:x});}},
+                  toOpts.map(function(t){return h('option',{key:t,value:t},t);}),h('option',{value:'__free'},'その他（手入力）'))
+              :null,
+              (toOpts.length<=1||toFree)?h('input',{className:'inp',style:{marginTop:toOpts.length>1?3:0},value:v.to||'',placeholder:toOpts.length===1?a.to:'運送会社名を入力（例 ○○運輸株式会社）',
+                onChange:function(e){setV({to:e.target.value});}}):null),
+            fld('日付','date',{flex:1}),
+            fld('担当（右側）','staff',{flex:1})),
+          h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('■件名','subject',{flex:2}),fld('■納品日時','delivery',{flex:1})),
+          h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('■納入場所','dest',{flex:2}),fld('■支払条件','payTerms',{flex:1})),
+          h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('品名','item',{flex:2}),fld('数量','qty',{width:60}),fld('単位','unit',{width:60}),fld('単価（税抜）','price',{width:110})),
+          h('div',{style:{textAlign:'right',fontSize:11,marginBottom:8,color:'#1e3a5f'}},'小計 ¥'+fm(am.sub)+'　消費税 ¥'+fm(am.tax)+'　合計 ',h('b',null,'¥'+fm(am.total))),
+          h('div',{style:{border:'1px solid var(--g200)',borderRadius:4,padding:'6px 8px',background:'#f5f7fa'}},
+            h('div',{style:{fontWeight:700,fontSize:11,marginBottom:4,color:'#1e3a5f'}},'備考'),
+            h('div',{style:{display:'flex',gap:8,marginBottom:6}},
+              h('div',{style:{width:170}},h('label',{style:LBL},'【積込場所】'),
+                h('select',{className:'inp',value:loadSel,onChange:function(e){
+                  var x=e.target.value;
+                  if(x==='__free')setV({_loadFree:true,load:loadIsFree?v.load:'',loadDetail:undefined});
+                  else if(x==='-')setV({_loadFree:false,load:'-',loadDetail:undefined});
+                  else setV({_loadFree:false,load:x===a.load?'':x,loadDetail:undefined});
+                }},
+                  h('option',{value:'-'},'（積込場所を書かない）'),
+                  loadNames.map(function(n){return h('option',{key:n,value:n},n);}),
+                  h('option',{value:'__free'},'自由入力…')),
+                loadSel==='__free'?h('input',{className:'inp',style:{marginTop:3},value:(v.load&&v.load!=='-')?v.load:'',placeholder:'場所の名前（例 弊社倉庫）',
+                  onChange:function(e){setV({_loadFree:true,load:e.target.value,loadDetail:(v.loadDetail!=null)?v.loadDetail:undefined});}}):null),
+              h('div',{style:{flex:1}},h('label',{style:LBL},'住所・電話番号（入力すると、この場所の内容として記録され次回から自動で入ります）'),
+                h('textarea',{className:'inp',rows:2,style:{resize:'vertical',fontFamily:'inherit'},value:(v.loadDetail!=null)?v.loadDetail:detailAuto,placeholder:(curLoad&&curLoad!=='-'?'例）〒277-0831　千葉県柏市根戸1797　TEL：04-7132-0332':'（積込場所を選ぶと入力できます）'),
+                  disabled:!curLoad||curLoad==='-',onChange:function(e){setV({loadDetail:e.target.value});}}))),
+            h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('【納入先担当者】（携帯番号は「/」の後ろに入力）','contact',{flex:1})),
+            h('div',{style:{display:'flex',gap:8,marginBottom:6}},fld('注意書き','note',{flex:1})),
+            h('div',{style:{display:'flex',gap:8}},fld('その他の備考（任意・改行可）','extra',{flex:1},true)))
+        ));
+    })():null,
     docEditModal[0]?(function(){
       var m=docEditModal[0],isInv=m.docType==='invoice',isDel=m.docType==='delivery';
       /* v18.97 修正27⑥: 紙（シート）のタブ。請求書は紙ごとに入力値を持つ。納品書はプレビューだけ紙を切り替える */
