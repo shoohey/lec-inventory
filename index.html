@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.54（案件修正で見積書作成画面の追加明細・手修正が消える不具合を修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.55（通常の画面で同時に保存すると案件の入力が消えることがある不具合を修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -507,6 +507,9 @@ function cloudLoad(cb){
       var d0=res.data&&res.data.doc;
       if(!SPRING){
         if(d0){applyCloudDoc(d0,{replace:true});}
+        /* v19.55: 同時に保存しても消えないための基準（最後にクラウドと揃えた案件と、その版） */
+        if(d0){CLOUD_BASE_ORDERS=normOrders(cloudDeep(d0.orders||[]));CLOUD_ROW_TS=res.data.updated_at||null;if(CLOUD_ROW_TS)cloudRememberTs(CLOUD_ROW_TS);}
+        else{CLOUD_BASE_ORDERS=null;CLOUD_ROW_TS=null;}
         _sharedSig=sharedSigNow();
         if(cb)cb(true,!!d0);
         loadOtherSide();/* v19.43: 春先の案件（売上集計の合算用） */
@@ -694,6 +697,97 @@ function springCloudSave(userName){
   }
   tryOnce();
 }
+/* ===== v19.55: 通常の画面でも、同時に保存しても案件の入力が消えないようにする（春先の v19.44 と同じ考え方） =====
+   従来は (1) 他の人の保存が届くと、手元で入力したばかりの案件まで相手の古い内容で丸ごと差し替え、
+   (2) 保存は全社データを丸ごと上書きするので、届く前の他の人の変更を古い内容で消していた。
+   画面には入力が見えたままなので気付けなかった（2026-10-21 確認。verify\test_lost_concurrent.js）。
+   → 案件（orders）は「最後にクラウドと揃えた内容（CLOUD_BASE_ORDERS）」を基準に3者で突き合わせる（springMergeList）。
+     手元で変えた案件は手元、変えていない案件はクラウドの内容。
+   → 保存は「最後に見たクラウドの版（CLOUD_ROW_TS）」のままのときだけ書く。他の人が先に保存していたら読み直して突き合わせてから書く。
+   ★案件以外（在庫・顧客・マスタなど）は従来どおり（後から保存した方の内容）。 */
+var CLOUD_BASE_ORDERS=null,CLOUD_ROW_TS=null,_cloudSaving=false,_cloudSaveAgain=false,_cloudMyTs=[];
+function cloudDeep(x){return JSON.parse(JSON.stringify(x));}
+/* 自分の保存した版・すでに取り込んだ版（遅れて届いた通知で、手元を古い内容へ戻さないため） */
+function cloudIsMyTs(ts){return _cloudMyTs.some(function(t){return springTsEq(t,ts);});}
+function cloudRememberTs(ts){_cloudMyTs.push(ts);if(_cloudMyTs.length>30)_cloudMyTs=_cloudMyTs.slice(-30);}
+/* 手元 L・基準 B・クラウド R の案件を突き合わせる。同じ番号を別々に作っていたら手元の方を新しい番号にする */
+function cloudMergeOrders(L,B,R,remoteNextON,notes){
+  if(typeof remoteNextON==='number'&&remoteNextON>nextON)nextON=remoteNextON;
+  var used={};(L||[]).concat(R||[]).forEach(function(o){if(o&&o.no)used[o.no]=1;});
+  return springMergeList(L,B,R,'no',function(l){
+    var nl=cloudDeep(l),pre=String(l.no).split('-')[0]||'QT',no;
+    do{no=pre+'-2026-'+String(nextON++).padStart(3,'0');}while(used[no]);
+    used[no]=1;nl.no=no;
+    notes.push('案件番号が他の人と重なったため '+l.no+' → '+no+' に変えました');
+    return nl;
+  });
+}
+/* 他の人の保存を受け取る（通常の画面） */
+function cloudApplyRemote(row){
+  if(!row||!row.doc)return false;
+  if(cloudIsMyTs(row.updated_at))return false;/* 自分の保存 */
+  var doc=row.doc,notes=[];
+  if(CLOUD_BASE_ORDERS&&Array.isArray(doc.orders)){
+    var R=normOrders(cloudDeep(doc.orders));
+    var merged=cloudMergeOrders(ORDERS,CLOUD_BASE_ORDERS,R,doc.nextON,notes);
+    CLOUD_BASE_ORDERS=R;
+    doc=Object.assign({},doc,{orders:merged});
+  }
+  if(row.updated_at){CLOUD_ROW_TS=row.updated_at;cloudRememberTs(row.updated_at);}
+  applyCloudDoc(doc,{replace:false});
+  if(notes.length){if(SPRING_NOTIFY)SPRING_NOTIFY(notes.join(' ／ '));cloudSave(USER_NAME_FOR_SAVE);}
+  return true;
+}
+var USER_NAME_FOR_SAVE='';
+function cloudSaveNormal(userName){
+  if(userName)USER_NAME_FOR_SAVE=userName;
+  if(_cloudSaving){_cloudSaveAgain=true;return;}
+  _cloudSaving=true;
+  var attempt=0;
+  function fin(){_cloudSaving=false;if(_cloudSaveAgain){_cloudSaveAgain=false;setTimeout(function(){cloudSaveNormal(userName);},50);}}
+  function failNotify(msg){console.warn('[Cloud] save失敗',msg);if(SPRING_NOTIFY)SPRING_NOTIFY('⚠ クラウドへ保存できませんでした（'+msg+'）。通信を確かめて、もう一度操作してください');}
+  /* expectTs があればその版のときだけ書く（他の人が先に保存していたら 0件 → 読み直し） */
+  function send(expectTs){
+    var doc=buildCloudDoc(),sent=cloudDeep(doc.orders);
+    var ts=new Date().toISOString();cloudRememberTs(ts);
+    _cloudSelfWrite=true;
+    var q=expectTs
+      ?supaClient.from(CLOUD_TABLE).update({doc:doc,updated_at:ts,updated_by:userName||''}).eq('id',CLOUD_STATE_ID).eq('updated_at',expectTs).select('updated_at')
+      :supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:doc,updated_at:ts,updated_by:userName||''}).select('updated_at');
+    q.then(function(r2){
+      setTimeout(function(){_cloudSelfWrite=false;},800);
+      if(r2&&r2.error){failNotify(r2.error.message);fin();return;}
+      if(!r2||!r2.data||!r2.data.length){
+        if(attempt<6){setTimeout(tryMerge,120*attempt);return;}
+        failNotify('他の人の保存と重なり続けたため');fin();return;
+      }
+      CLOUD_ROW_TS=r2.data[0].updated_at||ts;
+      CLOUD_BASE_ORDERS=sent;
+      fin();
+    },function(e){_cloudSelfWrite=false;failNotify(e&&e.message||'通信エラー');fin();});
+  }
+  /* クラウドを読み直し、案件を突き合わせてから書く */
+  function tryMerge(){
+    attempt++;
+    supaClient.from(CLOUD_TABLE).select('doc,updated_at').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
+      if(res.error){failNotify(res.error.message);fin();return;}
+      var row=res.data;
+      if(!row||!row.doc){send(null);return;}
+      var R=normOrders(cloudDeep(row.doc.orders||[])),notes=[];
+      var merged=cloudMergeOrders(ORDERS,CLOUD_BASE_ORDERS,R,row.doc.nextON,notes);
+      CLOUD_BASE_ORDERS=R;CLOUD_ROW_TS=row.updated_at;cloudRememberTs(row.updated_at);
+      applyCloudDoc({orders:merged,deletedNos:row.doc.deletedNos||[],nextON:row.doc.nextON},{replace:false});
+      if(SPRING_ONCHANGE)SPRING_ONCHANGE();
+      if(notes.length&&SPRING_NOTIFY)SPRING_NOTIFY(notes.join(' ／ '));
+      send(row.updated_at);
+    },function(e){failNotify(e&&e.message||'通信エラー');fin();});
+  }
+  try{
+    if(!CLOUD_BASE_ORDERS){attempt=99;send(null);return;}/* 基準が無い（クラウドが空だった等）→ 従来どおり上書き */
+    attempt=1;
+    if(CLOUD_ROW_TS)send(CLOUD_ROW_TS);else tryMerge();
+  }catch(e){failNotify(e.message);fin();}
+}
 /* v19.43 春先: 共通の項目（顧客・マスタ・貸与品など）を通常の行へ書き戻す。
    通常の行を読み直し、共通の項目だけを差し替えて保存する（通常の案件・在庫は読み直した内容のまま＝春先からは変えない） */
 function springPushShared(part,userName){
@@ -842,12 +936,8 @@ function cloudSave(userName,immediate){
       }catch(e){console.warn('[Cloud] 春先の保存例外2',e);_cloudSelfWrite=false;}
       return;
     }
-    try{
-      supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:buildCloudDoc(),updated_at:new Date().toISOString(),updated_by:userName||''}).then(function(res){
-        if(res&&res.error)console.warn('[Cloud] save失敗',res.error.message);
-        setTimeout(function(){_cloudSelfWrite=false;},800);
-      },function(err){console.warn('[Cloud] save例外',err);_cloudSelfWrite=false;});
-    }catch(e){console.warn('[Cloud] save例外2',e);_cloudSelfWrite=false;}
+    _cloudSelfWrite=false;
+    cloudSaveNormal(userName);/* v19.55: 同時に保存しても案件の入力が消えない保存 */
   };
   if(immediate)doFn();else _cloudSaveTimer=setTimeout(doFn,600);
 }
@@ -9871,11 +9961,11 @@ function App(){
           }else{
           cloudCh=supaClient.channel('lec-cloud-state')
             .on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.'+CLOUD_STATE_ID},function(payload){
-              if(_cloudSelfWrite)return;/* 自分の保存は無視 */
+              /* v19.55: 自分の保存は updated_at で見分ける（従来の _cloudSelfWrite は、保存直後 0.8秒間に届いた他の人の保存まで捨てていた） */
               var row=payload.new||payload.record;
               if(row&&row.doc){
                 var ny=(SPRING_CFG.years||[]).join(',');
-                applyCloudDoc(row.doc,{replace:false});/* マージで取り込み(同時追加を消さない) */
+                if(!cloudApplyRemote(row))return;/* 手元で入力中の案件は残したまま取り込む */
                 if((SPRING_CFG.years||[]).join(',')!==ny)loadOtherSide();/* v19.43: 春先の年度が増えた */
                 bump[1](function(v){return v+1;});
               }
