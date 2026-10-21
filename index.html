@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.53（見積書作成画面の明細で数字の欄を通ると日本語入力が半角に変わる不具合を修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.54（案件修正で見積書作成画面の追加明細・手修正が消える不具合を修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9411,6 +9411,10 @@ function generateExcel(order,docType){
   XLSX.writeFile(wb,cfg.sheet+'_'+order.no+'.xlsx');
 }
 
+/* v19.54: 案件修正で案件を作り直すとき、元の案件から引き継ぐ項目（作り直した order に無いときだけ）。
+   見積書作成画面の直接編集・帳票の手修正でしか入力しない項目。在庫・出荷の記録（_stockConsumed・shippedDate 等）は入れない。 */
+var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
+  'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO'];
 /* ========== SHARED COMPONENTS ========== */
 /* v19.53: 日本語入力（IME）を切り替えない数字の入力欄。
    type="number"（や inputmode を付けた欄）に入ると、Edge/Chrome＋Microsoft IME は日本語入力をオフ（半角）にし、
@@ -10816,6 +10820,11 @@ function InvPage(p){
         if(prev){
           if(prev.spareParts&&!order.spareParts)order.spareParts=prev.spareParts;
           if(prev.deliveryDate&&!order.deliveryDate)order.deliveryDate=prev.deliveryDate;
+          /* v19.54: 見積書作成画面・帳票の手修正でだけ入力する項目も引き継ぐ。
+             従来は「✏ 案件修正 → 見積書のみ作成／仮押さえ＆見積書作成」で、見積書作成画面で追加した明細の行（extraRows）・
+             行の備考・手入力の単価・並び順・納期・受渡地・有効期限・出荷指示書の手修正などが黙って消えていた
+             （2026-10-21 QT-2027-S006 で発生）。作り直した order に無い項目だけを元の案件から入れる。 */
+          ORDER_KEEP_ON_EDIT.forEach(function(k){if(prev[k]!==undefined&&order[k]===undefined)order[k]=prev[k];});
         }
         ORDERS[ix]=order;
       }else ORDERS.push(order);
