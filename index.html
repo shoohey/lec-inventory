@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.52（予備パーツのある案件で出荷指示書「本体」の手修正が反映されない不具合を修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.53（見積書作成画面の明細で数字の欄を通ると日本語入力が半角に変わる不具合を修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9412,6 +9412,30 @@ function generateExcel(order,docType){
 }
 
 /* ========== SHARED COMPONENTS ========== */
+/* v19.53: 日本語入力（IME）を切り替えない数字の入力欄。
+   type="number"（や inputmode を付けた欄）に入ると、Edge/Chrome＋Microsoft IME は日本語入力をオフ（半角）にし、
+   次の文字の欄に移ってもオフのまま戻らない（2026-10-21 このPCの Edge で確認。ページ側から IME をオンに戻す手段は無い）。
+   そのため見積書作成画面の明細で「品名→数量→単位→単価→備考」と打つと、数字の欄を通るたびに文字の欄が半角になっていた。
+   → 数字の欄も普通の文字欄にして IME を触らない（ひらがなのまま）。全角で打たれた数字は自動で半角に直し、数字以外は取り除く。
+   使い方は h('input',{type:'number',…}) と同じ。onChange/onBlur の e.target.value には半角に直した値が入る。
+   IME の変換中（下線の出ている間）は親へ渡さず、確定（Enter・欄から離れる）した時点で渡す。 */
+function numHalf(s){
+  return String(s==null?'':s).replace(/[０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0xFEE0);})
+    .replace(/[．。]/g,'.').replace(/[－ー―‐−]/g,'-').replace(/[^0-9.\-]/g,'');
+}
+function NumIn(p){
+  var comp=us(null);/* 変換中の文字（null＝変換中でない） */
+  function composing(e){return comp[0]!==null||!!(e&&e.nativeEvent&&e.nativeEvent.isComposing);}
+  return h('input',Object.assign({},p,{type:'text',autoComplete:'off',
+    value:comp[0]!==null?comp[0]:p.value,
+    onCompositionStart:function(e){comp[1](e.target.value);},
+    onCompositionEnd:function(e){var v=numHalf(e.target.value);comp[1](null);if(p.onChange)p.onChange({target:{value:v}});},
+    onChange:function(e){if(composing(e)){comp[1](e.target.value);return;}if(p.onChange)p.onChange({target:{value:numHalf(e.target.value)}});},
+    onBlur:p.onBlur?function(e){p.onBlur({target:{value:numHalf(e.target.value)}});}:undefined,
+    onKeyDown:p.onKeyDown?function(e){if(composing(e)||e.keyCode===229)return;p.onKeyDown(e);}:undefined
+  }));
+}
+
 function Modal(p){
   if(!p.show)return null;
   /* v18.86 修正23⑦: モーダルの上に別のモーダルを重ねるとき用に z-index を指定できるようにした
@@ -12892,22 +12916,22 @@ function InvPage(p){
                   else cells.push(h('span',{key:'nm',style:{fontSize:8,color:'var(--g500)',width:132,flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:r.name},r.name));
                   /* 数量・単位 */
                   if(ex){
-                    cells.push(h('input',{key:'q',className:'inp',type:'number',style:{width:50,flexShrink:0,fontSize:9},value:(ex.qty===''||ex.qty==null)?'':ex.qty,placeholder:'数量',onChange:function(e){updExtra(rk,{qty:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
+                    cells.push(h(NumIn,{key:'q',className:'inp',style:{width:50,flexShrink:0,fontSize:9},value:(ex.qty===''||ex.qty==null)?'':ex.qty,placeholder:'数量',onChange:function(e){updExtra(rk,{qty:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
                     cells.push(h('input',{key:'u',className:'inp',style:{width:38,flexShrink:0,fontSize:9},value:ex.unit||'',placeholder:'単位',onChange:function(e){updExtra(rk,{unit:e.target.value});}}));
                   }else if(dr){
-                    cells.push(h('input',{key:'q',className:'inp',type:'number',style:{width:50,flexShrink:0,fontSize:9},value:dr.qty?dr.qty:'',placeholder:'数量',title:'単価と数量の両方を入れると「単価×数量」で表記します',onChange:function(e){setDiscRow(di,{qty:parseInt(e.target.value)||0});}}));
+                    cells.push(h(NumIn,{key:'q',className:'inp',style:{width:50,flexShrink:0,fontSize:9},value:dr.qty?dr.qty:'',placeholder:'数量',title:'単価と数量の両方を入れると「単価×数量」で表記します',onChange:function(e){setDiscRow(di,{qty:parseInt(e.target.value)||0});}}));
                     cells.push(h('input',{key:'u',className:'inp',style:{width:38,flexShrink:0,fontSize:9},value:dr.unit||'',placeholder:'台',onChange:function(e){setDiscRow(di,{unit:e.target.value});}}));
                   }else{
                     cells.push(h('span',{key:'q',style:{fontSize:8,color:'var(--g500)',width:50,flexShrink:0,textAlign:'right'}},r.qty===''?'':fm(r.qty)));
                     cells.push(h('span',{key:'u',style:{fontSize:8,color:'var(--g500)',width:38,flexShrink:0}},r.unit||''));
                   }
                   /* 単価 */
-                  if(ex)cells.push(h('input',{key:'p',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9},value:(ex.price===''||ex.price==null)?'':ex.price,placeholder:'単価',onChange:function(e){updExtra(rk,{price:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
-                  else if(dr)cells.push(h('input',{key:'p',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9},value:dr.unitPrice?dr.unitPrice:'',placeholder:'値引単価',onChange:function(e){setDiscRow(di,{unitPrice:parseInt(e.target.value)||0});}}));
+                  if(ex)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9},value:(ex.price===''||ex.price==null)?'':ex.price,placeholder:'単価',onChange:function(e){updExtra(rk,{price:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
+                  else if(dr)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9},value:dr.unitPrice?dr.unitPrice:'',placeholder:'値引単価',onChange:function(e){setDiscRow(di,{unitPrice:parseInt(e.target.value)||0});}}));
                   /* v18.74 修正17の再修正: 数字を全部消すと元の金額に戻ってしまう事象を解消する。
                      入力中の文字列は unitDraft に持ち、空欄のまま打ち直せるようにする。
                      欄から離れた（blur）時点で確定し、空欄なら手入力を取り消して単価マスタの金額に戻す。 */
-                  else if(uEditable)cells.push(h('input',{key:'p',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9,background:(unitDraft[0][rk]!==undefined||uOv!==null)?'#FEF3C7':'#fff'},
+                  else if(uEditable)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9,background:(unitDraft[0][rk]!==undefined||uOv!==null)?'#FEF3C7':'#fff'},
                     value:unitDraft[0][rk]!==undefined?unitDraft[0][rk]:(uOv!==null?String(uOv):(r.price===''?'':String(r.price))),
                     placeholder:'単価',
                     title:'単価を手入力すると 金額＝単価×数量 になり、粗利計算表の売価にも反映されます（空欄にして欄から離れると単価マスタの金額に戻ります）',
@@ -12919,7 +12943,7 @@ function InvPage(p){
                     onKeyDown:function(ev){if(ev.key==='Enter')ev.target.blur();}}));
                   else cells.push(h('span',{key:'p',style:{fontSize:8,color:'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.price===''?'':('¥'+fm(r.price))));
                   /* 金額 */
-                  if(dr)cells.push(h('input',{key:'a',className:'inp',type:'number',style:{width:74,flexShrink:0,fontSize:9},disabled:!!(dr.qty>0&&dr.unitPrice>0),value:dr.amount?dr.amount:'',placeholder:'値引き額',onChange:function(e){setDiscRow(di,{amount:parseInt(e.target.value)||0});}}));
+                  if(dr)cells.push(h(NumIn,{key:'a',className:'inp',style:{width:74,flexShrink:0,fontSize:9},disabled:!!(dr.qty>0&&dr.unitPrice>0),value:dr.amount?dr.amount:'',placeholder:'値引き額',onChange:function(e){setDiscRow(di,{amount:parseInt(e.target.value)||0});}}));
                   else cells.push(h('span',{key:'a',style:{fontSize:8,fontWeight:700,color:r.amount<0?'#B91C1C':'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.amount===''?'':('¥'+fm(r.amount))));
                   /* 備考 */
                   cells.push(h('input',{key:'r',className:'inp',style:{flex:1,minWidth:70,fontSize:9},value:(qo.rowRemarks||{})[rk]!==undefined?(qo.rowRemarks||{})[rk]:(r.remark||''),onChange:function(e){updRemark(rk,e.target.value);},placeholder:'備考を入力'}));
@@ -12982,7 +13006,7 @@ function InvPage(p){
             /* v18.63 修正12の再修正①: 送料と値引きは見積書の明細末尾に出る項目なので、
                明細の備考の下・全体備考の上へ移動する（見積書と同じ上からの並び）。 */
             h('div',{style:{display:'grid',gridTemplateColumns:'1fr 2fr',gap:6,marginBottom:4}},
-              h('div',null,h('label',{style:EL},'送料（円）'),h('input',{className:'inp',type:'number',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0,shipKeep:true});}}),
+              h('div',null,h('label',{style:EL},'送料（円）'),h(NumIn,{className:'inp',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0,shipKeep:true});}}),
                 /* v19.39 修正35③: 送料サービス等で0円にしても行を残す（送料欄を触ると自動でチェックが入る） */
                 h('label',{style:{fontSize:9,display:'flex',alignItems:'center',gap:3,marginTop:2,cursor:'pointer'}},
                   h('input',{type:'checkbox',checked:!!qo.shipKeep,onChange:function(e){updQ({shipKeep:e.target.checked});}}),'0円でも送料の行を出す')),
