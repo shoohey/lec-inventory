@@ -2623,9 +2623,11 @@ var PART_ADD_DEFS=[
   {k:'railBackSS',l:'SS・3S共通バックレール'},
   {k:'railSetSML',l:'SMLXL共通レールセット',expand:[{key:'railSideSML',qty:2,label:'SMLXL共通サイドレール'},{key:'railBackSML',qty:1,label:'SMLXL共通バックレール'}]},
   {k:'railSetSS',l:'SS・3S共通レールセット',expand:[{key:'railSideSS',qty:2,label:'SS・3S共通サイドレール'},{key:'railBackSS',qty:1,label:'SS・3S共通バックレール'}]},
-  /* v19.56: Sα のレール（在庫一覧の「レール長(Sα)／レール短(Sα)」と同じ在庫キー。Sα を選んだときだけ出す＝LINE_ONLY_PART_KEYS） */
-  {k:'railLong',l:'レール長(Sα)'},
-  {k:'railShort',l:'レール短(Sα)'},
+  /* v19.56: Sα のレール（在庫一覧の「レール長(Sα)／レール短(Sα)」と同じ在庫キー。Sα を選んだときだけ出す＝LINE_ONLY_PART_KEYS）。
+     名称は単価マスタ（F00202 Sαサイドレール（２本）／F00203 Sαバックレール）に合わせる。
+     サイドレールは2本1組で単価も組の金額（ユーザー回答）→ 数量は「組」、在庫は 組×2本 減る（setOf → 明細の stockMul） */
+  {k:'railLong',l:'Sαサイドレール（2本1組）',lineLabel:'Sαサイドレール',setOf:2,unit:'組'},
+  {k:'railShort',l:'Sαバックレール',unit:'本'},
   {k:'numLabel',l:'番号シール'},
   {k:'magnet',l:'マグネット'},
   {k:'hook',l:'フック'},
@@ -2644,9 +2646,14 @@ function partAddDefsForLine(lineId){
     var k=d.isDoor?d.doorKey:(d.stockKey||d.k);
     if(!partShownInLine(k,lineId))return false;
     if(lineId==='tw'&&TW_REPLACED_PART_KEYS.indexOf(k)>=0)return false;
+    /* v19.56: Sα は Sα で扱う部材（在庫一覧の SA_PARTS・扉・レール）と鍵類（全ライン共通在庫）だけ（ユーザー回答） */
+    if(lineId==='sa'&&!(SA_PART_KEYS_ADD.indexOf(d.k)>=0||isCommonStockKey(k)))return false;
     return true;
   });
 }
+var SA_PART_KEYS_ADD=['top','base','side','back','door','shelf','railLong','railShort','jointScrew_sml_bk','capScrew_gy'];
+/* v19.56: 在庫を数えるときの数量。組で売る部材（Sαサイドレール＝2本1組）は 組数×stockMul（本数） */
+function partStockQty(l){return (l&&l.qty||0)*((l&&l.stockMul>1)?l.stockMul:1);}
 function partAddLabel(d,lineId){return (d&&d.lineLabels&&d.lineLabels[lineId])||(d&&d.l)||'';}
 /* localStorageのカスタム部材も含めたパーツ単品候補（部材在庫一覧と一致） */
 function getPartAddDefs(){
@@ -3198,7 +3205,7 @@ function calcShipping(lines,whId,custPref){
   lines.forEach(function(l){
     if(l.isFreeInput)return;/* Free input lines have no BOM for shipping calc */
     var bom;
-    if(l.isPartOnly){bom=[];if(l.isDoor){bom.push({key:l.partKey,qty:l.qty,label:l.partLabel,isDoor:true,doorSub:l.partSub});}else if(l.partSub!==undefined){bom.push({key:l.partKey,sub:l.partSub,qty:l.qty,label:l.partLabel});}else{bom.push({key:l.partKey,qty:l.qty,label:l.partLabel});}}
+    if(l.isPartOnly){bom=[];if(l.isDoor){bom.push({key:l.partKey,qty:partStockQty(l),label:l.partLabel,isDoor:true,doorSub:l.partSub});}else if(l.partSub!==undefined){bom.push({key:l.partKey,sub:l.partSub,qty:l.qty,label:l.partLabel});}else{bom.push({key:l.partKey,qty:partStockQty(l),label:l.partLabel});}}
     else{bom=calcBOM(l.size,l.islands,l.tiers,l.lock,l.type,l);}
     /* v19.13 入数訂正: Sα など、ラインで入数が違う部材があるので行のラインを持たせる（扉だけ別ラインの行は doorLine） */
     bom.forEach(function(b){b._line=b.isDoor?(l.doorLine||l.line||''):(l.line||'');});
@@ -4370,7 +4377,7 @@ function aggregateOrderBOM(order){
   (order.lines||[]).forEach(function(ln){
     if(ln.isFreeInput)return;
     var bom;
-    if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,isDoor:true,doorSub:ln.partSub,color:ln.color});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty});}else{bom.push({key:ln.partKey,qty:ln.qty});}}
+    if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),isDoor:true,doorSub:ln.partSub,color:ln.color});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty});}else{bom.push({key:ln.partKey,qty:partStockQty(ln)});}}
     else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
     bom.forEach(function(b){
       if(b.isDoor){
@@ -5954,9 +5961,9 @@ function releaseLine(ln,wh){
   var bom;
   if(ln.isPartOnly){
     bom=[];
-    if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+    if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
     else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-    else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+    else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}
   }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
   releaseBOM(ln.line,wh,bom,ln.color,ln.size,ln.colorBreakdown);
 }
@@ -6135,9 +6142,9 @@ function shipOrderMulti(order){
     var bom;
     if(ln.isPartOnly){
       bom=[];
-      if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+      if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
       else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-      else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+      else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}
     }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
     /* 部分解放分を BOM から差し引く（非扉部材） - ラインIDキー */
     bom.forEach(function(b){
@@ -6270,9 +6277,9 @@ function shipOrder(order){
     var bom;
     if(ln.isPartOnly){
       bom=[];
-      if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+      if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
       else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-      else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+      else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}
     }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
     /* 部分解放分を BOM から差し引く（非扉部材） - ラインIDキー */
     bom.forEach(function(b){
@@ -6368,9 +6375,9 @@ function checkAllLinesWH(lines,wh){
       var bom;
       if(ln.isPartOnly){
         bom=[];
-        if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+        if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
         else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-        else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+        else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}
       }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
       var orderCol=isOrderColor(lineId,ln.color);
       var colorName_=(LINE_COLORS[lineId]||[]).find(function(cc){return cc.v===ln.color;});
@@ -7738,6 +7745,7 @@ function buildQuoteRows(order){
       var amt=(ln.qty||0)*(ln.unitPrice||0);
       /* v19.56: 本体以外の行は商品名の頭の「MyプラECOロッカー／Myプラロッカー」を付けない（改行される明細を減らす。依頼書 2026-10-22） */
       var pName=ln.isFreeInput?(ln.name||''):stripLineTag(ln.partLabel);
+      if(!ln.isFreeInput&&ln.stockMul>1)pName+='（'+ln.stockMul+'本1組）';/* v19.56: 見積書は組で数える（出荷指示書・在庫は本数） */
       /* ===== v19.12 修正29⑦: パーツ単品追加で扉を選ぶと見積書に扉色が出ていなかった =====
          パーツ単品の品名は partLabel（例「扉（同色）(M)」）だけで色を持たないため、
          ★扉の明細（isDoor）は本体明細と同じ書き方で色名を添える（色未定は「（扉色未定）」）。
@@ -7752,7 +7760,7 @@ function buildQuoteRows(order){
           }
         }
       }
-      var pUnit=ln.isFreeInput?(ln.unit||'個'):'個';
+      var pUnit=ln.isFreeInput?(ln.unit||'個'):(ln.unit||'個');/* v19.56: 組で売る部材は「組」 */
       var pRmk=ln.isFreeInput?(ln.remark||''):'';
       partRows.push({rkey:'L'+ln.id,code:'',name:pName,qty:ln.qty,unit:pUnit,price:ln.unitPrice||0,amount:amt,tax:amt>0?'10%(外)':'',remark:rowRemark(order,'L'+ln.id,pRmk)});
       return;
@@ -8667,9 +8675,9 @@ function buildShipRows(order,legIndex,scope){
     var bom,title;
     if(ln.isPartOnly){
       bom=[];
-      if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub,color:ln.color});}
+      if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub,color:ln.color});}
       else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-      else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+      else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}
       title='[パーツ単品]';
     }else{
       bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
@@ -9406,9 +9414,9 @@ function generateExcel(order,docType){
       var bomLn;
       if(ln.isPartOnly){
         bomLn=[];
-        if(ln.isDoor){bomLn.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub,color:ln.color});}
+        if(ln.isDoor){bomLn.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub,color:ln.color});}
         else if(ln.partSub!==undefined){bomLn.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-        else{bomLn.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+        else{bomLn.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}
       }else{bomLn=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
       /* v14.2 Codex P2対応: 扉は colorBreakdown を展開して色別に行を分割 */
       var expanded=[];
@@ -11343,7 +11351,7 @@ function InvPage(p){
     var realKey=pd.isDoor?pd.doorKey:(pd.stockKey||pd.k);
     /* v14 A6: パーツ単品の製品ラインは本体明細のラインとは別に partLine で選択可能 */
     var pLine=partLine[0]||ln[0];
-    var pSub,pLabel=partAddLabel(pd,pLine);/* v18.97 修正27②: 台湾製のハンガーパイプはグレー表記 */
+    var pSub,pLabel=pd.lineLabel||partAddLabel(pd,pLine);/* v18.97 修正27②: 台湾製のハンガーパイプはグレー表記。v19.56: 組で売る部材は明細名に組を書かない（出荷指示書は本数で出るため） */
     /* v19.56: 選んだサイズがそのラインに無いとき（Sα は S だけ）は先頭のサイズを使う。
        従来は画面に「Sα」と出ていても中身は既定の M のままで、Sα の扉が在庫 door[色].M（0）を見て在庫0になっていた */
     var pSzList=LINE_SIZES[pLine]||sizes,pSz=pSzList.indexOf(partSub[0])>=0?partSub[0]:pSzList[0];
@@ -11354,6 +11362,10 @@ function InvPage(p){
     var pColorOpt=(LINE_COLORS[pLine]||LINE_COLORS[ln[0]]||[]);
     var pColor=pd.hasColor?(pColorOpt.find(function(c){return c.v===partColor[0];})?partColor[0]:(pColorOpt[0]&&pColorOpt[0].v)||''):'';
     var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:(parseInt(partPrice[0])||0)||priceByEntry(partCodeOf(realKey,pSub,pLine),'sell'),partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
+    /* v19.56: 組で売る部材（Sαサイドレール）は在庫を 組数×setOf 本で数える。単位も明細に持たせる */
+    var nlLast=nl[nl.length-1];
+    if(pd.setOf>1)nlLast.stockMul=pd.setOf;
+    if(pd.unit)nlLast.unit=pd.unit;
     lines[1](nl);doCheck(nl);
   }
   /* Free input line (not in inventory) */
@@ -11429,9 +11441,9 @@ function InvPage(p){
         var bom;
         if(ln.isPartOnly){
           bom=[];
-          if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
+          if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}
           else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}
-          else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}
+          else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}
         }else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
         bom.forEach(function(b){
           /* v18.70 修正16②: 扉は明細の doorLine（未指定なら本体ライン）の在庫を見る */
@@ -11532,7 +11544,7 @@ function InvPage(p){
 
   function getBOM(ln){
     if(ln.isFreeInput)return[];/* Free input lines have no BOM */
-    if(ln.isPartOnly){var b=[];if(ln.isDoor){b.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){b.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{b.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}return b;}
+    if(ln.isPartOnly){var b=[];if(ln.isDoor){b.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){b.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{b.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}return b;}
     return calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
   }
   function doHoldAndQuote(){
@@ -12388,7 +12400,7 @@ function InvPage(p){
                 h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--op)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:900}},'P'),
                 h('div',{style:{flex:1,fontSize:10}},
                   h('b',null,l.partLabel),
-                  h('div',{style:{fontSize:8,color:'var(--g400)'}},(lo?lo.mark+' ':'')+l.qty+(l.isDoor?'枚':'個')+' @¥'+fm(l.unitPrice)),
+                  h('div',{style:{fontSize:8,color:'var(--g400)'}},(lo?lo.mark+' ':'')+l.qty+(l.isDoor?'枚':(l.unit||'個'))+' @¥'+fm(l.unitPrice)),
                   lineWhAvail(l)
                 ),
                 h('b',{style:{fontSize:10}},l.unitPrice>0?'¥'+fm(l.qty*l.unitPrice):''),
@@ -16139,9 +16151,9 @@ function orderBomGroups(order){
     var co=lineColorObj(ln);/* v19.18 修正31② */
     var bom,title;
     if(ln.isPartOnly){
-      if(ln.isDoor)bom=[{key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub}];
+      if(ln.isDoor)bom=[{key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub}];
       else if(ln.partSub!==undefined)bom=[{key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel}];
-      else bom=[{key:ln.partKey,qty:ln.qty,label:ln.partLabel}];
+      else bom=[{key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel}];
       title='[パーツ単品] '+productName(ln.line,true);
     }else{
       bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
@@ -16197,7 +16209,7 @@ function computeOrderParts(order,filterLine){
       if(ln.isDoor){pk=ln.partKey+':'+ln.color+':'+ln.partSub;}
       else if(ln.partSub!==undefined){pk=ln.partKey+':'+ln.partSub;}
       else{pk=ln.partKey;}
-      parts[pk]=(parts[pk]||0)+ln.qty;
+      parts[pk]=(parts[pk]||0)+partStockQty(ln);/* v19.56 */
       return;
     }
     var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
@@ -18101,7 +18113,7 @@ function PartsPage(p){
           op.order.lines.forEach(function(ln){
             if(ln.isFreeInput||ln._returned)return;
             var bom3;
-            if(ln.isPartOnly){bom3=[];if(ln.isDoor){bom3.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom3.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom3.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}}
+            if(ln.isPartOnly){bom3=[];if(ln.isDoor){bom3.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom3.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom3.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}}
             else{bom3=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
             var wh3=op.order.wh;
             bom3.forEach(function(b){
@@ -18463,7 +18475,7 @@ function PartsPage(p){
           od.lines.forEach(function(ln){
             if(ln.isFreeInput)return;
             var bom;
-            if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}}
+            if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}}
             else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
             var actual=holdBOMPartial(ln.line,od.wh,bom,ln.color,ln.size,ln.colorBreakdown,unsec);
             ln._actualHeld=actual;ln._heldWh=od.wh;ln._hadActualHeld=true;
@@ -18500,7 +18512,7 @@ function PartsPage(p){
           od.lines.forEach(function(ln){
             if(ln.isFreeInput)return;
             var bom;
-            if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}}
+            if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}}
             else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
             /* v14.3 Codex P2対応: 扉の色別部分解放を反映するため colorBreakdown のコピーを作って減算 */
             var adjustedCB=null;
@@ -18597,7 +18609,7 @@ function PartsPage(p){
             }
             /* 後方互換: actualHeld 未記録の旧データは BOM全量を主倉庫に表示（編集不可） */
             var bom;
-            if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom.push({key:ln.partKey,qty:ln.qty,label:ln.partLabel});}}
+            if(ln.isPartOnly){bom=[];if(ln.isDoor){bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel,isDoor:true,doorSub:ln.partSub});}else if(ln.partSub!==undefined){bom.push({key:ln.partKey,sub:ln.partSub,qty:ln.qty,label:ln.partLabel});}else{bom.push({key:ln.partKey,qty:partStockQty(ln),label:ln.partLabel});}}
             else{bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);}
             bom.forEach(function(b){
               var lbl=lineMark+' '+partLabelJP(b.key,b.sub,b.isDoor?ln.color:null,b.isDoor)+(b.isDoor&&(b.doorSub||ln.size)?' '+(b.doorSub||ln.size):'');
