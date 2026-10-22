@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.55（通常の画面で同時に保存すると案件の入力が消えることがある不具合を修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.56（見積書の部材の商品名を短く・特別価格の文言・搬入設置工事費の定型文・Sα扉の在庫・Sαレールの追加）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1079,7 +1079,8 @@ function saPartOf(key,sub){return SA_PART_MAP[key+'|'+(sub||'')]||null;}
    ◆共通     … F/B/C/D/L マスターキー・ダイヤル錠(D003) を新設（鍵類と同じく全ライン共通在庫＝COMMON_STOCK_KEYS）
    ★どのラインに出すかはこの表の1か所で決まる（在庫表・在庫編集・Excel・パーツ単品追加が共通で見る）。
    　表に無いキーは従来どおり全ラインに出る。 */
-var LINE_ONLY_PART_KEYS={hanger_gy:['jp2'],totte_tw:['tw'],namePlateCoverSML_tw:['tw'],namePlateCoverSS_tw:['tw']};
+var LINE_ONLY_PART_KEYS={hanger_gy:['jp2'],totte_tw:['tw'],namePlateCoverSML_tw:['tw'],namePlateCoverSS_tw:['tw'],
+  railLong:['sa'],railShort:['sa']};/* v19.56: Sα のレール（パーツ単品追加） */
 function partShownInLine(key,lineId){
   var a=LINE_ONLY_PART_KEYS[key];
   return !a||a.indexOf(lineId)>=0;
@@ -2458,7 +2459,7 @@ var NOTES_TEMPLATES=[
     '◆お写真のご提供等販促活動にご協力をお願い致します。',
     '※学校保管備品は導入時必要数分をレンタル致します。なお、レンタル品を紛失・破損した際にはご購入をお願い致します。',
     '※レンタル品はご契約終了時にお客様のご負担にて全てご返却をお願い致します。',
-    '※2○○○年度までご購入頂く前提の特別値引きです。',
+    '※2○○○年度までご購入頂く前提の特別価格です。',/* v19.56: 「特別値引き」→「特別価格」（依頼書 2026-10-22） */
     '※来春納品ご希望の場合には、●●月末までに仮注文をお願い致します。',
     '※再生材確保の為、○○月までの仮注文書のご返送をお願いします。',
     '※ベース・レール・上下ジョイント・サイドジョイントは既存のレンタル品を使用してください。ただし、生徒数の増加により不足の場合は追加レンタルいたします。'
@@ -2507,14 +2508,14 @@ function pushRentalRows(order,rows,baseLine){
   if(sel.vj!=='none'){
     var vq=rentalVjQty(order);
     if(vq>0){
-      var vName=(sel.vj==='rental')?rentalName(productName(lineId)+'上下ジョイント'):(productName(lineId)+'上下ジョイント');
+      var vName=(sel.vj==='rental')?rentalName('上下ジョイント'):'上下ジョイント';/* v19.56: 頭の製品名は付けない */
       rows.push({rkey:'VJ',code:'',name:vName,qty:vq,unit:'個',price:VJ_PRICE,amount:vq*VJ_PRICE,tax:'10%(外)',
         remark:rowRemark(order,'VJ',''),rentalPair:(sel.vj==='rental'?'VJ':null)});
     }
   }
   if(sel.sj!=='none'){
     rentalSjRows(order).forEach(function(sj,i){
-      var base=productName(lineId)+'サイドジョイント（'+(sj.grp==='ss'?'SS・3S':'SMLXL')+'）';
+      var base='サイドジョイント（'+(sj.grp==='ss'?'SS・3S':'SMLXL')+'）';/* v19.56: 頭の製品名は付けない */
       var nm=(sel.sj==='rental')?rentalName(base):base;
       var k=i?('SJ'+i):'SJ';
       rows.push({rkey:k,code:sj.code||'',name:nm,qty:sj.qty,unit:'個',price:sj.price,amount:sj.qty*sj.price,tax:'10%(外)',
@@ -2622,6 +2623,9 @@ var PART_ADD_DEFS=[
   {k:'railBackSS',l:'SS・3S共通バックレール'},
   {k:'railSetSML',l:'SMLXL共通レールセット',expand:[{key:'railSideSML',qty:2,label:'SMLXL共通サイドレール'},{key:'railBackSML',qty:1,label:'SMLXL共通バックレール'}]},
   {k:'railSetSS',l:'SS・3S共通レールセット',expand:[{key:'railSideSS',qty:2,label:'SS・3S共通サイドレール'},{key:'railBackSS',qty:1,label:'SS・3S共通バックレール'}]},
+  /* v19.56: Sα のレール（在庫一覧の「レール長(Sα)／レール短(Sα)」と同じ在庫キー。Sα を選んだときだけ出す＝LINE_ONLY_PART_KEYS） */
+  {k:'railLong',l:'レール長(Sα)'},
+  {k:'railShort',l:'レール短(Sα)'},
   {k:'numLabel',l:'番号シール'},
   {k:'magnet',l:'マグネット'},
   {k:'hook',l:'フック'},
@@ -7699,7 +7703,7 @@ function applyRowOrder(order,rows){
 /* 修正17⑨（v18.73 追加修正）: 明細の自由入力行。
    ★数量・単位・単価・金額は既定で空欄。空欄のままなら見積書にも何も表示しない。 */
 /* v19.39 修正35④: 見積書作成画面の「定型文を追加」の選択肢 */
-var QUOTE_TPL_ROWS=['【生徒様ご負担分】','【学校様ご負担分】'];/* v19.40: 【】で囲む */
+var QUOTE_TPL_ROWS=['【生徒様ご負担分】','【学校様ご負担分】','搬入・設置工事費（平日・日中作業）日祝別途'];/* v19.40: 【】で囲む。v19.56: 搬入・設置工事費を追加 */
 function extraQuoteRows(order){
   return ((order&&order.extraRows)||[]).filter(function(x){return x&&x.rkey;}).map(function(x){
     var hasQ=(x.qty!==''&&x.qty!=null),hasP=(x.price!==''&&x.price!=null);
@@ -7732,7 +7736,8 @@ function buildQuoteRows(order){
     if(ln.isPartOnly){
       /* 修正17⑥: パーツ単品は既定で「送料の上」に並べる（下の concat で送料の直前へ入れる） */
       var amt=(ln.qty||0)*(ln.unitPrice||0);
-      var pName=ln.isFreeInput?(ln.name||''):stripLineTag(productName(ln.line)+' '+ln.partLabel);
+      /* v19.56: 本体以外の行は商品名の頭の「MyプラECOロッカー／Myプラロッカー」を付けない（改行される明細を減らす。依頼書 2026-10-22） */
+      var pName=ln.isFreeInput?(ln.name||''):stripLineTag(ln.partLabel);
       /* ===== v19.12 修正29⑦: パーツ単品追加で扉を選ぶと見積書に扉色が出ていなかった =====
          パーツ単品の品名は partLabel（例「扉（同色）(M)」）だけで色を持たないため、
          ★扉の明細（isDoor）は本体明細と同じ書き方で色名を添える（色未定は「（扉色未定）」）。
@@ -7814,7 +7819,7 @@ function buildQuoteRows(order){
   if(ti>0&&sel.base!=='none'){
     var fl0=baseLines[0]||{};
     var bColorName=(fl0.baseColor==='bk')?'ブラック':'グレー';
-    var bName=productName(fl0.line||'jp01')+'ベースボード('+bColorName+')'+((fl0.hasCap!==false)?' アンカー穴キャップ付':'');
+    var bName='ベースボード('+bColorName+')'+((fl0.hasCap!==false)?' アンカー穴キャップ付':'');/* v19.56: 頭の製品名は付けない */
     if(sel.base==='rental')bName=rentalName(bName);/* 修正17⑫ */
     var bPrice=orderBasePrice(order);
     var bEnt=(order&&order.priceVer>=2)?baseCodeOf(fl0):null;
@@ -11339,10 +11344,13 @@ function InvPage(p){
     /* v14 A6: パーツ単品の製品ラインは本体明細のラインとは別に partLine で選択可能 */
     var pLine=partLine[0]||ln[0];
     var pSub,pLabel=partAddLabel(pd,pLine);/* v18.97 修正27②: 台湾製のハンガーパイプはグレー表記 */
+    /* v19.56: 選んだサイズがそのラインに無いとき（Sα は S だけ）は先頭のサイズを使う。
+       従来は画面に「Sα」と出ていても中身は既定の M のままで、Sα の扉が在庫 door[色].M（0）を見て在庫0になっていた */
+    var pSzList=LINE_SIZES[pLine]||sizes,pSz=pSzList.indexOf(partSub[0])>=0?partSub[0]:pSzList[0];
     /* v18.33 要望⑧: 新台湾製(sa)のサイズ・グループ表記は「Sα」に統一（在庫キーpSubは従来のsml/Sのまま） */
     if(pd.fixedSub){pSub=pd.fixedSub;}
-    else if(pd.hasSub==='grp'){pSub=sizeObj(partSub[0]).grp;pLabel+='('+(pLine==='sa'?'Sα':pSub.toUpperCase())+')';}
-    else if(pd.hasSub==='size'){pSub=partSub[0];pLabel+='('+(pLine==='sa'?'Sα':pSub)+')';}
+    else if(pd.hasSub==='grp'){pSub=sizeObj(pSz).grp;pLabel+='('+(pLine==='sa'?'Sα':pSub.toUpperCase())+')';}
+    else if(pd.hasSub==='size'){pSub=pSz;pLabel+='('+(pLine==='sa'?'Sα':pSub)+')';}
     var pColorOpt=(LINE_COLORS[pLine]||LINE_COLORS[ln[0]]||[]);
     var pColor=pd.hasColor?(pColorOpt.find(function(c){return c.v===partColor[0];})?partColor[0]:(pColorOpt[0]&&pColorOpt[0].v)||''):'';
     var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:(parseInt(partPrice[0])||0)||priceByEntry(partCodeOf(realKey,pSub,pLine),'sell'),partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
@@ -12304,6 +12312,9 @@ function InvPage(p){
                   /* カラーが新ラインに無い場合は先頭色に切替 */
                   var nc=LINE_COLORS[l.id]||[];
                   if(nc.length&&!nc.find(function(c){return c.v===partColor[0];}))partColor[1](nc[0].v);
+                  /* v19.56: サイズが新ラインに無い（Sα は S だけ）なら先頭のサイズへ。予備パーツ画面と同じ */
+                  var ns=LINE_SIZES[l.id]||[];
+                  if(ns.length&&ns.indexOf(partSub[0])<0)partSub[1](ns[0]);
                 }},l.mark+' '+l.name);
               }))
             ),
@@ -12342,7 +12353,8 @@ function InvPage(p){
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'単価(税抜)'),h('input',{className:'inp',type:'number',min:0,value:partPrice[0],placeholder:(function(){
                 try{var pdX=getPartAddDefs().find(function(x){return x.k===partType[0];});if(!pdX)return '';
                   var kX=pdX.isDoor?pdX.doorKey:(pdX.stockKey||pdX.k);
-                  var sX=pdX.fixedSub?pdX.fixedSub:(pdX.hasSub==='grp'?sizeObj(partSub[0]).grp:(pdX.hasSub?partSub[0]:''));
+                  var szlX=LINE_SIZES[partLine[0]||ln[0]]||sizes,szX=szlX.indexOf(partSub[0])>=0?partSub[0]:szlX[0];/* v19.56 */
+                  var sX=pdX.fixedSub?pdX.fixedSub:(pdX.hasSub==='grp'?sizeObj(szX).grp:(pdX.hasSub?szX:''));
                   var v=priceByEntry(partCodeOf(kX,sX,partLine[0]||ln[0]),'sell');return v>0?String(v):'';}catch(e){return '';}
               })(),onChange:function(e){partPrice[1](e.target.value);},style:{textAlign:'center'},title:'空欄のままにすると価格マスタの販売単価が入ります'}))
             ),
