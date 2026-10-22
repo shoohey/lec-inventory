@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.56（見積書の部材の商品名を短く・特別価格の文言・搬入設置工事費の定型文・Sα扉の在庫・Sαレールの追加）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.57（使い方Q&A・答えが無かった質問を管理者の画面に集める）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9648,6 +9648,493 @@ function openPrintWindow(html){
 }
 
 /* ========== APP ========== */
+/* ===== v19.57: 使い方Q&A（ヘッダーの「❓ 使い方」） =====
+   ・HELP_QA が質問と答えの一覧。★機能を変えたら、関係する Q&A もその版で直す（ver はその Q&A を最後に確かめた版）。
+   ・tab は「この画面を開く」で移るタブ（cust/inv/orders/parts。null=移らない）。開いたときは今のタブの Q&A を先に並べる。
+   ・検索は HELP_SYNONYMS の言い換え（仮押さえ＝押さえ・キープ など）で探す。
+   ・答えが無かった質問（送信・検索で見つからず・解決しなかった）は lec_state の別の行（id='helpqa'）にためる。
+     案件・在庫の行（'shared'）とは別の行なので、本体の保存や古い画面の上書きで消えない／本体を壊さない。
+     管理者は「👥 ユーザー管理」と使い方Q&Aの「📥 集まった質問」で、同じ質問をまとめて見られる。
+   ・公開リポジトリなので、原価・パスワードなどは書かない。 */
+var HELP_CATS=[
+  {k:'start',l:'はじめに'},
+  {k:'quote',l:'見積・仮押さえ'},
+  {k:'personal',l:'パーソナル・貸与品'},
+  {k:'orders',l:'案件管理'},
+  {k:'docs',l:'帳票'},
+  {k:'ship',l:'出荷・入金'},
+  {k:'stock',l:'部材在庫'},
+  {k:'spring',l:'春先モード'},
+  {k:'trouble',l:'困ったとき'}
+];
+var HELP_QA=[
+  /* ----- はじめに ----- */
+  {id:'start-flow',cat:'start',tab:'cust',ver:'v19.57',q:'新しい見積を作る流れを知りたい',kw:['はじめて','初めて','手順','流れ','新規'],
+    steps:['上の「顧客選択」で顧客を探し、行の「選択 →」を押す（「在庫確認・見積」に移ります）','「商品選択」で製品ライン・サイズ・台数・扉カラー・錠前などを選ぶ','「＋ 在庫確認・明細追加」を押す（右側に明細と「倉庫別在庫・送料比較」が出ます）','出荷する倉庫を選ぶ','見積だけなら「見積書のみ作成」、在庫も押さえるなら「仮押さえ＆見積書作成」を押す'],
+    tip:'作った案件は「案件管理」に並びます。あとから直すときは「✏ 案件修正」です。',rel:['quote-hold','quote-only','orders-edit']},
+  {id:'start-training',cat:'start',tab:null,ver:'v19.57',q:'本番のデータを壊さずに操作を練習したい',kw:['練習','トレーニング','試す','テスト','お試し'],
+    steps:['右上の「🎓 トレーニング」を押す','紫の帯が出ている間は練習用です。仮押さえ・保存をしても本番には反映されません','終わったら右上の「🎓 トレーニング終了」を押す'],
+    warn:'トレーニング中に入力した内容は、終了すると消えます。',rel:[]},
+  {id:'start-newcust',cat:'start',tab:'cust',ver:'v19.57',q:'顧客が一覧に無い（新しい顧客を登録したい）',kw:['顧客登録','新規顧客','取引先','追加'],
+    steps:['「顧客選択」の「＋ 新規顧客追加」を押す','法人名（必須）・住所・電話番号・顧客属性・弊社営業担当などを入れる','「追加して選択 →」を押すと、そのまま見積に進めます'],
+    tip:'登録前に、上の検索欄で略称や別の書き方でも探してみてください（同じ顧客の二重登録を防ぐため）。',rel:['start-enduser']},
+  {id:'start-enduser',cat:'start',tab:'cust',ver:'v19.57',q:'代理店経由の案件で、エンド納品先（学校など）を登録・選択したい',kw:['代理店','エンドユーザー','エンド納品先','納品先','学校'],
+    steps:['「顧客選択」で代理店の行の「編集」を押す','「＋ エンド納品先を追加」で学校などを登録し、保存する','見積のときは「在庫確認・見積」の「見積オプション」にある「エンド納品先（代理店経由の場合・任意）」で選ぶ'],
+    tip:'エンド納品先ごとに「弊社担当」を決めておくと、その納品先の案件は案件管理でその担当者になります。パーソナル貸与品のある学校は、商品選択の先頭の欄でも選べます。',rel:['personal-continue']},
+  /* ----- 見積・仮押さえ ----- */
+  {id:'quote-only',cat:'quote',tab:'inv',ver:'v19.57',q:'見積書だけ作りたい（在庫は押さえない）',kw:['見積のみ','見積だけ'],
+    steps:['「在庫確認・見積」で商品を選び「＋ 在庫確認・明細追加」','「見積書のみ作成」を押す','見積書作成の画面で内容を確かめ「見積書印刷」'],
+    tip:'営業の方も見積書の作成・保存はできます。',rel:['quote-hold','quote-notes']},
+  {id:'quote-hold',cat:'quote',tab:'inv',ver:'v19.57',q:'在庫を仮押さえして見積書も作りたい',kw:['仮押さえ','押さえる','キープ','在庫確保'],
+    steps:['「在庫確認・見積」で商品を選び「＋ 在庫確認・明細追加」','「倉庫別在庫・送料比較」で出荷する倉庫を選ぶ','「仮押さえ＆見積書作成」を押す'],
+    warn:'倉庫を選ぶまで仮押さえのボタンは押せません。営業の権限では仮押さえはできません（事務の方へ依頼してください）。',rel:['quote-holdonly','quote-partwh','stock-release']},
+  {id:'quote-holdonly',cat:'quote',tab:'inv',ver:'v19.57',q:'見積書は作らずに仮押さえだけしたい',kw:['仮押さえのみ','押さえだけ'],
+    steps:['商品を選び「＋ 在庫確認・明細追加」','倉庫を選ぶ','「仮押さえのみ（見積無）」を押す'],
+    tip:'あとで見積書を出すときは、案件管理の「📄帳票」から出せます。',rel:['quote-hold','docs-print']},
+  {id:'quote-partwh',cat:'quote',tab:'inv',ver:'v19.57',q:'部材ごとに別の倉庫から仮押さえしたい（例: 本体は新柏、鍵は本社）',kw:['倉庫別','別の倉庫','分けて','複数倉庫','足りない','かき集め'],
+    steps:['商品を選び「＋ 在庫確認・明細追加」','「🔀 部材別倉庫で仮押さえ」を押す','部材ごとに倉庫と数を割り当てる（「＋ 倉庫を追加して分割」で1つの部材を複数の倉庫に分けられます）','「この割当で仮押さえ＆見積書作成」を押す'],
+    tip:'1つの倉庫で足りないときは「倉庫別在庫・送料比較」の「複数倉庫組合せ」の候補から「この組合せで仮押さえ＆見積書作成」も使えます。扉は扉色ごとに倉庫を指定できます。',rel:['quote-hold']},
+  {id:'quote-multi',cat:'quote',tab:'inv',ver:'v19.57',q:'サイズ違いなど、複数の製品を1つの見積にまとめたい',kw:['複数','サイズ違い','まとめる','別製品','追加'],
+    steps:['1つ目の商品を選び「＋ 在庫確認・明細追加」','商品選択を2つ目の内容に変えて、もう一度「＋ 在庫確認・明細追加」（明細に行が増えます）','そろったら倉庫を選んで見積・仮押さえ'],
+    tip:'「＋ 別製品ライン追加（サイズ違い等をこの案件に追加）」でも追加できます。明細の「✕」で行を消せます。',rel:[]},
+  {id:'quote-parts',cat:'quote',tab:'inv',ver:'v19.57',q:'扉・棚板・鍵・レールなどパーツだけを追加・販売したい',kw:['パーツ','部材','部品','単品','扉','棚板','鍵','レール','ネジ'],
+    steps:['「在庫確認・見積」の「パーツ単品追加」欄で、パーツの製品ライン・パーツ・数量を選ぶ','「＋ パーツ単品追加」を押す（明細に入ります）','あとはふつうの見積と同じく倉庫を選んで見積・仮押さえ'],
+    tip:'Sα を選ぶと、Sα で扱う部材と鍵類だけが選べます。',rel:[]},
+  {id:'quote-free',cat:'quote',tab:'inv',ver:'v19.57',q:'在庫に無い商品や工事費を見積に入れたい',kw:['自由入力','工事費','搬入','設置','在庫外','その他'],
+    steps:['「自由入力（在庫外商品）」欄に商品名称・数量・単位・単価を入れて「＋ 自由入力行を追加」','見積書作成の画面でも「＋ 自由入力の行を追加」や「＋ 定型文を追加」（搬入・設置工事費など）で足せます'],
+    rel:['quote-discount']},
+  {id:'quote-discount',cat:'quote',tab:'inv',ver:'v19.57',q:'見積に値引きを入れたい',kw:['値引き','割引','出精値引き','継続購入割引','販促'],
+    steps:['「見積書のみ作成」などで見積書作成の画面を開く','「＋ 値引きの行を追加」を押す','項目（出精値引き／３年間継続購入割引／販促活動協力費／自由入力）と金額を入れる'],
+    rel:['quote-notes']},
+  {id:'quote-notes',cat:'quote',tab:'inv',ver:'v19.57',q:'見積書の件名・支払条件・備考を変えたい',kw:['件名','支払条件','備考','定型文','有効期限','納期','受渡地'],
+    steps:['見積書作成の画面を開く','件名・LEC担当者・支払条件・送料などの欄を書き換える','全体備考は【パーソナル】【常設】の定型文を選び、入れたい文章にチェックして「チェックした文章を入れる」（そのあと自由に直せます）'],
+    tip:'件名は空欄にすると、商品名・サイズ・台数から自動で作ります。',rel:['quote-discount']},
+  {id:'orders-repeat',cat:'quote',tab:'orders',ver:'v19.57',q:'前回と同じ内容で見積したい（リピート・コピー）',kw:['リピート','コピー','前回','前年','同じ内容','再発注','継続'],
+    steps:['「案件管理」で元の案件を探す（「✅ 納品完了」タブも見てください）','その行の「🔁 コピー再発注」を押す','「在庫確認・見積」に内容が入るので、台数などを直して見積・仮押さえ'],
+    tip:'パーソナルの継続校は、学校を選ぶだけで前年の導入内容が自動で入ります（「パーソナルの継続案件で…」の Q&A）。',rel:['personal-continue']},
+  {id:'orders-edit',cat:'quote',tab:'orders',ver:'v19.57',q:'登録した案件（見積・仮押さえ）の内容を直したい',kw:['修正','直す','変更','訂正','案件修正','間違えた'],
+    steps:['「案件管理」で案件の「✏ 案件修正」を押す（仮押さえはいったん解除され、内容が「在庫確認・見積」に読み込まれます）','オレンジの「案件修正モード」の帯が出ている状態で内容を直す','「見積書のみ作成」や「仮押さえ＆見積書作成」で保存すると、同じ案件番号に上書きされます'],
+    warn:'直すのをやめるときは帯の「修正をやめる（新規として登録）」を押してください（そのあと登録すると新しい案件番号になります）。',rel:['stock-release']},
+  /* ----- パーソナル・貸与品 ----- */
+  {id:'personal-continue',cat:'personal',tab:'inv',ver:'v19.57',q:'パーソナルの継続案件で、貸与品（学校保管のレンタル品）を手で入力して仮押さえしたい',kw:['継続','前年','貸与品','レンタル','学校保管','手入力','手で','仮押さえ','ベース','ジョイント'],
+    steps:['「顧客選択」で学校（代理店経由なら代理店）を「選択 →」','「在庫確認・見積」の「商品選択」で、代理店の場合は先頭の「エンド納品先（パーソナル貸与品のある学校）」で学校を選ぶ','前年の導入内容（製品ライン・サイズ・錠前・扉色・台数・ベースの数・棚板）が自動で入り、「レンタル品の過不足（パーソナル貸与品）」欄に 必要数／学校保管で回せる数／過不足 が出ます','数を手で直すときは「台数・ベース数で入力」の 台数・ベースの数 を書き換える（過不足欄もすぐ計算し直します）。年度・学校も過不足欄で選び直せます','「明細追加時、在庫確認・仮押さえ・見積にはレンタル品の不足分だけを計上する」にチェックを入れると、学校保管で回せる分を差し引いた不足分だけを押さえます（外すと必要数をそのまま押さえます）','「＋ 在庫確認・明細追加」→ 倉庫を選ぶ →「仮押さえ＆見積書作成」（見積書が要らなければ「仮押さえのみ（見積無）」）'],
+    tip:'学校に置いてある数（貸与品データ）そのものを直すときは、過不足欄の「📋 貸与品データ」→「✎ 手修正」です。',warn:'入学シーズン（2〜5月）の案件は「🌸 春先モード」で登録します。',rel:['personal-data-edit','personal-mid','personal-rentalsel','spring-enter']},
+  {id:'personal-mid',cat:'personal',tab:'inv',ver:'v19.57',q:'転入生などで、期中に数台だけ追加したい',kw:['転入生','期中','途中','追加','数台'],
+    steps:['学校を選んで「在庫確認・見積」を開く','「レンタル品の過不足」欄の「期中の追加（転入生など）」にチェック','何年生に足すかを選ぶ（その学年の扉色の目安も出ます）','台数を入れて「＋ 在庫確認・明細追加」'],
+    rel:['personal-continue']},
+  {id:'personal-data-view',cat:'personal',tab:'cust',ver:'v19.57',q:'パーソナル貸与品データ（学校に置いてある数）を見たい',kw:['貸与品データ','一覧','学校','確認'],
+    steps:['全校の一覧は「顧客選択」の「📋 パーソナル貸与品」','その顧客の分は、顧客の行の「📋 貸与品」','見積の途中なら「レンタル品の過不足」欄の「📋 貸与品データ」'],
+    rel:['personal-data-edit']},
+  {id:'personal-data-edit',cat:'personal',tab:'cust',ver:'v19.57',q:'貸与品データの数やタイトルが違う（直したい・メモを残したい）',kw:['貸与品','手修正','直す','間違い','メモ','備考','タイトル'],
+    steps:['貸与品データの画面を開く（「📋 貸与品」など）','「✎ 手修正」を押すと数やタイトルが入力欄になる','直して保存する（手修正した所は黄色になります）','備考はメモ欄に書けます（見積の過不足欄にも 📝 で出ます）'],
+    tip:'取り込んだ元の数に戻すときは「↺ 手修正を元に戻す」。',rel:['personal-data-view']},
+  {id:'personal-link',cat:'personal',tab:'inv',ver:'v19.57',q:'学校を選んでも貸与品データが出てこない',kw:['出ない','出てこない','ひも付け','紐づけ','見つからない','表示されない'],
+    steps:['代理店の顧客のときは、先に「エンド納品先（パーソナル貸与品のある学校）」で学校を選ぶ','それでも出ないときは「レンタル品の過不足」欄の「学校を選択…」で学校を選ぶ','「この顧客にひも付け」を押すと、次回から自動で出ます'],
+    warn:'新規導入の学校には貸与品データはありません。',rel:['personal-continue']},
+  {id:'personal-rentalsel',cat:'personal',tab:'inv',ver:'v19.57',q:'見積書にベース・ジョイントを「レンタル品（無償貸与）」や「販売」として載せたい',kw:['レンタル品','無償貸与','販売','記載','ベースボード','上下ジョイント','サイドジョイント'],
+    steps:['見積書作成の画面を開く','ベースボード・上下ジョイント・サイドジョイントそれぞれで「記載しない／販売として記載／レンタル品（無償貸与）」を選ぶ'],
+    tip:'レンタル品にすると、見積書にプラスとマイナスの行が並び、差し引き0円と分かる形で出ます。',rel:['personal-continue']},
+  /* ----- 案件管理 ----- */
+  {id:'orders-status',cat:'orders',tab:'orders',ver:'v19.57',q:'ステータスを進めたい（受注確定・出荷指示・出荷完了など）',kw:['ステータス','受注確定','出荷指示','出荷完了','納品完了','進める','戻す','差し戻し'],
+    steps:['「案件管理」で案件の「詳細」を押す','「ステータス遷移」のオレンジのボタンで次へ進める'],
+    tip:'◀ の赤枠のボタンは差し戻しです（在庫も自動で巻き戻します）。仮押さえの案件は「部材在庫一覧」→「仮押さえ一覧」の「✓ 受注確定にする」でも進められます。',rel:['docs-print']},
+  {id:'orders-find',cat:'orders',tab:'orders',ver:'v19.57',q:'案件を探したい・絞り込みたい',kw:['探す','検索','絞り込み','並び替え','一覧','見つからない'],
+    steps:['「案件管理」上のタブ（全案件／本社／関西／✅ 納品完了／❌ 失注）を切り替える','ステータスのボタン（見積作成・仮押さえ・受注確定…）で絞る','「並び替え」「期間」で並べ方や期間を指定する'],
+    tip:'納品完了した案件は「全案件」には出ず、「✅ 納品完了」タブに移ります。',rel:[]},
+  {id:'orders-lost',cat:'orders',tab:'orders',ver:'v19.57',q:'失注にしたい（取り消したい）',kw:['失注','ボツ','流れた','キャンセル','取り消し'],
+    steps:['「案件管理」で案件の「詳細」を押す','「❌ 失注にする」を押す（「❌ 失注」タブへ移ります）','戻すときは同じ画面の「失注を取り消す」'],
+    tip:'失注にした案件も「🔁 コピー再発注」は使えます。',rel:[]},
+  {id:'orders-delivery',cat:'orders',tab:'orders',ver:'v19.57',q:'納品予定日を変えたい',kw:['納品予定日','納期','日付','変更'],
+    steps:['「案件管理」の「📅 納品予定日の変更」を押す','案件ごとに日付を入れて保存する'],
+    warn:'出荷指示書の納品日時を手修正している案件は、そちらは変わりません。',rel:[]},
+  {id:'orders-spare',cat:'orders',tab:'orders',ver:'v19.57',q:'予備パーツを持ち出したい・返却したい',kw:['予備パーツ','持ち出し','返却','予備'],
+    steps:['「案件管理」で案件の「🧰 予備パーツ」を押す','「＋ 予備パーツを持ち出す」でパーツ・数を入れて「持ち出し登録（出庫）」','戻ってきたら返却数と返却先倉庫を入れて「返却入庫」（まとめてなら「入力した返却数で一括返却」）'],
+    rel:[]},
+  {id:'orders-sales',cat:'orders',tab:'orders',ver:'v19.57',q:'売上を集計したい',kw:['売上','集計','月別','金額'],
+    steps:['「案件管理」の「📊 売上集計」を押す','期間・基準日（納品日／出荷日）・月別／案件別を選ぶ','「📊 Excel出力」でExcelにもできます'],
+    rel:[]},
+  /* ----- 帳票 ----- */
+  {id:'docs-print',cat:'docs',tab:'orders',ver:'v19.57',q:'見積書・請求書・納品書・出荷指示書などを出したい',kw:['帳票','印刷','請求書','納品書','出荷指示書','物品受領書','領収書','見積書','pdf'],
+    steps:['「案件管理」で案件の「📄帳票」を押す','出したい帳票を選ぶ','内容を確かめて印刷する'],
+    tip:'ステータスによって出せる帳票が変わります（見積作成・仮押さえは見積書、受注確定以降は請求書なども）。',rel:['docs-edit','docs-split']},
+  {id:'docs-edit',cat:'docs',tab:'orders',ver:'v19.57',q:'帳票の宛先・日付・品名などを手で直したい',kw:['手修正','宛先','日付','品名','直す','書き換え'],
+    steps:['「📄帳票」で帳票を選ぶ','「✎ 記載内容の手修正」を押す（空欄＝自動の内容）','直して「保存して印刷」'],
+    tip:'元に戻すときは「自動値に戻す」。納品書は請求書の手修正を引き継ぎます。',rel:['docs-print']},
+  {id:'docs-split',cat:'docs',tab:'orders',ver:'v19.57',q:'請求書を複数枚に分けたい',kw:['請求書','分割','分ける','複数枚','枚数'],
+    steps:['「📄帳票」で請求書を選ぶ','「請求書の枚数」を選ぶ','「金額で分ける」または「台数で分ける」で振り分けて保存する'],
+    tip:'入金は紙ごとにチェックできます。「分割しない」にすると従来どおり1枚です。',rel:['ship-paid']},
+  {id:'docs-truck',cat:'docs',tab:'orders',ver:'v19.57',q:'出荷を複数の便（トラック）に分けたい',kw:['便','トラック','分ける','分割','出荷指示書'],
+    steps:['「📄帳票」で出荷指示書を選ぶ','「🚚 便に分ける」を押す','便数（トラック台数）と、部材をどの便に積むかを決めて保存する'],
+    rel:['docs-print']},
+  {id:'docs-charter',cat:'docs',tab:'orders',ver:'v19.57',q:'チャーター発注書を出したい',kw:['チャーター','発注書','積込場所'],
+    steps:['見積のときに送付方法を「チャーター」にしておく','「案件管理」の「📄帳票」で「チャーター発注書」を選ぶ','積込場所などを確かめて印刷する'],
+    tip:'積込場所の住所・電話番号は一度入れると次回から自動で入ります。',rel:['docs-print']},
+  /* ----- 出荷・入金 ----- */
+  {id:'ship-paid',cat:'ship',tab:'orders',ver:'v19.57',q:'入金があったので記録したい',kw:['入金','入金確認','支払','振込','入金済'],
+    steps:['「案件管理」で案件を探す（納品完了の案件は「✅ 納品完了」タブ）','入金の欄の「入金確認」にチェックを入れる','請求書を分けている案件は、紙ごとにチェックする'],
+    rel:['docs-split']},
+  /* ----- 部材在庫 ----- */
+  {id:'stock-release',cat:'stock',tab:'parts',ver:'v19.57',q:'仮押さえを解除したい・数量や倉庫を変えたい',kw:['解除','取り消し','キャンセル','数量編集','倉庫変更','仮押さえ'],
+    steps:['「部材在庫一覧」の「仮押さえ一覧」を開く','案件の「仮押さえ解除」を押す','数を変えるときは「✎ 数量編集」、倉庫を変えるときは「🏭 倉庫変更」'],
+    tip:'内容ごと直したいときは、案件管理の「✏ 案件修正」が便利です。',rel:['orders-edit']},
+  {id:'stock-edit',cat:'stock',tab:'parts',ver:'v19.57',q:'在庫の数を直したい（棚卸しの結果を入れたい）',kw:['在庫','数','修正','棚卸','直す','実在庫'],
+    steps:['「部材在庫一覧」の「在庫表」で倉庫を選ぶ','直したい数字（✎）をクリックする','実在庫の数と編集者名を入れて保存する'],
+    warn:'入れるのは「仮押さえ分を含む実在庫」です（使える数ではありません）。',rel:['stock-terms','stock-history']},
+  {id:'stock-terms',cat:'stock',tab:'parts',ver:'v19.57',q:'「実在庫」「仮押さえ」「使える数」の違いが知りたい',kw:['実在庫','仮押さえ','使える数','空き','意味','違い'],
+    steps:['実在庫 … 倉庫に実際にある数（仮押さえ分を含む）','仮押さえ … 案件のために押さえている数','使える数（空き）… 実在庫 − 仮押さえ。新しい見積で押さえられる数'],
+    rel:['stock-edit']},
+  {id:'stock-move',cat:'stock',tab:'parts',ver:'v19.57',q:'倉庫から倉庫へ在庫を移したい（取り寄せ）',kw:['倉庫間移動','移動','取り寄せ','移す'],
+    steps:['「部材在庫一覧」の「🔄 倉庫間移動（取り寄せ）」を押す','移動元・移動先・部材・数を選ぶ','「移動」を押す'],
+    rel:[]},
+  {id:'stock-incoming',cat:'stock',tab:'parts',ver:'v19.57',q:'入庫予定を登録したい・届いた分を在庫に入れたい',kw:['入庫','入荷','入庫予定','届いた','発注'],
+    steps:['「部材在庫一覧」の「入庫予定」を開く','「＋ 入庫予定を追加」で入庫予定日・入庫先倉庫・部材・数を入れて登録','届いたら「入庫処理」→「完了」（在庫に足されます）'],
+    rel:[]},
+  {id:'stock-excel',cat:'stock',tab:'parts',ver:'v19.57',q:'在庫をExcelで出したい（ある日の在庫・倉庫別・期間）',kw:['excel','エクセル','出力','日付指定','倉庫別','期間','在庫表'],
+    steps:['「部材在庫一覧」で目的のボタンを押す','ある日の在庫 →「📆 日付指定Excel」／倉庫別 →「📥 倉庫別Excel」／今の在庫表 →「📥 在庫表Excel」／期間の出入り →「📅 期間Excel」'],
+    rel:['stock-history']},
+  {id:'stock-history',cat:'stock',tab:'parts',ver:'v19.57',q:'在庫を誰がいつ変えたか（変更履歴）を見たい',kw:['履歴','変更履歴','誰が','いつ','ログ'],
+    steps:['「部材在庫一覧」の「履歴」を開く'],
+    rel:[]},
+  /* ----- 春先モード ----- */
+  {id:'spring-enter',cat:'spring',tab:'cust',ver:'v19.57',q:'春先モード（入学シーズンのパーソナル案件）に切り替えたい',kw:['春先','春','入学','シーズン','切り替え'],
+    steps:['「顧客選択」の「🌸 春先（2027年度）」を押す','画面がピンクになっている間は春先の案件・在庫です（通常とは別管理）','通常に戻るときは「🌸 春先を出る」'],
+    tip:'顧客・マスタ・貸与品データは通常と共通です。',rel:['spring-perm']},
+  {id:'spring-perm',cat:'spring',tab:'orders',ver:'v19.57',q:'春先モードで編集できない（🔒 閲覧のみになる）',kw:['春先','編集できない','閲覧のみ','権限','尼高','ロック'],
+    steps:['ヘッダーの「✏ 編集できる倉庫」で、自分が編集できる倉庫を確かめる（尼高＝片岡さん優先、尼高以外＝岩上さん・高山さん優先）','「案件管理」の「🌸 倉庫」の切り替えを、自分が編集できる倉庫（「🏭 尼高」または「尼高以外（混在を含む）」。✏ が付いている方）にする','そのあと操作する'],
+    warn:'倉庫の切り替えが「すべて」のままだと、尼高と尼高以外の両方の権限が要るため、閲覧のみになることがあります。',rel:['trouble-readonly']},
+  /* ----- 困ったとき ----- */
+  {id:'trouble-readonly',cat:'trouble',tab:null,ver:'v19.57',q:'「読み取り専用モード」と出て編集できない',kw:['読み取り専用','編集できない','閲覧のみ','ロック','編集権限','保存できない'],
+    steps:['同時に開いている人のうち、先にログインした人が編集権限を持ちます','編集中の人に、画面下の同時利用の欄の「渡す」で権限を渡してもらう','管理者は「👥 ユーザー管理」の「🔑 編集権限の指定」で付け替えられます'],
+    tip:'営業の権限は、もともと閲覧＋見積のみです。',rel:['spring-perm']},
+  {id:'trouble-holdbtn',cat:'trouble',tab:'inv',ver:'v19.57',q:'仮押さえのボタンが押せない（反応しない）',kw:['押せない','反応しない','グレー','仮押さえ','ボタン'],
+    steps:['「＋ 在庫確認・明細追加」で明細を入れたか確かめる','「倉庫別在庫・送料比較」で倉庫を選んだか確かめる（選ぶまで押せません）','営業の権限では仮押さえはできません'],
+    rel:['quote-hold']},
+  {id:'trouble-save',cat:'trouble',tab:null,ver:'v19.57',q:'「クラウドへ保存できませんでした」と出た／他の人の変更が反映されない',kw:['保存できない','エラー','反映されない','古い','同期','更新されない'],
+    steps:['インターネットにつながっているか確かめる','キーボードの F5 で画面を再読み込みする','もう一度操作する'],
+    tip:'右上のバージョン（v19.xx）がお知らせの版と違うときも F5 で最新になります。',rel:[]},
+  {id:'trouble-account',cat:'trouble',tab:null,ver:'v19.57',q:'新しい人のアカウントを作りたい・パスワードを変えたい',kw:['アカウント','ユーザー','パスワード','ログイン','発行'],
+    steps:['管理者が右上の「👥 ユーザー管理」を開く','名前・拠点・権限（管理者／営業／事務）を入れて発行する','パスワードは各ユーザーの行のボタンで設定・変更できます'],
+    warn:'管理者の権限が必要です。',rel:[]}
+];
+/* 言い換え（同じグループの言葉は同じ意味として探す）。★よく聞かれる言い方があれば足す */
+var HELP_SYNONYMS=[
+  ['仮押さえ','仮押え','押さえ','押え','おさえ','キープ','確保','引当','引き当て','取り置き'],
+  ['貸与品','貸与','レンタル','学校保管','貸出','貸し出し'],
+  ['継続','リピート','前年','前回','去年','昨年','再発注','コピー','同じ内容'],
+  ['見積','見積書','見積もり','見積り'],
+  ['パーソナル','学校','入学'],
+  ['手動','手で','手入力','手修正','直接入力','書き換え'],
+  ['修正','直す','直し','変更','訂正','変えたい','間違'],
+  ['解除','取り消','取消','キャンセル','やめ','消す','削除'],
+  ['帳票','印刷','書類','pdf','プリント'],
+  ['請求書','請求'],['出荷指示書','出荷指示'],
+  ['入金','支払','振込','振り込'],
+  ['入庫','入荷','届いた','納入'],
+  ['春先','春','入学シーズン'],
+  ['トレーニング','練習','試す','テスト','お試し'],
+  ['読み取り専用','閲覧のみ','閲覧専用','編集できない','編集権限','ロック','触れない'],
+  ['値引き','値引','割引','ディスカウント'],
+  ['送料','運賃','配送料'],
+  ['顧客','お客様','取引先','得意先'],
+  ['エンド納品先','エンドユーザー','納品先','エンド'],
+  ['パーツ','部材','部品'],
+  ['転入生','期中','途中から','途中で'],
+  ['失注','ボツ','流れた','不成立'],
+  ['excel','エクセル','表計算','xlsx'],
+  ['履歴','ログ','誰が','いつ'],
+  ['予備パーツ','持ち出','予備'],
+  ['倉庫間移動','倉庫移動','取り寄せ','移す','移動'],
+  ['アカウント','ユーザー','パスワード','ログイン'],
+  ['探す','検索','絞り込','見つけ']
+];
+/* 比べやすい形にする（全角半角・大小・カタカナ/ひらがな・空白や記号の違いをなくす） */
+function helpNorm(s){
+  s=String(s||'');
+  try{s=s.normalize('NFKC');}catch(e){}
+  s=s.toLowerCase().replace(/[ァ-ヶ]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0x60);});
+  return s.replace(/[\s、。，．,.!?！？「」『』（）()【】\[\]・／\/:：;；"'〜~…→←]/g,'');
+}
+var _helpIdx=null;
+function helpIndex(){
+  if(_helpIdx)return _helpIdx;
+  var syn=HELP_SYNONYMS.map(function(g){return g.map(helpNorm);});
+  var vocab={};
+  HELP_QA.forEach(function(x){(x.kw||[]).forEach(function(k){var n=helpNorm(k);if(n.length>=2||/[一-鿿]/.test(n))vocab[n]=1;/* 扉・鍵 など漢字1文字も */});});
+  /* 言い換えに入っている言葉は、言い換えのグループで数える */
+  syn.forEach(function(g){g.forEach(function(t){delete vocab[t];});});
+  var items=HELP_QA.map(function(x){
+    return {x:x,t:helpNorm(x.q),k:helpNorm((x.kw||[]).join(' ')),b:helpNorm((x.steps||[]).join(' ')+' '+(x.tip||'')+' '+(x.warn||''))};
+  });
+  /* 動作だけの言葉（直す・解除する・手で・探す）は、それだけでは「答えがあった」とみなさない */
+  var verbs=syn.filter(function(g){return ['修正','解除','手動','探す'].some(function(w){return g[0]===helpNorm(w);});});
+  _helpIdx={syn:syn,verbs:verbs,vocab:Object.keys(vocab).map(function(v){return [v];}),items:items};
+  return _helpIdx;
+}
+/* 質問文から Q&A を探す。点数の高い順に返す（見つからなければ空） */
+var HELP_STOP=/(したい|したく|したら|します|できない|できる|ですか|ますか|方法|やり方|どうすれば|どうやって|には|ので|から|ため|ください|たい|です|ます|する|を|に|で|は|が|の|と|へ|も|や)/g;
+function helpSearch(q){
+  var nq=helpNorm(q);
+  if(!nq)return [];
+  var ix=helpIndex(),concepts=[];
+  ix.syn.concat(ix.vocab).forEach(function(g){if(g.some(function(t){return t&&nq.indexOf(t)>=0;}))concepts.push(g);});
+  /* 長い言葉に含まれる短い言葉（例: 仮押さえ に含まれる 押さえ）は二重に数えない */
+  var res=ix.items.map(function(it){
+    var sc=0,found=0,noun=0;
+    concepts.forEach(function(g){
+      var best=0;
+      g.forEach(function(t){
+        if(!t)return;
+        var v=it.t.indexOf(t)>=0?3:(it.k.indexOf(t)>=0?2:(it.b.indexOf(t)>=0?1:0));
+        if(v>best)best=v;
+      });
+      if(best){sc+=best;found++;if(ix.verbs.indexOf(g)<0)noun++;}
+    });
+    if(concepts.length>1&&found===concepts.length)sc+=2;
+    /* 言い換えに無い言い方でも、質問文と2文字ずつ重なれば少し点を足す */
+    var rest=nq.replace(HELP_STOP,' ').split(' ').join('');
+    var bi=0,seen={};
+    for(var i=0;i+1<rest.length;i++){var g2=rest.substr(i,2);if(seen[g2])continue;seen[g2]=1;if((it.t+it.k).indexOf(g2)>=0)bi++;}
+    sc+=Math.min(bi,6)*0.4;
+    return {x:it.x,s:sc,n:noun||bi>=3};
+  }).filter(function(r){return r.s>=2&&r.n;});
+  res.sort(function(a,b){return b.s-a.s;});
+  /* 一番近い答えから大きく離れたものは出さない */
+  var top=res.length?res[0].s:0;
+  return res.filter(function(r){return r.s>=top*0.45;}).slice(0,12).map(function(r){return r.x;});
+}
+function helpQaById(id){return HELP_QA.find(function(x){return x.id===id;})||null;}
+var HELP_TAB_LABELS={cust:'顧客選択',inv:'在庫確認・見積',orders:'案件管理',parts:'部材在庫一覧'};
+var HELP_KIND_LABELS={send:'✉ 送信',nohit:'🔍 検索で見つからず',unsolved:'👎 解決しなかった'};
+
+/* ----- 集まった質問の保存（lec_state の id='helpqa' の行） ----- */
+var HELP_ROW_ID='helpqa';
+var HELP_ASK_MAX=1000;
+function helpDocNorm(d){d=d||{};return {asks:Array.isArray(d.asks)?d.asks:[],done:(d.done&&typeof d.done==='object')?d.done:{}};}
+/* 同じ質問をまとめるための鍵（言い方の細かな違い・語尾をそろえる） */
+function helpAskKey(text){
+  var s=helpNorm(text),p;
+  do{p=s;s=s.replace(/(のですが|んですが|でしょうか|ですか|ますか|ください|たいです|たい|です|ます|方法|やり方|について)$/,'');}while(s!==p&&s);
+  return (s||helpNorm(text)).slice(0,80);
+}
+function helpLoad(cb){
+  if(!supaClient){cb('クラウドに接続できません');return;}
+  try{
+    supaClient.from(CLOUD_TABLE).select('doc,updated_at').eq('id',HELP_ROW_ID).maybeSingle().then(function(res){
+      if(res.error){cb(res.error.message);return;}
+      cb(null,helpDocNorm(res.data&&res.data.doc),res.data?res.data.updated_at:null);
+    },function(e){cb((e&&e.message)||'通信エラー');});
+  }catch(e){cb(e.message);}
+}
+/* 読み直して mut で書き換え、読んだ版のときだけ書く（同時に送っても消えない）。cb(err,doc) */
+function helpUpdate(mut,by,cb){
+  var attempt=0;
+  function once(){
+    attempt++;
+    helpLoad(function(err,doc,ts){
+      if(err){cb&&cb(err);return;}
+      mut(doc);
+      if(doc.asks.length>HELP_ASK_MAX)doc.asks=doc.asks.slice(-HELP_ASK_MAX);
+      var now=new Date().toISOString();
+      var q=ts
+        ?supaClient.from(CLOUD_TABLE).update({doc:doc,updated_at:now,updated_by:by||''}).eq('id',HELP_ROW_ID).eq('updated_at',ts).select('updated_at')
+        :supaClient.from(CLOUD_TABLE).insert({id:HELP_ROW_ID,doc:doc,updated_at:now,updated_by:by||''}).select('updated_at');
+      q.then(function(r){
+        if(r&&r.error){if(!ts&&attempt<6){setTimeout(once,150*attempt);return;}cb&&cb(r.error.message);return;}
+        if(!r||!r.data||!r.data.length){if(attempt<6){setTimeout(once,150*attempt);return;}cb&&cb('他の人の送信と重なり続けたため');return;}
+        cb&&cb(null,doc);
+      },function(e){cb&&cb((e&&e.message)||'通信エラー');});
+    });
+  }
+  try{once();}catch(e){cb&&cb(e.message);}
+}
+function helpAskAdd(a,cb){
+  var text=String(a.text||'').trim().slice(0,500);
+  if(!text){cb&&cb('質問が空です');return;}
+  var rec={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),text:text,kind:a.kind||'send',by:a.by||'',at:new Date().toISOString(),
+    tab:a.tab||'',ver:(typeof APP_VERSION!=='undefined'?APP_VERSION:''),mode:TRAINING?'training':(SPRING?'spring':''),qa:a.qa||''};
+  helpUpdate(function(doc){
+    doc.asks.push(rec);
+    /* 対応済みにした質問がまた来たら、未対応に戻す（答えが足りていない合図のため） */
+    var k=helpAskKey(text);if(doc.done[k])delete doc.done[k];
+  },a.by,cb);
+}
+/* 同じ質問ごとにまとめる */
+function helpAskGroups(doc){
+  var map={},list=[];
+  (doc.asks||[]).forEach(function(a){
+    var k=helpAskKey(a.text);if(!k)return;
+    var g=map[k];
+    if(!g){g=map[k]={key:k,text:a.text,items:[],users:{},kinds:{},last:'',done:doc.done[k]||null};list.push(g);}
+    g.items.push(a);if(a.by)g.users[a.by]=1;g.kinds[a.kind||'send']=(g.kinds[a.kind||'send']||0)+1;
+    if(String(a.at)>=g.last){g.last=String(a.at);g.text=a.text;}
+  });
+  list.sort(function(a,b){return b.items.length-a.items.length||(b.last<a.last?-1:1);});
+  return list;
+}
+function helpOpenCount(doc){return helpAskGroups(doc).filter(function(g){return !g.done;}).length;}
+function helpFmtAt(s){try{var d=new Date(s);if(isNaN(d))return String(s||'');return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}catch(e){return String(s||'');}}
+
+/* ----- 管理者: 集まった質問の一覧（ユーザー管理と使い方Q&Aの両方で使う） ----- */
+function HelpAsksAdmin(p){
+  var st=us({loading:true,err:'',doc:null}),filt=us('open'),openKey=us(''),busy=us(false);
+  function reload(){
+    st[1]({loading:true,err:'',doc:st[0].doc});
+    helpLoad(function(err,doc){
+      st[1]({loading:false,err:err||'',doc:doc||null});
+      if(doc&&p.onCount)p.onCount(helpOpenCount(doc));
+    });
+  }
+  ue(function(){reload();},[]);
+  function act(mut,msg){
+    if(busy[0])return;busy[1](true);
+    helpUpdate(mut,p.userName,function(err,doc){
+      busy[1](false);
+      if(err){p.toast&&p.toast('保存できませんでした（'+err+'）');return;}
+      st[1]({loading:false,err:'',doc:doc});
+      if(p.onCount)p.onCount(helpOpenCount(doc));
+      if(msg)p.toast&&p.toast(msg);
+    });
+  }
+  var doc=st[0].doc,groups=doc?helpAskGroups(doc):[];
+  var shown=groups.filter(function(g){return filt[0]==='all'?true:(filt[0]==='done'?!!g.done:!g.done);});
+  var nOpen=groups.filter(function(g){return !g.done;}).length;
+  function copyList(){
+    var rows=groups.filter(function(g){return !g.done;}).map(function(g,i){
+      return (i+1)+'. '+g.text+'（'+g.items.length+'回・'+Object.keys(g.users).join('、')+'・'+Object.keys(g.kinds).map(function(k){return HELP_KIND_LABELS[k]||k;}).join('／')+'）';
+    });
+    var txt='【使い方Q&Aに無かった質問】'+new Date().toLocaleDateString('ja-JP')+'\n'+(rows.join('\n')||'（なし）');
+    try{navigator.clipboard.writeText(txt);p.toast&&p.toast('コピーしました（Q&Aを増やす依頼に貼り付けてください）');}catch(e){p.toast&&p.toast('コピーできませんでした');}
+  }
+  var chip=function(v,l){return h('button',{key:v,className:'btn btn-xs '+(filt[0]===v?'btn-nv':'btn-ol'),onClick:function(){filt[1](v);}},l);};
+  return h('div',{style:{fontSize:11}},
+    h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',alignItems:'center',marginBottom:6}},
+      chip('open','未対応（'+nOpen+'）'),chip('done','対応済み'),chip('all','すべて'),
+      h('span',{style:{flex:1}}),
+      h('button',{className:'btn btn-xs btn-ol',onClick:reload,disabled:st[0].loading},'↻ 読み直す'),
+      h('button',{className:'btn btn-xs btn-gn',onClick:copyList,disabled:!nOpen},'📋 未対応をコピー')),
+    h('div',{style:{fontSize:9,color:'var(--g500)',marginBottom:6,lineHeight:1.6}},'使い方Q&Aで答えが見つからなかった質問です（同じ質問はまとめて数えます）。Q&Aに追加したら「✓ 対応済み」にしてください。対応済みの質問がまた来ると未対応に戻ります。'),
+    st[0].err?h('div',{style:{color:'#c53030',marginBottom:6}},'読み込めませんでした: '+st[0].err):null,
+    st[0].loading&&!doc?h('div',{style:{color:'var(--g500)'}},'読み込み中…'):
+    !shown.length?h('div',{style:{color:'var(--g500)',padding:'8px 0'}},filt[0]==='open'?'未対応の質問はありません':'該当する質問はありません'):
+    h('div',null,shown.map(function(g){
+      var op=openKey[0]===g.key;
+      return h('div',{key:g.key,style:{border:'1px solid var(--g200)',borderRadius:6,padding:'6px 8px',marginBottom:5,background:g.done?'#f5f7fa':'#fff'}},
+        h('div',{style:{display:'flex',gap:6,alignItems:'flex-start'}},
+          h('div',{style:{flex:1,minWidth:0,cursor:'pointer'},onClick:function(){openKey[1](op?'':g.key);}},
+            h('div',{style:{fontWeight:700,color:'#1a1a2e',wordBreak:'break-all'}},(op?'▼ ':'▶ ')+g.text),
+            h('div',{style:{fontSize:9,color:'var(--g500)',marginTop:2}},
+              h('b',{style:{color:g.items.length>1?'#975a16':'inherit'}},g.items.length+'回'),'・'+Object.keys(g.users).length+'人・最終 '+helpFmtAt(g.last)+'・',
+              Object.keys(g.kinds).map(function(k){return (HELP_KIND_LABELS[k]||k)+(g.kinds[k]>1?'×'+g.kinds[k]:'');}).join(' '),
+              g.done?'・✓ 対応済み（'+(g.done.by||'')+' '+helpFmtAt(g.done.at)+'）':'')),
+          g.done
+            ?h('button',{className:'btn btn-xs btn-ol',disabled:busy[0],onClick:function(){act(function(d){delete d.done[g.key];});}},'↺ 未対応に戻す')
+            :h('button',{className:'btn btn-xs btn-gn',disabled:busy[0],onClick:function(){act(function(d){d.done[g.key]={by:p.userName||'',at:new Date().toISOString()};},'対応済みにしました');}},'✓ 対応済み'),
+          h('button',{className:'btn btn-xs btn-rd',disabled:busy[0],title:'この質問（まとめた分すべて）を一覧から消します',onClick:function(){
+            if(!confirm('「'+g.text+'」（'+g.items.length+'件）を一覧から削除します。よろしいですか？'))return;
+            act(function(d){d.asks=d.asks.filter(function(a){return helpAskKey(a.text)!==g.key;});delete d.done[g.key];},'削除しました');
+          }},'🗑')),
+        op?h('div',{style:{marginTop:5,borderTop:'1px dashed var(--g200)',paddingTop:4}},g.items.slice().reverse().map(function(a){
+          var qa=a.qa?helpQaById(a.qa):null;
+          return h('div',{key:a.id,style:{fontSize:9,color:'var(--g600)',padding:'2px 0',wordBreak:'break-all'}},
+            helpFmtAt(a.at)+'　'+(a.by||'（名前なし）')+'　'+(HELP_KIND_LABELS[a.kind]||a.kind)+(a.tab?'　画面: '+(HELP_TAB_LABELS[a.tab]||a.tab):'')+(a.mode==='spring'?'　🌸春先':'')+(a.mode==='training'?'　🎓練習中':'')+(a.ver?'　'+a.ver:''),
+            qa?h('div',{style:{color:'#975a16'}},'見ていたQ&A: '+qa.q):null,
+            a.text!==g.text?h('div',null,'「'+a.text+'」'):null);
+        })):null);
+    })));
+}
+
+/* ----- 使い方Q&Aの画面（右側に出す。作業中の画面は隠さない） ----- */
+function HelpPanel(p){
+  var q=us(''),cat=us(''),openId=us(''),view=us('qa');
+  var ask=us(''),sending=us(false),sentMsg=us('');
+  var logged=ur({});
+  var inpRef=ur(null);
+  ue(function(){if(p.show&&inpRef.current){try{inpRef.current.focus();}catch(e){}}},[p.show]);
+  var hits=q[0].trim()?helpSearch(q[0]):null;
+  /* 検索で見つからなかった言葉は、入力が止まって3秒たったら記録する（同じ言葉は1回だけ） */
+  ue(function(){
+    if(!p.show||!hits||hits.length)return;
+    var text=q[0].trim(),k=helpAskKey(text);
+    if(k.length<3||logged.current[k])return;
+    var t=setTimeout(function(){
+      logged.current[k]=1;
+      helpAskAdd({text:text,kind:'nohit',by:p.userName,tab:p.tab},function(err){if(!err&&p.onAsked)p.onAsked();});
+    },3000);
+    return function(){clearTimeout(t);};
+  },[q[0],p.show]);
+  if(!p.show)return null;
+  function send(kind,qaId){
+    var text=ask[0].trim();
+    if(!text){p.toast&&p.toast('質問を入力してください');return;}
+    sending[1](true);
+    helpAskAdd({text:text,kind:kind||'send',by:p.userName,tab:p.tab,qa:qaId||''},function(err){
+      sending[1](false);
+      if(err){sentMsg[1]('⚠ 送れませんでした（'+err+'）。通信を確かめてもう一度押してください');return;}
+      logged.current[helpAskKey(text)]=1;
+      ask[1]('');sentMsg[1]('✓ 管理者に送りました。答えはQ&Aに追加されます');
+      if(p.onAsked)p.onAsked();
+    });
+  }
+  var list;
+  if(hits)list=hits;
+  else{
+    list=HELP_QA.filter(function(x){return !cat[0]||x.cat===cat[0];});
+    /* 何も選んでいないときは、今の画面の Q&A を先に */
+    if(!cat[0])list=list.filter(function(x){return x.tab===p.tab;}).concat(list.filter(function(x){return x.tab!==p.tab;}));
+  }
+  var W={position:'fixed',top:0,right:0,bottom:0,width:'min(430px,100vw)',background:'#fff',zIndex:190,boxShadow:'-6px 0 24px rgba(0,0,0,.18)',display:'flex',flexDirection:'column',fontSize:12,color:'#1a1a2e'};
+  function qaView(x){
+    var op=openId[0]===x.id;
+    return h('div',{key:x.id,style:{border:'1px solid '+(op?'#1e3a5f':'#e2e8f0'),borderRadius:8,marginBottom:6,background:op?'#f5f7fa':'#fff'}},
+      h('div',{style:{padding:'8px 10px',cursor:'pointer',fontWeight:700,lineHeight:1.5},onClick:function(){openId[1](op?'':x.id);}},
+        (op?'▼ ':'▶ ')+x.q,
+        x.tab?h('span',{style:{fontSize:9,fontWeight:400,color:'var(--g500)',marginLeft:6}},HELP_TAB_LABELS[x.tab]):null),
+      op?h('div',{style:{padding:'0 10px 10px',lineHeight:1.7}},
+        h('ol',{style:{margin:'0 0 6px',paddingLeft:20}},(x.steps||[]).map(function(s,i){return h('li',{key:i,style:{marginBottom:2}},s);})),
+        x.tip?h('div',{style:{background:'#e8f3ed',border:'1px solid #bfe0cc',borderRadius:6,padding:'4px 8px',marginBottom:4,color:'#276749'}},'💡 '+x.tip):null,
+        x.warn?h('div',{style:{background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:6,padding:'4px 8px',marginBottom:4,color:'#975a16'}},'⚠ '+x.warn):null,
+        h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginTop:6}},
+          (x.tab&&x.tab!==p.tab)?h('button',{className:'btn btn-xs btn-nv',onClick:function(){p.setTab(x.tab);}},'「'+HELP_TAB_LABELS[x.tab]+'」を開く →'):null,
+          h('button',{className:'btn btn-xs btn-ol',title:'この答えで分からなかったことを管理者に送ります',onClick:function(){ask[1]('「'+x.q+'」で分からなかった: ');sentMsg[1]('');
+            setTimeout(function(){var el=document.getElementById('help-ask-box');if(el){try{el.focus();el.scrollIntoView({block:'center'});}catch(e){}}},50);
+            openId[1](x.id);}},'👎 解決しなかった')),
+        (x.rel||[]).length?h('div',{style:{marginTop:6,fontSize:10,color:'var(--g500)'}},'関連: ',(x.rel||[]).map(function(id){var r=helpQaById(id);return r?h('a',{key:id,href:'#',style:{color:'#1e3a5f',marginRight:8},onClick:function(e){e.preventDefault();q[1]('');cat[1]('');openId[1](id);}},r.q):null;})):null
+      ):null);
+  }
+  var unsolvedQa=/^「(.+)」で分からなかった/.exec(ask[0]);
+  var unsolvedId=unsolvedQa?((HELP_QA.find(function(x){return x.q===unsolvedQa[1];})||{}).id||''):'';
+  return h('div',{style:W,className:'no-print'},
+    h('div',{style:{background:'#1e3a5f',color:'#fff',padding:'10px 12px',display:'flex',alignItems:'center',gap:8}},
+      h('b',{style:{fontSize:14,flex:1}},'❓ 使い方Q&A'),
+      p.isAdmin?h('button',{className:'btn btn-xs',style:{background:view[0]==='asks'?'#fff':'rgba(255,255,255,.15)',color:view[0]==='asks'?'#1e3a5f':'#fff',border:'1px solid rgba(255,255,255,.4)'},onClick:function(){view[1](view[0]==='asks'?'qa':'asks');}},
+        view[0]==='asks'?'← Q&Aへ':'📥 集まった質問'+(p.askCount?'（'+p.askCount+'）':'')):null,
+      h('button',{style:{background:'none',border:'none',color:'#fff',fontSize:20,cursor:'pointer',lineHeight:1},title:'閉じる',onClick:p.onClose},'×')),
+    view[0]==='asks'?h('div',{style:{flex:1,overflowY:'auto',padding:10}},h(HelpAsksAdmin,{userName:p.userName,toast:p.toast,onCount:p.onCount})):
+    h('div',{style:{flex:1,overflowY:'auto',padding:10}},
+      h('input',{ref:inpRef,className:'inp',style:{width:'100%',boxSizing:'border-box',fontSize:13,padding:'7px 9px',marginBottom:6},value:q[0],
+        placeholder:'やりたいことを入力（例: 貸与品を手で入れて仮押さえしたい）',onChange:function(e){q[1](e.target.value);openId[1]('');}}),
+      h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}},
+        [{k:'',l:'すべて'}].concat(HELP_CATS).map(function(c){
+          return h('button',{key:c.k||'all',className:'btn btn-xs '+(!hits&&cat[0]===c.k?'btn-nv':'btn-ol'),onClick:function(){cat[1](c.k);q[1]('');openId[1]('');}},c.l);
+        })),
+      hits?h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:4}},hits.length?('「'+q[0].trim()+'」の答え: '+hits.length+'件'):''):
+        (!cat[0]?h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:4}},'「'+(HELP_TAB_LABELS[p.tab]||'')+'」の画面の質問を先に並べています'):null),
+      hits&&!hits.length?h('div',{style:{padding:'10px',background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:8,color:'#975a16',marginBottom:8,lineHeight:1.6}},
+        '「'+q[0].trim()+'」の答えが見つかりませんでした。別の言い方で探すか、下の欄から管理者に質問を送ってください。',
+        h('div',null,h('button',{className:'btn btn-xs btn-or',style:{marginTop:4},onClick:function(){ask[1](q[0].trim());sentMsg[1]('');}},'この質問を下の欄に入れる'))):null,
+      list.map(qaView),
+      /* 答えが無いときの送信欄 */
+      h('div',{style:{marginTop:12,padding:10,border:'1px dashed #1e3a5f',borderRadius:8,background:'#f5f7fa'}},
+        h('div',{style:{fontWeight:700,color:'#1e3a5f',marginBottom:4}},'✉ 答えが見つからないときは'),
+        h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:4,lineHeight:1.5}},'やりたいことを書いて送ってください。管理者の画面に集まり、Q&Aに追加されます。'),
+        h('textarea',{id:'help-ask-box',className:'inp',rows:3,style:{width:'100%',boxSizing:'border-box',fontSize:12,resize:'vertical'},value:ask[0],placeholder:'例: 仮押さえした案件の扉の色だけ変えたい',onChange:function(e){ask[1](e.target.value);sentMsg[1]('');}}),
+        h('div',{style:{display:'flex',alignItems:'center',gap:8,marginTop:4}},
+          h('button',{className:'btn btn-xs btn-nv',disabled:sending[0]||!ask[0].trim(),onClick:function(){send(unsolvedId?'unsolved':'send',unsolvedId);}},sending[0]?'送信中…':'管理者に送る'),
+          sentMsg[0]?h('span',{style:{fontSize:10,color:sentMsg[0].charAt(0)==='⚠'?'#c53030':'#276749'}},sentMsg[0]):null)),
+      h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:8,textAlign:'right'}},'Q&A '+HELP_QA.length+'件・'+(typeof APP_VERSION!=='undefined'?APP_VERSION:''))
+    ));
+}
+
 function App(){
   var tab=us('cust'),cust=us(null),toast=us(null),bump=us(0);
   var custPick=us(0);/* v19.45 ①②: 顧客選択画面で顧客を選んだ回数（同じ顧客を選び直しても在庫確認・見積を新しい案件として始めるため） */
@@ -9673,6 +10160,13 @@ function App(){
   var editorOverrideName=us(null);/* v18.17 要望5: 管理者が指定した編集者名(UI表示用) */
   /* v14 D31: ユーザー管理モーダル（Codex P1対応: useStateはApp直下、IIFE内のurを排除） */
   var showUserMgmt=us(false);
+  /* v19.57: 使い方Q&A。管理者には、答えが無かった質問（未対応）の数をボタンに出す */
+  var showHelp=us(false),helpCount=us(0);
+  function refreshHelpCount(){
+    if(roleOf(userName[0])!=='admin')return;
+    helpLoad(function(err,doc){if(!err&&doc)helpCount[1](helpOpenCount(doc));});
+  }
+  ue(function(){if(loggedIn[0])refreshHelpCount();},[loggedIn[0],userName[0]]);
   var bumpUsers=us(0);
   var newUserName_=us(''),newUserLoc_=us('honsha_office'),newUserRole_=us('user');
   var newUserPw_=us(''),lastIssued_=us(null);/* v18.23 要望6: アカウント発行(ID/PW同時設定)＋発行内容を相手に送れるよう表示 */
@@ -10111,6 +10605,10 @@ function App(){
       ),
       h('div',{style:{display:'flex',alignItems:'center',gap:6,marginLeft:8}},
         h('span',{className:'hdr-me',style:{fontSize:8,opacity:.7}},myLocLabel+': '+userName[0]),
+        /* v19.57: 使い方Q&A */
+        h('button',{className:'hdr-mini-btn',style:{background:showHelp[0]?'#fff':'rgba(255,255,255,.92)',border:'1px solid #fff',borderRadius:4,color:'#1e3a5f',fontSize:8,fontWeight:900,padding:'1px 6px',cursor:'pointer'},
+          title:'やりたいことから操作方法を探せます',onClick:function(){showHelp[1](!showHelp[0]);if(!showHelp[0])refreshHelpCount();}},
+          '❓ 使い方'+(currentRole==='admin'&&helpCount[0]?'（質問'+helpCount[0]+'）':'')),
         /* v14 D31: ユーザー管理ボタン */
         h('button',{className:'hdr-mini-btn',style:{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:4,color:'#fff',fontSize:7,padding:'1px 5px',cursor:'pointer'},onClick:function(){showUserMgmt[1](true);}},'👥 ユーザー管理'),
         SPRING?h('button',{className:'hdr-mini-btn',style:{background:'#fff',border:'1px solid #fff',borderRadius:4,color:SPRING_PINK,fontSize:7,fontWeight:900,padding:'1px 5px',cursor:'pointer'},title:'通常の画面へ戻ります（春先の案件・在庫は保存されています）',onClick:exitSpring},'🌸 春先を出る'):null,
@@ -10146,6 +10644,8 @@ function App(){
     h(InvPage,{tab:tab[0],selCust:cust[0],custPick:custPick[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);},editOrder:editOrder[0],clearEditOrder:function(){editOrder[1](null);}}),
     h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:effRO,setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);},requestEdit:function(o){editOrder[1](o);}}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:effRO}),
+    h(HelpPanel,{show:showHelp[0],onClose:function(){showHelp[1](false);},tab:tab[0],setTab:function(t){tab[1](t);},userName:userName[0],
+      isAdmin:currentRole==='admin',askCount:helpCount[0],onCount:function(n){helpCount[1](n);},onAsked:refreshHelpCount,toast:showToast}),
     /* v14.4 hotfix2: 同時ログイン可視化バナー
        offline時はバナーを非表示にして画面の邪魔をしない（ヘッダーの「💾 ローカルモード」のみで状態を示す）
        offline = Supabase未利用環境。ローカル動作は完全に可能なので、過度な警告を表示しない方針に変更 */
@@ -10202,6 +10702,10 @@ function App(){
             h('div',{style:{marginBottom:10,padding:8,background:isAdmin?'#FEF3C7':'#FEE2E2',borderRadius:6,fontSize:10,color:isAdmin?'#7C2D12':'#991B1B'}},
               isAdmin?'※あなたは管理者です。ユーザーを追加・削除できます。':'※あなたは管理者ではありません。閲覧のみ可能です。管理者にお問い合わせください。'
             ),
+            /* v19.57: 使い方Q&Aに無かった質問（同じ質問をまとめて表示） */
+            isAdmin?h('details',{style:{marginBottom:10,padding:8,background:'#f5f7fa',border:'1px solid #e2e8f0',borderRadius:6}},
+              h('summary',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',cursor:'pointer'}},'❓ 使い方Q&Aに無かった質問'+(helpCount[0]?'（未対応 '+helpCount[0]+'）':'')),
+              h('div',{style:{marginTop:6}},h(HelpAsksAdmin,{userName:userName[0],toast:showToast,onCount:function(n){helpCount[1](n);}}))):null,
             /* v18.17 要望5: 管理者が編集権限を任意のオンラインユーザーへ付与/解除 */
             isAdmin?h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6}},
               h('div',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',marginBottom:4}},'🔑 編集権限の指定'),
