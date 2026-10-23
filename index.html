@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.57（使い方Q&A・答えが無かった質問を管理者の画面に集める）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.58（見積書の送料の備考を「※設置工事費別途」に・パーツ単品追加の商品を入れ替え）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1420,7 +1420,8 @@ function deliveryPlanMs(order){
    行キー(rkey)で order.rowRemarks に保持し、未入力の行は空欄のまま。 */
 /* v18.99 修正28: 送料の行の備考の既定値。★見積書・請求書・納品書・物品受領書のすべてに出す（明細の備考は帳票共通）。
    v18.99 の初版では見積書だけにしていたが「請求書にも記載」との指示で全帳票へ（修正28の再修正）。 */
-var SHIP_ROW_REMARK_DEFAULT='※組立工事費別途';
+/* v19.58 依頼書 2026-10-23_110810: 「※組立工事費別途」→「※設置工事費別途」（混載・チャーターとも。ユーザー回答） */
+var SHIP_ROW_REMARK_DEFAULT='※設置工事費別途';
 function rowRemark(order,rkey,fallback){
   var rr=(order&&order.rowRemarks)||{};
   if(Object.prototype.hasOwnProperty.call(rr,rkey))return rr[rkey]||'';
@@ -2628,16 +2629,27 @@ var PART_ADD_DEFS=[
      サイドレールは2本1組で単価も組の金額（ユーザー回答）→ 数量は「組」、在庫は 組×2本 減る（setOf → 明細の stockMul） */
   {k:'railLong',l:'Sαサイドレール（2本1組）',lineLabel:'Sαサイドレール',setOf:2,unit:'組'},
   {k:'railShort',l:'Sαバックレール',unit:'本'},
-  {k:'numLabel',l:'番号シール'},
-  {k:'magnet',l:'マグネット'},
-  {k:'hook',l:'フック'},
+  /* v19.58 依頼書 2026-10-23_110810: 番号シール・マグネット・フック・ネームプレート厚紙はパーツ単品追加から外した（保存済みの案件の表示用に PART_LABELS は残す） */
   {k:'hingeCoverSML',l:'ヒンジカバー SML共通'},
   {k:'hingeCoverSS',l:'ヒンジカバー SS'},
   {k:'namePlateCoverSML',l:'ネームプレートカバー SML'},
   {k:'namePlateCoverSS',l:'ネームプレートカバー SS・3S'},
   {k:'namePlateCoverSML_tw',l:'ネームプレートカバー SML(台湾)'},/* v18.97 修正27① 台湾製 */
   {k:'namePlateCoverSS_tw',l:'ネームプレートカバー SS・3S(台湾)'},/* v18.97 修正27① 台湾製 */
-  {k:'namePlatePaper',l:'ネームプレート厚紙'}
+  /* v19.58 依頼書 2026-10-23_110810: 追加した10品（部材在庫一覧にも行を足した）。
+     ネーム厚紙(SML) は従来の「ネームプレート厚紙」の在庫キー（namePlatePaper）をそのまま使う（ユーザー回答: 名前を変えてつなぐ）。
+     マスターキー・チェンジマスターキー・キーバンドは鍵類と同じく全ライン共通在庫（COMMON_STOCK_KEYS）。
+     ★商品コード（単価）はユーザーから後で受け取る。それまでは見積書作成画面で単価を手入力する */
+  {k:'keyBandRV',l:'キーバンドRV型'},
+  {k:'keyBandSV',l:'キーバンドSV型'},
+  {k:'keyBandFV',l:'キーバンドFV型'},
+  {k:'doorNoSealSML',l:'扉No.シール(SML)'},
+  {k:'doorNoSealSS',l:'扉No.シール(SS/3S)'},
+  {k:'namePlatePaper',l:'ネーム厚紙(SML)'},
+  {k:'namePlatePaperSS',l:'ネーム厚紙(SS/3S)'},
+  {k:'hatome',l:'ハトメ'},
+  {k:'masterKeyStd',l:'マスターキー'},
+  {k:'changeMasterKey',l:'チェンジマスターキー'}
 ];
 /* v18.97 修正27②: パーツ単品追加の選択肢をパーツの製品ラインで絞る（ライン限定の部材は他ラインに出さない）。
    台湾製では汎用のネームプレートカバーを出さず(台湾)の方を出す。名称もラインに合わせる（ハンガーパイプの色）。 */
@@ -2707,7 +2719,9 @@ var PART_LABELS={
   dialKeyDST:'ダイヤル錠検索キー DST',/* v18.68 修正15⑥ */
   hingeCoverSML:'ヒンジカバー SML共通',hingeCoverSS:'ヒンジカバー SS',
   namePlateCoverSML:'ネームプレートカバー SML',namePlateCoverSS:'ネームプレートカバー SS・3S',
-  namePlatePaper:'ネームプレート厚紙',
+  namePlatePaper:'ネーム厚紙(SML)',/* v19.58: 旧「ネームプレート厚紙」 */
+  keyBandRV:'キーバンドRV型',keyBandSV:'キーバンドSV型',keyBandFV:'キーバンドFV型',doorNoSealSML:'扉No.シール(SML)',doorNoSealSS:'扉No.シール(SS/3S)',
+  namePlatePaperSS:'ネーム厚紙(SS/3S)',hatome:'ハトメ',masterKeyStd:'マスターキー',changeMasterKey:'チェンジマスターキー',/* v19.58 依頼書 2026-10-23_110810 */
   padlockGreen:'3桁ダイヤル南京錠 グリーン',padlockBlack:'3桁ダイヤル南京錠 ブラック',padlockRed:'3桁ダイヤル南京錠 レッド',
   /* v18.97 修正27①: 追加した部材 */
   hanger_gy:'ハンガーパイプ(グレー)',totte_tw:'トッテ(台湾)',
@@ -2988,7 +3002,9 @@ doorPocket:108,carryBag:200,/* v18.82 修正21②の追加: 持ち帰り用袋�
   padlockGreen:250,padlockBlack:250,padlockRed:250,/* v19.13 入数訂正: 3桁ダイヤル南京錠250 */
   /* v18.97 修正27①: 追加部材の入数は★暫定で同種の部材に合わせた（実数が分かれば在庫項目マスタで変更可） */
   hanger_gy:16,totte_tw:100,namePlateCoverSML_tw:200,namePlateCoverSS_tw:200,
-  masterKeyF:100,masterKeyB:100,masterKeyC:100,masterKeyD:100,masterKeyL:100,dialD003:100/* v19.13 入数訂正: D003は100（暫定50を訂正） */
+  masterKeyF:100,masterKeyB:100,masterKeyC:100,masterKeyD:100,masterKeyL:100,dialD003:100,/* v19.13 入数訂正: D003は100（暫定50を訂正） */
+  /* v19.58: 追加10品の入数は★暫定で同種の部材に合わせた（実数が分かれば在庫項目マスタで変更可） */
+  keyBandRV:100,keyBandSV:100,keyBandFV:100,doorNoSealSML:500,doorNoSealSS:500,namePlatePaperSS:500,hatome:50,masterKeyStd:100,changeMasterKey:100
 };
 /* ===== v19.13 入数訂正: 製品ラインで入数が違う部材 =====
    Sα（新台湾製）は在庫キーを日本製と共有している部材（サイド/バックボード S・扉 S・横連結ネジ・目隠しネジ）が
@@ -3146,7 +3162,9 @@ var BOX_WEIGHT={
   coinReturn:3.0,railSideSML:1.5,railBackSML:1.0,railSideSS:1.5,railBackSS:1.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0,carryBag:1.0,/* v18.82 修正21②の追加: 箱重量は暫定1.0kg（実測が分かれば在庫項目マスタで変更可） */
   railLong:1.5,railShort:1.0,/* v18.76 修正18① */
   /* v18.97 修正27①: 追加部材の箱重量は★暫定で同種の部材に合わせた */
-  hanger_gy:5.0,totte_tw:5.0,masterKeyF:1.0,masterKeyB:1.0,masterKeyC:1.0,masterKeyD:1.0,masterKeyL:1.0,dialD003:3.0
+  hanger_gy:5.0,totte_tw:5.0,masterKeyF:1.0,masterKeyB:1.0,masterKeyC:1.0,masterKeyD:1.0,masterKeyL:1.0,dialD003:3.0,
+  /* v19.58: 追加10品の箱重量は★暫定（ネーム厚紙・シールは0.3kg、それ以外は1.0kg） */
+  keyBandRV:1.0,keyBandSV:1.0,keyBandFV:1.0,doorNoSealSML:0.3,doorNoSealSS:0.3,namePlatePaperSS:0.3,hatome:1.0,masterKeyStd:1.0,changeMasterKey:1.0
 };
 var MISC_FEE=325;
 var MARKUP=1.1;
@@ -3292,7 +3310,9 @@ var HELD={};
 /* v14: 鍵類は全製品ライン共通プール（A1）。物理在庫はラインを問わず合算 */
 var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock','cylinder','cylinderMaster','cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderExchange','cylinderExchangeSpare','coinReturn','dialH110new','dialH111new','dialH112','dialImon','searchKey','masterKey','dialOpnus','cylinderFMaster','cylinderBMaster','cylinderCMaster','cylinderDMaster','cylinderLMaster','dialKeyH110','dialKeyH111','dialKeyD003','dialKeyD018','dialKeyDST','padlockGreen','padlockBlack','padlockRed',
   /* v18.97 修正27①「共通」: マスターキー5種・ダイヤル錠(D003) */
-  'masterKeyF','masterKeyB','masterKeyC','masterKeyD','masterKeyL','dialD003'];
+  'masterKeyF','masterKeyB','masterKeyC','masterKeyD','masterKeyL','dialD003',
+  /* v19.58: マスターキー・チェンジマスターキー・キーバンド3種 */
+  'masterKeyStd','changeMasterKey','keyBandRV','keyBandSV','keyBandFV'];
 function isCommonStockKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0;}
 /* v18.44 修正３⑥: 受注発注部材（原則在庫なし・見積時のみ使用。最終的に入庫された段階で出荷する）。
    在庫確認で不足でも案件全体をNGにせず「受発注」バッジ表示にし、他部材の仮押さえを妨げない。
@@ -7841,7 +7861,7 @@ function buildQuoteRows(order){
   rows=rows.concat(extraQuoteRows(order));/* 修正17⑨ */
   var ship=parseInt(order.shipping)||0;
   /* v18.62 修正12⑥: 送料行の名称は送付方法（混載／チャーター）で切り替え、手入力(shipLabel)があればそれを使う */
-  /* v18.99 修正28: 送料の行の備考は既定で「※組立工事費別途」（見積書作成画面の備考欄で消す・書き換えることができる） */
+  /* v18.99 修正28: 送料の行の備考は既定で「※設置工事費別途」（v19.58 で「組立」→「設置」）（見積書作成画面の備考欄で消す・書き換えることができる） */
   /* v19.39 修正35③: 送料サービス（0円）でも行を残す。見積書作成画面で送料欄を触った案件（shipKeep）は0円でも行を出す */
   if(ship>0||order.shipKeep)rows.push({rkey:'SHIP',code:shipRowCode(order),name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP',SHIP_ROW_REMARK_DEFAULT)});
   /* v18.62 修正12②: 値引きは項目名付きで複数行。金額が入っていない行は出力しない
@@ -9697,7 +9717,7 @@ var HELP_QA=[
   {id:'quote-multi',cat:'quote',tab:'inv',ver:'v19.57',q:'サイズ違いなど、複数の製品を1つの見積にまとめたい',kw:['複数','サイズ違い','まとめる','別製品','追加'],
     steps:['1つ目の商品を選び「＋ 在庫確認・明細追加」','商品選択を2つ目の内容に変えて、もう一度「＋ 在庫確認・明細追加」（明細に行が増えます）','そろったら倉庫を選んで見積・仮押さえ'],
     tip:'「＋ 別製品ライン追加（サイズ違い等をこの案件に追加）」でも追加できます。明細の「✕」で行を消せます。',rel:[]},
-  {id:'quote-parts',cat:'quote',tab:'inv',ver:'v19.57',q:'扉・棚板・鍵・レールなどパーツだけを追加・販売したい',kw:['パーツ','部材','部品','単品','扉','棚板','鍵','レール','ネジ'],
+  {id:'quote-parts',cat:'quote',tab:'inv',ver:'v19.58',q:'扉・棚板・鍵・レールなどパーツだけを追加・販売したい',kw:['パーツ','部材','部品','単品','扉','棚板','鍵','レール','ネジ','キーバンド','シール','厚紙','ハトメ','マスターキー'],
     steps:['「在庫確認・見積」の「パーツ単品追加」欄で、パーツの製品ライン・パーツ・数量を選ぶ','「＋ パーツ単品追加」を押す（明細に入ります）','あとはふつうの見積と同じく倉庫を選んで見積・仮押さえ'],
     tip:'Sα を選ぶと、Sα で扱う部材と鍵類だけが選べます。',rel:[]},
   {id:'quote-free',cat:'quote',tab:'inv',ver:'v19.57',q:'在庫に無い商品や工事費を見積に入れたい',kw:['自由入力','工事費','搬入','設置','在庫外','その他'],
@@ -17254,7 +17274,17 @@ function PartsPage(p){
     {label:'ネームプレートカバー SS・3S',key:'namePlateCoverSS',cat:'option'},
     {label:'ネームプレートカバー SML(台湾)',key:'namePlateCoverSML_tw',cat:'option'},/* v18.97 修正27① 台湾製だけ */
     {label:'ネームプレートカバー SS・3S(台湾)',key:'namePlateCoverSS_tw',cat:'option'},/* v18.97 修正27① 台湾製だけ */
-    {label:'ネームプレート厚紙',key:'namePlatePaper',cat:'option'},
+    /* v19.58: 「ネームプレート厚紙」→「ネーム厚紙(SML)」（在庫キーは同じ。旧表記は alias で照合）。追加10品 */
+    {label:'ネーム厚紙(SML)',key:'namePlatePaper',cat:'option',alias:['ネームプレート厚紙']},
+    {label:'ネーム厚紙(SS/3S)',key:'namePlatePaperSS',cat:'option'},
+    {label:'扉No.シール(SML)',key:'doorNoSealSML',cat:'option'},
+    {label:'扉No.シール(SS/3S)',key:'doorNoSealSS',cat:'option'},
+    {label:'ハトメ',key:'hatome',cat:'option'},
+    {label:'キーバンドRV型',key:'keyBandRV',cat:'lock'},
+    {label:'キーバンドSV型',key:'keyBandSV',cat:'lock'},
+    {label:'キーバンドFV型',key:'keyBandFV',cat:'lock'},
+    {label:'マスターキー',key:'masterKeyStd',cat:'lock'},
+    {label:'チェンジマスターキー',key:'changeMasterKey',cat:'lock'},
     {label:'3桁ダイヤル南京錠 グリーン',key:'padlockGreen',cat:'lock'},
     {label:'3桁ダイヤル南京錠 ブラック',key:'padlockBlack',cat:'lock'},
     {label:'3桁ダイヤル南京錠 レッド',key:'padlockRed',cat:'lock'}
@@ -17460,7 +17490,17 @@ function PartsPage(p){
           uniRows.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iGet('namePlateCoverSS')});
           uniRows.push({item:'ネームプレートカバー SML(台湾)',variant:'',key:'namePlateCoverSML_tw',irisu:iGet('namePlateCoverSML_tw')});/* v18.97 修正27① */
           uniRows.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iGet('namePlateCoverSS_tw')});/* v18.97 修正27① */
-          uniRows.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iGet('namePlatePaper')});
+          /* v19.58: 「ネームプレート厚紙」→「ネーム厚紙(SML)」。追加10品 */
+          uniRows.push({item:'ネーム厚紙',variant:'SML',key:'namePlatePaper',irisu:iGet('namePlatePaper')});
+          uniRows.push({item:'',variant:'SS/3S',key:'namePlatePaperSS',irisu:iGet('namePlatePaperSS')});
+          uniRows.push({item:'扉No.シール',variant:'SML',key:'doorNoSealSML',irisu:iGet('doorNoSealSML')});
+          uniRows.push({item:'',variant:'SS/3S',key:'doorNoSealSS',irisu:iGet('doorNoSealSS')});
+          uniRows.push({item:'ハトメ',variant:'',key:'hatome',irisu:iGet('hatome')});
+          uniRows.push({item:'キーバンド',variant:'RV型',key:'keyBandRV',irisu:iGet('keyBandRV')});
+          uniRows.push({item:'',variant:'SV型',key:'keyBandSV',irisu:iGet('keyBandSV')});
+          uniRows.push({item:'',variant:'FV型',key:'keyBandFV',irisu:iGet('keyBandFV')});
+          uniRows.push({item:'マスターキー',variant:'',key:'masterKeyStd',irisu:iGet('masterKeyStd')});
+          uniRows.push({item:'チェンジマスターキー',variant:'',key:'changeMasterKey',irisu:iGet('changeMasterKey')});
           /* v14.2: 40-42. 3桁ダイヤル南京錠（3種） */
           uniRows.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iGet('padlockGreen')});
           uniRows.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iGet('padlockBlack')});
@@ -17871,7 +17911,10 @@ function PartsPage(p){
               snapRows.push({item:'ネームプレートカバー SS・3S',key:'namePlateCoverSS'});
               snapRows.push({item:'ネームプレートカバー SML(台湾)',key:'namePlateCoverSML_tw'});/* v18.97 修正27① */
               snapRows.push({item:'ネームプレートカバー SS・3S(台湾)',key:'namePlateCoverSS_tw'});
-              snapRows.push({item:'ネームプレート厚紙',key:'namePlatePaper'});
+              snapRows.push({item:'ネーム厚紙(SML)',key:'namePlatePaper'});/* v19.58: 旧「ネームプレート厚紙」 */
+              [['namePlatePaperSS','ネーム厚紙(SS/3S)'],['doorNoSealSML','扉No.シール(SML)'],['doorNoSealSS','扉No.シール(SS/3S)'],['hatome','ハトメ'],
+               ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー']]
+                .forEach(function(a){snapRows.push({item:a[1],key:a[0]});});/* v19.58 */
               snapRows.push({item:'3桁ダイヤル南京錠 グリーン',key:'padlockGreen'});
               snapRows.push({item:'3桁ダイヤル南京錠 ブラック',key:'padlockBlack'});
               snapRows.push({item:'3桁ダイヤル南京錠 レッド',key:'padlockRed'});
@@ -18247,7 +18290,10 @@ function PartsPage(p){
         uniR.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iG('namePlateCoverSS')});
         uniR.push({item:'ネームプレートカバー SML(台湾)',variant:'',key:'namePlateCoverSML_tw',irisu:iG('namePlateCoverSML_tw'),onlyIfUsed:true});/* v18.97 修正27① */
         uniR.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iG('namePlateCoverSS_tw'),onlyIfUsed:true});
-        uniR.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});
+        uniR.push({item:'ネーム厚紙(SML)',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});/* v19.58: 旧「ネームプレート厚紙」 */
+        [['namePlatePaperSS','ネーム厚紙(SS/3S)'],['doorNoSealSML','扉No.シール(SML)'],['doorNoSealSS','扉No.シール(SS/3S)'],['hatome','ハトメ'],
+         ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー']]
+          .forEach(function(a){uniR.push({item:a[1],variant:'',key:a[0],irisu:iG(a[0]),onlyIfUsed:true});});/* v19.58 */
         uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
         uniR.push({item:'',variant:'レッド',key:'padlockRed',irisu:iG('padlockRed')});
@@ -18600,7 +18646,10 @@ function PartsPage(p){
         uniR.push({item:'ネームプレートカバー SS・3S',variant:'',key:'namePlateCoverSS',irisu:iG('namePlateCoverSS')});
         uniR.push({item:'ネームプレートカバー SML(台湾)',variant:'',key:'namePlateCoverSML_tw',irisu:iG('namePlateCoverSML_tw'),onlyIfUsed:true});/* v18.97 修正27① */
         uniR.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iG('namePlateCoverSS_tw'),onlyIfUsed:true});
-        uniR.push({item:'ネームプレート厚紙',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});
+        uniR.push({item:'ネーム厚紙(SML)',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});/* v19.58: 旧「ネームプレート厚紙」 */
+        [['namePlatePaperSS','ネーム厚紙(SS/3S)'],['doorNoSealSML','扉No.シール(SML)'],['doorNoSealSS','扉No.シール(SS/3S)'],['hatome','ハトメ'],
+         ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー']]
+          .forEach(function(a){uniR.push({item:a[1],variant:'',key:a[0],irisu:iG(a[0]),onlyIfUsed:true});});/* v19.58 */
         uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
         uniR.push({item:'',variant:'レッド',key:'padlockRed',irisu:iG('padlockRed')});
