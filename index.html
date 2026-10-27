@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.59（見積を作り直しても手入力の送料・見積書作成画面の変更が戻らないように）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.60（自由入力の行に原価・粗利に反映／売上集計の原価に送料の原価）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -7358,8 +7358,9 @@ function orderSalesFigures(order){
   var gp=calcGrossProfit(order);
   var disc=discountSum(discountRowsOf(order));
   var sell=gp.total.sell+(order.shipping||0);
-  return {sell:sell,goods:gp.total.sell,ship:order.shipping||0,disc:disc,
-    buyCost:gp.total.cost,stockCost:gp.stockCost||0,missing:gp.total.missing,hasCost:gp.hasCost};
+  var sc=orderShipCost(order);/* v19.60: 売上高に送料が入っているので、原価にも送料の原価を足す */
+  return {sell:sell,goods:gp.total.sell,ship:order.shipping||0,disc:disc,shipCost:sc.cost,shipCostNG:!sc.ok,
+    buyCost:gp.total.cost+sc.cost,stockCost:(gp.stockCost||0)+sc.cost,missing:gp.total.missing,hasCost:gp.hasCost};
 }
 /* v19.43: 売上集計の対象（通常／春先／合算）。通常の画面では OTHER_SIDE が春先、春先の画面では OTHER_SIDE が通常 */
 function salesScopeOrders(scope){
@@ -7390,12 +7391,13 @@ function buildSalesReport(fromMs,toMs,basis,orders){
     if(!months[ym])months[ym]={ym:ym,cnt:0,sell:0,buyCost:0,stockCost:0};
     months[ym].cnt++;months[ym].sell+=f.sell;months[ym].buyCost+=f.buyCost;months[ym].stockCost+=f.stockCost;
     rows.push({no:o.no,date:t,ym:ym,cust:c?c.name:'',end:(o.endUser&&o.endUser.name)||'',
-      staff:orderStaffOf(o,c),sell:f.sell,goods:f.goods,ship:f.ship,disc:f.disc,
+      staff:orderStaffOf(o,c),sell:f.sell,goods:f.goods,ship:f.ship,disc:f.disc,shipCost:f.shipCost,shipCostNG:f.shipCostNG,
       buyCost:f.buyCost,stockCost:f.stockCost,missing:f.missing,priceVer:o.priceVer||0});
   });
   rows.sort(function(a,b){return a.date-b.date;});
-  var tot={cnt:rows.length,sell:0,buyCost:0,stockCost:0,missing:0,legacy:0};
-  rows.forEach(function(r){tot.sell+=r.sell;tot.buyCost+=r.buyCost;tot.stockCost+=r.stockCost;tot.missing+=r.missing;if(!r.priceVer)tot.legacy++;});
+  var tot={cnt:rows.length,sell:0,buyCost:0,stockCost:0,missing:0,legacy:0,shipCost:0,shipCostNG:0};
+  rows.forEach(function(r){tot.sell+=r.sell;tot.buyCost+=r.buyCost;tot.stockCost+=r.stockCost;tot.missing+=r.missing;if(!r.priceVer)tot.legacy++;
+    tot.shipCost+=r.shipCost||0;if(r.shipCostNG)tot.shipCostNG++;});
   var mList=Object.keys(months).sort().map(function(k){return months[k];});
   return {rows:rows,months:mList,total:tot};
 }
@@ -7520,7 +7522,8 @@ function calcGrossProfit0(order){
     var t2={sell:0,cost:0,missing:0};
     ['body','lock','base','shelf'].forEach(function(c){t2.sell+=cat[c].sell;t2.cost+=cat[c].cost;t2.missing+=cat[c].missing;});
     t2.sell=goodsSellOf(order,t2.sell);/* v18.73 修正17の追加⑳ */
-    return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:t2,hasCost:true,stockCost:stockCost,src:'master'};
+    var fc2=freeRowCostOf(order);t2.cost+=fc2.cost;stockCost+=fc2.cost;/* v19.60: 自由入力の行の原価 */
+    return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:t2,hasCost:true,stockCost:stockCost,src:'master',freeCost:fc2.cost,freeNoCost:fc2.noCost};
   }
   var agg=aggregateOrderBOM(order);
   Object.keys(agg).forEach(function(kk){
@@ -7534,7 +7537,61 @@ function calcGrossProfit0(order){
   var total={sell:0,cost:0,missing:0};
   ['body','lock','base','shelf'].forEach(function(c){total.sell+=cat[c].sell;total.cost+=cat[c].cost;total.missing+=cat[c].missing;});
   total.sell=goodsSellOf(order,total.sell);/* v18.73 修正17の追加⑳ */
-  return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:total,hasCost:Object.keys(COST_MASTER).length>0,stockCost:0,src:'bom'};
+  var fc=freeRowCostOf(order);total.cost+=fc.cost;/* v19.60: 自由入力の行の原価 */
+  return {body:cat.body,lock:cat.lock,base:cat.base,shelf:cat.shelf,total:total,hasCost:Object.keys(COST_MASTER).length>0||fc.cost>0,stockCost:fc.cost,src:'bom',freeCost:fc.cost,freeNoCost:fc.noCost};
+}
+/* ===== v19.60（2026-10-27 ユーザー）: 自由入力の行の原価 =====
+   ・見積書作成画面の「＋ 自由入力の行を追加」・定型文の行（order.extraRows）… 行の cost（原価単価）
+   ・在庫確認・見積の「自由入力（在庫外商品）」の行（明細 isFreeInput）… order.rowCost[rkey]（見積書作成画面で入力）、無ければ明細の unitCost
+   原価＝原価単価×数量（数量が空欄の行は1）。粗利計算表の原価・売上集計の原価に入る。
+   搬入・設置工事費は定型文の行で入れるので、その行の原価欄に工事の原価を入れる（ユーザー指定）。
+   ★送料は粗利計算表には含めない（従来どおり）。 */
+function costNum(v){if(v===''||v==null)return null;var n=parseInt(v);return isNaN(n)?null:Math.max(0,n);}
+function freeLineUnitCost(order,l){
+  var m=(order&&order.rowCost)||{};
+  var v=costNum(m['L'+l.id]);
+  return v!=null?v:costNum(l.unitCost);
+}
+function freeRowCostOf(order){
+  var cost=0,noCost=0;
+  ((order&&order.lines)||[]).forEach(function(l){
+    if(!l.isFreeInput)return;
+    var u=freeLineUnitCost(order,l);
+    if(u==null){if((parseInt(l.qty)||0)*(l.unitPrice||0)>0)noCost++;return;}
+    cost+=(parseInt(l.qty)||0)*u;
+  });
+  ((order&&order.extraRows)||[]).forEach(function(x){
+    if(!x||!x.rkey)return;
+    var u=costNum(x.cost);
+    var hasQ=(x.qty!==''&&x.qty!=null),q=hasQ?(parseInt(x.qty)||0):1;
+    if(u==null){if(hasQ&&(x.price!==''&&x.price!=null)&&q*(parseInt(x.price)||0)>0)noCost++;return;}
+    cost+=q*u;
+  });
+  return {cost:cost,noCost:noCost};
+}
+/* v19.60（2026-10-27 ユーザー「送料の原価は案Aで」）: 送料の原価。売上集計の原価にだけ足す（粗利計算表には入れない）。
+   ・チャーター便 … 送料計算のチャーター料金（推奨車格の原価＝見積記載価格にする前の値。チャーター発注書と同じ charterFeeOf）
+   ・混載便・未選択 … 運賃表の原価（genka＝×1.1・千円未満切上げの前）。複数倉庫は倉庫ごとの合計
+   ・送料の行が無い案件（送料0円・「0円でも行を出す」なし）は 0円
+   ・運賃表で引けない案件は ok:false（0円で計算し、画面に件数を出す）
+   ★運賃表は今の表で引く（出荷した当時の表ではない）。 */
+function orderShipCost(order){
+  if(!order)return {cost:0,ok:true,how:''};
+  if(!((parseInt(order.shipping)||0)>0||order.shipKeep))return {cost:0,ok:true,how:'none'};
+  var cust=CUSTS.find(function(c){return c.id===order.cid;});
+  if(!cust||!(order.lines||[]).length)return {cost:0,ok:false,how:''};
+  try{
+    if(order.shipMethod==='charter'){
+      var fee=charterFeeOf(order,cust);
+      if(fee&&fee.price>0)return {cost:fee.price,ok:true,how:'charter'};
+    }
+    var sc=cust;
+    if(order.shipDest==='end'&&order.endUser&&order.endUser.address){var ep=prefFromAddress(order.endUser.address);if(ep)sc=Object.assign({},cust,{pref:ep,city:''});}
+    var legs=orderShipLegs(order,sc.city||'',sc.pref||'');
+    var t=0,ok=legs.length>0;
+    legs.forEach(function(g){if(g.fr&&g.fr.ok&&g.fr.genka!=null)t+=g.fr.genka;else ok=false;});
+    return {cost:ok?Math.round(t):0,ok:ok,how:'mix'};/* 運賃表の原価は小数になることがあるので円に丸める */
+  }catch(e){return {cost:0,ok:false,how:''};}
 }
 /* v18.73 修正17の追加⑳: 粗利の「売価」は★明細の行の金額合計（送料は除く）にする。
    明細の行で単価を手入力するとそのまま粗利へ反映される（粗利表側の売価は編集不可にした）。
@@ -9538,7 +9595,7 @@ function generateExcel(order,docType){
    見積書作成画面の直接編集・帳票の手修正でしか入力しない項目。在庫・出荷の記録（_stockConsumed・shippedDate 等）は入れない。 */
 var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
   'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO',
-  'showRepName','repName'];/* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
+  'showRepName','repName','rowCost'];/* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
 /* ===== v19.59（2026-10-27 依頼「送料を変更→見積を閉じる→見積書修正に戻ると変更前に戻る」）=====
    【原因】見積を作り直す（✏ 案件修正 →「見積書のみ作成」「仮押さえ＆見積書作成」、同じ画面で「見積書のみ作成」を押し直す）たびに、
    　　　　送料を運賃表から自動計算し直して上書きしていたため、見積書作成画面で手入力した送料が捨てられていた。
@@ -9743,8 +9800,9 @@ var HELP_QA=[
   {id:'quote-parts',cat:'quote',tab:'inv',ver:'v19.58',q:'扉・棚板・鍵・レールなどパーツだけを追加・販売したい',kw:['パーツ','部材','部品','単品','扉','棚板','鍵','レール','ネジ','キーバンド','シール','厚紙','ハトメ','マスターキー'],
     steps:['「在庫確認・見積」の「パーツ単品追加」欄で、パーツの製品ライン・パーツ・数量を選ぶ','「＋ パーツ単品追加」を押す（明細に入ります）','あとはふつうの見積と同じく倉庫を選んで見積・仮押さえ'],
     tip:'Sα を選ぶと、Sα で扱う部材と鍵類だけが選べます。',rel:[]},
-  {id:'quote-free',cat:'quote',tab:'inv',ver:'v19.57',q:'在庫に無い商品や工事費を見積に入れたい',kw:['自由入力','工事費','搬入','設置','在庫外','その他'],
+  {id:'quote-free',cat:'quote',tab:'inv',ver:'v19.57',q:'在庫に無い商品や工事費を見積に入れたい',kw:['自由入力','工事費','搬入','設置','在庫外','その他','原価','粗利'],
     steps:['「自由入力（在庫外商品）」欄に商品名称・数量・単位・単価を入れて「＋ 自由入力行を追加」','見積書作成の画面でも「＋ 自由入力の行を追加」や「＋ 定型文を追加」（搬入・設置工事費など）で足せます'],
+    tip:'工事費などの原価は、見積書作成画面の明細の行で金額の右の緑の欄（原価）に入れると粗利計算表の原価に入ります（帳票には出ません）。粗利計算表に送料は含めません。',
     rel:['quote-discount']},
   {id:'quote-discount',cat:'quote',tab:'inv',ver:'v19.57',q:'見積に値引きを入れたい',kw:['値引き','割引','出精値引き','継続購入割引','販促'],
     steps:['「見積書のみ作成」などで見積書作成の画面を開く','「＋ 値引きの行を追加」を押す','項目（出精値引き／３年間継続購入割引／販促活動協力費／自由入力）と金額を入れる'],
@@ -11645,7 +11703,7 @@ function InvPage(p){
     quoteSubject[1]('');paymentTerms[1]('末締め翌月末');paymentCustom[1]('');quoteNotes[1]('');quoteSalesPerson[1]('');
     discountRows[1]([]);shipLabelSt[1]('');optFree[1]({});discFree[1]({});unitDraft[1]({});notesTplKey[1]('');notesTplPick[1]({});
     dragRk[1](null);dropRk[1](null);
-    freeInputName[1]('');freeInputQty[1](1);freeInputUnit[1]('個');freeInputPrice[1](0);freeInputRemark[1]('');
+    freeInputName[1]('');freeInputQty[1](1);freeInputUnit[1]('個');freeInputPrice[1](0);freeInputRemark[1]('');freeInputCost[1]('');
   },[p.selCust&&p.selCust.id,p.custPick]);
   /* v17.2 要望26: リピート発注 — OrdersPageでコピーされた案件の製品構成をビルダーへ読み込む。
      在庫追跡フィールドは除外し、見積/仮押さえは新規に行う（前回の引当は引き継がない）。
@@ -11925,12 +11983,13 @@ function InvPage(p){
   }
   /* Free input line (not in inventory) */
   var freeInputName=us(''),freeInputQty=us(1),freeInputUnit=us('個'),freeInputPrice=us(0),freeInputRemark=us('');
+  var freeInputCost=us('');/* v19.60: 原価単価（任意・社内用） */
   function addFreeInputLine(){
     /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     if(!freeInputName[0].trim()){p.toast('商品名称を入力してください');return;}
-    var nl=lines[0].concat([{id:Date.now(),isFreeInput:true,name:freeInputName[0].trim(),qty:parseInt(freeInputQty[0])||1,unit:freeInputUnit[0]||'個',unitPrice:parseInt(freeInputPrice[0])||0,remark:freeInputRemark[0]||'',line:ln[0],isPartOnly:true,partLabel:freeInputName[0].trim(),partKey:'free',isDoor:false,size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
+    var nl=lines[0].concat([{id:Date.now(),isFreeInput:true,name:freeInputName[0].trim(),qty:parseInt(freeInputQty[0])||1,unit:freeInputUnit[0]||'個',unitPrice:parseInt(freeInputPrice[0])||0,unitCost:costNum(freeInputCost[0])==null?undefined:costNum(freeInputCost[0]),remark:freeInputRemark[0]||'',line:ln[0],isPartOnly:true,partLabel:freeInputName[0].trim(),partKey:'free',isDoor:false,size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
     lines[1](nl);
-    freeInputName[1]('');freeInputQty[1](1);freeInputPrice[1](0);freeInputRemark[1]('');
+    freeInputName[1]('');freeInputQty[1](1);freeInputPrice[1](0);freeInputRemark[1]('');freeInputCost[1]('');
   }
   function remLine(id){var nl=lines[0].filter(function(l){return l.id!==id;});lines[1](nl);nl.length?doCheck(nl):(whResults[1]([]),multiWH[1]([]));}
   /* v18.20 要望16: 各明細が供給可能な倉庫を可視化（部材ごとに倉庫を見て選ぶ補助。在庫/holdは変更しない読み取り専用） */
@@ -12470,6 +12529,7 @@ function InvPage(p){
       order.rentalOffset=!!existing.rentalOffset;
       order.rentalSel=existing.rentalSel||order.rentalSel;/* v18.73 修正17の追加5: 3品目の記載区分も引き継ぐ */
       order.rowUnit=existing.rowUnit||order.rowUnit;/* v18.73 修正17の追加⑳: 手入力した単価も引き継ぐ */
+      if(existing.rowCost)order.rowCost=existing.rowCost;/* v19.60: 自由入力の行の原価 */
       order.rowOrder=existing.rowOrder||order.rowOrder;
       if(existing.cfgLift)order.cfgLift=existing.cfgLift;/* v19.40: 構成表記の下に入れた行も引き継ぐ */
       order.extraRows=existing.extraRows||order.extraRows;
@@ -12939,7 +12999,9 @@ function InvPage(p){
               h('div',{style:{flex:2}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'商品名称'),h('input',{className:'inp',value:freeInputName[0],onChange:function(e){freeInputName[1](e.target.value);},placeholder:'例: 特注棚板 W900'})),
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'数量'),h('input',{className:'inp',type:'number',min:1,value:freeInputQty[0],onChange:function(e){freeInputQty[1](e.target.value);},style:{textAlign:'center'}})),
               h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'単位'),h('select',{className:'inp',value:freeInputUnit[0],onChange:function(e){freeInputUnit[1](e.target.value);}},['個','台','枚','式','本','セット'].map(function(u){return h('option',{key:u,value:u},u);}))),
-              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'単価(税抜)'),h('input',{className:'inp',type:'number',min:0,value:freeInputPrice[0],onChange:function(e){freeInputPrice[1](e.target.value);},style:{textAlign:'center'}}))
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'単価(税抜)'),h('input',{className:'inp',type:'number',min:0,value:freeInputPrice[0],onChange:function(e){freeInputPrice[1](e.target.value);},style:{textAlign:'center'}})),
+              /* v19.60: 原価単価（任意）。粗利計算表の原価に入る。見積書作成画面の明細の行でも直せる */
+              h('div',{style:{flex:1}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'},title:'社内用（帳票には出ません）。原価単価×数量が粗利計算表の原価に入ります'},'原価(任意)'),h(NumIn,{className:'inp',value:freeInputCost[0],placeholder:'原価',onChange:function(e){freeInputCost[1](e.target.value);},style:{textAlign:'center',background:'#F0FDF4'}}))
             ),
             h('div',{style:{marginBottom:4}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'備考'),
@@ -13439,7 +13501,7 @@ function InvPage(p){
             var list=(qo.extraRows||[]).map(function(x){return Object.assign({},x);});
             list.push({rkey:'X'+Date.now(),name:txt,qty:'',unit:'',price:'',code:''});
             updQ({extraRows:list});
-            p.toast('定型文「'+txt+'」の行を追加しました（明細の末尾に出ます。ドラッグで移動できます）');
+            p.toast('定型文「'+txt+'」の行を追加しました（明細の末尾に出ます。ドラッグで移動できます）'+(/工事費/.test(txt)?'。工事の原価は金額の右の緑の欄に入れると粗利計算表に入ります':''));
           }
           /* ===== v18.73 修正17の追加⑬: 値引きの行を「明細の行」の中で編集する ===== */
           function discIndexOf(rk){
@@ -13636,6 +13698,15 @@ function InvPage(p){
                   /* 金額 */
                   if(dr)cells.push(h(NumIn,{key:'a',className:'inp',style:{width:74,flexShrink:0,fontSize:9},disabled:!!(dr.qty>0&&dr.unitPrice>0),value:dr.amount?dr.amount:'',placeholder:'値引き額',onChange:function(e){setDiscRow(di,{amount:parseInt(e.target.value)||0});}}));
                   else cells.push(h('span',{key:'a',style:{fontSize:8,fontWeight:700,color:r.amount<0?'#B91C1C':'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.amount===''?'':('¥'+fm(r.amount))));
+                  /* v19.60: 自由入力の行（設置工事費など）の原価単価。社内用（帳票には出ない）。原価×数量が粗利計算表の原価に入る */
+                  var frL=(!ex&&/^L/.test(rk))?(qo.lines||[]).find(function(l){return l.isFreeInput&&('L'+l.id)===rk;}):null;
+                  var costTitle='原価単価（社内用・帳票には出ません）。原価単価×数量（数量が空欄なら1）が粗利計算表の原価に入ります';
+                  if(ex)cells.push(h(NumIn,{key:'c',className:'inp',style:{width:64,flexShrink:0,fontSize:9,background:'#F0FDF4'},title:costTitle,
+                    value:(ex.cost===''||ex.cost==null)?'':ex.cost,placeholder:'原価',onChange:function(e){updExtra(rk,{cost:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
+                  else if(frL)cells.push(h(NumIn,{key:'c',className:'inp',style:{width:64,flexShrink:0,fontSize:9,background:'#F0FDF4'},title:costTitle,
+                    value:(function(){var u=freeLineUnitCost(qo,frL);return u==null?'':String(u);})(),placeholder:'原価',
+                    onChange:function(e){var m=Object.assign({},qo.rowCost||{});m[rk]=e.target.value===''?'':(parseInt(e.target.value)||0);updQ({rowCost:m});}}));
+                  else cells.push(h('span',{key:'c',style:{width:64,flexShrink:0}}));
                   /* 備考 */
                   cells.push(h('input',{key:'r',className:'inp',style:{flex:1,minWidth:70,fontSize:9},value:(qo.rowRemarks||{})[rk]!==undefined?(qo.rowRemarks||{})[rk]:(r.remark||''),onChange:function(e){updRemark(rk,e.target.value);},placeholder:'備考を入力'}));
                   /* 行削除（自由入力行・値引き行のみ） */
@@ -13691,7 +13762,7 @@ function InvPage(p){
                   (qo.rowOrder&&qo.rowOrder.length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowOrder:[],cfgLift:{}});p.toast('明細の並び順を既定に戻しました');}},'並び順を既定に戻す'):null,
                   (qo.rowUnit&&Object.keys(qo.rowUnit).length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowUnit:{}});p.toast('手入力した単価をすべて取り消しました');}},'単価の手入力をすべて取消'):null
                 ),
-                h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'🟩=自由入力の行／🟧=値引きの行。単価を手入力した行は単価欄が黄色になります（↺ で元に戻せます）')
+                h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'🟩=自由入力の行／🟧=値引きの行。単価を手入力した行は単価欄が黄色になります（↺ で元に戻せます）。自由入力の行（設置工事費など）は金額の右の緑の欄に原価単価を入れると粗利計算表に入ります（帳票には出ません）')
               )
             ),
             /* v18.63 修正12の再修正①: 送料と値引きは見積書の明細末尾に出る項目なので、
@@ -13817,9 +13888,10 @@ function InvPage(p){
               }))
             ),
             h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:4}},
-              h('span',{style:{fontSize:8,color:'var(--g500)'}},'💡 売価は「明細の行」の金額合計（送料・値引きを除く）です。金額を変えたいときは明細の行で単価を手入力してください'),
+              h('span',{style:{fontSize:8,color:'var(--g500)'}},'💡 売価は「明細の行」の金額合計（送料は含めない・値引きは差し引き済み）です。原価は商品・部材の仕入単価＋自由入力の行（設置工事費など）に入れた原価です（送料は含めません）。金額を変えたいときは明細の行で単価を手入力してください'),
               (quoteOrder[0].rowUnit&&Object.keys(quoteOrder[0].rowUnit).length)?h('span',{style:{fontSize:8,fontWeight:700,color:'#975a16',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'1px 5px'}},'✎ 単価を手入力した行が '+Object.keys(quoteOrder[0].rowUnit).length+' 行あります'):null
             ),
+            gp.freeNoCost>0?h('div',{style:{fontSize:8,color:'#975a16',marginTop:3}},'※ 原価が未入力の自由入力の行（金額あり）が '+gp.freeNoCost+' 行あります。その行の原価は0円で計算しています（明細の行の緑の欄に原価を入れてください）'):null,
             gp.total.missing>0?h('div',{style:{fontSize:8,color:'#975a16',marginTop:3}},'※ 品番未紐付け・原価未登録の部材が '+gp.total.missing+' 種あり、原価に含まれていません（単価マスタに商品コードが無い部材です）'):null,
             !gp.hasCost?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:3}},'単価マスタ（販売単価・原価のCSV）を取り込むと粗利が自動計算されます'):null
           );
@@ -15078,8 +15150,8 @@ function OrdersPage(p){
           var mo=[['年月','件数','売上高','原価(仕入)','粗利','原価(棚卸)','粗利(棚卸)']];
           rep.months.forEach(function(m){mo.push([m.ym,m.cnt,m.sell,m.buyCost,m.sell-m.buyCost,m.stockCost,m.sell-m.stockCost]);});
           XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(mo),'月別');
-          var de=[['案件番号','基準日','顧客','エンド納品先','担当','売上高','うち商品','送料','値引き','原価(仕入)','粗利','原価(棚卸)','単価版']];
-          rep.rows.forEach(function(r){de.push([r.no,new Date(r.date).toLocaleDateString('ja-JP'),r.cust,r.end,r.staff,r.sell,r.goods,r.ship,r.disc,r.buyCost,r.sell-r.buyCost,r.stockCost,r.priceVer?'新単価':'旧単価']);});
+          var de=[['案件番号','基準日','顧客','エンド納品先','担当','売上高','うち商品','送料','値引き','原価(仕入)','うち送料の原価','粗利','原価(棚卸)','単価版']];
+          rep.rows.forEach(function(r){de.push([r.no,new Date(r.date).toLocaleDateString('ja-JP'),r.cust,r.end,r.staff,r.sell,r.goods,r.ship,r.disc,r.buyCost,r.shipCostNG?'運賃表で引けず':(r.shipCost||0),r.sell-r.buyCost,r.stockCost,r.priceVer?'新単価':'旧単価']);});
           XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(de),'案件別');
           var iv=[['倉庫','在庫数','棚卸評価額']];
           val.byWh.forEach(function(b){iv.push([(WH_MAP[b.wh]||{}).n||b.wh,b.qty,b.val]);});
@@ -15120,11 +15192,15 @@ function OrdersPage(p){
           h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}},
             card('対象件数',fm(rep.total.cnt)+'件','納品完了のみ'),
             card('売上高','¥'+fm(rep.total.sell),'商品＋送料−値引き'),
-            card('原価（仕入単価）','¥'+fm(rep.total.buyCost),null,'#975a16'),
+            card('原価（仕入単価）','¥'+fm(rep.total.buyCost),'うち送料の原価 ¥'+fm(rep.total.shipCost),'#975a16'),
             card('粗利（仕入単価）','¥'+fm(gpBuy),'粗利率 '+pct(gpBuy,rep.total.sell),'#276749'),
-            card('原価（棚卸単価）','¥'+fm(rep.total.stockCost),null,'#975a16'),
+            card('原価（棚卸単価）','¥'+fm(rep.total.stockCost),'うち送料の原価 ¥'+fm(rep.total.shipCost),'#975a16'),
             card('粗利（棚卸単価）','¥'+fm(gpStk),'粗利率 '+pct(gpStk,rep.total.sell),'#276749')
           ),
+          /* v19.60: 送料の原価の出し方 */
+          h('div',{style:{fontSize:9,color:'var(--g500)',marginBottom:6}},'※ 原価には送料の原価を含みます（チャーター便＝推奨車格のチャーター料金の原価／混載便＝運賃表の原価。今の運賃表で計算）。自由入力の行（設置工事費など）は見積書作成画面で入れた原価を含みます。'),
+          rep.total.shipCostNG>0?h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:8,fontSize:9,color:'#9A3412'}},
+            '⚠ 送料の原価を運賃表で引けなかった案件が '+rep.total.shipCostNG+' 件あり、その送料の原価は0円で計算しています（Excel の「うち送料の原価」に「運賃表で引けず」と出ます）。'):null,
           (rep.total.missing>0||rep.total.legacy>0)?h('div',{style:{padding:'6px 10px',marginBottom:8,background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:8,fontSize:9,color:'#9A3412'}},
             (rep.total.missing>0?'⚠ 単価マスタに紐づいていない部材が '+rep.total.missing+' 件あり、その分の原価は集計に含まれていません。 ':'')+
             (rep.total.legacy>0?'⚠ '+rep.total.legacy+'件は単価マスタ導入前に保存された案件のため、当時の単価（旧単価）で売上を計上しています。':'')
