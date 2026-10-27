@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.60（自由入力の行に原価・粗利に反映／売上集計の原価に送料の原価）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.61（代理店別の販売価格で見積・代理店価格の無い商品に注意）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -503,6 +503,7 @@ function cloudLoad(cb){
         CLOUD_READY=false;if(cb)cb(false);return;
       }
       CLOUD_READY=true;
+      agentPriceLoad();/* v19.61: 代理店別の販売価格（別の行） */
       _stkLateAdded=false;/* v15.0: この回のクラウドロードでレール補充が発生したか判定するためリセット */
       var d0=res.data&&res.data.doc;
       if(!SPRING){
@@ -6686,9 +6687,71 @@ var PM_AT_MS=null;
 function pmUseNew(){return (PM_AT_MS!=null?PM_AT_MS:Date.now())>=PRICE_NEW_FROM_MS;}
 function pmVal(r,k){if(!r)return 0;var v=(pmUseNew()&&r[k+'N']!=null)?r[k+'N']:r[k];return v>0?v:0;}
 function orderPriceMs(order){var t=order?deliveryPlanMs(order):null;return t!=null?t:Date.now();}
-function withPriceDate(order,fn){var prev=PM_AT_MS;PM_AT_MS=orderPriceMs(order);try{return fn();}finally{PM_AT_MS=prev;}}
+function withPriceDate(order,fn){
+  var prev=PM_AT_MS,pa=PM_AGENT;PM_AT_MS=orderPriceMs(order);
+  PM_AGENT=order?agentOfCid(order.cid):null;/* v19.61: 代理店の案件は代理店価格 */
+  try{return fn();}finally{PM_AT_MS=prev;PM_AGENT=pa;}
+}
 function orderUsesNewPrice(order){return orderPriceMs(order)>=PRICE_NEW_FROM_MS;}
-function sellOf(code,nameHint){return pmVal(priceRec(code,nameHint),'sell');}
+function sellOf(code,nameHint){var a=agentSellOf(code,nameHint);if(a!=null)return a;return pmVal(priceRec(code,nameHint),'sell');}
+/* ===== v19.61（2026-10-27 ユーザー）: 代理店別の販売価格 =====
+   正本は NAS 価格表フォルダの「代理店別_販売価格・粗利率一覧.xlsx」（代理店ごとのシートの D列＝代理店販売単価、J列＝マスタ商品コード）。
+   Claude が lec_state の別の行（id='agentprice'）へ入れる（master_build と同じく画面からの取込は無い）。
+   ★案件の本体の行（'shared'）に入れないのは、開いたままの古い画面が保存すると doc を丸ごと上書きして消えるため（10/8 の事故と同じ形）。
+   doc = {agents:[{label,custIds,names,items:{'商品コード#名称(空白なし)':販売単価}}],updatedAt}
+   ・顧客の判定: custIds（Excelの顧客コード）か、顧客名に names（会社名）を含む顧客＝支店・営業所も同じ価格（ユーザー回答）
+   ・その代理店の案件では、単価マスタの行に代理店価格があればそれを販売単価に使う（期間に関係なく）。仕入・棚卸は単価マスタのまま。
+   ・代理店価格が無い商品は標準の販売単価のまま入れ、見積書作成画面に「代理店価格が設定されていない商品」と注意を出す（ユーザー回答）。 */
+var AGENT_ROW_ID='agentprice';
+var AGENT_PRICES={agents:[],updatedAt:''};
+try{var _ap=JSON.parse(lsGet('lec_agent_prices')||'null');if(_ap&&Array.isArray(_ap.agents))AGENT_PRICES=_ap;}catch(e){}
+function agentPriceLoad(cb){
+  if(typeof supaClient==='undefined'||!supaClient){if(cb)cb(false);return;}
+  try{
+    supaClient.from(CLOUD_TABLE).select('doc').eq('id',AGENT_ROW_ID).maybeSingle().then(function(res){
+      var d=res&&!res.error&&res.data&&res.data.doc;
+      if(d&&Array.isArray(d.agents)){AGENT_PRICES=d;try{lsSet('lec_agent_prices',JSON.stringify(d));}catch(e){}}
+      if(cb)cb(!!d);
+    },function(){if(cb)cb(false);});
+  }catch(e){if(cb)cb(false);}
+}
+function agentOfCust(c){
+  if(!c)return null;
+  var nm=pmNorm(c.name);
+  return (AGENT_PRICES.agents||[]).find(function(a){
+    return (a.custIds||[]).indexOf(c.id)>=0||(a.names||[]).some(function(t){return t&&nm.indexOf(pmNorm(t))>=0;});
+  })||null;
+}
+function agentOfCid(cid){
+  if(!cid||!(AGENT_PRICES.agents||[]).length)return null;
+  return agentOfCust((CUSTS||[]).find(function(c){return c.id===cid;}));
+}
+var PM_AGENT=null,PM_AGENT_MISS=null;
+function agentSellOf(code,nameHint){
+  if(!PM_AGENT)return null;
+  var r=priceRec(code,nameHint);
+  if(!r)return null;
+  var v=(PM_AGENT.items||{})[r.code+'#'+pmNorm(r.name)];
+  if(v>0)return v;
+  if(PM_AGENT_MISS&&pmVal(r,'sell')>0)PM_AGENT_MISS[r.name]=true;
+  return null;
+}
+function withAgent(agent,fn){var prev=PM_AGENT;PM_AGENT=agent||null;try{return fn();}finally{PM_AGENT=prev;}}
+/* 代理店の案件で、代理店価格が設定されていない商品（単価マスタの商品名称）の一覧。代理店でなければ [] */
+function agentMissingOf(order){
+  if(!order||!hasPriceMaster()||!agentOfCid(order.cid))return [];
+  return withPriceDate(order,function(){
+    PM_AGENT_MISS={};
+    try{
+      var c=JSON.parse(JSON.stringify(order));delete c.sellEdited;
+      applyPriceSnapshot0(c);
+      (c.lines||[]).forEach(function(l){if(l&&l.isPartOnly&&!l.isFreeInput)priceByEntry(partCodeOf(l.partKey,l.partSub,l.line),'sell');});
+      try{rentalSjRows0(c);}catch(e){}
+    }catch(e){}
+    var m=Object.keys(PM_AGENT_MISS||{});PM_AGENT_MISS=null;
+    return m;
+  });
+}
 function buyOf(code,nameHint){return pmVal(priceRec(code,nameHint),'buy');}
 function stockUnitOf(code,nameHint){return pmVal(priceRec(code,nameHint),'stockUnit');}
 
@@ -11974,10 +12037,15 @@ function InvPage(p){
     else if(pd.hasSub==='size'){pSub=pSz;pLabel+='('+(pLine==='sa'?'Sα':pSub)+')';}
     var pColorOpt=(LINE_COLORS[pLine]||LINE_COLORS[ln[0]]||[]);
     var pColor=pd.hasColor?(pColorOpt.find(function(c){return c.v===partColor[0];})?partColor[0]:(pColorOpt[0]&&pColorOpt[0].v)||''):'';
-    var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:(parseInt(partPrice[0])||0)||priceByEntry(partCodeOf(realKey,pSub,pLine),'sell'),partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
+    var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:(parseInt(partPrice[0])||0)||withAgent(agentOfCust(cust),function(){return priceByEntry(partCodeOf(realKey,pSub,pLine),'sell');}),partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
     /* v19.56: 組で売る部材（Sαサイドレール）は在庫を 組数×setOf 本で数える。単位も明細に持たせる */
     var nlLast=nl[nl.length-1];
     if(pd.setOf>1)nlLast.stockMul=pd.setOf;
+    /* v19.61: 代理店の見積で代理店価格の無い部材 */
+    if(cust&&agentOfCust(cust)&&!(parseInt(partPrice[0])||0)){
+      var amP=agentMissingOf({cid:cust.id,lines:[nlLast]});
+      if(amP.length)setTimeout(function(){p.toast('⚠ 代理店価格が設定されていない商品です（標準の販売単価で入れました）: '+amP.join('・'));},0);
+    }
     if(pd.unit)nlLast.unit=pd.unit;
     lines[1](nl);doCheck(nl);
   }
@@ -12545,7 +12613,12 @@ function InvPage(p){
           if(prevQ.deliveryDate&&!order.deliveryDate)order.deliveryDate=prevQ.deliveryDate;
           /* v19.59: 手入力の送料・発注書付・代表者名・出荷指示書の手修正なども引き継ぐ（従来は押し直すと送料が自動計算に戻り、ほかは消えていた） */
           shipNoteR.current=carryOnRebuild(order,prevQ);
+          if(prevQ.sellEdited)order.sellEdited=prevQ.sellEdited;
         }
+        /* v19.61: 押し直しでも単価を焼き付ける。従来はここを通らず priceVer が付かないため、
+           本体の単価が単価マスタの金額（例 8,250）から旧固定単価（8,300）へ変わっていた */
+        applyPriceSnapshot(order);
+        if(!order.priceVer&&prevQ&&prevQ.priceVer){order.priceVer=prevQ.priceVer;if(prevQ.basePrice2&&!order.basePrice2)order.basePrice2=prevQ.basePrice2;}
         ORDERS[idx]=order;
       }else ORDERS.push(order);
       if(!isShipManual(order)&&order.shipManual===undefined){order.shipManual=false;order.shipAuto=parseInt(order.shipping)||0;}
@@ -12985,7 +13058,7 @@ function InvPage(p){
                   var kX=pdX.isDoor?pdX.doorKey:(pdX.stockKey||pdX.k);
                   var szlX=LINE_SIZES[partLine[0]||ln[0]]||sizes,szX=szlX.indexOf(partSub[0])>=0?partSub[0]:szlX[0];/* v19.56 */
                   var sX=pdX.fixedSub?pdX.fixedSub:(pdX.hasSub==='grp'?sizeObj(szX).grp:(pdX.hasSub?szX:''));
-                  var v=priceByEntry(partCodeOf(kX,sX,partLine[0]||ln[0]),'sell');return v>0?String(v):'';}catch(e){return '';}
+                  var v=withAgent(agentOfCust(cust),function(){return priceByEntry(partCodeOf(kX,sX,partLine[0]||ln[0]),'sell');});return v>0?String(v):'';}catch(e){return '';}
               })(),onChange:function(e){partPrice[1](e.target.value);},style:{textAlign:'center'},title:'空欄のままにすると価格マスタの販売単価が入ります'}))
             ),
             h('button',{className:'btn btn-or',style:{width:'100%'},onClick:addPartLine},'＋ パーツ単品追加')
@@ -13341,6 +13414,17 @@ function InvPage(p){
         h('button',{className:'btn btn-gn',onClick:function(){printQuote(quoteOrder[0],'quote');}},'見積書印刷')
       )},
       h('div',{style:{padding:10}},
+        /* v19.61: 代理店の見積 — 代理店価格で計算していることと、代理店価格の無い商品の注意 */
+        (function(){
+          var ag=agentOfCid(quoteOrder[0].cid);
+          if(!ag)return null;
+          var miss=agentMissingOf(quoteOrder[0]);
+          return h('div',{className:'no-print',style:{marginBottom:8,padding:'6px 10px',borderRadius:6,fontSize:10,
+              background:miss.length?'#FEF2F2':'#EFF6FF',border:'1.5px solid '+(miss.length?'#FCA5A5':'#93C5FD'),color:miss.length?'#991B1B':'var(--nv)'}},
+            h('div',{style:{fontWeight:700}},'🏷 代理店価格（'+ag.label+'）で見積しています'),
+            miss.length?h('div',{style:{marginTop:2,fontWeight:700}},'⚠ 代理店価格が設定されていない商品になります（標準の販売単価で入っています）: '+miss.join('・')):null,
+            miss.length?h('div',{style:{marginTop:2,fontSize:9}},'金額を変えるときは下の「明細の行」で単価を手入力してください。'):null);
+        })(),
         /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有） */
         (function(){
           var qo=quoteOrder[0];
