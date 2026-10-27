@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.58（見積書の送料の備考を「※設置工事費別途」に・パーツ単品追加の商品を入れ替え）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.59（見積を作り直しても手入力の送料・見積書作成画面の変更が戻らないように）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9537,7 +9537,30 @@ function generateExcel(order,docType){
 /* v19.54: 案件修正で案件を作り直すとき、元の案件から引き継ぐ項目（作り直した order に無いときだけ）。
    見積書作成画面の直接編集・帳票の手修正でしか入力しない項目。在庫・出荷の記録（_stockConsumed・shippedDate 等）は入れない。 */
 var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
-  'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO'];
+  'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO',
+  'showRepName','repName'];/* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
+/* ===== v19.59（2026-10-27 依頼「送料を変更→見積を閉じる→見積書修正に戻ると変更前に戻る」）=====
+   【原因】見積を作り直す（✏ 案件修正 →「見積書のみ作成」「仮押さえ＆見積書作成」、同じ画面で「見積書のみ作成」を押し直す）たびに、
+   　　　　送料を運賃表から自動計算し直して上書きしていたため、見積書作成画面で手入力した送料が捨てられていた。
+   【対応】見積書作成画面で送料を入力した案件は order.shipManual=true。作り直しても手入力の金額をそのまま使う。
+   　　　　自動計算の金額は order.shipAuto に残し、見積書作成画面に「自動計算の ¥○ に戻す」ボタンを出す。
+   　　　　v19.58 以前の案件は shipManual が無い。送料欄を触ると shipKeep が付く（v19.39）ので、shipKeep があれば手入力とみなす。
+   　　　　★新しく作る案件は upsertOrder で shipManual=false を焼き付ける（リピート発注で shipKeep を引き継いでも手入力扱いにしない）。 */
+function isShipManual(o){return !!o&&(o.shipManual===true||(o.shipManual===undefined&&!!o.shipKeep));}
+/* 作り直した order に、元の案件（prev）から見積書作成画面・帳票の手修正でだけ入れる項目と、手入力の送料を引き継ぐ。
+   戻り値はトーストに添える一言（手入力の送料が自動計算と違うときだけ）。 */
+function carryOnRebuild(order,prev){
+  if(!prev)return '';
+  ORDER_KEEP_ON_EDIT.forEach(function(k){if(prev[k]!==undefined&&order[k]===undefined)order[k]=prev[k];});
+  var auto=parseInt(order.shipping)||0;
+  order.shipAuto=auto;
+  if(isShipManual(prev)){
+    order.shipping=parseInt(prev.shipping)||0;order.shipManual=true;
+    return order.shipping!==auto?'送料は手入力の ¥'+fm(order.shipping)+' のまま（自動計算は ¥'+fm(auto)+'）':'';
+  }
+  order.shipManual=false;
+  return '';
+}
 /* ========== SHARED COMPONENTS ========== */
 /* v19.53: 日本語入力（IME）を切り替えない数字の入力欄。
    type="number"（や inputmode を付けた欄）に入ると、Edge/Chrome＋Microsoft IME は日本語入力をオフ（半角）にし、
@@ -9728,13 +9751,14 @@ var HELP_QA=[
     rel:['quote-notes']},
   {id:'quote-notes',cat:'quote',tab:'inv',ver:'v19.57',q:'見積書の件名・支払条件・備考を変えたい',kw:['件名','支払条件','備考','定型文','有効期限','納期','受渡地'],
     steps:['見積書作成の画面を開く','件名・LEC担当者・支払条件・送料などの欄を書き換える','全体備考は【パーソナル】【常設】の定型文を選び、入れたい文章にチェックして「チェックした文章を入れる」（そのあと自由に直せます）'],
-    tip:'件名は空欄にすると、商品名・サイズ・台数から自動で作ります。',rel:['quote-discount']},
+    tip:'件名は空欄にすると、商品名・サイズ・台数から自動で作ります。送料を手で入れた案件は、✏ 案件修正で作り直してもその金額のままです（自動計算に戻すときは送料欄の下の「自動計算の ¥○ に戻す」）。',rel:['quote-discount']},
   {id:'orders-repeat',cat:'quote',tab:'orders',ver:'v19.57',q:'前回と同じ内容で見積したい（リピート・コピー）',kw:['リピート','コピー','前回','前年','同じ内容','再発注','継続'],
     steps:['「案件管理」で元の案件を探す（「✅ 納品完了」タブも見てください）','その行の「🔁 コピー再発注」を押す','「在庫確認・見積」に内容が入るので、台数などを直して見積・仮押さえ'],
     tip:'パーソナルの継続校は、学校を選ぶだけで前年の導入内容が自動で入ります（「パーソナルの継続案件で…」の Q&A）。',rel:['personal-continue']},
   {id:'orders-edit',cat:'quote',tab:'orders',ver:'v19.57',q:'登録した案件（見積・仮押さえ）の内容を直したい',kw:['修正','直す','変更','訂正','案件修正','間違えた'],
     steps:['「案件管理」で案件の「✏ 案件修正」を押す（仮押さえはいったん解除され、内容が「在庫確認・見積」に読み込まれます）','オレンジの「案件修正モード」の帯が出ている状態で内容を直す','「見積書のみ作成」や「仮押さえ＆見積書作成」で保存すると、同じ案件番号に上書きされます'],
-    warn:'直すのをやめるときは帯の「修正をやめる（新規として登録）」を押してください（そのあと登録すると新しい案件番号になります）。',rel:['stock-release']},
+    warn:'直すのをやめるときは帯の「修正をやめる（新規として登録）」を押してください（そのあと登録すると新しい案件番号になります）。',
+    tip:'見積書作成画面で直した送料（手入力）・件名・備考・値引き・代表者名などは、作り直しても引き継がれます（v19.59）。',rel:['stock-release']},
   /* ----- パーソナル・貸与品 ----- */
   {id:'personal-continue',cat:'personal',tab:'inv',ver:'v19.57',q:'パーソナルの継続案件で、貸与品（学校保管のレンタル品）を手で入力して仮押さえしたい',kw:['継続','前年','貸与品','レンタル','学校保管','手入力','手で','仮押さえ','ベース','ジョイント'],
     steps:['「顧客選択」で学校（代理店経由なら代理店）を「選択 →」','「在庫確認・見積」の「商品選択」で、代理店の場合は先頭の「エンド納品先（パーソナル貸与品のある学校）」で学校を選ぶ','前年の導入内容（製品ライン・サイズ・錠前・扉色・台数・ベースの数・棚板）が自動で入り、「レンタル品の過不足（パーソナル貸与品）」欄に 必要数／学校保管で回せる数／過不足 が出ます','数を手で直すときは「台数・ベース数で入力」の 台数・ベースの数 を書き換える（過不足欄もすぐ計算し直します）。年度・学校も過不足欄で選び直せます','「明細追加時、在庫確認・仮押さえ・見積にはレンタル品の不足分だけを計上する」にチェックを入れると、学校保管で回せる分を差し引いた不足分だけを押さえます（外すと必要数をそのまま押さえます）','「＋ 在庫確認・明細追加」→ 倉庫を選ぶ →「仮押さえ＆見積書作成」（見積書が要らなければ「仮押さえのみ（見積無）」）'],
@@ -11425,6 +11449,8 @@ function InvPage(p){
        これを入れないと単価マスタを更新するたびに過去案件の見積金額まで変わってしまう。
        案件作成5経路はすべてここを通るため、1か所で担保できる。 */
     applyPriceSnapshot(order);
+    /* v19.59: 送料は自動計算の金額で作る。手入力の送料は下の carryOnRebuild（案件修正の上書き）で戻す */
+    if(order.shipManual===undefined){order.shipManual=false;order.shipAuto=parseInt(order.shipping)||0;}
     var em=editingMeta[0];
     /* ===== v19.21 修正31(docx)⑤: 常設のベースボードは既定で「販売として記載」 =====
        ★新しく作る案件だけ（案件修正の上書きは対象外＝過去の見積書の見え方を変えない）。
@@ -11451,7 +11477,7 @@ function InvPage(p){
              従来は「✏ 案件修正 → 見積書のみ作成／仮押さえ＆見積書作成」で、見積書作成画面で追加した明細の行（extraRows）・
              行の備考・手入力の単価・並び順・納期・受渡地・有効期限・出荷指示書の手修正などが黙って消えていた
              （2026-10-21 QT-2027-S006 で発生）。作り直した order に無い項目だけを元の案件から入れる。 */
-          ORDER_KEEP_ON_EDIT.forEach(function(k){if(prev[k]!==undefined&&order[k]===undefined)order[k]=prev[k];});
+          shipNoteR.current=carryOnRebuild(order,prev);/* v19.59: 手入力の送料・代表者名も引き継ぐ */
         }
         ORDERS[ix]=order;
       }else ORDERS.push(order);
@@ -11482,7 +11508,12 @@ function InvPage(p){
     rebuildHeldFromOrders();
   }
   /* v18.67 修正14①: 保存時のトーストに「上書き」であることを添える */
-  function ovwTag(){return editingNo[0]?'案件修正の上書き保存 ／ ':'';}
+  var shipNoteR=ur('');/* v19.59: 手入力の送料を引き継いだときの一言（次のトーストに添える） */
+  function ovwTag(){
+    var n=shipNoteR.current;shipNoteR.current='';
+    var t=(editingNo[0]?'案件修正の上書き保存':'')+(n?'（'+n+'）':'');
+    return t?t+' ／ ':'';
+  }
   var optTick=us(0);/* v18.37 修正箇所2③: 選択肢マスタ(QUOTE_OPTS)は非state管理のため、追加/削除後の再描画用カウンタ */
   /* v18.46 修正５④: 「（自由入力）」を選んだ状態をフィールド単位で保持する。
      従来は値が空になると既定値(QUOTE_OPTS[kind][0])へ戻る計算だったため、自由入力を選んでも即座に
@@ -12452,10 +12483,13 @@ function InvPage(p){
         if(prevQ){
           if(prevQ.spareParts&&!order.spareParts)order.spareParts=prevQ.spareParts;
           if(prevQ.deliveryDate&&!order.deliveryDate)order.deliveryDate=prevQ.deliveryDate;
+          /* v19.59: 手入力の送料・発注書付・代表者名・出荷指示書の手修正なども引き継ぐ（従来は押し直すと送料が自動計算に戻り、ほかは消えていた） */
+          shipNoteR.current=carryOnRebuild(order,prevQ);
         }
         ORDERS[idx]=order;
       }else ORDERS.push(order);
-      p.toast('見積書を更新: '+no);
+      if(!isShipManual(order)&&order.shipManual===undefined){order.shipManual=false;order.shipAuto=parseInt(order.shipping)||0;}
+      p.toast(ovwTag()+'見積書を更新: '+no);
     }else{
       upsertOrder(order);/* v18.46 修正５⑤ */
       p.toast(ovwTag()+'見積書作成: '+no);
@@ -13255,6 +13289,16 @@ function InvPage(p){
                v18.58 修正10②: 見積作成を全員に開放したのに合わせ、作成した見積の直接編集も編集権限を問わず可能にする */
             var no2=Object.assign({},qo,patch);
             quoteOrder[1](no2);
+            /* v19.59: 左側（在庫確認・見積）の状態にも同じ値を入れる。これらは案件を読み込んだときにしか入らないため、
+               案件修正中に「仮押さえ＆見積書作成」等で作り直すと、ここで直した件名・備考・支払条件・値引き等が
+               読み込んだ時点の値に戻っていた（空欄にした値も元に戻っていた）。 */
+            if('subject' in patch)quoteSubject[1](patch.subject||'');
+            if('notes' in patch)quoteNotes[1](patch.notes||'');
+            if('salesPersonOverride' in patch)quoteSalesPerson[1](patch.salesPersonOverride||'');
+            if('paymentTerms' in patch){paymentTerms[1](patch.paymentTerms||'');ptFromOrder.current=true;}
+            if('discounts' in patch)discountRows[1]((patch.discounts||[]).slice());
+            if('shipLabel' in patch)shipLabelSt[1](patch.shipLabel||'');
+            if('shipKeep' in patch)shipKeepR.current=!!patch.shipKeep;
             var idx=ORDERS.findIndex(function(x){return x.no===qo.no;});
             if(idx>=0){Object.assign(ORDERS[idx],patch);saveOrders();cloudSave(p.userName);}
           }
@@ -13653,7 +13697,11 @@ function InvPage(p){
             /* v18.63 修正12の再修正①: 送料と値引きは見積書の明細末尾に出る項目なので、
                明細の備考の下・全体備考の上へ移動する（見積書と同じ上からの並び）。 */
             h('div',{style:{display:'grid',gridTemplateColumns:'1fr 2fr',gap:6,marginBottom:4}},
-              h('div',null,h('label',{style:EL},'送料（円）'),h(NumIn,{className:'inp',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0,shipKeep:true});}}),
+              h('div',null,h('label',{style:EL},'送料（円）'),h(NumIn,{className:'inp',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0,shipKeep:true,shipManual:true});}}),
+                /* v19.59: 手入力の送料は作り直しても変わらない。自動計算の金額に戻すボタン */
+                isShipManual(qo)?h('div',{style:{fontSize:9,color:'#975a16',marginTop:2}},'✍ 手入力の金額（明細を直して作り直してもこの金額のまま）',
+                  (qo.shipAuto!=null&&qo.shipAuto!==(parseInt(qo.shipping)||0))?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,marginLeft:4},onClick:function(){
+                    updQ({shipping:qo.shipAuto,shipManual:false});p.toast('送料を自動計算の ¥'+fm(qo.shipAuto)+' に戻しました');}},'自動計算の ¥'+fm(qo.shipAuto)+' に戻す'):null):null,
                 /* v19.39 修正35③: 送料サービス等で0円にしても行を残す（送料欄を触ると自動でチェックが入る） */
                 h('label',{style:{fontSize:9,display:'flex',alignItems:'center',gap:3,marginTop:2,cursor:'pointer'}},
                   h('input',{type:'checkbox',checked:!!qo.shipKeep,onChange:function(e){updQ({shipKeep:e.target.checked});}}),'0円でも送料の行を出す')),
