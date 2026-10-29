@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.68（八木熊 発注書の納品場所: 新柏倉庫に郵便番号 270-0233）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.69（八木熊 発注書を発注書番号で管理・Excel出力で一覧に記録・一覧から編集）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2823,7 +2823,7 @@ var CHARTER_NOTE_DEFAULT='※現地に到着しましたら、入場前に上記
 var CHARTER_LOADS={};
 try{var _cl=JSON.parse(lsGet('lec_charter_loads')||'null');if(_cl&&typeof _cl==='object')CHARTER_LOADS=_cl;}catch(e){}
 function saveCharterLoads(){try{lsSet('lec_charter_loads',JSON.stringify(CHARTER_LOADS));}catch(e){}}
-/* v19.66: 八木熊様への発注書一覧（PDF を出した発注書。番号→記録）。localStorage＋クラウド（ykPOList）で全端末共有 */
+/* v19.66: 八木熊様への発注書一覧（v19.69〜 Excel を出した発注書。発注書番号→記録）。localStorage＋クラウド（ykPOList）で全端末共有 */
 var YK_PO_LIST={};
 try{var _ypl=JSON.parse(lsGet('lec_ykpo_list')||'null');if(_ypl&&typeof _ypl==='object')YK_PO_LIST=_ypl;}catch(e){}
 function charterLoadNames(){
@@ -9966,14 +9966,14 @@ var HELP_QA=[
     steps:['「部材在庫一覧」で目的のボタンを押す','ある日の在庫 →「📆 日付指定Excel」／倉庫別 →「📥 倉庫別Excel」／今の在庫表 →「📥 在庫表Excel」／期間の出入り →「📅 期間Excel」'],
     rel:['stock-history']},
   {id:'yk-po',cat:'stock',tab:'parts',ver:'v19.62',q:'八木熊に発注書（注文書）を出したい',kw:['八木熊','発注','発注書','注文書','部材','仕入','手修正','品目追加'],
-    steps:['「部材在庫一覧」の「📝 八木熊 発注書」タブを開く','件名・納品場所・納品希望日を入れ、品目の「数量」欄に個数を入れる','品番・品名・単価などを直すときは「✏ 品目を手修正」、一覧に無い品目は「＋ 品目を追加」','「📊 Excel（八木熊様へ送る）」でExcelを出してメールで送る（PDFは「🖨 PDF（印刷画面）」→ 送信先「PDFに保存」）'],
-    tip:'単価は2026年12月改定の八木熊新価格です。PDFで出した発注書は「📋 発注書一覧」に残ります。手修正した欄はオレンジ色になり、「↺」で元に戻せます。追加品目はExcelの一覧の最後の行の下に入ります。Excelの黄色の欄に八木熊様が入庫予定日と数量を書いて返送してくれます。入力中の内容はこの端末に残ります。'},
-  {id:'yk-po-list',cat:'stock',tab:'parts',ver:'v19.66',q:'前に出した八木熊への発注書を見たい（発注書一覧）',kw:['八木熊','発注書','一覧','履歴','前に出した','注文書'],
-    steps:['「部材在庫一覧」の右端「📝 八木熊 発注書」の下にある「📋 発注書一覧」を開く','「🖨 PDF」でその時の発注書をもう一度開く（「📊 Excel」で Excel も出せます）'],
-    tip:'発注書タブで PDF を出すと記録されます（全端末で共有）。同じ発注日・件名で出し直すと上書きされます。回答Excelを取り込んだ発注書には「取込済」と出ます。',rel:['yk-po','yk-reply']},
+    steps:['「部材在庫一覧」の「📝 八木熊 発注書」タブを開く','件名・納品場所・納品希望日を入れ、品目の「数量」欄に個数を入れる','品番・品名・単価などを直すときは「✏ 品目を手修正」、一覧に無い品目は「＋ 品目を追加」','「📊 Excel（八木熊様へ送る）」でExcelを出してメールで送る（PDFは「🖨 PDF（印刷画面）」→ 送信先「PDFに保存」）','次の発注書は「＋ 新規発注書作成」で新しい発注書番号にする（入力した内容は残るので、消すときは「数量をクリア」）'],
+    tip:'発注書は画面上の発注書番号（例 YK-20261029-01）で管理します。番号はExcel・PDFにも載ります。Excelを出した発注書は「📋 発注書一覧」に記録されます（同じ番号で出し直すと上書き）。単価は2026年12月改定の八木熊新価格です。手修正した欄はオレンジ色になり、「↺」で元に戻せます。追加品目はExcelの一覧の最後の行の下に入ります。Excelの黄色の欄に八木熊様が入庫予定日と数量を書いて返送してくれます。入力中の内容はこの端末に残ります。'},
+  {id:'yk-po-list',cat:'stock',tab:'parts',ver:'v19.66',q:'前に出した八木熊への発注書を見たい・直したい（発注書一覧）',kw:['八木熊','発注書','一覧','履歴','前に出した','注文書','発注書番号','編集'],
+    steps:['「部材在庫一覧」の右端「📝 八木熊 発注書」の下にある「📋 発注書一覧」を開く','直すときは「✏ 編集」→ 発注書タブに開くので、直して「📊 Excel」を出し直す（Excelを出さないときは「💾 一覧に保存」）','「🖨 PDF」「📊 Excel」で保存した内容の発注書をもう一度出せます'],
+    tip:'発注書タブで Excel を出すと記録されます（全端末で共有）。発注書は発注書番号で管理し、同じ番号で出し直すと上書きされます。回答Excelを取り込んだ発注書には「取込済」と出ます。',rel:['yk-po','yk-reply']},
   {id:'yk-reply',cat:'stock',tab:'parts',ver:'v19.63',q:'八木熊から返ってきた回答Excel（入庫予定日）を取り込みたい',kw:['八木熊','回答','返信','入庫予定日','取込','取り込み','納期'],
     steps:['「部材在庫一覧」の「入庫予定」を開く','「📥 八木熊の回答Excel」で、八木熊様から返ってきた注文書Excelを選ぶ','確認画面で入庫予定日・数量・入庫先倉庫を確かめ（直せます）、「✅ 入庫予定に登録」'],
-    tip:'回答欄（①②③…）が増えていても読めます。回答の数量が足りない分や日付が「未定」の品目は「入庫日未定」で登録します。同じ発注の回答を取り込み直すと、入庫済の分は残して入庫予定を置き換えます。',rel:['yk-po']},
+    tip:'回答欄（①②③…）が増えていても読めます。回答の数量が足りない分や日付が「未定」の品目は「入庫日未定」で登録します。同じ発注の回答を取り込み直すと、入庫済の分は残して入庫予定を置き換えます。どの発注書の回答かは、Excelの右上の発注書番号で見分けます。',rel:['yk-po']},
   {id:'stock-history',cat:'stock',tab:'parts',ver:'v19.57',q:'在庫を誰がいつ変えたか（変更履歴）を見たい',kw:['履歴','変更履歴','誰が','いつ','ログ'],
     steps:['「部材在庫一覧」の「履歴」を開く'],
     rel:[]},
@@ -17186,6 +17186,8 @@ function ykPOBuildXlsx(st){
   lines.forEach(function(l){has[l.row]=l;});
   var ex=lines.filter(function(l){return l.extra;}),n=ex.length;
   xml=ykPOSetNum(xml,'K2',ykPOSerial(st.date));
+  /* v19.69: 発注書番号を日付の上（K1・右寄せ）に。回答Excel取込はここで見分ける */
+  if(st.no)xml=xml.replace(/<c r="K1"(?=[ >\/])[^>]*?(\/>|>[\s\S]*?<\/c>)/,'<c r="K1" s="8" t="inlineStr"><is><t xml:space="preserve">'+ykPOEsc('発注書No. '+st.no)+'</t></is></c>');
   xml=ykPOSetStr(xml,'J4',st.subject||'');
   xml=ykPOSetStr(xml,'D5',st.subject||'');
   xml=ykPOSetStr(xml,'D6',st.dest||'');
@@ -17219,7 +17221,8 @@ function ykPOBuildXlsx(st){
 }
 function ykPOFileBase(st){
   var d=String(st.date||ykPOYmd()).replace(/-/g,''),sj=String(st.subject||'').replace(/[\\\/:*?"<>|\r\n]+/g,' ').trim();
-  return '八木熊様注文書_'+d+(sj?'_'+sj.slice(0,30):'');
+  var no=/^YK-\d{8}-\d+$/.test(String(st.no||''))?st.no:d;
+  return '八木熊様注文書_'+no+(sj?'_'+sj.slice(0,30):'');
 }
 function ykPODownload(u8,filename){
   var blob=new Blob([u8],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -17243,7 +17246,7 @@ function ykPOHTML(st){
     +'.bk{margin-top:10px;border:1px solid #000;padding:5px 8px;min-height:18mm;font-size:11px;line-height:1.7}'
     +'@media screen{body{background:#f3f4f6}.pg{background:#fff;margin:10px auto;box-shadow:0 2px 8px rgba(0,0,0,.15)}}';
   var s='<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>'+e(ykPOFileBase(st))+'</title><style>'+css+'</style></head><body><div class="pg">';
-  s+='<div class="dt">'+e(ykPOJpDate(st.date))+'</div><div class="ttl">注文書</div>';
+  s+='<div class="dt">'+(st.no?'発注書No. '+e(st.no)+'<br>':'')+e(ykPOJpDate(st.date))+'</div><div class="ttl">注文書</div>';
   s+='<div class="row"><div><div class="to">株式会社八木熊　御中</div>';
   s+='<table class="f"><tr><td class="k">件名</td><td>'+e(st.subject)+'</td></tr><tr><td class="k">納品場所</td><td>'+e(st.dest).replace(/\n/g,'<br>')+'</td></tr><tr><td class="k">納品希望日</td><td>'+e(st.want)+'</td></tr></table></div>';
   s+='<div class="lec"><div class="nm">株式会社LEC</div><div>〒120-0005 東京都足立区綾瀬7-4-1</div><div>TEL 03-5849-5563 / FAX 03-5849-5564</div><div>担当：'+e(st.staff)+'</div></div></div>';
@@ -17277,14 +17280,43 @@ function YkPOPanel(p){
   if(!init.current){
     var d=ykPOLoadDraft()||{};
     var nm=String(p.userName||'').split('/').pop().trim();
-    init.current={date:ykPOYmd(),subject:d.subject||'',dest:ykPODestFix(d.dest)||YK_PO_DEST_DEFAULT,
+    /* v19.69: 発注書番号。下書きに無ければ次の番号。一覧から開いた発注書は、その発注日のまま */
+    init.current={no:d.no||ykPONextNo(null),uid:d.uid||ykPOUid(),date:(d.no&&d.date)?d.date:ykPOYmd(),subject:d.subject||'',dest:ykPODestFix(d.dest)||YK_PO_DEST_DEFAULT,
       want:d.want||'',staff:d.staff||nm||'',memo:d.memo||'',qty:d.qty||{},
       edit:(d.edit&&typeof d.edit==='object')?d.edit:{},extra:Array.isArray(d.extra)?d.extra:[],hideEmpty:d.hideEmpty!==false};
   }
   var st=us(init.current),grp=us('all'),em=us(false);
   var v=st[0],editMode=em[0];
-  ue(function(){ykPOSaveDraft({subject:v.subject,dest:v.dest,want:v.want,staff:v.staff,memo:v.memo,qty:v.qty,edit:v.edit,extra:v.extra,hideEmpty:v.hideEmpty});},[v]);
+  ue(function(){ykPOSaveDraft({no:v.no,uid:v.uid,date:v.date,subject:v.subject,dest:v.dest,want:v.want,staff:v.staff,memo:v.memo,qty:v.qty,edit:v.edit,extra:v.extra,hideEmpty:v.hideEmpty});},[v]);
   function set(k,val){var o=Object.assign({},v);o[k]=val;st[1](o);}
+  /* 別の端末と番号が重なって付け替えたとき */
+  ue(function(){
+    function f(ev){var x=ev.detail||{};st[1](function(o){return o.no===x.from?Object.assign({},o,{no:x.to}):o;});p.toast&&p.toast('同じ番号が別の端末で使われていたため、発注書番号を '+x.to+' に変えました');}
+    window.addEventListener('ykpo-renum',f);return function(){window.removeEventListener('ykpo-renum',f);};
+  },[]);
+  var bump=us(0);
+  ue(function(){var t=setInterval(function(){bump[1](function(x){return x+1;});},5000);return function(){clearInterval(t);};},[]);/* 一覧（他の端末）の変化を反映 */
+  var listed=YK_PO_LIST[v.no]&&!YK_PO_LIST[v.no].del?YK_PO_LIST[v.no]:null;
+  var dirty=listed?!ykPOSame(v,listed.st):false;
+  function register(){
+    var rec=ykPOListAdd(v,p.userName);
+    if(rec.no!==v.no){var o=Object.assign({},v,{no:rec.no});st[1](o);}
+    bump[1](function(x){return x+1;});/* 「一覧に登録済み」の表示を すぐ直す */
+    return rec;
+  }
+  /* 「＋ 新規発注書作成」: 入力はそのまま、次の発注書番号（発注日は今日） */
+  function newPO(){
+    var nn=ykPONextNo(listed?null:v.no);
+    if(!listed&&nn===v.no){p.toast&&p.toast('発注書番号 '+v.no+' はまだ一覧に登録されていないので、この番号のまま新しい発注書として使えます');return;}
+    if(!listed&&lines.length&&!confirm('今の発注書 '+v.no+' はまだ一覧に登録されていません（Excel未出力）。\n\n新しい発注書番号 '+nn+' に変えますか？（入力した内容はそのまま残ります）'))return;
+    if(listed&&dirty&&!confirm('今の発注書 '+v.no+' には、一覧に保存していない変更があります（一覧の '+v.no+' は前に保存した内容のままです）。\n\n新しい発注書番号 '+nn+' で作りますか？（入力した内容はそのまま残ります）'))return;
+    st[1](Object.assign({},v,{no:nn,uid:ykPOUid(),date:ykPOYmd()}));
+    p.toast&&p.toast('新しい発注書番号 '+nn+' で作成します（入力した内容は残しています。消すときは「数量をクリア」）');
+  }
+  function saveList(){
+    var rec=register();
+    p.toast&&p.toast('発注書一覧に保存しました（'+rec.no+'）');
+  }
   function setQty(row,txt){
     var t=String(txt).replace(/[０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0xFEE0);}).replace(/[^\d]/g,'');
     var q=Object.assign({},v.qty);if(t===''||+t===0)delete q[row];else q[row]=+t;set('qty',q);
@@ -17330,15 +17362,14 @@ function YkPOPanel(p){
   }
   function doExcel(){
     if(!check())return;
-    try{ykPODownload(ykPOBuildXlsx(v),ykPOFileBase(v)+'.xlsx');p.toast&&p.toast('注文書のExcelを出力しました（'+lines.length+'品目）');}
+    /* v19.69: Excel を出した発注書を「📋 発注書一覧」に記録（同じ番号は上書き） */
+    try{var rec=register(),x=Object.assign({},v,{no:rec.no});ykPODownload(ykPOBuildXlsx(x),ykPOFileBase(x)+'.xlsx');p.toast&&p.toast('注文書のExcelを出力し、発注書一覧に記録しました（'+rec.no+'・'+lines.length+'品目）');}
     catch(e){console.error(e);p.toast&&p.toast('Excelを作れませんでした（'+(e&&e.message||e)+'）');}
   }
   function doPDF(){
     if(!check())return;
+    /* v19.69: PDF は控え用。一覧には記録しない（記録は Excel のとき） */
     if(!openPrintWindow(ykPOHTML(v))){p.toast&&p.toast('ポップアップを許可してください');return;}
-    /* v19.66: PDF で出した発注書は「📋 発注書一覧」に残す（同じ発注日＋件名は上書き） */
-    var rec=ykPOListAdd(v,p.userName);
-    p.toast&&p.toast('発注書一覧に記録しました（'+rec.no+'）');
   }
   function clearAll(){if(!lines.length||confirm('入力した数量（'+lines.length+'品目）を消しますか？')){var o=Object.assign({},v);o.qty={};st[1](o);}}
   var lab={fontSize:10,fontWeight:700,color:'var(--g500)',display:'block',marginBottom:2};
@@ -17390,9 +17421,20 @@ function YkPOPanel(p){
   return h('div',{style:{padding:'10px 4px'}},
     h('div',{style:{padding:'8px 12px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:8,fontSize:11,color:'#1E3A8A',marginBottom:8,lineHeight:1.7}},
       '八木熊様への注文書を作ります。数量を入れて「Excel」を八木熊様へ送ると、黄色の回答欄（入庫予定日・数量）に記入して返送してもらえます。',
-      h('br'),'単価は2026年12月改定の八木熊新価格です。数量の無い品目は Excel では隠し、PDF には載せません。入力中の内容はこの端末に残ります（在庫・案件には反映しません）。PDFで出した発注書は「📋 発注書一覧」に残ります。',
+      h('br'),'単価は2026年12月改定の八木熊新価格です。数量の無い品目は Excel では隠し、PDF には載せません。入力中の内容はこの端末に残ります（在庫・案件には反映しません）。Excelを出した発注書は「📋 発注書一覧」に残ります。',
+      h('br'),'発注書は発注書番号で管理します。次の発注書は「＋ 新規発注書作成」で新しい番号にします（入力した内容は残ります。消すときは「数量をクリア」）。',
       h('br'),'品番・品名・単価などは「✏ 品目を手修正」で直せます。一覧に無い品目は「＋ 品目を追加」で足せます（Excel では一覧の最後の行の下に入ります）。',
       h('br'),'八木熊様から返ってきた回答Excelは、在庫表の「入庫予定」→「📥 八木熊の回答Excel」で入庫予定に取り込めます。'),
+    h('div',{'data-ykpono':v.no,style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'8px 12px',marginBottom:8,borderRadius:8,
+        background:listed?(dirty?'#FFF7ED':'#F0FDF4'):'#F8FAFC',border:'2px solid '+(listed?(dirty?'#FDBA74':'#86EFAC'):'var(--g300)')}},
+      h('span',{style:{fontSize:11,fontWeight:700,color:'var(--g500)'}},'発注書番号'),
+      h('span',{style:{fontSize:18,fontWeight:800,fontFamily:'monospace',color:'var(--nv)',letterSpacing:1}},v.no),
+      listed?(dirty?h('span',{'data-ykpostate':'dirty',style:{fontSize:11,fontWeight:700,color:'#C2410C'}},'● 編集中（一覧に保存していない変更があります）')
+               :h('span',{'data-ykpostate':'saved',style:{fontSize:11,fontWeight:700,color:'#166534'}},'✓ 一覧に登録済み（'+ykPOAtLabel(listed.at)+' 保存）'))
+        :h('span',{'data-ykpostate':'new',style:{fontSize:11,color:'var(--g500)'}},'新規（まだ一覧に登録されていません。Excelを出すと登録されます）'),
+      h('span',{style:{flex:1}}),
+      listed?h('button',{className:'btn btn-xs '+(dirty?'btn-nv':'btn-ol'),'data-ykposave':'1',disabled:!dirty,onClick:saveList,title:'Excelを出さずに一覧の内容を更新します'},'💾 一覧に保存'):null,
+      h('button',{className:'btn btn-xs btn-gn','data-ykponew':'1',onClick:newPO,title:'次の発注書番号で新しい発注書を作ります。入力した内容はそのまま残ります'},'＋ 新規発注書作成')),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:8,marginBottom:8}},
       h('label',null,h('span',{style:lab},'発注日'),h('input',{type:'date',value:v.date,style:inp,onChange:function(ev){set('date',ev.target.value);}})),
       h('label',null,h('span',{style:lab},'件名'),h('input',{type:'text',value:v.subject,placeholder:'例: 2027年春 SML追加分',style:inp,onChange:function(ev){set('subject',ev.target.value);}})),
@@ -17438,12 +17480,36 @@ function YkPOPanel(p){
   );
 }
 /* ===== v19.66 発注書一覧（2026-10-29 チャット依頼「PDF出力した発注書を一覧で確認」） =====
-   ・発注書タブで PDF を出したときに、その内容（発注日・件名・納品場所・数量・手修正・追加品目）を記録する。
-   ・1件＝発注番号 'YK-発注日-件名'（回答Excel取込の poNo と同じ）。同じ発注日＋件名で出し直したら上書き。
+   v19.69（2026-10-29 再修正）:
+   ・発注書は「発注書番号」（YK-作った日-連番。例 YK-20261029-01）で管理する。発注書タブの「＋ 新規発注書作成」で次の番号を採番
+   　（入力した内容はそのまま残す）。番号は Excel の K1・PDF・画面に載せる。回答Excel取込もこの番号で見分ける。
+   ・一覧への記録は Excel を出したとき（PDF では記録しない）。同じ番号で出し直したら上書き。
+   ・一覧の「✏ 編集」で発注書タブに開いて直せる。「💾 一覧に保存」で Excel を出さずに保存もできる。
    ・全端末で共有: YK_PO_LIST（{番号:記録}）をクラウドの通常の行の ykPOList に置く。保存は ykPOList だけを読み直して足し合わせる
-   　（閲覧のみの人が PDF を出しても、案件・在庫などほかの項目は書き換えない）。削除は del:true の印（削除はクラウドで伝わらないため）。
+   　（閲覧のみの人が保存しても、案件・在庫などほかの項目は書き換えない）。削除は del:true の印（削除はクラウドで伝わらないため）。
+   ・別の端末が同じ番号を先に使っていたら（uid が違う）、次の空き番号に付け替えて知らせる。
+   ・v19.68 までの記録（番号＝YK-発注日-件名）はそのまま一覧に残る。
    ・トレーニングモードではクラウドへ書かない。 */
-function ykPONo(st){var sj=String(st.subject||'').normalize('NFKC').trim();return 'YK-'+String(st.date||'').replace(/-/g,'')+(sj?'-'+sj:'');}
+/* 旧形式の番号（v19.68 まで）。回答Excelに番号が無いときの見分けにも使う */
+function ykPONo(st){if(st&&st.no)return st.no;var sj=String(st.subject||'').normalize('NFKC').trim();return 'YK-'+String(st.date||'').replace(/-/g,'')+(sj?'-'+sj:'');}
+function ykPOUid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+/* 次の発注書番号。YK-今日-連番（一覧に使われた番号＝削除済みも含めて、の次。except は数えない番号） */
+function ykPONextNo(except,list){
+  var t=new Date(),d=t.getFullYear()+String(t.getMonth()+1).padStart(2,'0')+String(t.getDate()).padStart(2,'0');
+  var pre='YK-'+d+'-',mx=0;
+  Object.keys(list||YK_PO_LIST||{}).forEach(function(k){if(k===except||k.indexOf(pre)!==0)return;var n=+k.slice(pre.length);if(n>mx)mx=n;});
+  return pre+String(mx+1).padStart(2,'0');
+}
+/* 画面の内容のうち一覧に残す部分（比べるときにも使う） */
+function ykPOStPart(st){
+  return JSON.parse(JSON.stringify({no:st.no||'',uid:st.uid||'',date:st.date||'',subject:st.subject||'',dest:st.dest||'',want:st.want||'',staff:st.staff||'',memo:st.memo||'',
+    qty:st.qty||{},edit:st.edit||{},extra:st.extra||[],hideEmpty:st.hideEmpty!==false}));
+}
+function ykPOSame(a,b){
+  function k(x){var o=ykPOStPart(x);delete o.uid;delete o.no;var q={};Object.keys(o.qty).sort().forEach(function(z){if(+o.qty[z])q[z]=+o.qty[z];});o.qty=q;
+    var e={};Object.keys(o.edit).sort().forEach(function(z){e[z]=o.edit[z];});o.edit=e;return JSON.stringify(o);}
+  return k(a)===k(b);
+}
 function saveYkPOList(){try{lsSet('lec_ykpo_list',JSON.stringify(YK_PO_LIST));}catch(e){}}
 /* 2つの一覧を足し合わせる（同じ番号は新しい方） */
 function ykPOListMerge(a,b){
@@ -17451,14 +17517,29 @@ function ykPOListMerge(a,b){
   Object.keys(b||{}).forEach(function(k){var x=b[k];if(!x||typeof x!=='object')return;if(!o[k]||String(x.at||'')>String(o[k].at||''))o[k]=x;});
   return o;
 }
-function ykPOListCloud(by){
+/* 番号の付け替え（別の端末と重なったとき）。下書き・開いている発注書タブにも伝える */
+function ykPORenum(oldNo,newNo){
+  var r=YK_PO_LIST[oldNo];
+  YK_PO_LIST=Object.assign({},YK_PO_LIST);
+  if(r){delete YK_PO_LIST[oldNo];YK_PO_LIST[newNo]=Object.assign({},r,{no:newNo,st:Object.assign({},r.st,{no:newNo})});}
+  saveYkPOList();
+  try{var d=ykPOLoadDraft();if(d&&d.no===oldNo){d.no=newNo;ykPOSaveDraft(d);}}catch(e){}
+  try{window.dispatchEvent(new CustomEvent('ykpo-renum',{detail:{from:oldNo,to:newNo}}));}catch(e){}
+}
+function ykPOListCloud(by,mine){
   if(typeof TRAINING!=='undefined'&&TRAINING)return;
   if(typeof supaClient==='undefined'||!supaClient||!CLOUD_READY)return;
   try{
     supaClient.from(CLOUD_TABLE).select('doc').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
       var cur=res&&res.data&&res.data.doc;
       if(res.error||!cur){console.warn('[Cloud] 発注書一覧: 通常の行を読めませんでした');return;}
-      YK_PO_LIST=ykPOListMerge(cur.ykPOList,YK_PO_LIST);saveYkPOList();
+      var cl=cur.ykPOList||{};
+      /* 別の端末が同じ番号を先に使っていた → こちらを次の空き番号へ */
+      if(mine&&YK_PO_LIST[mine]&&cl[mine]&&cl[mine].uid&&YK_PO_LIST[mine].uid&&cl[mine].uid!==YK_PO_LIST[mine].uid){
+        var nn=ykPONextNo(null,Object.assign({},cl,YK_PO_LIST));
+        ykPORenum(mine,nn);
+      }
+      YK_PO_LIST=ykPOListMerge(cl,YK_PO_LIST);saveYkPOList();
       var nd=Object.assign({},cur,{ykPOList:YK_PO_LIST,_ts:Date.now()});
       _cloudSelfWrite=true;
       supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:nd,updated_at:new Date().toISOString(),updated_by:by||''}).then(function(r2){
@@ -17468,14 +17549,18 @@ function ykPOListCloud(by){
     },function(){});
   }catch(e){console.warn('[Cloud] 発注書一覧',e);}
 }
-/* PDF を出した発注書を記録する。戻り値＝記録 */
+/* 発注書を一覧に記録する（Excel を出したとき・「💾 一覧に保存」）。戻り値＝記録（no が付け替わることがある） */
 function ykPOListAdd(st,userName){
-  var lines=ykPOLines(st.qty,st.edit,st.extra),am=ykPOAmounts(lines),no=ykPONo(st);
-  var rec={no:no,at:new Date().toISOString(),by:String(userName||''),
-    st:JSON.parse(JSON.stringify({date:st.date,subject:st.subject,dest:st.dest,want:st.want,staff:st.staff,memo:st.memo||'',qty:st.qty||{},edit:st.edit||{},extra:st.extra||[],hideEmpty:st.hideEmpty!==false})),
-    n:lines.length,qty:am.qty,total:am.total,del:false};
+  var no=ykPONo(st),old=YK_PO_LIST[no];
+  /* この端末で知っている範囲で、別の発注書が同じ番号を使っていたら次の空き番号へ */
+  if(old&&old.uid&&st.uid&&old.uid!==st.uid)no=ykPONextNo(null);
+  var lines=ykPOLines(st.qty,st.edit,st.extra),am=ykPOAmounts(lines);
+  var part=ykPOStPart(Object.assign({},st,{no:no}));
+  var now=new Date().toISOString();
+  var rec={no:no,uid:st.uid||'',at:now,by:String(userName||''),created:(old&&old.uid===st.uid&&old.created)||(old&&!old.uid&&old.created)||now,
+    st:part,n:lines.length,qty:am.qty,total:am.total,del:false};
   YK_PO_LIST=Object.assign({},YK_PO_LIST);YK_PO_LIST[no]=rec;saveYkPOList();
-  ykPOListCloud(userName);
+  ykPOListCloud(userName,no);
   return rec;
 }
 function ykPOListDel(no,userName){
@@ -17490,37 +17575,51 @@ function YkPOListPanel(p){
   var q=us(''),bump=us(0);
   ue(function(){var t=setInterval(function(){bump[1](function(x){return x+1;});},5000);return function(){clearInterval(t);};},[]);/* 他の端末の記録（クラウド）を反映 */
   var kw=q[0].normalize('NFKC').trim().toLowerCase();
+  var cur=ykPOLoadDraft()||{};
   var list=Object.keys(YK_PO_LIST||{}).map(function(k){return YK_PO_LIST[k];}).filter(function(r){
     if(!r||r.del)return false;
     if(!kw)return true;
     return [r.no,r.st&&r.st.subject,r.st&&r.st.dest,r.st&&r.st.staff,r.by].join(' ').normalize('NFKC').toLowerCase().indexOf(kw)>=0;
-  }).sort(function(a,b){return String((b.st&&b.st.date)||'').localeCompare(String((a.st&&a.st.date)||''))||String(b.at).localeCompare(String(a.at));});
+  }).sort(function(a,b){return String(b.created||b.at).localeCompare(String(a.created||a.at))||String(b.no).localeCompare(String(a.no));});
   function replyOf(no){
     var inc=INCOMING.filter(function(x){return x.poNo===no&&x.status!=='取消';});
     if(!inc.length)return null;
     return {n:inc.length,done:inc.filter(function(x){return x.status==='入庫済';}).length,und:inc.some(function(x){return !x.expectedDate&&x.status!=='入庫済';})};
   }
-  function pdf(r){if(!openPrintWindow(ykPOHTML(r.st)))p.toast&&p.toast('ポップアップを許可してください');}
-  function xlsx(r){try{ykPODownload(ykPOBuildXlsx(r.st),ykPOFileBase(r.st)+'.xlsx');}catch(e){p.toast&&p.toast('Excelを作れませんでした（'+(e&&e.message||e)+'）');}}
+  function stOf(r){return Object.assign({},r.st,{no:r.no});}
+  function pdf(r){if(!openPrintWindow(ykPOHTML(stOf(r))))p.toast&&p.toast('ポップアップを許可してください');}
+  function xlsx(r){try{ykPODownload(ykPOBuildXlsx(stOf(r)),ykPOFileBase(stOf(r))+'.xlsx');}catch(e){p.toast&&p.toast('Excelを作れませんでした（'+(e&&e.message||e)+'）');}}
+  /* 発注書タブで開いて直す。今の画面の発注書が一覧に無い（または保存していない変更がある）ときは確かめる */
+  function edit(r){
+    var d=ykPOLoadDraft();
+    if(d&&d.no!==r.no){
+      var lr=d.no&&YK_PO_LIST[d.no],dl=ykPOLines(d.qty,d.edit,d.extra).length;
+      var warn=lr&&!lr.del?(!ykPOSame(d,lr.st)?'発注書タブで開いている '+d.no+' には、一覧に保存していない変更があります。':''):(dl?'発注書タブで作成中の '+(d.no||'発注書')+' は、まだ一覧に登録されていません（Excel未出力）。':'');
+      if(warn&&!confirm(warn+'\n\n'+r.no+' を開くと、発注書タブの内容は置き換わります。開きますか？'))return;
+    }
+    ykPOSaveDraft(Object.assign(ykPOStPart(stOf(r)),{uid:r.uid||r.st.uid||ykPOUid()}));
+    if(p.onOpen)p.onOpen(r.no);
+  }
   function del(r){
     if(p.isReadOnly){p.toast&&p.toast('読み取り専用モード中は削除できません');return;}
-    if(!confirm('発注書「'+(r.st.subject||r.no)+'」（'+r.st.date+'）を一覧から削除しますか？'))return;
+    if(!confirm('発注書 '+r.no+'「'+(r.st.subject||'')+'」を一覧から削除しますか？'))return;
     ykPOListDel(r.no,p.userName);bump[1](bump[0]+1);p.toast&&p.toast('発注書一覧から削除しました');
   }
   var th={position:'sticky',top:0,zIndex:1,fontSize:10};
   return h('div',{style:{padding:'10px 4px'}},
     h('div',{style:{padding:'8px 12px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:8,fontSize:11,color:'#1E3A8A',marginBottom:8,lineHeight:1.7}},
-      '「📝 八木熊 発注書」で PDF を出した発注書の一覧です（全端末で共有）。同じ発注日・件名で出し直すと上書きされます。',
-      h('br'),'「🖨 PDF」でその時の内容の発注書をもう一度開けます。八木熊様の回答Excelを取り込んだ発注書には「回答」の欄に印が付きます。'),
+      '「📝 八木熊 発注書」で Excel を出した発注書の一覧です（全端末で共有）。発注書は発注書番号で管理します。同じ番号で Excel を出し直すと上書きされます。',
+      h('br'),'「✏ 編集」で発注書タブに開いて直せます。「🖨 PDF」「📊 Excel」で保存した内容の発注書をもう一度出せます。八木熊様の回答Excelを取り込んだ発注書には「回答」の欄に印が付きます。'),
     h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:6,flexWrap:'wrap'}},
-      h('input',{type:'text',value:q[0],placeholder:'件名・納品場所・担当で探す',style:{fontSize:12,padding:'4px 8px',border:'1px solid var(--g300)',borderRadius:4,width:260},'data-ykpolistq':'1',onChange:function(e){q[1](e.target.value);}}),
+      h('input',{type:'text',value:q[0],placeholder:'発注書番号・件名・納品場所・担当で探す',style:{fontSize:12,padding:'4px 8px',border:'1px solid var(--g300)',borderRadius:4,width:280},'data-ykpolistq':'1',onChange:function(e){q[1](e.target.value);}}),
       h('span',{style:{fontSize:11,color:'var(--g500)'}},list.length+'件')),
     h('div',{className:'scy',style:{maxHeight:'65vh',overflow:'auto'}},
       h('table',{className:'tbl',style:{fontSize:11,width:'100%'}},
-        h('thead',null,h('tr',null,['発注日','件名','納品場所','納品希望日','品目','数量','合計（税込）','担当','PDF出力','回答',''].map(function(t,i){return h('th',{key:i,style:th},t);}))),
+        h('thead',null,h('tr',null,['発注書番号','発注日','件名','納品場所','納品希望日','品目','数量','合計（税込）','担当','最終保存','回答',''].map(function(t,i){return h('th',{key:i,style:th},t);}))),
         h('tbody',null,list.length?list.map(function(r){
-          var s=r.st||{},rp=replyOf(r.no);
-          return h('tr',{key:r.no,'data-ykpolist':r.no},
+          var s=r.st||{},rp=replyOf(r.no),open=cur.no===r.no;
+          return h('tr',{key:r.no,'data-ykpolist':r.no,style:open?{background:'#EFF6FF'}:null},
+            h('td',{style:{whiteSpace:'nowrap',fontFamily:'monospace',fontWeight:700,fontSize:11}},r.no,open?h('div',{style:{fontSize:9,color:'var(--nv)',fontFamily:'inherit'}},'発注書タブで編集中'):null),
             h('td',{style:{whiteSpace:'nowrap',fontSize:11}},String(s.date||'').replace(/-/g,'/')),
             h('td',{style:{fontWeight:700,fontSize:12}},s.subject||h('span',{style:{color:'var(--g400)'}},'（件名なし）')),
             h('td',{style:{fontSize:10}},String(s.dest||'').split('\n')[0].replace(/　/g,' ')),
@@ -17532,11 +17631,12 @@ function YkPOListPanel(p){
             h('td',{style:{fontSize:9,color:'var(--g500)',whiteSpace:'nowrap'}},ykPOAtLabel(r.at),h('br'),String(r.by||'').split('/').pop()),
             h('td',{style:{fontSize:9,whiteSpace:'nowrap'}},rp?h('span',{style:{color:'var(--gn)',fontWeight:700}},'取込済',rp.done?'（入庫済 '+rp.done+'）':'',rp.und?h('span',{style:{color:'#B45309'}},' 未定あり'):null):h('span',{style:{color:'var(--g400)'}},'—')),
             h('td',{style:{whiteSpace:'nowrap'}},
-              h('button',{className:'btn btn-xs btn-nv',onClick:function(){pdf(r);}},'🖨 PDF'),' ',
+              h('button',{className:'btn btn-xs btn-nv','data-ykpoedit':r.no,onClick:function(){edit(r);}},'✏ 編集'),' ',
+              h('button',{className:'btn btn-xs btn-ol',onClick:function(){pdf(r);}},'🖨 PDF'),' ',
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){xlsx(r);}},'📊 Excel'),' ',
               h('button',{className:'btn btn-xs btn-ol',title:'一覧から削除',style:{padding:'0 5px'},onClick:function(){del(r);}},'🗑'))
           );
-        }):h('tr',null,h('td',{colSpan:11,style:{textAlign:'center',color:'var(--g500)',padding:16}},kw?'見つかりません':'まだありません（発注書タブで PDF を出すと記録されます）')))
+        }):h('tr',null,h('td',{colSpan:12,style:{textAlign:'center',color:'var(--g500)',padding:16}},kw?'見つかりません':'まだありません（発注書タブで Excel を出すと記録されます）')))
       )
     )
   );
@@ -17548,7 +17648,7 @@ function YkPOListPanel(p){
    　取っ手プレート＝トッテ（井門）、ヒンジキャップ＝ヒンジカバー（2026-10-29 ユーザー回答）。
    ・数量の分け方: ①②の数量（空なら日付があれば残り全部）、足りない分は「入庫日未定」。日付が「未定」などで読めないときも未定。
    ・確認画面で日付・数量・割り当て先・倉庫（納品場所から推定）を見て直してから登録（ユーザー回答）。
-   ・同じ発注（発注日＋件名＝poNo）を取り込み直すと、入庫済の分は残して残りを作り直す。不要になった予定は削除せず status='取消'
+   ・同じ発注（発注書番号＝poNo。v19.69 より前は発注日＋件名）を取り込み直すと、入庫済の分は残して残りを作り直す。不要になった予定は削除せず status='取消'
    　（クラウドは削除が他端末へ伝わらないため。v19.37 と同じ）。行の対応は Excel の行番号（poRow）。 */
 var YK_RAIL={sml:[{key:'railSideSML',mult:2},{key:'railBackSML',mult:1}],ss:[{key:'railSideSS',mult:2},{key:'railBackSS',mult:1}]};
 function ykRLabel(key,sub,color,isDoor){
@@ -17716,7 +17816,15 @@ function ykReplyParse(wb){
     rows.push(rec);
   }
   if(!rows.length)return {err:'数量の入った品目がありません'};
-  var poNo='YK-'+(orderDate||'').replace(/-/g,'')+(title?'-'+title:'');
+  /* v19.69: 発注書番号（K1「発注書No. YK-20261029-01」）で見分ける。番号の無い古いExcelは発注日＋件名で一覧から探す */
+  var noM=String(cell('K1')||'').normalize('NFKC').match(/YK-\d{8}-\d+/),poNo=noM?noM[0]:'';
+  if(!poNo){
+    var leg='YK-'+(orderDate||'').replace(/-/g,'')+(title?'-'+title:'');
+    var hit=Object.keys(typeof YK_PO_LIST!=='undefined'?YK_PO_LIST:{}).map(function(k){return YK_PO_LIST[k];}).filter(function(x){
+      return x&&!x.del&&x.st&&x.st.date===orderDate&&String(x.st.subject||'').normalize('NFKC').trim()===title;
+    }).sort(function(a,b){return String(b.at).localeCompare(String(a.at));})[0];
+    poNo=hit?hit.no:leg;
+  }
   return {title:title,orderDate:orderDate,dest:dest,wh:ykRGuessWh(dest),poNo:poNo,rows:rows,nSlot:Math.max(2,slotCols.length)};
 }
 /* 確認画面の内容 → 入庫予定（INCOMING）。入庫済の分は残し、行ごとに入庫済の数を差し引いた残りを入庫日ごとにまとめる。
@@ -17785,6 +17893,7 @@ function YkReplyModal(p){
       h('button',{className:'btn btn-gn','data-ykreg':'1',disabled:!rep.rows.some(function(r){return !r.skip&&r.items&&r.items.length;}),onClick:register},again?'✅ 入庫予定を更新':'✅ 入庫予定に登録'))},
     h('div',null,
       h('div',{style:{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-end',marginBottom:6,fontSize:11}},
+        h('div',null,h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:700}},'発注書番号'),h('b',{'data-ykrno':'1',style:{fontFamily:'monospace'}},rep.poNo||'（なし）')),
         h('div',null,h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:700}},'件名'),h('b',null,rep.title||'（なし）')),
         h('div',null,h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:700}},'発注日'),rep.orderDate||'（なし）'),
         h('div',{style:{maxWidth:260}},h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:700}},'納品場所'),(rep.dest||'').split('\n')[0]),
@@ -19751,7 +19860,7 @@ function PartsPage(p){
     /* v19.62: 八木熊様への注文書 */
     subTab[0]==='po'?h(YkPOPanel,{toast:p.toast,userName:p.userName}):null,
     /* v19.66: 発注書一覧 */
-    subTab[0]==='polist'?h(YkPOListPanel,{toast:p.toast,userName:p.userName,isReadOnly:RO_}):null
+    subTab[0]==='polist'?h(YkPOListPanel,{toast:p.toast,userName:p.userName,isReadOnly:RO_,onOpen:function(){subTab[1]('po');}}):null
     ),
     /* Edit modal */
     editModal[0]?h(Modal,{show:true,title:'在庫編集: '+editModal[0].label+(editModal[0].onlyWh?'（'+((WH_MAP[editModal[0].onlyWh]||{}).n||editModal[0].onlyWh)+'のみ）':''),w:editModal[0].isDoor?700:500,onClose:function(){editModal[1](null);},
