@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.63（八木熊様の回答Excelを入庫予定に取込）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.64（八木熊の回答取込でヒンジキャップをヒンジカバーに割り当て）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -17421,6 +17421,7 @@ function YkPOPanel(p){
    ・v19.62 の発注書タブで出した注文書Excelに、八木熊様が黄色の回答欄（入庫予定日①・数量①・②・備考）を書いて返送したものを読む。
    ・行の中身（品番・サイズ・品名・扉色・カギ枠・本体色）で在庫の部材（日本製 Ver.2）に割り当てる。品番が ITEM_CODES/ITEM_CODES_DOOR の
    　八木熊コードにあれば品番を優先。手修正・追加品目の行も同じ。ベース（レール含む）はベース＋サイドレール×2＋バックレール×1（v19.37 のユーザー回答）。
+   　取っ手プレート＝トッテ（井門）、ヒンジキャップ＝ヒンジカバー（2026-10-29 ユーザー回答）。
    ・数量の分け方: ①②の数量（空なら日付があれば残り全部）、足りない分は「入庫日未定」。日付が「未定」などで読めないときも未定。
    ・確認画面で日付・数量・割り当て先・倉庫（納品場所から推定）を見て直してから登録（ユーザー回答）。
    ・同じ発注（発注日＋件名＝poNo）を取り込み直すと、入庫済の分は残して残りを作り直す。不要になった予定は削除せず status='取消'
@@ -17484,6 +17485,7 @@ function ykRMap(r){
   else if(/アンカー穴キャップ/.test(nm))add('anchorCap',gy?'gy':'bk','','option',1,true);
   else if(/ドアポケット/.test(nm))add('doorPocket','','','option',1,true);
   else if(/取っ手プレート/.test(nm))add('totte','','','lock',1,true);
+  else if(/ヒンジキャップ|ヒンジカバー/.test(nm))add(g==='ss'?'hingeCoverSS':'hingeCoverSML','','','option',1,true);/* v19.64 ユーザー回答: ヒンジキャップ＝ヒンジカバー */
   if(!it.length)return {items:[],err:'在庫の部材がありません（'+[r.size,r.name,r.door,r.kagi==='蓄光'?'蓄光':'',r.body].filter(Boolean).join(' ')+'）'};
   return {items:it,by:'名称'};
 }
