@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.69（八木熊 発注書を発注書番号で管理・Excel出力で一覧に記録・一覧から編集）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.70（八木熊 発注書一覧に社内備考を表示・発注書番号は年ごとの通し番号）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9967,10 +9967,10 @@ var HELP_QA=[
     rel:['stock-history']},
   {id:'yk-po',cat:'stock',tab:'parts',ver:'v19.62',q:'八木熊に発注書（注文書）を出したい',kw:['八木熊','発注','発注書','注文書','部材','仕入','手修正','品目追加'],
     steps:['「部材在庫一覧」の「📝 八木熊 発注書」タブを開く','件名・納品場所・納品希望日を入れ、品目の「数量」欄に個数を入れる','品番・品名・単価などを直すときは「✏ 品目を手修正」、一覧に無い品目は「＋ 品目を追加」','「📊 Excel（八木熊様へ送る）」でExcelを出してメールで送る（PDFは「🖨 PDF（印刷画面）」→ 送信先「PDFに保存」）','次の発注書は「＋ 新規発注書作成」で新しい発注書番号にする（入力した内容は残るので、消すときは「数量をクリア」）'],
-    tip:'発注書は画面上の発注書番号（例 YK-20261029-01）で管理します。番号はExcel・PDFにも載ります。Excelを出した発注書は「📋 発注書一覧」に記録されます（同じ番号で出し直すと上書き）。単価は2026年12月改定の八木熊新価格です。手修正した欄はオレンジ色になり、「↺」で元に戻せます。追加品目はExcelの一覧の最後の行の下に入ります。Excelの黄色の欄に八木熊様が入庫予定日と数量を書いて返送してくれます。入力中の内容はこの端末に残ります。'},
+    tip:'発注書は画面上の発注書番号（例 YK-2026-001。年ごとの通し番号）で管理します。番号はExcel・PDFにも載ります。Excelを出した発注書は「📋 発注書一覧」に記録されます（同じ番号で出し直すと上書き）。単価は2026年12月改定の八木熊新価格です。手修正した欄はオレンジ色になり、「↺」で元に戻せます。追加品目はExcelの一覧の最後の行の下に入ります。Excelの黄色の欄に八木熊様が入庫予定日と数量を書いて返送してくれます。入力中の内容はこの端末に残ります。'},
   {id:'yk-po-list',cat:'stock',tab:'parts',ver:'v19.66',q:'前に出した八木熊への発注書を見たい・直したい（発注書一覧）',kw:['八木熊','発注書','一覧','履歴','前に出した','注文書','発注書番号','編集'],
     steps:['「部材在庫一覧」の右端「📝 八木熊 発注書」の下にある「📋 発注書一覧」を開く','直すときは「✏ 編集」→ 発注書タブに開くので、直して「📊 Excel」を出し直す（Excelを出さないときは「💾 一覧に保存」）','「🖨 PDF」「📊 Excel」で保存した内容の発注書をもう一度出せます'],
-    tip:'発注書タブで Excel を出すと記録されます（全端末で共有）。発注書は発注書番号で管理し、同じ番号で出し直すと上書きされます。回答Excelを取り込んだ発注書には「取込済」と出ます。',rel:['yk-po','yk-reply']},
+    tip:'発注書タブで Excel を出すと記録されます（全端末で共有）。社内備考も一覧で見られます。発注書は発注書番号で管理し、同じ番号で出し直すと上書きされます。回答Excelを取り込んだ発注書には「取込済」と出ます。',rel:['yk-po','yk-reply']},
   {id:'yk-reply',cat:'stock',tab:'parts',ver:'v19.63',q:'八木熊から返ってきた回答Excel（入庫予定日）を取り込みたい',kw:['八木熊','回答','返信','入庫予定日','取込','取り込み','納期'],
     steps:['「部材在庫一覧」の「入庫予定」を開く','「📥 八木熊の回答Excel」で、八木熊様から返ってきた注文書Excelを選ぶ','確認画面で入庫予定日・数量・入庫先倉庫を確かめ（直せます）、「✅ 入庫予定に登録」'],
     tip:'回答欄（①②③…）が増えていても読めます。回答の数量が足りない分や日付が「未定」の品目は「入庫日未定」で登録します。同じ発注の回答を取り込み直すと、入庫済の分は残して入庫予定を置き換えます。どの発注書の回答かは、Excelの右上の発注書番号で見分けます。',rel:['yk-po']},
@@ -17221,7 +17221,7 @@ function ykPOBuildXlsx(st){
 }
 function ykPOFileBase(st){
   var d=String(st.date||ykPOYmd()).replace(/-/g,''),sj=String(st.subject||'').replace(/[\\\/:*?"<>|\r\n]+/g,' ').trim();
-  var no=/^YK-\d{8}-\d+$/.test(String(st.no||''))?st.no:d;
+  var no=/^(YK-\d{4}-\d{3,}|YK-\d{8}-\d{2,})$/.test(String(st.no||''))?st.no:d;
   return '八木熊様注文書_'+no+(sj?'_'+sj.slice(0,30):'');
 }
 function ykPODownload(u8,filename){
@@ -17481,7 +17481,7 @@ function YkPOPanel(p){
 }
 /* ===== v19.66 発注書一覧（2026-10-29 チャット依頼「PDF出力した発注書を一覧で確認」） =====
    v19.69（2026-10-29 再修正）:
-   ・発注書は「発注書番号」（YK-作った日-連番。例 YK-20261029-01）で管理する。発注書タブの「＋ 新規発注書作成」で次の番号を採番
+   ・発注書は「発注書番号」（v19.70〜 YK-年-通し番号。例 YK-2026-001。v19.69 は YK-作った日-連番）で管理する。発注書タブの「＋ 新規発注書作成」で次の番号を採番
    　（入力した内容はそのまま残す）。番号は Excel の K1・PDF・画面に載せる。回答Excel取込もこの番号で見分ける。
    ・一覧への記録は Excel を出したとき（PDF では記録しない）。同じ番号で出し直したら上書き。
    ・一覧の「✏ 編集」で発注書タブに開いて直せる。「💾 一覧に保存」で Excel を出さずに保存もできる。
@@ -17493,12 +17493,12 @@ function YkPOPanel(p){
 /* 旧形式の番号（v19.68 まで）。回答Excelに番号が無いときの見分けにも使う */
 function ykPONo(st){if(st&&st.no)return st.no;var sj=String(st.subject||'').normalize('NFKC').trim();return 'YK-'+String(st.date||'').replace(/-/g,'')+(sj?'-'+sj:'');}
 function ykPOUid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
-/* 次の発注書番号。YK-今日-連番（一覧に使われた番号＝削除済みも含めて、の次。except は数えない番号） */
+/* 次の発注書番号。v19.70: YK-年-通し番号3桁（例 YK-2026-001。年が変わったら001から。ユーザー指定）
+   一覧に使われた番号（削除済みも含む）の次。except は数えない番号 */
 function ykPONextNo(except,list){
-  var t=new Date(),d=t.getFullYear()+String(t.getMonth()+1).padStart(2,'0')+String(t.getDate()).padStart(2,'0');
-  var pre='YK-'+d+'-',mx=0;
-  Object.keys(list||YK_PO_LIST||{}).forEach(function(k){if(k===except||k.indexOf(pre)!==0)return;var n=+k.slice(pre.length);if(n>mx)mx=n;});
-  return pre+String(mx+1).padStart(2,'0');
+  var pre='YK-'+new Date().getFullYear()+'-',mx=0;
+  Object.keys(list||YK_PO_LIST||{}).forEach(function(k){if(k===except||k.indexOf(pre)!==0)return;var t=k.slice(pre.length);if(!/^\d+$/.test(t))return;var n=+t;if(n>mx)mx=n;});
+  return pre+String(mx+1).padStart(3,'0');
 }
 /* 画面の内容のうち一覧に残す部分（比べるときにも使う） */
 function ykPOStPart(st){
@@ -17579,7 +17579,7 @@ function YkPOListPanel(p){
   var list=Object.keys(YK_PO_LIST||{}).map(function(k){return YK_PO_LIST[k];}).filter(function(r){
     if(!r||r.del)return false;
     if(!kw)return true;
-    return [r.no,r.st&&r.st.subject,r.st&&r.st.dest,r.st&&r.st.staff,r.by].join(' ').normalize('NFKC').toLowerCase().indexOf(kw)>=0;
+    return [r.no,r.st&&r.st.subject,r.st&&r.st.dest,r.st&&r.st.staff,r.st&&r.st.memo,r.by].join(' ').normalize('NFKC').toLowerCase().indexOf(kw)>=0;
   }).sort(function(a,b){return String(b.created||b.at).localeCompare(String(a.created||a.at))||String(b.no).localeCompare(String(a.no));});
   function replyOf(no){
     var inc=INCOMING.filter(function(x){return x.poNo===no&&x.status!=='取消';});
@@ -17611,11 +17611,11 @@ function YkPOListPanel(p){
       '「📝 八木熊 発注書」で Excel を出した発注書の一覧です（全端末で共有）。発注書は発注書番号で管理します。同じ番号で Excel を出し直すと上書きされます。',
       h('br'),'「✏ 編集」で発注書タブに開いて直せます。「🖨 PDF」「📊 Excel」で保存した内容の発注書をもう一度出せます。八木熊様の回答Excelを取り込んだ発注書には「回答」の欄に印が付きます。'),
     h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:6,flexWrap:'wrap'}},
-      h('input',{type:'text',value:q[0],placeholder:'発注書番号・件名・納品場所・担当で探す',style:{fontSize:12,padding:'4px 8px',border:'1px solid var(--g300)',borderRadius:4,width:280},'data-ykpolistq':'1',onChange:function(e){q[1](e.target.value);}}),
+      h('input',{type:'text',value:q[0],placeholder:'発注書番号・件名・納品場所・担当・社内備考で探す',style:{fontSize:12,padding:'4px 8px',border:'1px solid var(--g300)',borderRadius:4,width:340},'data-ykpolistq':'1',onChange:function(e){q[1](e.target.value);}}),
       h('span',{style:{fontSize:11,color:'var(--g500)'}},list.length+'件')),
     h('div',{className:'scy',style:{maxHeight:'65vh',overflow:'auto'}},
       h('table',{className:'tbl',style:{fontSize:11,width:'100%'}},
-        h('thead',null,h('tr',null,['発注書番号','発注日','件名','納品場所','納品希望日','品目','数量','合計（税込）','担当','最終保存','回答',''].map(function(t,i){return h('th',{key:i,style:th},t);}))),
+        h('thead',null,h('tr',null,['発注書番号','発注日','件名','納品場所','納品希望日','品目','数量','合計（税込）','担当','社内備考','最終保存','回答',''].map(function(t,i){return h('th',{key:i,style:th},t);}))),
         h('tbody',null,list.length?list.map(function(r){
           var s=r.st||{},rp=replyOf(r.no),open=cur.no===r.no;
           return h('tr',{key:r.no,'data-ykpolist':r.no,style:open?{background:'#EFF6FF'}:null},
@@ -17628,6 +17628,8 @@ function YkPOListPanel(p){
             h('td',{style:{textAlign:'right',fontSize:11}},fm(r.qty||0)),
             h('td',{style:{textAlign:'right',fontWeight:700,fontSize:12}},'¥'+fm(Math.round(r.total||0))),
             h('td',{style:{fontSize:11}},s.staff||''),
+            /* v19.70: 社内備考（Excel・PDF には載せない社内用のメモ）も一覧で見る */
+            h('td',{'data-ykpomemo':r.no,style:{fontSize:10,maxWidth:220,whiteSpace:'pre-wrap',wordBreak:'break-all',color:'#7C2D12'}},s.memo||''),
             h('td',{style:{fontSize:9,color:'var(--g500)',whiteSpace:'nowrap'}},ykPOAtLabel(r.at),h('br'),String(r.by||'').split('/').pop()),
             h('td',{style:{fontSize:9,whiteSpace:'nowrap'}},rp?h('span',{style:{color:'var(--gn)',fontWeight:700}},'取込済',rp.done?'（入庫済 '+rp.done+'）':'',rp.und?h('span',{style:{color:'#B45309'}},' 未定あり'):null):h('span',{style:{color:'var(--g400)'}},'—')),
             h('td',{style:{whiteSpace:'nowrap'}},
@@ -17636,7 +17638,7 @@ function YkPOListPanel(p){
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){xlsx(r);}},'📊 Excel'),' ',
               h('button',{className:'btn btn-xs btn-ol',title:'一覧から削除',style:{padding:'0 5px'},onClick:function(){del(r);}},'🗑'))
           );
-        }):h('tr',null,h('td',{colSpan:12,style:{textAlign:'center',color:'var(--g500)',padding:16}},kw?'見つかりません':'まだありません（発注書タブで Excel を出すと記録されます）')))
+        }):h('tr',null,h('td',{colSpan:13,style:{textAlign:'center',color:'var(--g500)',padding:16}},kw?'見つかりません':'まだありません（発注書タブで Excel を出すと記録されます）')))
       )
     )
   );
@@ -17816,8 +17818,8 @@ function ykReplyParse(wb){
     rows.push(rec);
   }
   if(!rows.length)return {err:'数量の入った品目がありません'};
-  /* v19.69: 発注書番号（K1「発注書No. YK-20261029-01」）で見分ける。番号の無い古いExcelは発注日＋件名で一覧から探す */
-  var noM=String(cell('K1')||'').normalize('NFKC').match(/YK-\d{8}-\d+/),poNo=noM?noM[0]:'';
+  /* v19.69: 発注書番号（K1「発注書No. YK-2026-001」。v19.69 は YK-20261029-01）で見分ける。番号の無い古いExcelは発注日＋件名で一覧から探す */
+  var noM=String(cell('K1')||'').normalize('NFKC').match(/YK-\d{4}-\d{3,}|YK-\d{8}-\d{2,}/),poNo=noM?noM[0]:'';
   if(!poNo){
     var leg='YK-'+(orderDate||'').replace(/-/g,'')+(title?'-'+title:'');
     var hit=Object.keys(typeof YK_PO_LIST!=='undefined'?YK_PO_LIST:{}).map(function(k){return YK_PO_LIST[k];}).filter(function(x){
