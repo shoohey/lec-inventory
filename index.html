@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.70（八木熊 発注書一覧に社内備考を表示・発注書番号は年ごとの通し番号）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.71（パーソナルでも錠前「鍵なし」を選べる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -7238,26 +7238,36 @@ function priceByEntry(e,kind){
   return kind==='buy'?buyOf(e[0],e[1]):kind==='stock'?stockUnitOf(e[0],e[1]):sellOf(e[0],e[1]);
 }
 /* 明細1行あたりの販売単価（本体＋錠前）。マスタ未取込・未紐づけのときは 0 を返す（呼び元で従来単価へフォールバック） */
+/* ===== v19.71（2026-10-29 ユーザー）: パーソナルでも錠前「鍵なし」を選べる =====
+   従来はパーソナルの錠前の選択肢から「鍵なし」を外し、追加時に鍵なしをダイヤル錠 H110 に置き換えていた（春先の案件は学校の貸与品から自動でパーソナルになるため「春先だと選べない」と見えた）。
+   ★扉ありのパーソナルで「鍵なし」を選んだ行は、錠前もトッテも付けない（本体だけの単価・商品名に「・トッテ」を付けない・在庫は引かない）＝ユーザー回答。
+   ★錠前が未設定（lock 無し）の行と、扉なし（オープン）の行は従来どおりトッテの単価を足す（過去の案件の金額を変えないため）。 */
+function lineLockKeyForPrice(ln){
+  if(ln.lock&&ln.lock!=='none')return ln.lock;
+  if(ln.type!=='personal')return null;
+  if(ln.lock==='none'&&!lineIsOpen(ln))return null;
+  return 'totte';
+}
 function bodySellUnit(ln){
   if(!hasPriceMaster())return 0;
   var body=priceByEntry(bodyCodeOf(ln),'sell');
   if(!body)return 0;
   /* 錠前は表記は従来どおり本体行に併記のまま、金額だけを単価に上乗せする（修正８①のユーザー指示）
      パーソナルで錠前なしのときは従来表記どおりトッテが付く */
-  var lockKey=(ln.lock&&ln.lock!=='none')?ln.lock:((ln.type==='personal')?'totte':null);
+  var lockKey=lineLockKeyForPrice(ln);/* v19.71 */
   var lock=lockKey?priceByEntry(lockCodeOf(lockKey),'sell'):0;
   return body+lock;
 }
 function bodyBuyUnit(ln){
   if(!hasPriceMaster())return 0;
   var body=priceByEntry(bodyCodeOf(ln),'buy');
-  var lockKey=(ln.lock&&ln.lock!=='none')?ln.lock:((ln.type==='personal')?'totte':null);
+  var lockKey=lineLockKeyForPrice(ln);/* v19.71 */
   return body+(lockKey?priceByEntry(lockCodeOf(lockKey),'buy'):0);
 }
 function bodyStockUnit(ln){
   if(!hasPriceMaster())return 0;
   var body=priceByEntry(bodyCodeOf(ln),'stock');
-  var lockKey=(ln.lock&&ln.lock!=='none')?ln.lock:((ln.type==='personal')?'totte':null);
+  var lockKey=lineLockKeyForPrice(ln);/* v19.71 */
   return body+(lockKey?priceByEntry(lockCodeOf(lockKey),'stock'):0);
 }
 /* ★修正８①（ユーザー選択「新規案件から適用」）: 保存時にその時点の単価を案件へ焼き付ける。
@@ -7939,7 +7949,7 @@ function buildQuoteRows(order){
     var itemName=productName(ln.line)+(ln.line==='sa'?'Sα':sz.l)+lineTypeLabel(ln)+colorDesc;
     var lockObj=LOCK_TYPES.find(function(lt){return lt.v===ln.lock;});
     if(lockObj&&ln.lock!=='none')itemName+='　'+(lockObj.s||lockObj.l);
-    if(isPersonal&&!isOpenLn&&(!lockObj||ln.lock==='none'))itemName+='・トッテ';/* v19.18: 扉なしはトッテも無い */
+    if(isPersonal&&!isOpenLn&&!lockObj)itemName+='・トッテ';/* v19.18: 扉なしはトッテも無い。v19.71: 「鍵なし」を選んだ行もトッテを付けない */
     var sq=parseInt(ln.shelfQty)||0;
     if(sq>0){var sc2=SHELF_COLORS.find(function(x){return x.v===ln.shelfColor;})||{l:'グレー'};itemName+='・棚板（'+sc2.l+'）';}
     /* v19.18 修正31①: 在庫確認で「扉なし」にした明細も「オープン」と書く（従来は旧オープンタイプだけ） */
@@ -11970,7 +11980,7 @@ function InvPage(p){
     /* v18 P2(要望4): 営業は明細追加→在庫確認まで可。書込ブロックは後発ログインの全体ロック(lockReadOnly)のみ */
     /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     var lock=(!hasDoor[0]||jp2XLNoDoor)?'none':lk[0];/* v18.32 要望⑥: jp2×XLは扉なし＝錠なしを保存時にも強制 */
-    if(tp[0]==='personal'&&lock==='none'&&hasDoor[0]&&!jp2XLNoDoor)lock='dialH110new';
+    /* v19.71: パーソナルの「鍵なし」をダイヤル錠 H110 に置き換えるのをやめた（鍵なしのまま追加する） */
     var dt=isJP?doorType[0]:'door';
     var cb=null;
     if(multiColor[0]&&hasDoor[0]&&colorBreak[0].length>0){
@@ -12926,11 +12936,11 @@ function InvPage(p){
               })()+'）'):null,
               hasBase[0]?h('span',{style:{marginLeft:6,color:'var(--g500)'}},'（ベース: '+baseCount+'枚）'):null
             ),
-            hasDoor[0]?h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'錠前'+(tp[0]==='personal'?' （必須）':'')),
+            hasDoor[0]?h('div',{style:{marginBottom:6}},h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'錠前'),
               /* v18.68 修正15③: 商品選択の錠前でも受注発注品（コインリターン錠・内筒交換錠・シリンダー錠カム短各種など）を
                  選んだ時点で仕入れ送料の注意喚起ポップアップを出す（従来はパーツ単品追加でしか出ていなかった） */
               h('select',{className:'inp',value:lk[0],onChange:function(e){lk[1](e.target.value);alertOrderFreight(e.target.value);}},
-                LOCK_TYPES.filter(function(lt){if(lt.hidden)return false;/* v18.44 修正３⑥: 汎用シリンダー錠は選択肢から除外 */return tp[0]==='personal'?lt.v!=='none':true;}).map(function(lt){return h('option',{key:lt.v,value:lt.v},lt.l+(isDiscontinuedKey(lt.v)?DISCONTINUED_MARK:''));})),
+                LOCK_TYPES.filter(function(lt){return !lt.hidden;/* v18.44 修正３⑥: 汎用シリンダー錠は選択肢から除外。v19.71: パーソナルでも「鍵なし」を出す */}).map(function(lt){return h('option',{key:lt.v,value:lt.v},lt.l+(isDiscontinuedKey(lt.v)?DISCONTINUED_MARK:''));})),
               /* v18.68 修正15③: ポップアップを閉じたあとも見えるよう、選択中が受注発注品の間はバナーを出す */
               orderSupplierOf(lk[0])?h('div',{style:{fontSize:8,fontWeight:700,color:'#92400E',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'3px 5px',marginTop:3,lineHeight:1.5}},
                 '⚠ 受注発注品（仕入先: '+orderSupplierOf(lk[0])+'）　'+ORDER_FREIGHT_NOTE):null,
