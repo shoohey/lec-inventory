@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月3日の更新のお知らせ（v19.72）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>八木熊様の入荷状況（未納の管理）・<br>代理店値引きの自動入力ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.72</span>
+      <span>2026年11月3日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。八木熊様に発注したもののうち<b>何がまだ入ってきていないか（未納）を一覧で見られる</b>ようになりました。また、代理店様の見積に<b>代理店値引き（10%）が自動で入る</b>ようになりました。</p>
+    <p>八木熊様への発注・入庫予定を扱う方は<b>1番〜4番</b>を、見積を作る方は<b>5番・7番〜9番</b>を、案件のステータスを操作する方は<b>6番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.72</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    使い方は、システムの「使い方Q&amp;A」で「未納」「代理店値引き」などと入れても探せます。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">「📦 入荷状況」で未納の品目・数量が分かります</a><span class="tag">新機能</span></li>
+      <li><a href="#s2">発注書Excelに、行ごとの「入庫合計」「未納数」が入ります</a></li>
+      <li><a href="#s3">2回目の回答Excelを取り込むと入庫処理できない不具合を直しました</a></li>
+      <li><a href="#s4">入庫予定一覧の並び順・倉庫ごとの表示</a></li>
+      <li><a href="#s5">代理店値引き（10%）が自動で入ります</a><span class="tag">新機能</span></li>
+      <li><a href="#s6">ステータスを戻したあとの在庫の不具合を直しました</a></li>
+      <li><a href="#s7">見積書などの明細から「税」の列をなくしました</a></li>
+      <li><a href="#s8">台湾製のベースの商品名</a></li>
+      <li><a href="#s9">上下ジョイントの商品コード・単価</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 八木熊 ============ -->
+  <h2 class="sec">八木熊様への発注と入庫予定</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>「📦 入荷状況」で未納の品目・数量が分かります<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>見かた</b>
+      部材在庫一覧 → <kbd>📋 発注書一覧</kbd> → <kbd>📦 入荷状況（未納の管理）</kbd>
+    </div>
+    <ul>
+      <li>発注した品目ごとに、<b>発注数・入庫済・入庫予定（日付別）・入庫日未定・未登録・未納</b>が並びます。</li>
+      <li>最初は<b>全発注書の合計</b>です。上のプルダウンで発注書を選ぶと、<b>その発注書だけ</b>を見られます。</li>
+      <li>発注書一覧にも「<b>未納</b>」の列ができました。数字を押すと、その発注書の入荷状況が開きます。すべて入った発注書は「✓ 完納」と出ます。</li>
+      <li>「未納があるものだけ」のチェックを外すと、入りきった品目も出ます。<kbd>📊 Excel出力</kbd> もできます。</li>
+    </ul>
+    <div class="ex">
+      <span class="lbl">それぞれの数の意味</span>
+      <b>入庫済</b>：入庫予定一覧で <kbd>入庫処理</kbd> した数<br>
+      <b>入庫予定・入庫日未定</b>：取り込んだ回答のうち、まだ入庫処理していない数<br>
+      <b>未登録</b>：回答Excelをまだ取り込んでいない（または登録しなかった）数<br>
+      <b>未納</b>：発注数 − 入庫済
+    </div>
+    <div class="warnbox">
+      入荷状況は、八木熊様の回答Excelを取り込んで <kbd>入庫処理</kbd> した数で計算します。届いた分は、これまでどおり入庫予定一覧で入庫処理してください。
+    </div>
+  </section>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>発注書Excelに、行ごとの「入庫合計」「未納数」が入ります<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <ul>
+      <li>発注書タブで出すExcelの、黄色の回答欄の右（Q列・R列）に「<b>入庫合計</b>」「<b>未納数</b>」の列が付きます。</li>
+      <li>八木熊様が回答欄に数量を書くと、自動で計算されます（例：数量① 60＋数量② 30 → 入庫合計 90、発注 100 なら未納数 10）。</li>
+      <li>八木熊様が③④の回答欄を足しても、入庫合計に含まれます。一番下の合計行にも合計が出ます。</li>
+    </ul>
+    <p class="sub">発注書一覧から出し直したExcelにも入ります。回答Excelを取り込むときは、この2列は読みません。</p>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>2回目の回答Excelを取り込むと入庫処理できない不具合を直しました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>1回目の回答を取り込んで入庫処理したあと、八木熊様が「入庫予定日①」の欄を<b>次の入庫日に書き換えて</b>返送した回答を取り込むと、次の入庫予定が「入庫日未定」に変わってしまい、日付どおりに入庫処理できませんでした。</p>
+    <ul>
+      <li>入庫処理が済んだ分は、<b>同じ入庫日の欄から先に</b>差し引くようにしました。</li>
+      <li>取り込みの確認画面に、行ごとの「<b>入庫済</b>」の列が出ます（差し引く数が分かります）。</li>
+    </ul>
+    <p class="sub">発注書一覧は、v19.69 から<b>Excelを出したときに</b>記録されるようになっています（発注書番号 YK-2026-001 の形で管理。PDFは控え用で記録しません）。</p>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>入庫予定一覧の並び順・倉庫ごとの表示<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <ul>
+      <li>一覧は<b>登録の新しい順</b>（IDの大きい順）になりました。</li>
+      <li>上の「<b>倉庫:</b>」のボタンで、倉庫ごとに見られます（かっこ内は件数）。</li>
+      <li>「<b>並び順:</b>」で、入庫予定日の早い順・遅い順に変えられます。日付の無い「未定」は最後に出ます。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 見積 ============ -->
+  <h2 class="sec">見積・案件</h2>
+
+  <section class="item key" id="s5">
+    <h3><span class="n">5</span><span>代理店値引き（10%）が自動で入ります<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>次の4社の<b>新しい見積</b>には、明細に「<b>代理店値引き</b>」の行が最初から入ります。</p>
+    <div class="ex">
+      <span class="lbl">対象</span>
+      株式会社プラロッカー／プラスチックロッカー株式会社／株式会社グローバル／日本ロッカー販売株式会社
+    </div>
+    <ul>
+      <li>金額は、<b>送料・工事費なども含めた明細の合計の10%</b>（1円未満切り捨て）です。</li>
+      <li>明細・単価・送料を変えると、自動で計算し直します。見積書作成画面では、自動の行に「自動（合計の10%）」と出ます。</li>
+      <li>金額を手で直すと、自動計算は外れます（そのあとは手で入れた金額のまま）。行が不要なときは <kbd>－</kbd> で消せます。</li>
+      <li>すでに作ってある見積・案件の値引きは変わりません。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>ステータスを戻したあとの在庫の不具合を直しました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <ul>
+      <li>「見積作成」まで差し戻した案件を、ステータスのボタンで「仮押さえ」「受注確定」へ進めても、<b>在庫を押さえていませんでした</b>。進めたときに在庫を押さえ直すようにしました（足りない分は未確保になります）。</li>
+      <li>出荷指示 ⇄ 差し戻しを何回くり返しても、在庫数が正しく戻るようにしました。</li>
+    </ul>
+    <div class="warnbox">
+      今回の更新より前に「見積作成 → 仮押さえ」とボタンで進めた案件は、在庫を押さえていない可能性があります。気になる案件があればご連絡ください。
+    </div>
+  </section>
+
+  <section class="item" id="s7">
+    <h3><span class="n">7</span><span>見積書などの明細から「税」の列をなくしました<span class="pill fix" style="margin-left:8px">変更</span></span></h3>
+    <ul>
+      <li>見積書・請求書・納品書など、明細のある帳票すべてで「税」の列（10%(外)）をなくしました。Excel出力も同じです。</li>
+      <li>一番下の「10%対象・税額」はこれまでどおり載ります。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s8">
+    <h3><span class="n">8</span><span>台湾製のベースの商品名<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>台湾製（とSα）のベースを選んだ見積で、商品名に「アンカー穴キャップ付」と出ていました。台湾製にはアンカー穴が無いため、外しました。</p>
+    <div class="ex">
+      <span class="lbl">見積書の表記</span>
+      <s>ベースボード(グレー) アンカー穴キャップ付</s> <span class="arw">→</span> <strong>ベースボード(グレー)</strong>
+    </div>
+    <p class="sub">表記だけの問題でした。在庫は台湾製のベースの在庫を正しく使っています。</p>
+  </section>
+
+  <section class="item" id="s9">
+    <h3><span class="n">9</span><span>上下ジョイントの商品コード・単価<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <ul>
+      <li>見積書の上下ジョイントの行に、商品コード（<b>MYPL-J</b>）が出るようにしました。</li>
+      <li>単価を <b>200円</b> にしました（単価マスタと同じ。これまでは220円）。</li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>画面のどこで何をしたか</b>を添えてご連絡ください。八木熊様の回答Excelで取り込めないものがあれば、そのExcelもお送りください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.72】
+・★八木熊の入荷状況：部材在庫一覧 →「📋 発注書一覧」→「📦 入荷状況（未納の管理）」で、品目ごとの発注数・入庫済・入庫予定・未納が見られます（全発注書の合計／発注書ごと）
+・発注書Excelの回答欄の右に、行ごとの「入庫合計」「未納数」（自動計算）が入ります
+・2回目の回答Excelを取り込むと入庫予定が「未定」に変わり入庫処理できない不具合を直しました
+・入庫予定一覧：新しい順に並び、倉庫ごと・入庫予定日順に切り替えられます
+・★代理店値引き：プラロッカー／プラスチックロッカー／グローバル／日本ロッカー販売の新しい見積に、送料・工事費も含めた合計の10%が自動で入ります（手で直すと自動は外れます）
+・「見積作成」に戻した案件をボタンで仮押さえに進めたとき、在庫を押さえ直すようにしました
+・見積書などの明細の「税」の列をなくしました（下の10%対象・税額は残ります）
+・台湾製のベースの商品名から「アンカー穴キャップ付」を外しました
+・上下ジョイント：商品コード MYPL-J を表示、単価を200円に
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261103.html
+表示が古いときは再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
