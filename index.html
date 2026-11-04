@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.72（八木熊の入荷状況・入庫予定の並べ替え・代理店値引き10%自動・税の列を削除ほか）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.73（顧客の入力が遅いのを解消）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2246,11 +2246,30 @@ function RentalViewer(p){
 }
 
 /* 顧客IDにひも付いた学校（代理店はエンド納品先経由の学校も含む） */
+/* v19.73（依頼書 2026-11-04 新規顧客登録の入力が遅い）: 顧客一覧は1行ごとにこの関数を呼ぶ（約1,400件）。
+   従来は呼ぶたびに全学校のひも付け（顧客名での一致＝全顧客の名前の正規化を含む）を作り直していたため、
+   顧客画面で1文字打つごとに約0.4秒かかっていた。顧客ID→学校ID の表を1回だけ作り、顧客・学校・ひも付けが変わったときだけ作り直す。
+   結果（学校の並び順も）は従来と同じ。 */
+var _rentalCustIdx={sig:null,map:null};
+function rentalCustIndex(){
+  var sch=rentalSchools(),cs=CUSTS||[];
+  var sig=sch.length+'|'+cs.length+'|'+cs.map(function(c){return c?(c.id+':'+c.name):'';}).join('|')+'|'+JSON.stringify((RENTAL_CFG&&RENTAL_CFG.links)||{});
+  if(_rentalCustIdx.map&&_rentalCustIdx.sig===sig&&_rentalCustIdx.sch===sch)return _rentalCustIdx.map;
+  var byNm={};cs.forEach(function(c){if(!c||!c.id)return;var nn=rentalNameNorm(c.name);(byNm[nn]||(byNm[nn]=[])).push(c.id);});
+  var map={};
+  sch.forEach(function(s){
+    var byName=[];(s.linkNames||[]).forEach(function(n){byName=byName.concat(byNm[rentalNameNorm(n)]||[]);});
+    (s.links||[]).concat(byName,((RENTAL_CFG&&RENTAL_CFG.links)||{})[s.id]||[]).forEach(function(lk){
+      var cid=String(lk).split('#')[0].split('/')[0];if(!cid)return;
+      var a=map[cid]||(map[cid]=[]);if(a[a.length-1]!==s.id&&a.indexOf(s.id)<0)a.push(s.id);
+    });
+  });
+  _rentalCustIdx={sig:sig,sch:sch,map:map};
+  return map;
+}
 function rentalSchoolIdsOfCust(cid){
   if(!cid)return [];
-  return rentalSchools().filter(function(s){
-    return rentalLinksOf(s).some(function(lk){var k=String(lk).split('#')[0];return k===cid||k.indexOf(cid+'/')===0;});
-  }).map(function(s){return s.id;});
+  return (rentalCustIndex()[cid]||[]).slice();
 }
 
 /* 学校の決定: 手動選択（pick={sid,bi}）＞ 顧客・エンド納品先のひも付け。bi はサイズで既定を選ぶ */
@@ -11308,6 +11327,8 @@ function CustPage(p){
     /* v18.39 バグ修正: 編集内容もクラウドへ保存（従来は localStorage のみで他端末に反映されなかった） */
     CUSTS[idx]=Object.assign({},ec);saveCusts();cloudSave(p.userName||'');bump[1](bump[0]+1);editCust[1](null);editCustRef[1](null);
   }
+  var custActRef=ur({});
+  custActRef.current={select:function(c){p.selectCust(c);},del:function(c){deleteCust(c);}};
   function deleteCust(c){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){alert('読み取り専用モード中は顧客削除できません');return;}
@@ -11521,7 +11542,10 @@ function CustPage(p){
       '（新規登録分は未使用のIDを採番するため、今後は重複しません）'
     ):null,
     /* v18.50 修正６⑧(再修正): 顧客一覧も画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
-    h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'74vh'}},h('table',{className:'tbl'},
+    /* v19.73（依頼書 2026-11-04）: 顧客一覧の表（約1,400行）は、絞り込み・顧客データが変わったときだけ作り直す。
+       新規顧客追加・顧客編集の入力欄で1文字打つたびに表全体を描き直していたため、文字が出るまで時間がかかっていた。
+       ボタンの処理は最新の関数を呼ぶ（custActRef） */
+    h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'74vh'}},React.useMemo(function(){return h('table',{className:'tbl'},
       /* v18.33 要望⑲: 「担当者」列を削除（先方担当・弊社担当の2つに統一）。追B: 顧客属性列を追加 */
       h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'法人名'),h('th',null,'属性'),h('th',null,'都道府県'),h('th',null,'市区町村'),h('th',null,'〒'),h('th',null,'TEL'),h('th',null,'先方担当'),h('th',null,'弊社担当'),h('th',{style:{minWidth:160}},'操作'))),
       /* v18.47 追加修正: key を c.id だけにしていたため、IDが重複すると同じkeyの行が並び、
@@ -11546,14 +11570,14 @@ function CustPage(p){
         /* v18.53: 弊社担当はアカウント名の表記に揃えて表示する */
         h('td',null,resolveSalesPerson(c.salesPerson)),
         h('td',{style:{whiteSpace:'nowrap'}},
-          h('button',{className:'btn btn-xs btn-nv',onClick:function(){p.selectCust(c);}},'選択 →'),
+          h('button',{className:'btn btn-xs btn-nv',onClick:function(){custActRef.current.select(c);}},'選択 →'),
           /* v19.30: 貸与品データがひも付いている顧客だけ「貸与品」ボタン（代理店はエンド納品先の学校） */
           (function(){var ids=rentalSchoolIdsOfCust(c.id);return ids.length?h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},title:'パーソナル貸与品（'+ids.length+'校）',onClick:function(){rentalView[1]({only:ids,label:c.name});}},'📋 貸与品'+(ids.length>1?'('+ids.length+')':'')):null;})(),
           h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2},onClick:function(){ptFreeMode[1](false);editCust[1](Object.assign({},c));editCustRef[1](c);}},'編集'),
-          h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2},onClick:function(){deleteCust(c);}},'🗑')
+          h('button',{className:'btn btn-xs btn-rd',style:{marginLeft:2},onClick:function(){custActRef.current.del(c);}},'🗑')
         )
       );}))
-    )),
+    );},[CUSTS,CUSTS.length,fl.length,sr[0],pf[0],af[0],spf[0],bump[0],rentalCustIndex()])),
     h(RentalViewer,{show:!!rentalView[0],onlyIds:rentalView[0]&&rentalView[0].only,onlyLabel:rentalView[0]&&rentalView[0].label,userName:p.userName,isReadOnly:p.isReadOnly,onClose:function(){rentalView[1](null);}}),
     /* 顧客編集モーダル */
     editCust[0]?h(Modal,{show:true,title:'顧客編集 — '+editCust[0].id,w:480,onClose:function(){editCust[1](null);editCustRef[1](null);},
