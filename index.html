@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.77（案件修正で金額・明細の順番が崩れる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.78（Sαパーソナルの外寸 H400）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -3592,6 +3592,9 @@ function sizeDimOf(size,type){
 /* v18.72 修正17⑮: Sα(sa)は在庫キーの都合で size='S' を流用しているため、
    従来はSサイズの外寸(W308×D465×H350mm)が備考へ出ていた。Sα専用の外寸を返す。 */
 var SA_DIM='W298×D400×H370mm';
+/* v19.78（2026-11-05 依頼「SαのパーソナルはW298×D400×H400」）: Sα のパーソナルタイプの外寸 */
+var SA_DIM_PER='W298×D400×H400mm';
+function saDimOf(type){return type==='personal'?SA_DIM_PER:SA_DIM;}
 /* v18.72 修正17⑭: ベースボードの外寸（明細のベース行の備考へ自動反映する） */
 var BASE_DIMS={sml:'W308×D465×H55mm',ss:'W285×D350×H50mm',sa:'W298×D400×H70mm'};
 function baseDimOf(ln){
@@ -3602,7 +3605,7 @@ function baseDimOf(ln){
 /* 見積明細の備考へ自動反映する外寸の文言（寸法を持たないサイズは空文字＝備考も空欄） */
 function lineDimRemark(ln){
   if(!ln||ln.isPartOnly)return '';
-  if(ln.line==='sa')return '外寸:'+SA_DIM;/* v18.72 修正17⑮ */
+  if(ln.line==='sa')return '外寸:'+saDimOf(ln.type);/* v18.72 修正17⑮ */
   var d=sizeDimOf(ln.size,ln.type);
   return d?('外寸:'+d):'';
 }
@@ -3648,7 +3651,7 @@ function lineSpecLabel(l,x){
 function dimHeightMM(d){var m=/H(\d+(?:\.\d+)?)mm/.exec(d||'');return m?parseFloat(m[1]):0;}
 function lineBodyHeightMM(l){
   if(!l)return 0;
-  if(l.line==='sa')return dimHeightMM(SA_DIM);/* v18.72 修正17⑮: SαはSサイズの在庫キーを流用しているので専用外寸 */
+  if(l.line==='sa')return dimHeightMM(saDimOf(l.type));/* v18.72 修正17⑮: SαはSサイズの在庫キーを流用しているので専用外寸 */
   return dimHeightMM(sizeDimOf(l.size,l.type));
 }
 function lineStackLabel(l){
@@ -3673,7 +3676,7 @@ function dimPartsOf(d){
 }
 function lineBodyDim(l){
   if(!l)return null;
-  if(l.line==='sa')return dimPartsOf(SA_DIM);/* v18.72 修正17⑮: SαはSサイズの在庫キーを流用しているので専用外寸 */
+  if(l.line==='sa')return dimPartsOf(saDimOf(l.type));/* v18.72 修正17⑮: SαはSサイズの在庫キーを流用しているので専用外寸 */
   return dimPartsOf(sizeDimOf(l.size,l.type));
 }
 function lineGridDimLabel(l){
