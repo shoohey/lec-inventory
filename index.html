@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.74（八木熊以外の発注書）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.75（請求書の備考の手修正・Sαの扉の表記）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -3581,6 +3581,8 @@ function doorColorLabelOf(lineId,colorId){
 function sizeObj(v){return SIZES.find(function(s){return s.v===v;})||SIZES[0];}
 /* v18.33 要望⑧: 新台湾製(sa)のサイズ表記は「Sα」のみ（在庫キーは size='S'/grp='sml' のまま。表示ラベルだけ差替） */
 function sizeLabel(line,size){return line==='sa'?'Sα':sizeObj(size).l;}
+/* v19.75（2026-11-05 依頼「在庫一覧でSαの扉のサイズがSになっている」）: 扉・サイド/バックの一覧のサイズ表記。Sα は在庫キーが 'S' でも「Sα」と出す */
+function doorSizeLbl(line,s){return line==='sa'?'Sα':(s==='SSA'?'SSα':s);}
 /* v18.62 修正12⑤: 選択したサイズの外寸。パーソナルタイプ(type==='personal')は常設と高さが異なる。
    'open'（旧オープンタイプ）や未指定は常設の寸法を使う。 */
 function sizeDimOf(size,type){
@@ -8527,7 +8529,8 @@ var DOC_EDIT_TYPES=['invoice','receipt','delivery'];
 /* v18.97 修正27⑧: 宛先（宛名・〒・住所・電話・FAX・顧客コード）も手修正できるようにした（to〜 の6項目） */
 var DOC_EDIT_TO_KEYS=['toName','toPostal','toAddress','toPhone','toFax','toCode'];
 /* v19.03 口頭依頼: payDue（支払期日）を追加。請求書だけの項目なので DOC_EDIT_INHERIT_KEYS には入れない */
-var DOC_EDIT_KEYS=['subject','staff','date','slip','delivery','dest','payTerms','payDue'].concat(DOC_EDIT_TO_KEYS);
+/* v19.75（2026-11-05 チャット依頼「請求書の備考欄を手修正」）: notes＝備考（空欄＝見積書の備考）、notesOff＝'1' で備考を載せない */
+var DOC_EDIT_KEYS=['subject','staff','date','slip','delivery','dest','payTerms','payDue','notes','notesOff'].concat(DOC_EDIT_TO_KEYS);
 function docEditFor(order,docType){
   var m=(order&&order.docEdit)||{};
   return m[docType]||{};
@@ -8594,6 +8597,9 @@ function docEditHeader(order,cust,docType,sheetIdx){
   /* v19.03 口頭依頼: 支払期日の自動値は★手修正を当てた後の請求日・支払条件から計算する
      （請求日や支払条件を ✎ で直したら期日もそれに追随する）。期日そのものの手修正は上のループで入っている。 */
   if(!hv.edited.payDue)hv.payDue=(docType==='invoice')?payDueTextOf(hv.date,hv.payTerms):'';
+  /* v19.75: 備考の自動値は見積書の備考（order.notes）。「備考を載せない」なら空 */
+  if(!hv.edited.notes){var _on=order&&order.notes;hv.notes=Array.isArray(_on)?_on.join('\n'):String(_on||'');}
+  if(hv.notesOff)hv.notes='';
   if(de.showRep!==undefined&&de.showRep!==null&&de.showRep!==''){hv.showRep=!!de.showRep;hv.edited.showRep=true;}
   if(de.repName){hv.repName=de.repName;hv.edited.repName=true;}
   /* 納品書で「請求書の手修正から来た項目」の印（記載内容の画面でその欄を入力不可にするのに使う） */
@@ -9541,7 +9547,9 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   /* v19.05 口頭依頼: 請求書の備考は「お振込手数料はお客様にてご負担ください」の★上部線より上に出す。
      ＝下の border-top を引いた枠の外（上）に置く。発注書付見積書と同じ扱いにまとめている。 */
   var notesAbove=notesBeforePO||docType==='invoice';
-  if(notesAbove&&order.notes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(order.notes)+'</div>';
+  /* v19.75: 請求書・納品書・物品受領書は ✎ 記載内容で直した備考（dv.notes。空欄なら見積書の備考） */
+  var docNotes=dv?dv.notes:order.notes;
+  if(notesAbove&&docNotes)html+='<div class="qnotes" style="margin-top:10px">'+notesBoxHTML(docNotes)+'</div>';
   if(docType==='quote'&&order.withPO)html+=purchaseOrderHTML(order,total);
   html+='<div class="qfoot" style="margin-top:16px;font-size:11px;color:#444;line-height:2;border-top:1px solid #ccc;padding-top:8px">';
   /* ===== v19.22 修正32①（v19.23 再修正）: 入金確認済みの一括印刷のときだけ、請求書の右下に赤字で「入金確認済／入金日」 =====
@@ -9577,7 +9585,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（支払条件・有効期限は上部の欄に残る） */
   else if(docType==='delivery'){html+='上記の通り納品致しましたのでご査収ください。';}
-  if(!notesAbove)html+=notesBoxHTML(order.notes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（v19.05: 請求書は上へ移動） */
+  if(!notesAbove)html+=notesBoxHTML(docNotes);/* v18.37 修正箇所2⑥: 全体備考は改行連動の箇条書き（v19.05: 請求書は上へ移動） */
   if(paidStampHTML)html+='<div style="clear:both"></div>';
   html+='</div>';
   html+='</div>'+(isQuoteDoc?QUOTE_PAGINATE_SCRIPT:'')+'</body></html>';/* v18.87: 末尾の1つは .sheet を閉じるぶん */
@@ -9680,7 +9688,9 @@ function generateExcel(order,docType){
   }
   /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除 */
   /* v18.37 修正箇所2⑥: 全体備考は改行ごとに1行として出力（入力内容と連動） */
-  if(order.notes){wsData.push([]);wsData.push(['備考']);String(order.notes).split('\n').forEach(function(t){wsData.push(['',t]);});}
+  /* v19.75: 請求書・納品書・物品受領書は ✎ 記載内容で直した備考 */
+  var exNotes=order.notes;if(DOC_EDIT_TYPES.indexOf(docType)>=0){try{exNotes=docEditHeader(order,cust,docType,null).notes;}catch(e){}}
+  if(exNotes){wsData.push([]);wsData.push(['備考']);String(Array.isArray(exNotes)?exNotes.join('\n'):exNotes).split('\n').forEach(function(t){wsData.push(['',t]);});}
   var ws=XLSX.utils.aoa_to_sheet(wsData);
   ws['!cols']=[{wch:14},{wch:42},{wch:8},{wch:8},{wch:12},{wch:14},{wch:8},{wch:20}];
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
@@ -10075,9 +10085,9 @@ var HELP_QA=[
   {id:'docs-print',cat:'docs',tab:'orders',ver:'v19.57',q:'見積書・請求書・納品書・出荷指示書などを出したい',kw:['帳票','印刷','請求書','納品書','出荷指示書','物品受領書','領収書','見積書','pdf'],
     steps:['「案件管理」で案件の「📄帳票」を押す','出したい帳票を選ぶ','内容を確かめて印刷する'],
     tip:'ステータスによって出せる帳票が変わります（見積作成・仮押さえは見積書、受注確定以降は請求書なども）。',rel:['docs-edit','docs-split']},
-  {id:'docs-edit',cat:'docs',tab:'orders',ver:'v19.57',q:'帳票の宛先・日付・品名などを手で直したい',kw:['手修正','宛先','日付','品名','直す','書き換え'],
+  {id:'docs-edit',cat:'docs',tab:'orders',ver:'v19.57',q:'帳票の宛先・日付・品名・備考などを手で直したい',kw:['手修正','宛先','日付','品名','直す','書き換え','備考','請求書の備考'],
     steps:['「📄帳票」で帳票を選ぶ','「✎ 記載内容の手修正」を押す（空欄＝自動の内容）','直して「保存して印刷」'],
-    tip:'元に戻すときは「自動値に戻す」。納品書は請求書の手修正を引き継ぎます。',rel:['docs-print']},
+    tip:'元に戻すときは「自動値に戻す」。納品書は請求書の手修正を引き継ぎます（備考は帳票ごと）。v19.75〜 請求書・納品書・物品受領書の備考もこの画面で直せます（空欄＝見積書の備考。「この帳票には備考を載せない」もあります）。',rel:['docs-print']},
   {id:'docs-split',cat:'docs',tab:'orders',ver:'v19.57',q:'請求書を複数枚に分けたい',kw:['請求書','分割','分ける','複数枚','枚数'],
     steps:['「📄帳票」で請求書を選ぶ','「請求書の枚数」を選ぶ','「金額で分ける」または「台数で分ける」で振り分けて保存する'],
     tip:'入金は紙ごとにチェックできます。「分割しない」にすると従来どおり1枚です。',rel:['ship-paid']},
@@ -14418,7 +14428,7 @@ function QuotePreview(p){
       /* ===== v18.99 修正28の再修正: 発注書付の見積書は「見積内容 → 備考 → 発注書」の順（印刷用HTMLと同じ） =====
          v18.99 では印刷用HTMLだけ直し、この画面プレビューは備考が発注書の下のままだった（ユーザー指摘「直ってない」）。 */
       /* v19.05 口頭依頼: 請求書の備考も★上部線より上（下の枠の外）へ。印刷用HTMLの notesAbove と同じ条件にすること */
-      (((dt==='quote'&&o.withPO)||dt==='invoice')&&o.notes)?h('div',{className:'qp-notes-before-po',style:{marginTop:10}},previewNotesBox(o.notes)):null,
+      (((dt==='quote'&&o.withPO)||dt==='invoice')&&(dvP?dvP.notes:o.notes))?h('div',{className:'qp-notes-before-po',style:{marginTop:10}},previewNotesBox(dvP?dvP.notes:o.notes)):null,
       /* ===== v18.79 修正20③: 発注書付にチェックが入っている案件はプレビューにも発注書欄を出す ===== */
       (dt==='quote'&&o.withPO)?h('div',{style:{marginTop:18,borderTop:'2px dashed #999',paddingTop:10}},
         h('div',{style:{fontSize:11.5,marginBottom:8}},'御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。'),
@@ -14458,7 +14468,7 @@ function QuotePreview(p){
         /* v18.37 修正箇所2⑦: 見積書下部の 支払条件・有効期限・振込先 は削除（上部の欄には残る） */
         dt==='delivery'?h('div',null,'上記の通り納品致しましたのでご査収ください。'):null,
         /* v18.37 修正箇所2⑥: 全体備考は入力内容と連動し、改行のまま箇条書き表示（記載場所は従来と同一） */
-        (o.notes&&!((dt==='quote'&&o.withPO)||dt==='invoice'))?previewNotesBox(o.notes):null/* 発注書付の見積書と請求書は上に出している（v19.05） */
+        ((dvP?dvP.notes:o.notes)&&!((dt==='quote'&&o.withPO)||dt==='invoice'))?previewNotesBox(dvP?dvP.notes:o.notes):null/* 発注書付の見積書と請求書は上に出している（v19.05） */
       )
     )
   );
@@ -16408,7 +16418,7 @@ function OrdersPage(p){
             ):null,
             (DOC_EDIT_TYPES.indexOf(d[0])>=0)?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'}},
               h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
-                title:d[1]+'の記載内容（件名・担当者・日付・伝票コード・納品先・代表者名など）を手修正します',
+                title:d[1]+'の記載内容（件名・担当者・日付・伝票コード・納品先・代表者名・備考など）を手修正します',
                 onClick:function(){var lo=liveOrder(docPick[0])||docPick[0];docPick[1](null);openDocEdit(lo,d[0]);}},
                 '✎ 記載内容の手修正'),
               hasDocEdit(docPick[0],d[0])?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null,
@@ -16770,6 +16780,17 @@ function OrdersPage(p){
           isInv?h('div',{style:{display:'flex',gap:4,marginBottom:6}},
             fldD('payDue','支払期日（空欄=支払条件と請求日から自動計算。日付なら「支払期日」、前払い等の文言なら「支払条件」と印字）',{flex:3})
           ):null,
+          /* v19.75（2026-11-05 依頼「請求書の備考欄を手修正」）: 備考。空欄＝見積書の備考。この帳票だけの備考にできる・載せないこともできる */
+          h('div',{style:{marginBottom:6}},
+            h('label',{style:DLBL},'備考（空欄＝見積書の備考のまま。ここで直すとこの帳票だけに効きます。改行できます）'),
+            h('textarea',{className:'inp','data-docnotes':'1',rows:4,style:{resize:'vertical',fontFamily:'inherit',background:v.notesOff?'var(--g100)':null},value:v.notes||'',
+              placeholder:(m.order&&m.order.notes)?(Array.isArray(m.order.notes)?m.order.notes.join('\n'):String(m.order.notes)):'（見積書の備考はありません）',disabled:!!v.notesOff,
+              onChange:function(e){setV({notes:e.target.value});}}),
+            h('div',{style:{display:'flex',gap:10,alignItems:'center',marginTop:2}},
+              h('label',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,cursor:'pointer'}},
+                h('input',{type:'checkbox','data-docnotesoff':'1',checked:!!v.notesOff,onChange:function(e){setV({notesOff:e.target.checked?'1':''});}}),'この帳票には備考を載せない'),
+              (!v.notes&&!v.notesOff&&m.order&&m.order.notes)?h('button',{className:'btn btn-xs btn-ol','data-docnotescopy':'1',title:'見積書の備考を欄に写して、そこから直します',
+                onClick:function(){var on=m.order.notes;setV({notes:Array.isArray(on)?on.join('\n'):String(on)});}},'見積書の備考を写して直す'):null)),
           /* v18.93 修正26⑤: 会社名の下の代表者名。既定は見積書作成画面のチェックを引き継ぐ */
           h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
             h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:600,cursor:'pointer'}},
@@ -19146,6 +19167,7 @@ function PartsPage(p){
   function sizeFilterOf(){
     var sf=sizeFilter[0];
     if(sf==='all')return 'all';
+    if(selLine[0]==='sa')return 'all';/* v19.75: Sα はサイズのボタンを出さない（S は Sα の在庫キー） */
     return (LINE_SIZES[selLine[0]]||[]).indexOf(sf)>=0?sf:'all';
   }
   function sizeRowMatch(sf,sub,isDoor,doorSub){
@@ -19657,11 +19679,11 @@ function PartsPage(p){
           colors.forEach(function(c){
             /* 通常扉 */
             ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
-              uniRows.push({item:i===0?'扉　'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iGet('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
+              uniRows.push({item:i===0?'扉　'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iGet('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
             });
             /* ホタ扉 (XLなし) */
             ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
-              uniRows.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iGet('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
+              uniRows.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iGet('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
             });
           });
           /* 6. 棚板 (色別に在庫独立) */
@@ -19856,7 +19878,7 @@ function PartsPage(p){
             h('span',{key:'szlbl',style:{fontSize:9,fontWeight:600,color:'var(--g500)',lineHeight:'24px'}},'サイズ:'),
             h('button',{key:'sz-all',className:'btn btn-xs '+(sizeFilterOf()==='all'?'btn-nv':'btn-ol'),onClick:function(){sizeFilter[1]('all');}},'全サイズ'),
             /* v19.19: SSα を追加（そのラインに無いサイズのボタンは出さない） */
-            SIZE_FILTER_BTNS.filter(function(sz){return (LINE_SIZES[selLine[0]]||[]).indexOf(sz)>=0;}).map(function(sz){return h('button',{key:'sz-'+sz,className:'btn btn-xs '+(sizeFilterOf()===sz?'btn-nv':'btn-ol'),onClick:function(){sizeFilter[1](sz);}},sz==='SSA'?'SSα':sz);}),
+            SIZE_FILTER_BTNS.filter(function(sz){return selLine[0]!=='sa'&&(LINE_SIZES[selLine[0]]||[]).indexOf(sz)>=0;}).map(/* v19.75: Sα では「S」を出さない（依頼） */function(sz){return h('button',{key:'sz-'+sz,className:'btn btn-xs '+(sizeFilterOf()===sz?'btn-nv':'btn-ol'),onClick:function(){sizeFilter[1](sz);}},sz==='SSA'?'SSα':sz);}),
             h('span',{key:'sep3',style:{margin:'0 4px',color:'var(--g300)'}},'|')
           ]:null,
           /* v18.70 修正16④: 商品コードの表示切替（請求書の突き合わせ用） */
@@ -20502,12 +20524,12 @@ function PartsPage(p){
         uniR.push({item:'',variant:'SS・3S共通グレー',key:'top',sub:'ss',irisu:iG('top','ss'),grp:'ss'});
         uniR.push({item:'ベースボード',variant:'SMLXL共通グレー',key:'base',sub:'sml',irisu:iG('base','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SS・3S共通グレー',key:'base',sub:'ss',irisu:iG('base','ss'),grp:'ss'});
-        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'サイドボード':'',variant:s+'(グレー)',key:'side',sub:s,irisu:iG('side',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
-        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'バックボード':'',variant:s+'(グレー)',key:'back',sub:s,irisu:iG('back',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
+        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'サイドボード':'',variant:(selLine[0]==='sa'?'Sα':s)+'(グレー)',key:'side',sub:s,irisu:iG('side',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
+        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'バックボード':'',variant:(selLine[0]==='sa'?'Sα':s)+'(グレー)',key:'back',sub:s,irisu:iG('back',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
         colors.forEach(function(c){
           /* v18.48 修正６①: 扉は SSα(SSA) も在庫として存在するため行に含める（本体部材はSS＋3Sのため従来どおり除外） */
-          ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉　'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iG('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
-          ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iG('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
+          ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉　'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iG('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
+          ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iG('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
         });
         uniR.push({item:'棚板',variant:'SMLXL(グレー)',key:'shelf',sub:'sml',irisu:iG('shelf','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SMLXL(ブラック)',key:'shelf_bk',sub:'sml',irisu:iG('shelf','sml'),grp:'sml'});
@@ -20858,12 +20880,12 @@ function PartsPage(p){
         uniR.push({item:'',variant:'SS・3S共通グレー',key:'top',sub:'ss',irisu:iG('top','ss'),grp:'ss'});
         uniR.push({item:'ベースボード',variant:'SMLXL共通グレー',key:'base',sub:'sml',irisu:iG('base','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SS・3S共通グレー',key:'base',sub:'ss',irisu:iG('base','ss'),grp:'ss'});
-        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'サイドボード':'',variant:s+'(グレー)',key:'side',sub:s,irisu:iG('side',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
-        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'バックボード':'',variant:s+'(グレー)',key:'back',sub:s,irisu:iG('back',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
+        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'サイドボード':'',variant:(selLine[0]==='sa'?'Sα':s)+'(グレー)',key:'side',sub:s,irisu:iG('side',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
+        ['S','M','L','SS','3S'].filter(function(s){return szL.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'バックボード':'',variant:(selLine[0]==='sa'?'Sα':s)+'(グレー)',key:'back',sub:s,irisu:iG('back',s),grp:(s==='3S'||s==='SS')?'ss':'sml'});});
         colors.forEach(function(c){
           /* v18.48 修正６①: 扉は SSα(SSA) も在庫として存在するため行に含める（本体部材はSS＋3Sのため従来どおり除外） */
-          ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉　'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iG('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
-          ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:s==='SSA'?'SSα':s,isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iG('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
+          ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉　'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iG('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
+          ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoorH.indexOf(s)>=0;}).forEach(function(s,i){uniR.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iG('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});});
         });
         uniR.push({item:'棚板',variant:'SMLXL(グレー)',key:'shelf',sub:'sml',irisu:iG('shelf','sml'),grp:'sml'});
         uniR.push({item:'',variant:'SMLXL(ブラック)',key:'shelf_bk',sub:'sml',irisu:iG('shelf','sml'),grp:'sml'});
@@ -21090,7 +21112,7 @@ function PartsPage(p){
                 h('div',{style:{fontSize:11,fontWeight:700,color:'#1e3a5f',marginBottom:6}},'🔄 倉庫間移動（取り寄せ）'),
                 h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
                   h('select',{className:'inp',style:{width:80},value:sz,title:'移動する扉のサイズ',onChange:function(e){setF({size:e.target.value});}},
-                    em0.doorSizes.map(function(s){return h('option',{key:s,value:s},s==='SSA'?'SSα':s);})),
+                    em0.doorSizes.map(function(s){return h('option',{key:s,value:s},doorSizeLbl(selLine[0],s));})),
                   /* 移動元は在庫を持つ倉庫（倉庫タブから開いた場合はその倉庫だけ）。括弧内はそのサイズの空き在庫 */
                   h('select',{className:'inp',style:{width:150},value:f0.from,onChange:function(e){setF({from:e.target.value});}},
                     [h('option',{key:'_f',value:''},'移動元')].concat(WH_IDS.filter(function(w){return hasStock(em0.lineId,w)&&(!em0.onlyWh||w===em0.onlyWh);}).map(function(w){
@@ -22248,7 +22270,7 @@ function PartsPage(p){
                 h('select',{className:'inp',value:item.color||'',onChange:function(e){updDoor({color:e.target.value,lineId:doorLine});},style:{flex:1.2,fontSize:10}},
                   doorColors.map(function(c){return h('option',{key:c.v,value:c.v},c.l);})),
                 h('select',{className:'inp',value:item.sub||'',onChange:function(e){updDoor({sub:e.target.value,lineId:doorLine});},style:{flex:0.7,fontSize:10}},
-                  doorSizes.map(function(s){return h('option',{key:s,value:s},s==='SSA'?'SSα':s);}))
+                  doorSizes.map(function(s){return h('option',{key:s,value:s},doorSizeLbl(doorLine,s));}))
               ):h('div',{style:{flex:2,display:'flex',gap:3}},
                 /* v18.46 修正４②: サイズ別部材等もライン（日本製Ver.2／台湾製／Sα）を選べるようにする。
                    従来は選択欄が無く lineId が既定の日本製Ver.1のまま入庫処理され、Ver.1の在庫へ加算されていた。
