@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.76（請求書の明細の備考の手修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.77（案件修正で金額・明細の順番が崩れる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -7409,8 +7409,19 @@ function applyPriceSnapshot(order){
 }
 function applyPriceSnapshot0(order){
   /* v18.70 修正16①: 粗利計算表で売価を手修正した案件は、保存のたびに単価マスタで上書きしない。
-     戻したいときは「単価マスタの金額に戻す」（resetGrossSellOverride）を使う。 */
-  if(order.sellEdited)return order;
+     戻したいときは「単価マスタの金額に戻す」（resetGrossSellOverride）を使う。
+     v19.77: ただし案件修正で足した明細（単価をまだ持たない行）だけは単価マスタの金額を入れる
+     （入れないと旧固定単価で計算されてしまう）。手修正した行の単価はそのまま。 */
+  if(order.sellEdited){
+    (order.lines||[]).forEach(function(l){
+      if(!l||l.isPartOnly||l.isFreeInput)return;
+      if(!(l.unitPrice2>0)){var u0=bodySellUnit(l);if(u0>0)l.unitPrice2=u0;}
+      if(!(l.shelfPrice2>0)){var sp0=priceByEntry(shelfCodeOf(l),'sell');if(sp0>0)l.shelfPrice2=sp0;}
+    });
+    if(!(order.basePrice2>0)){var bl0=(order.lines||[]).filter(function(l){return !l.isPartOnly&&!l.isFreeInput&&l.hasBase!==false;})[0];
+      if(bl0){var bp0=priceByEntry(baseCodeOf(bl0),'sell');if(bp0>0)order.basePrice2=bp0;}}
+    return order;
+  }
   var stamped=false;
   (order.lines||[]).forEach(function(l){
     if(!l||l.isPartOnly||l.isFreeInput)return;
@@ -11758,6 +11769,7 @@ function InvPage(p){
   /* v18.46 修正５⑤: 登録済み案件の修正中は、その案件番号へ上書き保存する（新規採番しない）。
      editingMeta は上書き時に引き継ぐ情報（作成日・起票者）。 */
   var editingNo=us(null),editingMeta=us(null);
+  var removedLinesR=ur([]);/* v19.77: 案件修正中に削除した明細 {id,idx,kind}（同じ種類を追加したら id・位置を使い直す） */
   /* v18.46 修正５⑤: 案件番号の採番。修正モード中は元の案件番号をそのまま使う（新規採番しない） */
   function takeOrderNo(prefix){
     if(editingNo[0])return editingNo[0];
@@ -11767,6 +11779,20 @@ function InvPage(p){
   /* v18.46 修正５⑤: 修正モードで作った案件は同じ案件番号の既存案件へ上書きし、作成日・起票者は引き継ぐ。
      通常時は従来どおり新規追加。 */
   function upsertOrder(order){
+    /* ===== v19.77（2026-11-05 依頼「案件修正で見積画面に戻ると当初の金額や明細の順番がバラバラ」例 QT-2026-278）=====
+       【原因①】粗利計算表で売価を手修正した案件（sellEdited）を ✏ 案件修正 →「見積書のみ作成」等で作り直すと、
+       　　　　 下の applyPriceSnapshot が単価マスタの金額で上書きしていた（sellEdited は元の案件にしか無く、引き継ぐ前に焼き付けていた）。
+       　　　　 押し直し（doQuoteOnly の isUpdate）では引き継いでいたが、案件修正の1回目（upsertOrder）では引き継いでいなかった。
+       【対応】案件修正の上書きなら、焼き付けの前に手修正の印と案件の単価（ベース）を元の案件から入れる。 */
+    var em0=editingMeta[0];
+    if(em0&&order.no===em0.no){
+      var pv0=ORDERS.find(function(x){return x.no===order.no;});
+      if(pv0&&pv0.sellEdited&&order.sellEdited===undefined){
+        order.sellEdited=pv0.sellEdited;if(pv0.sellEditSeq)order.sellEditSeq=pv0.sellEditSeq;
+        if(pv0.basePrice2>0&&order.basePrice2===undefined)order.basePrice2=pv0.basePrice2;
+        order.priceVer=pv0.priceVer||2;
+      }
+    }
     /* v18.54 修正８①: 保存する時点の販売単価を案件へ焼き付ける（ユーザー選択「新規案件から適用」）。
        これを入れないと単価マスタを更新するたびに過去案件の見積金額まで変わってしまう。
        案件作成5経路はすべてここを通るため、1か所で担保できる。 */
@@ -11988,7 +12014,7 @@ function InvPage(p){
        ★案件修正の経路も requestRepeat → requestEdit の順で同じレンダーに入る。この効果は
        　editOrder の効果より前に定義されているため、案件修正では直後に editingNo が入り直す。
        　（効果の定義順を入れ替えると案件修正が壊れるので注意） */
-    editingNo[1](null);editingMeta[1](null);
+    editingNo[1](null);editingMeta[1](null);removedLinesR.current=[];
     var cloned=cloneLinesForRepeat(ro.lines);
     lines[1](cloned);
     /* v18.72 修正17⑰: 案件修正・リピート発注で読み込んだとき、商品選択欄にも1件目の明細の内容を入れておく。
@@ -12202,7 +12228,7 @@ function InvPage(p){
       else{rs.off=true;rc.forEach(function(r){rs.need[r.g]=r.need;rs.use[r.g]=0;});}
       lineObj.rentalShort=rs;
     }
-    var nl=lines[0].concat([lineObj]);
+    var nl=placeLine(lines[0],lineObj);/* v19.77: 案件修正で削除した行の位置・行キーを使い直す */
     lines[1](nl);doCheck(nl,selWH[0]||'');
     return true;
   }
@@ -12241,9 +12267,10 @@ function InvPage(p){
     else if(pd.hasSub==='size'){pSub=pSz;pLabel+='('+(pLine==='sa'?'Sα':pSub)+')';}
     var pColorOpt=(LINE_COLORS[pLine]||LINE_COLORS[ln[0]]||[]);
     var pColor=pd.hasColor?(pColorOpt.find(function(c){return c.v===partColor[0];})?partColor[0]:(pColorOpt[0]&&pColorOpt[0].v)||''):'';
-    var nl=lines[0].concat([{id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:(parseInt(partPrice[0])||0)||withAgent(agentOfCust(cust),function(){return priceByEntry(partCodeOf(realKey,pSub,pLine),'sell');}),partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
+    var nlObj={id:Date.now(),line:pLine,isPartOnly:true,partKey:realKey,partSub:pSub,partColor:pd.hasColor?pColor:null,isDoor:!!pd.isDoor,qty:parseInt(partQty[0])||1,unitPrice:(parseInt(partPrice[0])||0)||withAgent(agentOfCust(cust),function(){return priceByEntry(partCodeOf(realKey,pSub,pLine),'sell');}),partLabel:pLabel+'【'+(LINES.find(function(l){return l.id===pLine;})||{name:''}).name+'】',size:partSub[0],color:pd.hasColor?pColor:'',islands:0,tiers:0,lock:'none',type:'standard'};
+    var nl=placeLine(lines[0],nlObj);/* v19.77: 案件修正で削除した行の位置・行キーを使い直す */
     /* v19.56: 組で売る部材（Sαサイドレール）は在庫を 組数×setOf 本で数える。単位も明細に持たせる */
-    var nlLast=nl[nl.length-1];
+    var nlLast=nlObj;
     if(pd.setOf>1)nlLast.stockMul=pd.setOf;
     /* v19.61: 代理店の見積で代理店価格の無い部材 */
     if(cust&&agentOfCust(cust)&&!(parseInt(partPrice[0])||0)){
@@ -12259,11 +12286,33 @@ function InvPage(p){
   function addFreeInputLine(){
     /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     if(!freeInputName[0].trim()){p.toast('商品名称を入力してください');return;}
-    var nl=lines[0].concat([{id:Date.now(),isFreeInput:true,name:freeInputName[0].trim(),qty:parseInt(freeInputQty[0])||1,unit:freeInputUnit[0]||'個',unitPrice:parseInt(freeInputPrice[0])||0,unitCost:costNum(freeInputCost[0])==null?undefined:costNum(freeInputCost[0]),remark:freeInputRemark[0]||'',line:ln[0],isPartOnly:true,partLabel:freeInputName[0].trim(),partKey:'free',isDoor:false,size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'}]);
+    var nl=placeLine(lines[0],{id:Date.now(),isFreeInput:true,name:freeInputName[0].trim(),qty:parseInt(freeInputQty[0])||1,unit:freeInputUnit[0]||'個',unitPrice:parseInt(freeInputPrice[0])||0,unitCost:costNum(freeInputCost[0])==null?undefined:costNum(freeInputCost[0]),remark:freeInputRemark[0]||'',line:ln[0],isPartOnly:true,partLabel:freeInputName[0].trim(),partKey:'free',isDoor:false,size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'});/* v19.77 */
     lines[1](nl);
     freeInputName[1]('');freeInputQty[1](1);freeInputPrice[1](0);freeInputRemark[1]('');freeInputCost[1]('');
   }
-  function remLine(id){var nl=lines[0].filter(function(l){return l.id!==id;});lines[1](nl);nl.length?doCheck(nl):(whResults[1]([]),multiWH[1]([]));}
+  /* ===== v19.77 原因②: 案件修正で明細を直すには「削除 → 追加し直す」しかなく、追加した行は新しい id（行キー L+id）になるため、
+     見積書作成画面で入れた並び順（rowOrder）・行の備考（rowRemarks）・手入力の単価（rowUnit）・構成表記（cfgNotes）が
+     その行に当たらなくなり、行は一番下へ回り、金額も単価マスタの金額に戻っていた。
+     【対応】案件修正中に削除した行を覚えておき、同じ種類の行（本体／同じ部材の単品／自由入力）を追加したら
+     　　　 ★削除した行の id と位置を使い直す（＝行キーが変わらないので、手修正がそのまま当たる）。 */
+  function lineKindOf(l){return !l?'':(l.isFreeInput?'free':(l.isPartOnly?('part:'+l.partKey):'body'));}
+  function remLine(id){
+    if(editingNo[0]){var ix0=lines[0].findIndex(function(l){return l.id===id;});if(ix0>=0)removedLinesR.current.push({id:id,idx:ix0,kind:lineKindOf(lines[0][ix0])});}
+    var nl=lines[0].filter(function(l){return l.id!==id;});lines[1](nl);nl.length?doCheck(nl):(whResults[1]([]),multiWH[1]([]));
+  }
+  /* 追加する行を、案件修正中に削除した同じ種類の行の位置へ入れる（無ければ末尾）。戻り値＝新しい明細の配列 */
+  function placeLine(cur,obj){
+    if(editingNo[0]){
+      var k=lineKindOf(obj),q=removedLinesR.current,hit=-1;
+      for(var i=0;i<q.length;i++){if(q[i].kind===k&&!cur.some(function(l){return l.id===q[i].id;})){hit=i;break;}}
+      if(hit>=0){
+        var rm=q.splice(hit,1)[0];obj.id=rm.id;
+        var at=Math.max(0,Math.min(cur.length,rm.idx));
+        return cur.slice(0,at).concat([obj],cur.slice(at));
+      }
+    }
+    return cur.concat([obj]);
+  }
   /* v18.20 要望16: 各明細が供給可能な倉庫を可視化（部材ごとに倉庫を見て選ぶ補助。在庫/holdは変更しない読み取り専用） */
   function lineWhAvail(l){
     if(!l||l.isFreeInput)return null;
