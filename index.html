@@ -367,6 +367,7 @@ function buildCloudDoc(){
     charterLoads:(typeof CHARTER_LOADS!=='undefined'?CHARTER_LOADS:{}),/* v19.48: チャーター発注書の積込場所（場所→住所・電話）を全端末共有 */
     ykPOList:(typeof YK_PO_LIST!=='undefined'?YK_PO_LIST:{}),/* v19.66: 八木熊様への発注書一覧を全端末共有 */
     gpPOList:(typeof GP_PO_LIST!=='undefined'?GP_PO_LIST:{}),/* v19.74: 八木熊以外の外注先への発注書一覧を全端末共有 */
+    gpPdfPw:(typeof GP_PDF_PW!=='undefined'?GP_PDF_PW:{}),/* v19.74: 人工のPDFのパスワード（業者ごと）を全端末共有 */
     rentalCfg:(typeof RENTAL_CFG!=='undefined'?RENTAL_CFG:null),/* v19.30: パーソナル貸与品の在学年数・手動ひも付けを全端末共有 */
     springCfg:SPRING_CFG,/* v19.43: 春先の年度一覧・締めの記録 */
     deletedNos:DELETED_ORDER_NOS.slice(-500),
@@ -472,6 +473,9 @@ function applyCloudDoc(doc,opts){
     /* v19.74: 八木熊以外の発注書一覧。番号ごとに足し合わせ（同じ番号は新しい方） */
     if(doc.gpPOList&&typeof doc.gpPOList==='object'&&typeof GP_PO_LIST!=='undefined'){
       try{GP_PO_LIST=ykPOListMerge(GP_PO_LIST,doc.gpPOList);saveGpPOList();}catch(e){}
+    }
+    if(doc.gpPdfPw&&typeof doc.gpPdfPw==='object'&&typeof GP_PDF_PW!=='undefined'){
+      try{GP_PDF_PW=gpPwMerge(GP_PDF_PW,doc.gpPdfPw);saveGpPdfPw();}catch(e){}
     }
     if(Array.isArray(doc.honorifics)&&typeof HONORIFICS!=='undefined'){
       try{HONORIFICS=doc.honorifics.slice();ensureHonorificDefaults();saveHonorifics();}catch(e){}
@@ -2891,6 +2895,10 @@ try{var _ypl=JSON.parse(lsGet('lec_ykpo_list')||'null');if(_ypl&&typeof _ypl==='
 var GP_PO_LIST={};
 try{var _gpl=JSON.parse(lsGet('lec_gppo_list')||'null');if(_gpl&&typeof _gpl==='object')GP_PO_LIST=_gpl;}catch(e){}
 function saveGpPOList(){try{lsSet('lec_gppo_list',JSON.stringify(GP_PO_LIST));}catch(e){}}
+/* v19.74: 人工のPDFのパスワード（業者→{pw,at,by}）。localStorage＋クラウド（gpPdfPw）。リポジトリが公開なのでコードには書かない */
+var GP_PDF_PW={};
+try{var _gpw=JSON.parse(lsGet('lec_gppo_pw')||'null');if(_gpw&&typeof _gpw==='object')GP_PDF_PW=_gpw;}catch(e){}
+function saveGpPdfPw(){try{lsSet('lec_gppo_pw',JSON.stringify(GP_PDF_PW));}catch(e){}}
 function charterLoadNames(){
   var a=CHARTER_LOAD_DEFAULTS.slice();
   Object.keys(CHARTER_LOADS||{}).forEach(function(k){if(k&&a.indexOf(k)<0)a.push(k);});
@@ -10111,7 +10119,10 @@ var HELP_QA=[
     tip:'発注書番号は業者ごとの記号＋年＋通し番号です（井門 IM・日乃本錠前 HN・スターリーロッカーズ SL・サラインテリアシステム SR・ダイレクト DR・トーヒラ TH。例 IM-2026-001）。金額・小計・消費税（10%・切り捨て）・合計は自動計算。入力中の内容は業者ごとにこの端末に残ります。連絡先（電話・担当者）は画面だけに出て、発注書には載りません。',rel:['gp-po-list','yk-po']},
   {id:'gp-po-list',cat:'stock',tab:'parts',ver:'v19.74',q:'前に出した発注書（鍵・チャーター・その他）を見たい・直したい・同じ内容でもう一度出したい',kw:['発注書','一覧','履歴','複製','鍵','チャーター','その他','人工','編集'],
     steps:['「📋 発注書一覧」を開き、上の「八木熊／人工／鍵／チャーター／その他」から選ぶ','直すときは「✏ 編集」、同じ内容で新しい番号の発注書を作るときは「📄 複製」→ 発注書タブに開く','「🖨 PDF」「📊 Excel」で保存した内容をもう一度出せます'],
-    tip:'全端末で共有されます。鍵は業者ごとに絞り込めます。人工は先方のPDFを取り込む形で準備中です。',rel:['gp-po','yk-po-list']},
+    tip:'全端末で共有されます。鍵・人工は業者ごとに絞り込めます。',rel:['gp-po','yk-po-list','ninku-pdf']},
+  {id:'ninku-pdf',cat:'stock',tab:'parts',ver:'v19.74',q:'人工（チームフォーなど）の発注書PDFを一覧に入れたい',kw:['人工','チームフォー','NEED US','ビックワーク','ビッグワーク','インクリーズ','フロントライン','ハンデックス','北海道ロジ','EMU','PDF','取込','パスワード','作業員'],
+    steps:['「📋 発注書一覧」の「人工」を開き、「📄 PDFを取り込む」を押す','「PDFを選ぶ」で先方の見積書を手書きで直した発注書PDFを選ぶ（パスワードは登録してあれば自動で開く）','左の画像を見ながら、右の欄（先方No.・発注日・作業日・現場・合計金額など）を確かめる。黄色の候補はクリックで欄に入る','「＋ 一覧に追加」で登録（発注書番号は TF-2026-001 のように自動で付く）'],
+    tip:'文字の読み取りは目安です。手書きで直した金額・日付は読めないので、必ず画像で確かめてください。PDFの原本は会社のサーバーに保存してください（システムにはファイル名だけ残ります）。パスワードは「🔑 PDFのパスワード」で業者ごとに登録できます（全端末で共有）。EMUservice は発注書タブで作ります。',rel:['gp-po-list']},
   {id:'yk-po-list',cat:'stock',tab:'parts',ver:'v19.66',q:'前に出した八木熊への発注書を見たい・直したい（発注書一覧）',kw:['八木熊','発注書','一覧','履歴','前に出した','注文書','発注書番号','編集'],
     steps:['「部材在庫一覧」の右端「📝 発注書」の下にある「📋 発注書一覧」を開き、「八木熊」を選ぶ','直すときは「✏ 編集」→ 発注書タブに開くので、直して「📊 Excel」を出し直す（Excelを出さないときは「💾 一覧に保存」）','「🖨 PDF」「📊 Excel」で保存した内容の発注書をもう一度出せます'],
     tip:'発注書タブで Excel を出すと記録されます（全端末で共有）。社内備考も一覧で見られます。発注書は発注書番号で管理し、同じ番号で出し直すと上書きされます。回答Excelを取り込んだ発注書には「取込済」と出ます。',rel:['yk-po','yk-reply']},
@@ -17950,7 +17961,19 @@ var GP_VENDORS=[
     {l:'東京',zip:'105-0014',addr:'東京都港区芝3-17-15　クリエート三田301',tel:'03-5730-1561',person:'小室様',mobile:'080-1166-7455'},
     {l:'大阪',zip:'550-0012',addr:'大阪市西区立売堀1丁目7-12　グレース大阪本町ビル202',tel:'06-6536-5131',person:'下荒神様',mobile:'080-2533-1883'}]},
   {id:'DR',cat:'charter',name:'有限会社ダイレクト',short:'ダイレクト',pay:'末締め翌月末現金振込',title:'発注書',charter:true,offices:[{zip:'341-0003',addr:'埼玉県三郷市彦成5-212',tel:'048-954-5477',person:'白井様',mobile:'080-3000-9410'}]},
-  {id:'TH',cat:'other',name:'株式会社トーヒラ',short:'トーヒラ',offices:[{zip:'142-0041',addr:'東京都品川区戸越３丁目５番１９',tel:'03-3787-6511',fax:'03-3783-9047',person:'平山社長'}]}
+  {id:'TH',cat:'other',name:'株式会社トーヒラ',short:'トーヒラ',offices:[{zip:'142-0041',addr:'東京都品川区戸越３丁目５番１９',tel:'03-3787-6511',fax:'03-3783-9047',person:'平山社長'}]},
+  /* 人工（2026-11-05 連絡先一覧に追加）。imp＝先方のPDF（見積書を手書きで直したもの）を取り込む。EMUservice だけは当社が作る発注書（ユーザー回答） */
+  {id:'TF',cat:'ninku',imp:true,name:'株式会社チームフォー',short:'チームフォー',alias:['チームフォー','ﾁｰﾑﾌｫｰ','TEAM'],offices:[{l:'名古屋事業所',zip:'581-0083',addr:'愛知県名古屋市中村区鳥居通3-21-2',tel:'052-462-9136',fax:'052-462-9137',person:'根本様',mobile:'080-3513-1458'}]},
+  {id:'NU',cat:'ninku',imp:true,name:'株式会社NEED US',short:'NEED US',alias:['NEED US','NEEDUS','NEED_US'],offices:[{zip:'121-0831',addr:'東京都足立区舎人5-9-18',tel:'03-5838-2557',person:'藤ノ木様',mobile:'080-5529-6216'}]},
+  {id:'BW',cat:'ninku',imp:true,name:'株式会社ビックワーク',short:'ビックワーク',alias:['ビックワーク','ビッグワーク','BIG WORK','BIGWORK'],offices:[{zip:'160-0023',addr:'東京都新宿区西新宿7-22-43　新宿JECビル１F',tel:'03-5338-0731',person:'横井様'}]},
+  {id:'IC',cat:'ninku',imp:true,name:'インクリーズ株式会社',short:'インクリーズ',alias:['インクリーズ','increase'],offices:[{zip:'577-0027',addr:'大阪府東大阪市新家中町1-19',tel:'06-6748-0935',person:'津田様'}]},
+  {id:'EM',cat:'ninku',work:true,name:'株式会社EMUservice',short:'EMUservice',alias:['EMUservice','EMU'],title:'発注書',pay:'末締め翌月末現金振込',
+    fields:[['subject','件名'],['due','作業日時'],['time','作業時間'],['place','作業場所'],['pay','支払条件']],
+    ph:{subject:'例: YIC情報ビジネス専門学校様',due:'例: 令和8年4月2日',place:'例: 山口県山口市小郡黄金町2-24'},
+    offices:[{zip:'812-0888',addr:'福岡市博多区板付1-9-12-101',tel:'092-474-3315',person:'清水社長',mobile:'090-3668-4862'}]},
+  {id:'FL',cat:'ninku',imp:true,name:'株式会社フロントライン',short:'フロントライン',alias:['フロントライン'],offices:[{zip:'812-0888',addr:'宮城県仙台市宮城野区鉄砲町西1-10 フラットリア仙台駅東2-A',tel:'022-791-2376',fax:'022-791-2377',person:'小柴様'}]},
+  {id:'HD',cat:'ninku',imp:true,name:'株式会社ハンデックス 大阪営業所',short:'ハンデックス',alias:['ハンデックス'],offices:[{zip:'',addr:'大阪府大阪市北区天神西町6-4 FLANKER NANMORI.BLD',tel:'06-6147-7392',fax:'06-6136-8317',person:'谷尾様',mobile:'070-4541-9899'}]},
+  {id:'HL',cat:'ninku',imp:true,name:'北海道ロジ',short:'北海道ロジ',alias:['北海道ロジ'],offices:[{zip:'065-0031',addr:'札幌市東区北31条東19-1-10',tel:'011-786-6001',person:'植津様',mobile:'070-5284-6104'}]}
 ];
 var GP_UNITS=['個','本','枚','台','式','車','人','セット','箱','m'];
 var GP_LEC={name:'株式会社LEC',addr:'〒120-0005　東京都足立区綾瀬7-4-1',tel:'TEL 03-5849-5563 / FAX 03-5849-5564'};
@@ -17969,6 +17992,10 @@ function gpPODefaults(vid,userName){
   var v=gpVendor(vid)||{},nm=gpStaffName(userName);
   var o={vendor:vid,no:'',uid:'',date:ykPOYmd(),to:v.name||'',office:0,subject:'',due:'最短',place:'弊社(東京)',pay:v.pay||'末締め翌月末振込支払い',staff:nm,
     lines:[{id:1,name:'',qty:'',unit:'個',price:''}],note:'※納期が分かり次第ご連絡ください。',ship:gpShipText(YK_PO_DESTS[0],nm),memo:''};
+  if(v.work){
+    o.due='';o.time='9:00～17:00(1時間休憩含む)';o.place='';o.ship='';o.lines=[{id:1,name:'',qty:'',unit:'名',price:''}];
+    o.note='【弊社担当者】\n　'+nm+'　/　';
+  }
   if(v.charter){
     o.due='';o.place='';o.note='';o.ship='';o.lines=[{id:1,name:'',qty:'',unit:'車',price:''}];
     o.loadPlace='新柏倉庫';o.loadDetail=CHARTER_LOADS['新柏倉庫']||'';o.loadDate='';o.contact='弊社　'+nm+'　/　';
@@ -17999,7 +18026,13 @@ function gpPONoteText(st){
   return out.join('\n');
 }
 function gpPOTitle(st){return (gpVendor(st.vendor)||{}).title||'注文書';}
-function gpPODueLabel(st){return (gpVendor(st.vendor)||{}).charter?'納品日時':'納品期日';}
+/* 上の欄（件名・納品期日など）。業者ごとに違う（ダイレクト＝納品日時、EMUservice＝作業日時・作業時間・作業場所） */
+function gpPOFields(st){
+  var v=gpVendor(st&&st.vendor)||{};
+  if(v.fields)return v.fields;
+  return [['subject','件名'],['due',v.charter?'納品日時':'納品期日'],['place','納入場所'],['pay','支払条件']];
+}
+function gpPODueLabel(st){return gpPOFields(st).filter(function(f){return f[0]==='due';}).map(function(f){return f[1];})[0]||'納品期日';}
 function gpPOFileBase(st){
   var v=gpVendor(st.vendor)||{},sj=String(st.subject||'').replace(/[\\\/:*?"<>|\r\n]+/g,' ').trim();
   return (v.short||st.vendor||'')+'様'+gpPOTitle(st)+'_'+(st.no||String(st.date||ykPOYmd()).replace(/-/g,''))+(sj?'_'+sj.slice(0,30):'');
@@ -18066,12 +18099,14 @@ function gpPOBuildXlsx(st){
   cell('F3',15,'s','注文番号');cell('G3',15,'s',st.no||'');
   cell('B6',2,'s',st.to||v.name||'');merge('B6','C6');box('B','C',6,2);cell('D6',2,'s','御中');ht(6,26);
   cell('E7',4,'s',GP_LEC.name);merge('E7','G7');
-  var lab=[['■件名',st.subject],['■'+gpPODueLabel(st),st.due],['■納入場所',st.place],['■支払条件',st.pay]];
+  var lab=gpPOFields(st).map(function(f){return ['■'+f[1],st[f[0]]];});
   lab.forEach(function(x,i){var r=8+i;cell('B'+r,3,'s',x[0]);cell('C'+r,18,'s',x[1]||'');merge('C'+r,'D'+r);box('C','D',r,18);});
+  /* 欄が5つ以上なら、合計金額・明細をその分下げる（4つのとき 合計金額=13行・見出し=15行・明細=16行〜） */
+  var R0=Math.max(0,lab.length-4),rTot=13+R0,rHd=15+R0;
   cell('E8',16,'s',GP_LEC.addr);merge('E8','G8');cell('E9',16,'s',GP_LEC.tel);merge('E9','G9');cell('E10',16,'s','担当：'+(st.staff||''));merge('E10','G10');
   /* 明細 */
-  var ls=gpPOLines(st),first=16,n=Math.max(GP_MIN_ROWS,ls.length),last=first+n-1;
-  cell('B15',6,'s','品　　名');cell('C15',6);merge('B15','C15');cell('D15',6,'s','数量');cell('E15',6,'s','単位');cell('F15',6,'s','単価');cell('G15',6,'s','金額');ht(15,20);
+  var ls=gpPOLines(st),first=rHd+1,n=Math.max(GP_MIN_ROWS,ls.length),last=first+n-1;
+  cell('B'+rHd,6,'s','品　　名');cell('C'+rHd,6);merge('B'+rHd,'C'+rHd);cell('D'+rHd,6,'s','数量');cell('E'+rHd,6,'s','単位');cell('F'+rHd,6,'s','単価');cell('G'+rHd,6,'s','金額');ht(rHd,20);
   for(var i=0;i<n;i++){
     var r=first+i,l=ls[i]||{},q=gpPONum(l.qty),p=gpPONum(l.price),a=gpPOAmt(l);
     cell('B'+r,7,'s',l.name||'');cell('C'+r,7);merge('B'+r,'C'+r);
@@ -18084,7 +18119,7 @@ function gpPOBuildXlsx(st){
   cell('F'+rs,11,'s','小計');cell('G'+rs,12,'f','SUM(G'+first+':G'+last+')',am.sub);
   cell('F'+rt,11,'s','消費税(10%)');cell('G'+rt,12,'f','ROUNDDOWN(G'+rs+'*0.1,0)',am.tax);
   cell('F'+rg,11,'s','合計金額');cell('G'+rg,12,'f','G'+rs+'+G'+rt,am.total);
-  cell('B13',17,'s','合計金額');cell('C13',13,'f','G'+rg,am.total);cell('D13',3,'s','(消費税含む)');ht(13,26);
+  cell('B'+rTot,17,'s','合計金額');cell('C'+rTot,13,'f','G'+rg,am.total);cell('D'+rTot,3,'s','(消費税含む)');ht(rTot,26);
   /* 備考（送り先も） */
   var note=gpPONoteText(st),rb=rg+2,k=Math.max(5,gpTextRows(note,84)),re=rb+k;
   cell('B'+rb,4,'s','備考');
@@ -18139,7 +18174,7 @@ function gpPOHTML(st){
   var s='<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>'+e(gpPOFileBase(st))+'</title><style>'+css+'</style></head><body><div class="pg">';
   s+='<div class="top">'+e(ykPOJpDate(st.date))+'<br>注文番号　'+e(st.no||'')+'</div><div class="ttl">'+e(gpPOTitle(st))+'</div>';
   s+='<div class="row"><div><div class="to">'+e(st.to||v.name||'')+'　御中</div><table class="f">';
-  [['■件名',st.subject],['■'+gpPODueLabel(st),st.due],['■納入場所',st.place],['■支払条件',st.pay]].forEach(function(x){s+='<tr><td>'+e(x[0])+'</td><td class="v">'+br(x[1]||'')+'</td></tr>';});
+  gpPOFields(st).map(function(f){return ['■'+f[1],st[f[0]]];}).forEach(function(x){s+='<tr><td>'+e(x[0])+'</td><td class="v">'+br(x[1]||'')+'</td></tr>';});
   s+='</table></div><div class="lec"><div class="nm">'+e(GP_LEC.name)+'</div><div>'+e(GP_LEC.addr)+'</div><div>'+e(GP_LEC.tel)+'</div><div>担当：'+e(st.staff)+'</div></div></div>';
   s+='<div class="tot">合計金額<b>&yen;'+n(am.total)+'</b>&nbsp;<span style="font-size:11px;font-weight:400">(消費税含む)</span></div>';
   s+='<table class="d"><thead><tr><th style="width:56%">品　　名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr></thead><tbody>';
@@ -18167,7 +18202,8 @@ function gpPONextNo(vid,except,list){
   Object.keys(list||GP_PO_LIST||{}).forEach(function(k){if(k===except||k.indexOf(pre)!==0)return;var t=k.slice(pre.length);if(!/^\d+$/.test(t))return;if(+t>mx)mx=+t;});
   return pre+String(mx+1).padStart(3,'0');
 }
-var GP_ST_KEYS=['vendor','no','uid','date','to','office','subject','due','place','pay','staff','lines','note','ship','memo','loadPlace','loadDetail','loadDate','contact'];
+var GP_ST_KEYS=['vendor','no','uid','date','to','office','subject','due','time','place','pay','staff','lines','note','ship','memo','loadPlace','loadDetail','loadDate','contact',
+  'kind','theirNo','workDate','site','amount','taxIn','file'];/* kind='pdf' 以降は人工のPDF取込 */
 function gpPOStPart(st){var o={};GP_ST_KEYS.forEach(function(k){if(st[k]!==undefined)o[k]=st[k];});return JSON.parse(JSON.stringify(o));}
 function gpPOSame(a,b){
   function k(x){var o=gpPOStPart(x||{});delete o.uid;delete o.no;o.lines=gpPOLines(o).map(function(l){return [String(l.name||''),String(l.qty==null?'':l.qty),String(l.unit||''),String(l.price==null?'':l.price)];});
@@ -18208,9 +18244,9 @@ function gpPOListCloud(by,mine){
 function gpPOListAdd(st,userName){
   var no=st.no||gpPONextNo(st.vendor),old=GP_PO_LIST[no];
   if(old&&old.uid&&st.uid&&old.uid!==st.uid)no=gpPONextNo(st.vendor);
-  var am=gpPOAmounts(st),v=gpVendor(st.vendor)||{},now=new Date().toISOString();
+  var pdf=st.kind==='pdf',am=pdf?{total:gpPONum(st.amount)||0}:gpPOAmounts(st),v=gpVendor(st.vendor)||{},now=new Date().toISOString();
   var rec={no:no,uid:st.uid||'',vendor:st.vendor,cat:v.cat||'other',at:now,by:String(userName||''),
-    created:(old&&old.uid===st.uid&&old.created)||now,st:gpPOStPart(Object.assign({},st,{no:no})),n:gpPOLines(st).length,total:am.total,del:false};
+    created:(old&&old.uid===st.uid&&old.created)||now,st:gpPOStPart(Object.assign({},st,{no:no})),n:pdf?0:gpPOLines(st).length,total:am.total,kind:pdf?'pdf':'',del:false};
   GP_PO_LIST=Object.assign({},GP_PO_LIST);GP_PO_LIST[no]=rec;saveGpPOList();
   gpPOListCloud(userName,no);
   return rec;
@@ -18237,7 +18273,8 @@ function POVendorPanel(p){
       [['key','鍵'],['charter','チャーター'],['other','その他']].map(function(c){
         return h(React.Fragment,{key:c[0]},h('span',{style:sep},c[1]),grp(c[0]).map(function(v){return btn(v.id,v.short);}));
       }),
-      h('span',{style:sep},'人工'),h('span',{style:{fontSize:10,color:'var(--g400)'}},'（先方のPDFを「📋 発注書一覧」の人工で取り込みます）')),
+      h('span',{style:sep},'人工'),grp('ninku').filter(function(v){return !v.imp;}).map(function(v){return btn(v.id,v.short);}),
+      h('span',{style:{fontSize:10,color:'var(--g400)'}},'（ほかの人工は先方のPDFを「📋 発注書一覧」→「人工」で取り込みます）')),
     vid==='YK'?h(YkPOPanel,{key:'YK',toast:p.toast,userName:p.userName}):h(GpPOPanel,{key:vid,vendor:vid,toast:p.toast,userName:p.userName})
   );
 }
@@ -18333,11 +18370,9 @@ function GpPOPanel(p){
         h('b',null,'連絡先'),'（画面だけ）　〒'+(off.zip||'')+' '+(off.addr||''),h('br'),'TEL '+(off.tel||'')+(off.fax?'　FAX '+off.fax:'')+'　担当 '+(off.person||'')+(off.mobile?'（携帯 '+off.mobile+'）':''))),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:8,marginBottom:8}},
       h('label',null,h('span',{style:lab},'発注日'),h('input',{type:'date',value:v.date,'data-gpfield':'date',style:inp,onChange:function(ev){set('date',ev.target.value);}})),
-      fld('subject','件名',ven.charter?'例: 花咲徳栄高等学校様':'例: 11月納品分',2),
       fld('staff','当社担当'),
-      fld('due',gpPODueLabel(v),ven.charter?'例: 2026年3月31日(火)AM9:00':'例: 最短'),
-      fld('place','納入場所',ven.charter?'例: 埼玉県加須市花崎519':'例: 弊社(東京)'),
-      fld('pay','支払条件',null,2)),
+      gpPOFields(v).map(function(f){var ph=(ven.ph||{})[f[0]]||(f[0]==='subject'?(ven.charter?'例: 花咲徳栄高等学校様':'例: 11月納品分'):f[0]==='due'?(ven.charter?'例: 2026年3月31日(火)AM9:00':'例: 最短'):f[0]==='place'?(ven.charter?'例: 埼玉県加須市花崎519':'例: 弊社(東京)'):'');
+        return h(React.Fragment,{key:f[0]},fld(f[0],f[1],ph,f[0]==='subject'||f[0]==='pay'||f[0]==='place'&&ven.work?2:0));})),
     h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'6px 10px',background:'var(--g50)',border:'1px solid var(--g200)',borderRadius:6,marginBottom:6}},
       h('span',{style:{fontSize:12}},'明細 ',h('b',null,ls.length),'行　小計 ',h('b',null,'¥'+fm(Math.round(am.sub))),'　消費税 ',h('b',null,'¥'+fm(am.tax)),'　合計（税込） ',h('b',{'data-gptotal':'1',style:{fontSize:14,color:'var(--nv)'}},'¥'+fm(Math.round(am.total)))),
       h('span',{style:{flex:1}}),
@@ -18403,13 +18438,13 @@ function POListTabs(p){
           c.l,n?h('span',{style:{fontSize:10,fontWeight:600,marginLeft:4,color:'var(--g500)'}},'('+n+')'):null);
       })),
     tab[0]==='yk'?h(YkPOListPanel,{toast:p.toast,userName:p.userName,isReadOnly:p.isReadOnly,onOpen:function(){gpPOSetVendor('YK');p.onOpen&&p.onOpen();}})
-    :tab[0]==='ninku'?h('div',{style:{padding:24,textAlign:'center',color:'var(--g500)',fontSize:12},'data-ninku':'1'},'人工の発注書は、先方のPDFを取り込んでこの一覧に追加する形にします（準備中。人工の業者のデータが届いてから作ります）。')
     :h(GpPOListPanel,{key:tab[0],cat:tab[0],toast:p.toast,userName:p.userName,isReadOnly:p.isReadOnly,onOpen:p.onOpen})
   );
 }
 function GpPOListPanel(p){
-  var q=us(''),vf=us('all'),bump=us(0);
+  var q=us(''),vf=us('all'),bump=us(0),imp=us(null),pwOpen=us(false);
   ue(function(){var t=setInterval(function(){bump[1](function(x){return x+1;});},5000);return function(){clearInterval(t);};},[]);
+  var nk=p.cat==='ninku';
   var vens=GP_VENDORS.filter(function(v){return v.cat===p.cat;});
   var kw=q[0].normalize('NFKC').trim().toLowerCase(),drafts=gpPOLoadDrafts();
   var list=Object.keys(GP_PO_LIST||{}).map(function(k){return GP_PO_LIST[k];}).filter(function(r){
@@ -18417,7 +18452,7 @@ function GpPOListPanel(p){
     if(vf[0]!=='all'&&r.vendor!==vf[0])return false;
     if(!kw)return true;
     var s=r.st||{};
-    return [r.no,(gpVendor(r.vendor)||{}).short,s.to,s.subject,s.place,s.due,s.staff,s.memo,r.by,gpPOLines(s).map(function(l){return l.name;}).join(' ')].join(' ').normalize('NFKC').toLowerCase().indexOf(kw)>=0;
+    return [r.no,(gpVendor(r.vendor)||{}).short,s.to,s.subject,s.place,s.due,s.staff,s.memo,r.by,s.theirNo,s.site,s.workDate,s.file,gpPOLines(s).map(function(l){return l.name;}).join(' ')].join(' ').normalize('NFKC').toLowerCase().indexOf(kw)>=0;
   }).sort(function(a,b){return String(b.created||b.at).localeCompare(String(a.created||a.at))||String(b.no).localeCompare(String(a.no));});
   function stOf(r){return Object.assign({},r.st,{no:r.no,vendor:r.vendor});}
   /* 発注書タブに開く（edit=true は同じ番号で直す／false は複製＝次の番号・発注日は今日） */
@@ -18439,38 +18474,328 @@ function GpPOListPanel(p){
   function xlsx(r){try{ykPODownload(gpPOBuildXlsx(stOf(r)),gpPOFileBase(stOf(r))+'.xlsx');}catch(e){p.toast&&p.toast('Excelを作れませんでした（'+(e&&e.message||e)+'）');}}
   function del(r){
     if(p.isReadOnly){p.toast&&p.toast('読み取り専用モード中は削除できません');return;}
-    if(!confirm('発注書 '+r.no+'「'+((r.st||{}).subject||'')+'」を一覧から削除しますか？'))return;
+    if(!confirm('発注書 '+r.no+'「'+((r.st||{}).subject||(r.st||{}).site||'')+'」を一覧から削除しますか？'))return;
     gpPOListDel(r.no,p.userName);bump[1](bump[0]+1);p.toast&&p.toast('発注書一覧から削除しました');
   }
+  function startImport(){
+    if(p.isReadOnly){p.toast&&p.toast('読み取り専用モード中は取り込めません');return;}
+    imp[1]({vendor:vf[0]!=='all'&&(gpVendor(vf[0])||{}).imp?vf[0]:''});
+  }
   var th={position:'sticky',top:0,zIndex:1,fontSize:10};
+  var cols=nk?['発注書番号','業者','先方No.','発注日','作業日','件名・現場','金額','担当','PDFファイル・品名','社内備考','最終保存','']
+    :['発注書番号','業者','発注日','件名','品名','合計（税込）','担当','社内備考','最終保存',''];
+  function row(r){
+    var s=r.st||{},ven=gpVendor(r.vendor)||{},d=drafts[r.vendor],isOpen=r.kind!=='pdf'&&d&&d.no===r.no,isPdf=r.kind==='pdf';
+    var names=gpPOLines(s).map(function(l){return String(l.name||'').split('\n')[0];}).filter(Boolean),nameTxt=names.slice(0,3).join('、')+(names.length>3?' ほか'+(names.length-3)+'行':'');
+    var cells=[h('td',{key:'no',style:{whiteSpace:'nowrap',fontFamily:'monospace',fontWeight:700}},r.no,isOpen?h('div',{style:{fontSize:9,color:'var(--nv)',fontFamily:'inherit'}},'発注書タブで編集中'):null,
+        nk?h('div',{style:{fontSize:9,fontFamily:'inherit',color:isPdf?'#7C3AED':'var(--g500)'}},isPdf?'PDF取込':'システムで作成'):null),
+      h('td',{key:'v',style:{whiteSpace:'nowrap'}},ven.short||r.vendor)];
+    if(nk)cells.push(h('td',{key:'tn',style:{whiteSpace:'nowrap',fontFamily:'monospace'}},s.theirNo||''));
+    cells.push(h('td',{key:'d',style:{whiteSpace:'nowrap'}},String(s.date||'').replace(/-/g,'/')));
+    if(nk)cells.push(h('td',{key:'wd',style:{fontSize:10,maxWidth:140}},isPdf?(s.workDate||''):(s.due||'')));
+    cells.push(h('td',{key:'sj',style:{fontWeight:700,fontSize:12}},(nk?[s.subject,isPdf?s.site:s.place].filter(Boolean).join(' ／ '):s.subject)||h('span',{style:{color:'var(--g400)'}},'（件名なし）')));
+    if(!nk)cells.push(h('td',{key:'nm',style:{fontSize:10,maxWidth:260}},nameTxt));
+    cells.push(h('td',{key:'t',style:{textAlign:'right',fontWeight:700,fontSize:12,whiteSpace:'nowrap'}},'¥'+fm(Math.round(r.total||0)),isPdf&&s.taxIn?h('div',{style:{fontSize:9,fontWeight:400,color:'var(--g500)'}},'（'+s.taxIn+'）'):null));
+    cells.push(h('td',{key:'st'},s.staff||''));
+    if(nk)cells.push(h('td',{key:'f',style:{fontSize:10,maxWidth:240,wordBreak:'break-all'}},isPdf?(s.file||''):nameTxt));
+    cells.push(h('td',{key:'m',style:{fontSize:10,maxWidth:200,whiteSpace:'pre-wrap',wordBreak:'break-all',color:'#7C2D12'}},s.memo||''));
+    cells.push(h('td',{key:'at',style:{fontSize:9,color:'var(--g500)',whiteSpace:'nowrap'}},ykPOAtLabel(r.at),h('br'),String(r.by||'').split('/').pop()));
+    cells.push(h('td',{key:'b',style:{whiteSpace:'nowrap'}},
+      isPdf?h('button',{className:'btn btn-xs btn-nv','data-gplistedit':r.no,onClick:function(){if(p.isReadOnly){p.toast&&p.toast('読み取り専用モード中は直せません');return;}imp[1]({rec:r});}},'✏ 編集')
+        :h(React.Fragment,null,
+          h('button',{className:'btn btn-xs btn-nv','data-gplistedit':r.no,onClick:function(){open(r,true);}},'✏ 編集'),' ',
+          h('button',{className:'btn btn-xs btn-ol','data-gplistcopy':r.no,title:'この内容で新しい番号の発注書を作ります',onClick:function(){open(r,false);}},'📄 複製'),' ',
+          h('button',{className:'btn btn-xs btn-ol',onClick:function(){pdf(r);}},'🖨 PDF'),' ',
+          h('button',{className:'btn btn-xs btn-ol',onClick:function(){xlsx(r);}},'📊 Excel')),' ',
+      h('button',{className:'btn btn-xs btn-ol',title:'一覧から削除',style:{padding:'0 5px'},'data-gplistdel':r.no,onClick:function(){del(r);}},'🗑')));
+    return h('tr',{key:r.no,'data-gplistrow':r.no,style:isOpen?{background:'#EFF6FF'}:null},cells);
+  }
   return h('div',{style:{padding:'10px 4px'},'data-gplist':p.cat},
+    nk?h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',padding:'8px 12px',background:'#F5F3FF',border:'1px solid #DDD6FE',borderRadius:8,fontSize:11,color:'#4C1D95',marginBottom:8,lineHeight:1.6}},
+      h('button',{className:'btn btn-sm btn-nv','data-nkimport':'1',onClick:startImport},'📄 PDFを取り込む'),
+      h('button',{className:'btn btn-xs btn-ol','data-nkpw':'1',onClick:function(){pwOpen[1](true);}},'🔑 PDFのパスワード'),
+      h('span',null,'先方の見積書を手書きで直した発注書（PDF）を取り込んで、この一覧に追加します。PDFの原本は会社のサーバーに保存してください（システムには読み取った内容とファイル名だけ残ります）。EMUservice は発注書タブで作ります。')):null,
     h('div',{style:{display:'flex',gap:6,alignItems:'center',marginBottom:6,flexWrap:'wrap'}},
       vens.length>1?[{id:'all',short:'すべて'}].concat(vens).map(function(v){return h('button',{key:v.id,'data-gplistven':v.id,className:'btn btn-xs '+(vf[0]===v.id?'btn-nv':'btn-ol'),onClick:function(){vf[1](v.id);}},v.short);}):null,
-      h('input',{type:'text',value:q[0],placeholder:'発注書番号・件名・品名・担当・社内備考で探す','data-gplistq':'1',style:{fontSize:12,padding:'4px 8px',border:'1px solid var(--g300)',borderRadius:4,width:320},onChange:function(e){q[1](e.target.value);}}),
+      h('input',{type:'text',value:q[0],placeholder:nk?'発注書番号・先方No.・現場・担当・ファイル名で探す':'発注書番号・件名・品名・担当・社内備考で探す','data-gplistq':'1',style:{fontSize:12,padding:'4px 8px',border:'1px solid var(--g300)',borderRadius:4,width:320},onChange:function(e){q[1](e.target.value);}}),
       h('span',{style:{fontSize:11,color:'var(--g500)'}},list.length+'件'),
-      h('span',{style:{fontSize:10,color:'var(--g500)'}},'（発注書タブで PDF・Excel を出すと記録されます。全端末で共有）')),
+      h('span',{style:{fontSize:10,color:'var(--g500)'}},nk?'（全端末で共有）':'（発注書タブで PDF・Excel を出すと記録されます。全端末で共有）')),
     h('div',{className:'scy',style:{maxHeight:'65vh',overflow:'auto'}},
       h('table',{className:'tbl',style:{fontSize:11,width:'100%'}},
-        h('thead',null,h('tr',null,['発注書番号','業者','発注日','件名','品名','合計（税込）','担当','社内備考','最終保存',''].map(function(t,i){return h('th',{key:i,style:th},t);}))),
-        h('tbody',null,list.length?list.map(function(r){
-          var s=r.st||{},ven=gpVendor(r.vendor)||{},d=drafts[r.vendor],isOpen=d&&d.no===r.no,names=gpPOLines(s).map(function(l){return String(l.name||'').split('\n')[0];}).filter(Boolean);
-          return h('tr',{key:r.no,'data-gplistrow':r.no,style:isOpen?{background:'#EFF6FF'}:null},
-            h('td',{style:{whiteSpace:'nowrap',fontFamily:'monospace',fontWeight:700}},r.no,isOpen?h('div',{style:{fontSize:9,color:'var(--nv)',fontFamily:'inherit'}},'発注書タブで編集中'):null),
-            h('td',{style:{whiteSpace:'nowrap'}},ven.short||r.vendor),
-            h('td',{style:{whiteSpace:'nowrap'}},String(s.date||'').replace(/-/g,'/')),
-            h('td',{style:{fontWeight:700,fontSize:12}},s.subject||h('span',{style:{color:'var(--g400)'}},'（件名なし）')),
-            h('td',{style:{fontSize:10,maxWidth:260}},names.slice(0,3).join('、')+(names.length>3?' ほか'+(names.length-3)+'行':'')),
-            h('td',{style:{textAlign:'right',fontWeight:700,fontSize:12,whiteSpace:'nowrap'}},'¥'+fm(Math.round(r.total||0))),
-            h('td',null,s.staff||''),
-            h('td',{style:{fontSize:10,maxWidth:200,whiteSpace:'pre-wrap',wordBreak:'break-all',color:'#7C2D12'}},s.memo||''),
-            h('td',{style:{fontSize:9,color:'var(--g500)',whiteSpace:'nowrap'}},ykPOAtLabel(r.at),h('br'),String(r.by||'').split('/').pop()),
-            h('td',{style:{whiteSpace:'nowrap'}},
-              h('button',{className:'btn btn-xs btn-nv','data-gplistedit':r.no,onClick:function(){open(r,true);}},'✏ 編集'),' ',
-              h('button',{className:'btn btn-xs btn-ol','data-gplistcopy':r.no,title:'この内容で新しい番号の発注書を作ります',onClick:function(){open(r,false);}},'📄 複製'),' ',
-              h('button',{className:'btn btn-xs btn-ol',onClick:function(){pdf(r);}},'🖨 PDF'),' ',
-              h('button',{className:'btn btn-xs btn-ol',onClick:function(){xlsx(r);}},'📊 Excel'),' ',
-              h('button',{className:'btn btn-xs btn-ol',title:'一覧から削除',style:{padding:'0 5px'},'data-gplistdel':r.no,onClick:function(){del(r);}},'🗑')));
-        }):h('tr',null,h('td',{colSpan:10,style:{textAlign:'center',color:'var(--g500)',padding:16}},kw?'見つかりません':'まだありません（発注書タブで PDF・Excel を出すと記録されます）'))))));
+        h('thead',null,h('tr',null,cols.map(function(t,i){return h('th',{key:i,style:th},t);}))),
+        h('tbody',null,list.length?list.map(row):h('tr',null,h('td',{colSpan:cols.length,style:{textAlign:'center',color:'var(--g500)',padding:16}},
+          kw?'見つかりません':(nk?'まだありません（「📄 PDFを取り込む」で追加します）':'まだありません（発注書タブで PDF・Excel を出すと記録されます）')))))),
+    imp[0]?h(NinkuImportModal,{init:imp[0],toast:p.toast,userName:p.userName,onClose:function(){imp[1](null);bump[1](bump[0]+1);}}):null,
+    pwOpen[0]?h(NinkuPwModal,{toast:p.toast,userName:p.userName,isReadOnly:p.isReadOnly,onClose:function(){pwOpen[1](false);}}):null
+  );
+}
+/* ===== 人工: 先方のPDF（見積書を手書きで直したもの）を取り込む（2026-11-05 ユーザー回答）=====
+   ・PDF は全部スキャン画像・会社ごとに様式が違う・合計金額を手書きで直していることが多い。
+   　→ ページ全体を文字認識（Tesseract.js・日本語）し、先方No.・日付・金額・現場の「候補」を出す。クリックで欄に入れ、目で見て確かめる。
+   　　ファイル名（例 発注書【№93527(静岡県沼津市)】_20260630.pdf）からも候補を取る。
+   ・PDF のパスワードは業者ごとに画面で登録（クラウド gpPdfPw。リポジトリが公開なのでコードには書かない）。登録済みなら自動で開く。
+   ・PDF.js と Tesseract.js は使うときだけ CDN から読み込む。PDF そのものは保存しない（ファイル名だけ）。 */
+var GP_PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+var GP_PDFJS_WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+var GP_TESS='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+var _gpScripts={};
+function gpLoadScript(url){
+  if(_gpScripts[url])return _gpScripts[url];
+  _gpScripts[url]=new Promise(function(res,rej){
+    var s=document.createElement('script');s.src=url;s.onload=function(){res();};s.onerror=function(){delete _gpScripts[url];rej(new Error('読み込みに失敗しました: '+url));};
+    document.head.appendChild(s);
+  });
+  return _gpScripts[url];
+}
+function gpEnsurePdfJs(){
+  if(typeof pdfjsLib!=='undefined')return Promise.resolve();
+  return gpLoadScript(GP_PDFJS).then(function(){pdfjsLib.GlobalWorkerOptions.workerSrc=GP_PDFJS_WORKER;});
+}
+var _gpOcrWorker=null;
+function gpOcrWorker(){
+  if(_gpOcrWorker)return _gpOcrWorker;
+  _gpOcrWorker=(typeof Tesseract!=='undefined'?Promise.resolve():gpLoadScript(GP_TESS)).then(function(){return Tesseract.createWorker('jpn');});
+  _gpOcrWorker.catch(function(){_gpOcrWorker=null;});
+  return _gpOcrWorker;
+}
+/* PDF のパスワード（業者→{pw,at,by}）。localStorage＋クラウド（gpPdfPw）で全端末共有 */
+function gpPwMerge(a,b){var o=Object.assign({},a||{});Object.keys(b||{}).forEach(function(k){var x=b[k];if(!x||typeof x!=='object')return;if(!o[k]||String(x.at||'')>String(o[k].at||''))o[k]=x;});return o;}
+function gpPwOf(vid){var x=GP_PDF_PW[vid];return x&&x.pw?String(x.pw):'';}
+function gpPwSet(vid,pw,by){GP_PDF_PW=Object.assign({},GP_PDF_PW);GP_PDF_PW[vid]={pw:String(pw||''),at:new Date().toISOString(),by:String(by||'')};saveGpPdfPw();gpPwCloud(by);}
+function gpPwCloud(by){
+  if(typeof TRAINING!=='undefined'&&TRAINING)return;
+  if(typeof supaClient==='undefined'||!supaClient||!CLOUD_READY)return;
+  try{
+    supaClient.from(CLOUD_TABLE).select('doc').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
+      var cur=res&&res.data&&res.data.doc;if(res.error||!cur)return;
+      GP_PDF_PW=gpPwMerge(cur.gpPdfPw,GP_PDF_PW);saveGpPdfPw();
+      var nd=Object.assign({},cur,{gpPdfPw:GP_PDF_PW,_ts:Date.now()});
+      _cloudSelfWrite=true;
+      supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:nd,updated_at:new Date().toISOString(),updated_by:by||''}).then(function(r2){
+        if(r2&&r2.error)console.warn('[Cloud] PDFパスワードの保存失敗',r2.error.message);
+        setTimeout(function(){_cloudSelfWrite=false;},800);
+      },function(){_cloudSelfWrite=false;});
+    },function(){});
+  }catch(e){console.warn('[Cloud] PDFパスワード',e);}
+}
+/* PDF を開く。パスワードは 渡したもの → その業者 → ほかの業者 の順に試す。戻り値 {pdf,pw}。開けなければ err.needPw */
+function gpOpenPdf(buf,vid,typed){
+  var tries=[];
+  function add(x){if(tries.indexOf(x)<0)tries.push(x);}
+  if(typed)add(String(typed));add('');if(vid&&gpPwOf(vid))add(gpPwOf(vid));
+  Object.keys(GP_PDF_PW).forEach(function(k){if(gpPwOf(k))add(gpPwOf(k));});
+  return gpEnsurePdfJs().then(function(){
+    var i=0;
+    function next(){
+      if(i>=tries.length){var e=new Error(typed?'パスワードが違います':'パスワードが必要です');e.needPw=true;return Promise.reject(e);}
+      var pw=tries[i++];
+      return pdfjsLib.getDocument({data:new Uint8Array(buf.slice(0)),password:pw}).promise.then(function(pdf){return {pdf:pdf,pw:pw};},function(err){
+        if(err&&(err.name==='PasswordException'||/password/i.test(String(err.message))))return next();
+        throw err;
+      });
+    }
+    return next();
+  });
+}
+/* ページを画像にする（文字認識にも使う。200dpi 相当） */
+function gpRenderPage(pdf,n){
+  return pdf.getPage(n).then(function(pg){
+    var vp=pg.getViewport({scale:2.8}),c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;
+    var ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+    return pg.render({canvasContext:ctx,viewport:vp}).promise.then(function(){return c;});
+  });
+}
+/* ===== 文字認識の結果とファイル名から候補を出す（テストしやすいように画面と分ける） ===== */
+function gpNkNorm(t){
+  return String(t||'').normalize('NFKC')
+    .replace(/([^\x00-\x7F])[ \t]+(?=[^\x00-\x7F])/g,'$1')
+    .replace(/(\d)[ \t]+(?=[年月日])/g,'$1').replace(/([年月日])[ \t]+(?=\d)/g,'$1')
+    .replace(/(\d)[ \t]*([\/:])[ \t]*(?=\d)/g,'$1$2');
+}
+function gpNkYmd(y,m,d){y=+y;m=+m;d=+d;if(y<100)y+=2000;if(!(y>=2015&&y<=2040&&m>=1&&m<=12&&d>=1&&d<=31))return '';return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
+function gpNkNum(s){var t=String(s).replace(/[,.](?=\d{3}(?!\d))/g,'').replace(/[^\d]/g,'');return t?+t:null;}
+function gpNkCands(text,fname){
+  var out={theirNo:[],date:[],workDate:[],site:[],subject:[],amount:[],vendor:[]},auto={};/* auto＝確かな所（ファイル名・「合計」の行・「作業日」の行）から取れた値だけ。欄に自動で入れる */
+  function push(k,v){v=String(v==null?'':v).trim();if(v&&out[k].indexOf(v)<0)out[k].push(v);}
+  var fn=String(fname||'').normalize('NFKC').replace(/\.pdf$/i,'');
+  var tx=gpNkNorm(text),lines=tx.split(/\r?\n/);
+  /* 業者（ファイル名・本文に会社名） */
+  GP_VENDORS.forEach(function(v){if(!v.imp&&!v.work)return;var al=(v.alias||[v.short]).map(function(a){return a.normalize('NFKC').toLowerCase();});
+    var f=fn.toLowerCase(),b=tx.toLowerCase().replace(/\s+/g,'');if(al.some(function(a){return f.indexOf(a)>=0;}))out.vendor.unshift(v.id);else if(al.some(function(a){return b.indexOf(a.replace(/\s+/g,''))>=0;}))push('vendor',v.id);});
+  /* ファイル名: 【№93527(静岡県沼津市)】_20260630 ／【No.91892-R1(京都市左京区)】／【No.5】 */
+  var m=fn.match(/(?:№|No\.?|NO\.?)\s*([0-9][0-9A-Za-z\-]*)/);if(m){push('theirNo',m[1].replace(/-$/,''));auto.theirNo=m[1].replace(/-$/,'');}
+  var ms=fn.replace(/[(（](株|有)[)）]/g,'').match(/[（(]([^()（）]+)[)）]/);if(ms){push('site',ms[1]);auto.site=ms[1];}
+  var md=fn.match(/(?:^|[_\s】)])(20\d{2})(\d{2})(\d{2})(?!\d)/);if(md){var y0=gpNkYmd(md[1],md[2],md[3]);if(y0){push('date',y0);auto.date=y0;}}
+  var mt=fn.match(/【([^】]+)】/);if(mt&&!/^(№|No)/i.test(mt[1])){var st0=mt[1].replace(/^[0-9\-]+_/,'');push('site',st0);if(!auto.site)auto.site=st0;}
+  /* 本文 */
+  lines.forEach(function(ln){
+    var l=ln.trim();if(!l)return;
+    var mm=l.match(/(?:プロジェクトNO|ﾌﾟﾛｼﾞｪｸﾄNO|管理NO|見積NO|注文番号|NO)\s*[.:]?\s*([0-9][0-9\-]{3,})/i);if(mm){push('theirNo',mm[1]);if(!auto.theirNo)auto.theirNo=mm[1];}
+    var re=/(20\d{2}|\d{2})\s*[年\/.-]\s*(\d{1,2})\s*[月\/.-]\s*(\d{1,2})\s*日?/g,x;
+    while((x=re.exec(l))){var y=gpNkYmd(x[1],x[2],x[3]);if(y){push('date',y);if(/作業|工事|期間|日時|案件/.test(l)){out.workDate.unshift(y);if(!auto.workDate)auto.workDate=y;}else push('workDate',y);}}
+    var rr=/令和\s*(\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/g;
+    while((x=rr.exec(l))){var y2=gpNkYmd(2018+(+x[1]),x[2],x[3]);if(y2){push('date',y2);push('workDate',y2);if(/作業|工事|期間|日時/.test(l)&&!auto.workDate)auto.workDate=y2;}}
+    var sm=l.match(/(?:荷主名|工事場所|作業場所|案件場所|現場|工事件名|案件名|件名|subject|ﾌﾟﾛｼﾞｪｸﾄ|プロジェクト)\s*[:|]?\s*(.+)$/i);
+    if(sm){var v2=sm[1].replace(/[|]/g,' ').replace(/\s{2,}/g,' ').trim();if(v2.length>=2&&!/^[\d\s,.]+$/.test(v2))push(/場所|荷主|現場/.test(l)?'site':'subject',v2.slice(0,40));}
+    var isTot=/合計|総額|見積金額|御見積金額|合 計/.test(l)&&!/小計/.test(l);
+    var nr=/[¥\\]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{4,8})(?![\d,.]*%)/g,y3;
+    if(isTot||/[¥\\]/.test(l)||/小計|金額/.test(l)){
+      var hit=[];while((y3=nr.exec(l))){var n=gpNkNum(y3[1]);if(n!=null&&n>=1000&&n<100000000)hit.push(n);}
+      hit.forEach(function(n){if(isTot){out.amount.unshift(String(n));if(!auto.amount&&n>=10000)auto.amount=String(n);}else push('amount',String(n));});
+    }
+  });
+  Object.keys(out).forEach(function(k){var seen={};out[k]=out[k].filter(function(v){if(seen[v])return false;seen[v]=1;return true;}).slice(0,k==='amount'?8:6);});
+  if(out.vendor[0])auto.vendor=out.vendor[0];
+  out.auto=auto;
+  return out;
+}
+/* 取込の初めの内容 */
+function gpNkBlank(vid,userName){return {vendor:vid||'',kind:'pdf',no:'',uid:'',theirNo:'',date:ykPOYmd(),workDate:'',subject:'',site:'',amount:'',taxIn:'税込',staff:gpStaffName(userName),file:'',memo:''};}
+function NinkuImportModal(p){
+  var init=p.init||{},rec=init.rec||null;
+  var st=us(rec?Object.assign(gpNkBlank('',p.userName),gpPOStPart(Object.assign({},rec.st,{no:rec.no,vendor:rec.vendor}))):gpNkBlank(init.vendor,p.userName));
+  var v=st[0],cur=ur(null);cur.current=v;
+  var pages=us([]),pg=us(0),zoom=us(1),msg=us(''),busy=us(false),cand=us(null),needPw=us(false),pwIn=us(''),pwSave=us(true),bufR=ur(null),usedPw=ur(''),typedPw=ur('');
+  function set(k,val){st[1](function(o){var x=Object.assign({},o);x[k]=val;return x;});}
+  var imps=GP_VENDORS.filter(function(x){return x.imp;});
+  function openFile(f){
+    if(!f)return;
+    set('file',f.name);msg[1]('PDFを開いています…');busy[1](true);needPw[1](false);
+    var fr=new FileReader();
+    fr.onload=function(){bufR.current=fr.result;openBuf('');};
+    fr.onerror=function(){busy[1](false);msg[1]('ファイルを読めませんでした');};
+    fr.readAsArrayBuffer(f);
+    /* ファイル名だけでも候補を出す */
+    var c0=gpNkCands('',f.name);cand[1](c0);
+    st[1](function(o){var x=Object.assign({},o,{file:f.name}),a=c0.auto;if(!x.vendor&&a.vendor)x.vendor=a.vendor;if(!rec){if(!x.theirNo&&a.theirNo)x.theirNo=a.theirNo;if(a.date)x.date=a.date;if(!x.site&&a.site)x.site=a.site;}return x;});
+  }
+  function openBuf(typed){
+    var vid=cur.current.vendor||(gpNkCands('',cur.current.file).vendor[0])||'';
+    gpOpenPdf(bufR.current,vid,typed).then(function(o){
+      usedPw.current=o.pw;needPw[1](false);if(typed)typedPw.current=typed;
+      if(typed&&pwSave[0]&&vid&&gpPwOf(vid)!==typed){gpPwSet(vid,typed,p.userName);p.toast&&p.toast((gpVendor(vid)||{}).short+' のPDFパスワードを登録しました');}
+      var n=Math.min(o.pdf.numPages,4),cs=[],chain=Promise.resolve();
+      for(var i=1;i<=n;i++)(function(k){chain=chain.then(function(){msg[1]('ページを表示しています…（'+k+'/'+n+'）');return gpRenderPage(o.pdf,k).then(function(c){cs.push(c);});});})(i);
+      return chain.then(function(){
+        pages[1](cs.map(function(c){return c.toDataURL('image/jpeg',0.85);}));pg[1](0);
+        msg[1]('文字を読み取っています…（初めての時は辞書の読み込みに少し時間がかかります）');
+        return gpOcrWorker().then(function(w){return w.recognize(cs[0]);}).then(function(r){
+          var c=gpNkCands(r&&r.data&&r.data.text,cur.current.file);cand[1](c);
+          st[1](function(o2){var x=Object.assign({},o2);
+            /* 確かな所から取れた値だけ自動で入れる（ほかは黄色の候補から選ぶ） */
+            ['vendor','theirNo','site','workDate','amount'].forEach(function(k){if(!x[k]&&c.auto[k])x[k]=c.auto[k];});
+            return x;});
+          msg[1]('読み取りました。黄色の候補はクリックで欄に入ります。★手書きで直した金額・日付は読めないので、画像を見て必ず確かめてください。');
+        },function(e){console.warn(e);msg[1]('文字の読み取りができませんでした（'+(e&&e.message||e)+'）。画像を見て入力してください。');});
+      });
+    }).catch(function(e){
+      if(e&&e.needPw){needPw[1](true);msg[1](typed?'パスワードが違います。もう一度入れてください。':'このPDFはパスワードが必要です。パスワードを入れてください。');}
+      else{console.error(e);msg[1]('PDFを開けませんでした（'+(e&&e.message||e)+'）');}
+    }).then(function(){busy[1](false);});
+  }
+  function save(){
+    if(!v.vendor){alert('業者を選んでください');return;}
+    if(gpPONum(v.amount)==null&&!confirm('金額が入っていません。このまま登録しますか？'))return;
+    if(!rec&&v.theirNo){
+      var dup=Object.keys(GP_PO_LIST).map(function(k){return GP_PO_LIST[k];}).filter(function(r){return r&&!r.del&&r.vendor===v.vendor&&r.st&&String(r.st.theirNo||'')===String(v.theirNo);})[0];
+      if(dup&&!confirm('同じ業者・先方No.（'+v.theirNo+'）の発注書が一覧にあります（'+dup.no+'）。\n\n別の発注書として登録しますか？'))return;
+    }
+    var x=Object.assign({},v,{kind:'pdf',amount:gpPONum(v.amount)==null?'':String(gpPONum(v.amount))});
+    if(rec){x.no=rec.no;x.uid=rec.uid||x.uid;}
+    else{x.no=gpPONextNo(x.vendor);x.uid=ykPOUid();}
+    /* 手で入れたパスワードで開いたときは、業者が決まったここで登録する */
+    if(typedPw.current&&pwSave[0]&&gpPwOf(x.vendor)!==typedPw.current){gpPwSet(x.vendor,typedPw.current,p.userName);p.toast&&p.toast((gpVendor(x.vendor)||{}).short+' のPDFパスワードを登録しました');}
+    var r=gpPOListAdd(x,p.userName);
+    p.toast&&p.toast('発注書一覧（人工）に'+(rec?'保存':'追加')+'しました（'+r.no+'）');
+    p.onClose();
+  }
+  var lab={fontSize:10,fontWeight:700,color:'var(--g500)',display:'block',marginBottom:2};
+  var inp={width:'100%',boxSizing:'border-box',fontSize:12,padding:'4px 6px',border:'1px solid var(--g300)',borderRadius:4,fontFamily:'inherit'};
+  function chips(k,fmt){
+    var c=cand[0]&&cand[0][k];if(!c||!c.length)return null;
+    return h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',marginTop:2}},c.map(function(x,i){
+      var on=String(v[k])===String(x);
+      return h('button',{key:i,'data-nkcand':k+':'+i,className:'btn btn-xs',title:'クリックで欄に入れる',style:{padding:'0 6px',fontSize:10,background:on?'#FDE68A':'#FEF9C3',border:'1px solid '+(on?'#D97706':'#FDE68A'),color:'#78350F'},onClick:function(){set(k,x);}},fmt?fmt(x):x);
+    }));
+  }
+  function fld(k,label,ph,fmt,type){
+    return h('label',{style:{display:'block',marginBottom:8}},h('span',{style:lab},label),
+      h('input',{type:type||'text',value:v[k]||'',placeholder:ph||'','data-nkfield':k,style:inp,onChange:function(ev){set(k,ev.target.value);}}),chips(k,fmt));
+  }
+  var ven=gpVendor(v.vendor)||{};
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(15,23,42,.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'},'data-nkmodal':'1'},
+    h('div',{style:{background:'#fff',borderRadius:10,width:'min(1400px,96vw)',height:'92vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 10px 40px rgba(0,0,0,.3)'}},
+      h('div',{style:{padding:'10px 16px',borderBottom:'1px solid var(--g200)',display:'flex',alignItems:'center',gap:10}},
+        h('b',{style:{fontSize:15,color:'var(--nv)'}},rec?'人工の発注書を直す（'+rec.no+'）':'📄 人工の発注書PDFを取り込む'),
+        h('span',{style:{flex:1}}),
+        h('button',{className:'btn btn-sm btn-ol',onClick:p.onClose},'閉じる')),
+      h('div',{style:{flex:1,display:'flex',minHeight:0}},
+        /* 左: PDF の画像 */
+        h('div',{style:{flex:'1 1 60%',background:'#475569',display:'flex',flexDirection:'column',minWidth:0}},
+          h('div',{style:{padding:'6px 10px',display:'flex',gap:6,alignItems:'center',background:'#334155',color:'#fff',fontSize:11,flexWrap:'wrap'}},
+            h('label',{className:'btn btn-xs btn-gn',style:{cursor:'pointer'}},rec?'PDFを選んで画像を見る':'PDFを選ぶ',h('input',{type:'file',accept:'application/pdf,.pdf','data-nkfile':'1',style:{display:'none'},onChange:function(ev){openFile(ev.target.files&&ev.target.files[0]);ev.target.value='';}})),
+            h('span',{style:{maxWidth:360,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},v.file||'（まだ選んでいません）'),
+            h('span',{style:{flex:1}}),
+            pages[0].length>1?pages[0].map(function(_,i){return h('button',{key:i,className:'btn btn-xs '+(pg[0]===i?'btn-nv':'btn-ol'),onClick:function(){pg[1](i);}},(i+1)+'枚目');}):null,
+            h('button',{className:'btn btn-xs btn-ol',onClick:function(){zoom[1](Math.max(0.5,zoom[0]-0.25));}},'－'),
+            h('span',null,Math.round(zoom[0]*100)+'%'),
+            h('button',{className:'btn btn-xs btn-ol',onClick:function(){zoom[1](Math.min(3,zoom[0]+0.25));}},'＋')),
+          h('div',{style:{flex:1,overflow:'auto',padding:10}},
+            pages[0].length?h('img',{src:pages[0][pg[0]],'data-nkimg':'1',style:{width:(zoom[0]*100)+'%',display:'block',margin:'0 auto',background:'#fff',boxShadow:'0 2px 8px rgba(0,0,0,.4)'}})
+              :h('div',{style:{color:'#E2E8F0',textAlign:'center',marginTop:80,fontSize:13,lineHeight:2}},busy[0]?'読み込み中…':(rec?'PDFを選ぶと、ここに画像が出ます（直すだけなら選ばなくてもかまいません）':'「PDFを選ぶ」で先方の発注書PDFを選んでください')))),
+        /* 右: 入力欄 */
+        h('div',{style:{flex:'0 0 400px',padding:'12px 14px',overflow:'auto',borderLeft:'1px solid var(--g200)'}},
+          msg[0]?h('div',{'data-nkmsg':'1',style:{fontSize:11,padding:'6px 8px',borderRadius:6,marginBottom:8,background:'#FFFBEB',border:'1px solid #FDE68A',color:'#78350F',lineHeight:1.6}},busy[0]?'⏳ ':'',msg[0]):null,
+          needPw[0]?h('div',{style:{padding:8,border:'1px solid #FCA5A5',background:'#FEF2F2',borderRadius:6,marginBottom:8}},
+            h('span',{style:lab},'PDFのパスワード'),
+            h('div',{style:{display:'flex',gap:4}},h('input',{type:'text',value:pwIn[0],'data-nkpwin':'1',style:inp,onChange:function(ev){pwIn[1](ev.target.value);},onKeyDown:function(ev){if(ev.key==='Enter'){busy[1](true);openBuf(pwIn[0]);}}}),
+              h('button',{className:'btn btn-xs btn-nv','data-nkpwgo':'1',onClick:function(){busy[1](true);openBuf(pwIn[0]);}},'開く')),
+            h('label',{style:{fontSize:10,display:'flex',gap:3,alignItems:'center',marginTop:3}},h('input',{type:'checkbox',checked:pwSave[0],onChange:function(ev){pwSave[1](ev.target.checked);}}),'この業者のパスワードとして登録する（次から自動で開きます）')):null,
+          h('label',{style:{display:'block',marginBottom:8}},h('span',{style:lab},'業者'),
+            h('select',{value:v.vendor,'data-nkfield':'vendor',style:inp,onChange:function(ev){set('vendor',ev.target.value);}},
+              h('option',{value:''},'（選んでください）'),imps.map(function(x){return h('option',{key:x.id,value:x.id},x.short+'（'+x.id+'）');}))),
+          rec?h('div',{style:{fontSize:11,marginBottom:8}},'発注書番号 ',h('b',{style:{fontFamily:'monospace'}},rec.no)):h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},'発注書番号は登録するときに自動で付きます（'+(v.vendor?gpPONextNo(v.vendor):'業者の記号-年-連番')+'）'),
+          fld('theirNo','先方No.（プロジェクトNo.・管理No.など）','例: 93527'),
+          fld('date','発注日（手配をお願いした日）',null,function(x){return x.replace(/-/g,'/');},'date'),
+          fld('workDate','作業日（手書きで直していることが多いので画像で確認）','例: 2026年8月27日(木)・28日(金)',function(x){return x.replace(/-/g,'/');}),
+          fld('subject','件名・プロジェクト','例: 新規プラロッカー搬入開梱組立設置作業'),
+          fld('site','現場（学校名・住所）','例: 沼津学園 飛龍高等学校'),
+          h('div',{style:{display:'flex',gap:6,alignItems:'flex-start'}},
+            h('div',{style:{flex:1}},fld('amount','合計金額','例: 770000',function(x){return '¥'+fm(+x);})),
+            h('label',{style:{display:'block',marginBottom:8}},h('span',{style:lab},'税'),
+              h('select',{value:v.taxIn||'税込','data-nkfield':'taxIn',style:Object.assign({},inp,{width:80}),onChange:function(ev){set('taxIn',ev.target.value);}},h('option',{value:'税込'},'税込'),h('option',{value:'税抜'},'税抜')))),
+          fld('staff','当社担当'),
+          fld('file','PDFのファイル名（会社のサーバーに保存した名前）'),
+          h('label',{style:{display:'block',marginBottom:8}},h('span',{style:lab},'社内備考'),h('textarea',{value:v.memo||'',rows:3,'data-nkfield':'memo',style:Object.assign({},inp,{resize:'vertical'}),onChange:function(ev){set('memo',ev.target.value);}})),
+          ven.offices&&ven.offices[0]?h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.6}},'連絡先: TEL '+(ven.offices[0].tel||'')+'　担当 '+(ven.offices[0].person||'')+(ven.offices[0].mobile?'（携帯 '+ven.offices[0].mobile+'）':'')):null,
+          h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end',position:'sticky',bottom:0,background:'#fff',paddingTop:6}},
+            h('button',{className:'btn btn-sm btn-ol',onClick:p.onClose},'やめる'),
+            h('button',{className:'btn btn-sm btn-nv','data-nksave':'1',disabled:busy[0],onClick:save},rec?'💾 保存':'＋ 一覧に追加'))))));
+}
+/* PDF のパスワード（業者ごと）の登録 */
+function NinkuPwModal(p){
+  var imps=GP_VENDORS.filter(function(x){return x.imp||x.work;});
+  var init={};imps.forEach(function(x){init[x.id]=gpPwOf(x.id);});
+  var st=us(init),show=us(false);
+  function save(){
+    if(p.isReadOnly){p.toast&&p.toast('読み取り専用モード中は登録できません');return;}
+    var n=0;imps.forEach(function(x){var a=String(st[0][x.id]||'').trim();if(a!==gpPwOf(x.id)){GP_PDF_PW=Object.assign({},GP_PDF_PW);GP_PDF_PW[x.id]={pw:a,at:new Date().toISOString(),by:String(p.userName||'')};n++;}});
+    if(n){saveGpPdfPw();gpPwCloud(p.userName);}
+    p.toast&&p.toast(n?'PDFのパスワードを保存しました（'+n+'社）':'変更はありません');p.onClose();
+  }
+  var inp={width:'100%',boxSizing:'border-box',fontSize:12,padding:'4px 6px',border:'1px solid var(--g300)',borderRadius:4,fontFamily:'monospace'};
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(15,23,42,.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'},'data-nkpwmodal':'1'},
+    h('div',{style:{background:'#fff',borderRadius:10,width:460,padding:16,boxShadow:'0 10px 40px rgba(0,0,0,.3)'}},
+      h('b',{style:{fontSize:14,color:'var(--nv)'}},'🔑 人工のPDFのパスワード'),
+      h('div',{style:{fontSize:11,color:'var(--g600)',margin:'6px 0 10px',lineHeight:1.6}},'業者ごとのPDFのパスワードを登録すると、PDFを取り込むときに自動で開きます（全端末で共有）。空欄は未登録です。'),
+      h('table',{className:'tbl',style:{width:'100%',fontSize:12}},h('tbody',null,imps.map(function(x){
+        return h('tr',{key:x.id},h('td',{style:{whiteSpace:'nowrap'}},x.short),h('td',null,h('input',{type:show[0]?'text':'password',value:st[0][x.id]||'','data-nkpwv':x.id,autoComplete:'off',style:inp,
+          onChange:function(ev){var o=Object.assign({},st[0]);o[x.id]=ev.target.value;st[1](o);}})));
+      }))),
+      h('label',{style:{fontSize:11,display:'flex',gap:4,alignItems:'center',marginTop:6}},h('input',{type:'checkbox',checked:show[0],onChange:function(ev){show[1](ev.target.checked);}}),'パスワードを表示する'),
+      h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end',marginTop:10}},
+        h('button',{className:'btn btn-sm btn-ol',onClick:p.onClose},'閉じる'),
+        h('button',{className:'btn btn-sm btn-nv','data-nkpwsave':'1',onClick:save},'💾 保存'))));
 }
 /* ===== v19.63 八木熊様の回答Excel → 入庫予定（2026-10-29 チャット依頼「回答Excelデータの取り込み」） =====
    ・v19.62 の発注書タブで出した注文書Excelに、八木熊様が黄色の回答欄（入庫予定日①・数量①・②・備考）を書いて返送したものを読む。
