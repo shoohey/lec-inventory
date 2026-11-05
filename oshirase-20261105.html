@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月5日の更新のお知らせ（v19.79）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>倉庫・八木熊様の請求の照合・<br>八木熊様以外の発注書ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.79</span>
+      <span>2026年11月5日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。新柏倉庫・尼高運輸（関西・札幌）・八木熊様から届く<b>請求データが正しいかを、システム上で確認できる</b>ようになりました。また、<b>八木熊様以外の外注先への発注書</b>もシステムで作れるようになりました。</p>
+    <p>倉庫・八木熊様の請求を確認する方は<b>1番</b>を、発注書を扱う方は<b>2番〜4番</b>を、見積・帳票を作る方は<b>5番〜9番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.79</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    使い方は、システムの「使い方Q&amp;A」で「請求」「照合」などと入れても探せます。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">「🧾 請求照合」で倉庫・八木熊様の請求を確認できます</a><span class="tag">新機能</span></li>
+      <li><a href="#s2">八木熊様以外の外注先への発注書を作れます</a><span class="tag">新機能</span></li>
+      <li><a href="#s3">人工の発注書はPDFを取り込んで一覧で管理できます</a><span class="tag">新機能</span></li>
+      <li><a href="#s4">発注書一覧が5つに分かれました</a></li>
+      <li><a href="#s5">請求書・納品書の備考を手で直せます</a></li>
+      <li><a href="#s6">案件修正で金額・明細の順番が崩れる不具合を直しました</a></li>
+      <li><a href="#s7">扉の製品ラインに「日本製 Ver.2」を選べます</a></li>
+      <li><a href="#s8">Sα（新台湾製）の表示・寸法</a></li>
+      <li><a href="#s9">顧客画面の入力が遅い不具合を直しました</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 請求照合 ============ -->
+  <h2 class="sec">倉庫・八木熊様の請求の確認</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>「🧾 請求照合」で倉庫・八木熊様の請求を確認できます<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>開きかた</b>
+      部材在庫一覧 → <kbd>🧾 請求照合</kbd> → 倉庫のタブを選ぶ → 届いたファイルを選ぶ
+    </div>
+    <p>これまで別のツール（倉庫在庫照合ツール）で行っていた確認を、システムの中でできるようにしました。ファイルは外部に送信されません。</p>
+    <div class="ex">
+      <span class="lbl">タブと読み込むファイル</span>
+      <b>新柏倉庫</b>：請求書Excel（日本製・台湾製を一緒に選べます）<br>
+      <b>尼高札幌</b>：在庫リストExcel（「○年○月㈱LEC様_尼高倉庫リスト.xlsx」）<br>
+      <b>尼高関西</b>：在庫数のxlsm ＋ 請求書（PDF）の金額5項目を手入力<br>
+      <b>八木熊</b>：請求CSV
+    </div>
+    <ul>
+      <li><b>請求書の中の検算</b>：表紙の金額と明細の合計、数量×単価、保管料（前期繰越＋入庫）×単価などが合っているかを確認します。</li>
+      <li><b>システムの記録との突き合わせ</b>：期ごと（1〜10日／11〜20日／21日〜末日）の入庫・出庫・在庫を、システムの出荷・入庫などの記録と比べます。違う行は「2期 出庫 倉庫24／システム20（QT-2026-902 20）」のように案件番号つきで出ます。</li>
+      <li>新柏倉庫は、システムの数字で<b>保管料を計算し直した金額</b>と請求額を並べて出します。尼高札幌は保管料の<b>箱数</b>、尼高関西は<b>ケース数</b>も比べます。</li>
+      <li><b>八木熊</b>：注文No（＝システムの発注書番号 YK-2026-…）と品番で、発注書の<b>単価・発注数・入庫済の数</b>と比べます。発注書の無い請求（修理費など）は「発注書が見つからない」と出ます。</li>
+    </ul>
+    <div class="warnbox">
+      システムとの突き合わせができるのは <b>2026年9月24日以降</b>の動きです（10月分から確認できます）。それより前の月は、請求書の中の検算だけ見られます。<br>
+      倉庫の商品とシステムの部材が自動で決まらない商品（シリンダー錠・パーツ一式など）は「未対応」と出ます。<kbd>（選ぶ）</kbd> で一度選べば、次からは自動になります（全員で共通）。
+    </div>
+    <p class="sub">出荷・入庫・倉庫間移動・手修正などの記録は「入出庫台帳」タブで月ごとにExcelで出せます。春先の画面での動きは含みません。</p>
+  </section>
+
+  <!-- ============ 発注書 ============ -->
+  <h2 class="sec">発注書</h2>
+
+  <section class="item key" id="s2">
+    <h3><span class="n">2</span><span>八木熊様以外の外注先への発注書を作れます<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>作りかた</b>
+      部材在庫一覧 → <kbd>📝 発注書</kbd> → 上で発注先を選ぶ
+    </div>
+    <div class="ex">
+      <span class="lbl">対象</span>
+      <b>鍵</b>：井門／日乃本錠前／スターリーロッカーズ／サラインテリアシステム<br>
+      <b>チャーター</b>：ダイレクト<br>
+      <b>その他</b>：トーヒラ
+    </div>
+    <ul>
+      <li>注文書の形は八木熊様と同じです。<kbd>📥 Excel出力</kbd>・<kbd>🖨 PDF（印刷画面）</kbd>で出せます。</li>
+      <li><b>ExcelかPDFのどちらかを出すと、発注書一覧に記録されます。</b></li>
+      <li>発注書番号は「記号-年-通し番号」です（例：井門 IM-2026-001、ダイレクト DR-2026-001）。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>人工の発注書はPDFを取り込んで一覧で管理できます<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>取り込みかた</b>
+      部材在庫一覧 → <kbd>📋 発注書一覧</kbd> → <kbd>人工</kbd> → <kbd>📄 PDFを取り込む</kbd>
+    </div>
+    <ul>
+      <li>チームフォー／NEED US／ビックワーク／インクリーズ／フロントライン／ハンデックス／北海道ロジは、<b>先方から届いたPDF（手書きで直したもの）</b>を取り込んで一覧に記録します。</li>
+      <li>取り込むと、PDFの画像を見ながら確認する画面が開きます。日付・金額などは読み取った<b>候補</b>が入るので、<b>目で確かめてから</b>保存してください。当社の番号と先方のNo.の両方を記録します。</li>
+      <li>パスワード付きのPDFは、<kbd>🔑 PDFのパスワード</kbd> で一度登録すると、次から自動で開きます（全員で共通）。</li>
+      <li><b>EMUservice</b> は、八木熊様以外の発注書と同じようにシステムで作り、人工の一覧に記録します。</li>
+    </ul>
+    <p class="sub">PDFの原本は、これまでどおり会社のサーバーに保存してください。</p>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>発注書一覧が5つに分かれました<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p>発注書一覧の上のタブで、<b>八木熊／人工／鍵／チャーター／その他</b>を切り替えます。かっこ内は件数です。一覧から開いて直すこともできます。</p>
+  </section>
+
+  <!-- ============ 見積・帳票 ============ -->
+  <h2 class="sec">見積・帳票</h2>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>請求書・納品書の備考を手で直せます<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <div class="how">
+      <b>直しかた</b>
+      帳票の出力画面 → <kbd>✎ 記載内容の手修正</kbd>
+    </div>
+    <ul>
+      <li>一番下の<b>備考欄</b>を書き換えられます（消すこともできます）。</li>
+      <li><b>明細の行ごとの備考</b>（外寸など）も書き換えられます。<kbd>↺</kbd> で元に戻せます。</li>
+      <li>直した内容は、画面・印刷・Excel出力のすべてに出ます。</li>
+    </ul>
+  </section>
+
+  <section class="item key" id="s6">
+    <h3><span class="n">6</span><span>案件修正で金額・明細の順番が崩れる不具合を直しました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>案件管理の <kbd>✏ 案件修正</kbd> で見積画面に戻ると、当初入れた金額や明細の順番がバラバラになることがありました。</p>
+    <ul>
+      <li>粗利計算表で手直しした売価が、単価マスタの金額に戻らないようにしました。</li>
+      <li>明細を <kbd>✕</kbd> で消して入れ直しても、その行の<b>並び順・備考・手入力した単価・構成表記</b>がそのまま残るようにしました。</li>
+    </ul>
+    <div class="warnbox">
+      今回の更新より前に崩れてしまった案件（例：QT-2026-278）は、崩れたあとの内容で保存されています。お手数ですが、見積書作成画面で一度直してください。
+    </div>
+  </section>
+
+  <section class="item" id="s7">
+    <h3><span class="n">7</span><span>扉の製品ラインに「日本製 Ver.2」を選べます<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <ul>
+      <li>在庫確認の「<b>扉の製品ライン</b>」に <kbd>★ 日本製 Ver.2</kbd> を足しました。本体が台湾製・日本製Ver.1 でも、扉だけ日本製Ver.2 の在庫から引き当てられます。</li>
+      <li>扉が日本製なら、本体が台湾製でも<b>扉タイプ（同色扉／ホタ扉）</b>を選べます。</li>
+      <li>日本製Ver.2 には XL の扉が無いため、XL のときは選べません。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s8">
+    <h3><span class="n">8</span><span>Sα（新台湾製）の表示・寸法<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <ul>
+      <li>Sα の<b>パーソナル</b>の外寸を <b>W298×D400×H400mm</b> にしました（常設は H370mm のまま）。見積明細の備考と、列段の寸法表記に出ます。</li>
+      <li>在庫一覧で、Sα の扉などのサイズが「S」と出ていたのを「<b>Sα</b>」にしました。商品選択で Sα を選んだときの「S」の表示も消しました。</li>
+      <li>製品ラインのボタン「◆ Sα（新台湾製）」が枠からはみ出ていたのを直しました。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s9">
+    <h3><span class="n">9</span><span>顧客画面の入力が遅い不具合を直しました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>新規顧客登録・顧客編集で、1文字入れるたびに表示されるまで時間がかかっていたのを直しました。</p>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>画面のどこで何をしたか</b>を添えてご連絡ください。請求照合で読み込めないファイルがあれば、そのファイルもお送りください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.73〜v19.79】
+・★請求照合：部材在庫一覧 →「🧾 請求照合」で、新柏倉庫・尼高札幌・尼高関西・八木熊の請求ファイルを読み込むと、請求書の中の検算と、システムの出荷・入庫の記録との突き合わせができます（9/24以降の動き＝10月分から）
+・★八木熊以外の発注書：「📝 発注書」で発注先を選ぶと、鍵4社（井門・日乃本錠前・スターリーロッカーズ・サラインテリアシステム）・ダイレクト・トーヒラの発注書をExcel／PDFで出せます（出すと一覧に記録）
+・人工の発注書：「📋 発注書一覧」→「人工」→「📄 PDFを取り込む」で先方のPDFを取り込み（候補を目で確認して保存）。EMUservice はシステムで作成
+・発注書一覧が「八木熊／人工／鍵／チャーター／その他」の5つに分かれました
+・請求書・納品書の備考（一番下・明細の行ごと）を「✎ 記載内容の手修正」で直せます
+・案件修正で見積に戻すと金額・明細の順番が崩れる不具合を直しました（崩れたあとの案件は見積書作成画面で直してください）
+・扉の製品ラインに「日本製 Ver.2」を追加
+・Sα：パーソナルの外寸 W298×D400×H400mm／在庫一覧のサイズを「Sα」表記／製品ラインのボタンのはみ出しを修正
+・顧客画面の入力が遅い不具合を直しました
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261105.html
+表示が古いときは再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
