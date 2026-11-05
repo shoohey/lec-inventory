@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.79（倉庫請求の照合・Sαパーソナルの外寸）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.80（同時に保存すると在庫の変更が消える）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -523,8 +523,8 @@ function cloudLoad(cb){
       if(!SPRING){
         if(d0){applyCloudDoc(d0,{replace:true});}
         /* v19.55: 同時に保存しても消えないための基準（最後にクラウドと揃えた案件と、その版） */
-        if(d0){CLOUD_BASE_ORDERS=normOrders(cloudDeep(d0.orders||[]));CLOUD_ROW_TS=res.data.updated_at||null;if(CLOUD_ROW_TS)cloudRememberTs(CLOUD_ROW_TS);}
-        else{CLOUD_BASE_ORDERS=null;CLOUD_ROW_TS=null;}
+        if(d0){CLOUD_BASE_ORDERS=normOrders(cloudDeep(d0.orders||[]));CLOUD_ROW_TS=res.data.updated_at||null;if(CLOUD_ROW_TS)cloudRememberTs(CLOUD_ROW_TS);CLOUD_BASE_STK=cloudStkOf(d0);CLOUD_BASE_INC=Array.isArray(d0.incoming)?cloudDeep(d0.incoming):null;}
+        else{CLOUD_BASE_ORDERS=null;CLOUD_ROW_TS=null;CLOUD_BASE_STK=null;CLOUD_BASE_INC=null;}
         _sharedSig=sharedSigNow();
         if(cb)cb(true,!!d0);
         loadOtherSide();/* v19.43: 春先の案件（売上集計の合算用） */
@@ -721,6 +721,30 @@ function springCloudSave(userName){
    → 保存は「最後に見たクラウドの版（CLOUD_ROW_TS）」のままのときだけ書く。他の人が先に保存していたら読み直して突き合わせてから書く。
    ★案件以外（在庫・顧客・マスタなど）は従来どおり（後から保存した方の内容）。 */
 var CLOUD_BASE_ORDERS=null,CLOUD_ROW_TS=null,_cloudSaving=false,_cloudSaveAgain=false,_cloudMyTs=[];
+/* ===== v19.80（2026-11-05 依頼「正確に在庫に反映されていない案件 RS-2026-241」） 在庫も増減で重ねる =====
+   11/5 10:13〜10:16 に関西営業所の Sα の在庫を手で直した分（EDIT_LOG には残っている）が、在庫から消えていた。
+   原因: 通常の画面は、他の人の保存を受け取ると在庫を丸ごと差し替え、保存が重なったときも案件だけ突き合わせて
+   在庫は手元の数で丸ごと上書きしていた。通知を受け取り損ねた（通信が切れていた等）画面が保存すると、その間の他の人の在庫の変更が消える。
+   → 春先（v19.44 springMergeNum）と同じく、最後にクラウドと揃えた在庫（CLOUD_BASE_STK）を基準に
+     「クラウドの数＋手元で増減した分」で重ねる。変更履歴（EDIT_LOG）も保存が重なったときに足し合わせる。 */
+var CLOUD_BASE_STK=null,CLOUD_BASE_INC=null;
+/* 入庫予定（番号＝id ごと）: 手元で変えたものは手元、変えていないものはクラウド。同じ id を別々に作っていたら手元を振り直す */
+function cloudMergeInc(Ri,remoteNext){
+  if(!Array.isArray(Ri))return;
+  if(typeof remoteNext==='number'&&remoteNext>nextIncId)nextIncId=remoteNext;
+  if(CLOUD_BASE_INC){
+    var mx=0;(INCOMING||[]).concat(Ri).forEach(function(x){if(x&&+x.id>mx)mx=+x.id;});if(nextIncId<=mx)nextIncId=mx+1;
+    INCOMING=springMergeList(INCOMING,CLOUD_BASE_INC,Ri,'id',function(l){var nl=cloudDeep(l);nl.id=nextIncId++;return nl;});
+  }
+  CLOUD_BASE_INC=cloudDeep(Ri);
+}
+function cloudStkOf(doc){return (doc&&doc.stk&&doc.stkSnapshot===STK_SNAPSHOT_DATE)?cloudDeep(doc.stk):null;}
+/* 手元 STK・基準 B・クラウド R の在庫を重ねる（基準が無いときは従来どおり手元） */
+function cloudMergeStk(R){
+  if(!R)return;
+  if(CLOUD_BASE_STK){var m=springMergeNum(STK,CLOUD_BASE_STK,R);if(m)STK=m;}
+  CLOUD_BASE_STK=cloudDeep(R);
+}
 function cloudDeep(x){return JSON.parse(JSON.stringify(x));}
 /* 自分の保存した版・すでに取り込んだ版（遅れて届いた通知で、手元を古い内容へ戻さないため） */
 function cloudIsMyTs(ts){return _cloudMyTs.some(function(t){return springTsEq(t,ts);});}
@@ -748,6 +772,10 @@ function cloudApplyRemote(row){
     CLOUD_BASE_ORDERS=R;
     doc=Object.assign({},doc,{orders:merged});
   }
+  /* v19.80: 在庫は差し替えずに、手元でまだ保存していない増減を残して重ねる */
+  var Rs=cloudStkOf(doc);
+  if(Rs){cloudMergeStk(Rs);doc=docOmit(doc,['stk']);}
+  if(Array.isArray(doc.incoming)&&CLOUD_BASE_INC){cloudMergeInc(doc.incoming,doc.nextIncId);doc=docOmit(doc,['incoming']);}
   if(row.updated_at){CLOUD_ROW_TS=row.updated_at;cloudRememberTs(row.updated_at);}
   applyCloudDoc(doc,{replace:false});
   if(notes.length){if(SPRING_NOTIFY)SPRING_NOTIFY(notes.join(' ／ '));cloudSave(USER_NAME_FOR_SAVE);}
@@ -763,7 +791,7 @@ function cloudSaveNormal(userName){
   function failNotify(msg){console.warn('[Cloud] save失敗',msg);if(SPRING_NOTIFY)SPRING_NOTIFY('⚠ クラウドへ保存できませんでした（'+msg+'）。通信を確かめて、もう一度操作してください');}
   /* expectTs があればその版のときだけ書く（他の人が先に保存していたら 0件 → 読み直し） */
   function send(expectTs){
-    var doc=buildCloudDoc(),sent=cloudDeep(doc.orders);
+    var doc=buildCloudDoc(),sent=cloudDeep(doc.orders),sentStk=cloudStkOf(doc),sentInc=cloudDeep(doc.incoming||[]);
     var ts=new Date().toISOString();cloudRememberTs(ts);
     _cloudSelfWrite=true;
     var q=expectTs
@@ -778,6 +806,8 @@ function cloudSaveNormal(userName){
       }
       CLOUD_ROW_TS=r2.data[0].updated_at||ts;
       CLOUD_BASE_ORDERS=sent;
+      if(sentStk)CLOUD_BASE_STK=sentStk;/* v19.80 */
+      CLOUD_BASE_INC=sentInc;
       fin();
     },function(e){_cloudSelfWrite=false;failNotify(e&&e.message||'通信エラー');fin();});
   }
@@ -791,7 +821,11 @@ function cloudSaveNormal(userName){
       var R=normOrders(cloudDeep(row.doc.orders||[])),notes=[];
       var merged=cloudMergeOrders(ORDERS,CLOUD_BASE_ORDERS,R,row.doc.nextON,notes);
       CLOUD_BASE_ORDERS=R;CLOUD_ROW_TS=row.updated_at;cloudRememberTs(row.updated_at);
-      applyCloudDoc({orders:merged,deletedNos:row.doc.deletedNos||[],nextON:row.doc.nextON},{replace:false});
+      cloudMergeStk(cloudStkOf(row.doc));/* v19.80: 在庫も「クラウドの数＋手元の増減」 */
+      cloudMergeInc(row.doc.incoming,row.doc.nextIncId);/* v19.80: 入庫予定も番号ごとに突き合わせる */
+      try{saveIncoming();}catch(e){}
+      applyCloudDoc({orders:merged,deletedNos:row.doc.deletedNos||[],nextON:row.doc.nextON,editLog:Array.isArray(row.doc.editLog)?row.doc.editLog:undefined},{replace:false});/* v19.80: 変更履歴も足し合わせる */
+      try{saveStock();}catch(e){}
       if(SPRING_ONCHANGE)SPRING_ONCHANGE();
       if(notes.length&&SPRING_NOTIFY)SPRING_NOTIFY(notes.join(' ／ '));
       send(row.updated_at);
