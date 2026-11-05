@@ -977,7 +977,7 @@ var INCOMING_LINES=LINES.filter(function(l){return l.id!=='jp01';});
 /* v18.72 修正16の追加②: 「扉の製品ライン」で選べるのは日本製Ver.1と台湾製だけ。
    本体がVer.2のときに扉だけVer.2／Sαを選ぶケースは業務上ありえない（ユーザー回答 2026-09-03）ため
    選択肢から外す。本体と同じライン（＝空文字）を選べば従来どおりVer.2・Sαの扉も使える。 */
-var DOOR_LINES=LINES.filter(function(l){return l.id==='jp01'||l.id==='tw';});
+var DOOR_LINES=LINES.filter(function(l){return l.id==='jp01'||l.id==='jp2'||l.id==='tw';});/* v19.79（2026-11-05 依頼①）: 日本製Ver.2 も選べるように */
 function defIncLine(cur){return (cur&&cur!=='jp01')?cur:'jp2';}
 var SIZES=[
   /* v18.62 修正12⑤: dim は「常設タイプ」の外寸。パーソナルタイプは高さが異なるため dimPer を併記する。
@@ -11936,6 +11936,7 @@ function InvPage(p){
   var colors=doorColorChoices(doorLine);
   var sizes=LINE_SIZES[ln[0]]||[];
   var isJP=ln[0]==='jp01'||ln[0]==='jp2';
+  var doorIsJP=doorLine==='jp01'||doorLine==='jp2';/* v19.79: 扉タイプ（同色/ホタ）は扉の製品ラインで決める（本体が台湾製で扉が日本製のときも選べる） */
   /* v18.33 要望⑤: SSWは扉なし製品のため、jp2×XLと同じ「扉なし強制」機構に乗せる（jp2XLNoDoor=強制扉なしフラグとして共用） */
   var jp2XLNoDoor=isJp2XLDoorBlocked(ln[0],sz[0])||sz[0]==='SSW';/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ） */
   function changeLine(v){ln[1](v);doorLn[1]('');/* v18.70 修正16②: 本体ラインを変えたら扉ラインも本体に合わせ直す */cl[1](defDoorColor(v));/* v18.76 修正18⑥: 既定は色未定 */var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
@@ -11946,6 +11947,7 @@ function InvPage(p){
     if(nc.length&&!nc.find(function(c){return c.v===cl[0];}))cl[1](nc[0].v);
     multiColor[1](false);/* 色の品揃えが変わるため複数色配分はいったん解除 */
   }
+  ue(function(){if(doorLn[0]&&isJp2XLDoorBlocked(doorLn[0],sz[0]))changeDoorLine('');},[sz[0]]);/* v19.79: XL にしたら扉の Ver.2 を外す */
   /* Fix: sync lock state when switching to personal type (#16) */
   ue(function(){
     if(tp[0]==='personal'&&lk[0]==='none')lk[1]('dialH110new');
@@ -12191,7 +12193,7 @@ function InvPage(p){
     /* v18.25 要望⑥: 在庫確認(明細追加)はローカル操作で共有在庫を書き換えないため、後発ロック(lockReadOnly)/営業でも全員可。保存・仮押さえ・受注確定は別途 p.isReadOnly でブロックされる。 */
     var lock=(!hasDoor[0]||jp2XLNoDoor)?'none':lk[0];/* v18.32 要望⑥: jp2×XLは扉なし＝錠なしを保存時にも強制 */
     /* v19.71: パーソナルの「鍵なし」をダイヤル錠 H110 に置き換えるのをやめた（鍵なしのまま追加する） */
-    var dt=isJP?doorType[0]:'door';
+    var dt=doorIsJP?doorType[0]:'door';
     var cb=null;
     if(multiColor[0]&&hasDoor[0]&&colorBreak[0].length>0){
       /* v18.32 要望④: 配分欄は空文字を許容（"050"防止）。集計・保存境界で数値へ正規化（負数は0にクランプ） */
@@ -12992,7 +12994,7 @@ function InvPage(p){
                 rentalEuOpts.map(function(eu){return h('option',{key:eu.id,value:eu.id},eu.name);}))
             ):null,
             h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'製品ライン'),
-            h('div',{style:{display:'flex',gap:3,marginBottom:6}},LINES.map(function(l){
+            h('div',{style:{display:'flex',gap:3,marginBottom:6,flexWrap:'wrap'}/* v19.79（依頼②）: ◆Sα（新台湾製）が枠からはみ出るため折り返す */},LINES.map(function(l){
               return h('button',{key:l.id,className:'btn btn-xs '+(ln[0]===l.id?'btn-nv':'btn-ol'),onClick:function(){changeLine(l.id);}},l.mark+' '+l.name);
             })),
             h('div',{style:{display:'flex',gap:4,marginBottom:5}},
@@ -13027,8 +13029,9 @@ function InvPage(p){
               h('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
                 [{id:'',mark:'＝',name:'本体と同じ'}].concat(DOOR_LINES).map(function(l){
                   var on=(doorLn[0]||'')===l.id;
-                  return h('button',{key:l.id||'_same',className:'btn btn-xs '+(on?'btn-or':'btn-ol'),
-                    title:l.id?('扉だけ「'+l.name+'」の在庫から引き当てます'):'扉も本体と同じ製品ラインから引き当てます',
+                  var noXL=l.id&&isJp2XLDoorBlocked(l.id,sz[0]);/* v19.79: 日本製Ver.2 は XL の扉が無い */
+                  return h('button',{key:l.id||'_same',className:'btn btn-xs '+(on?'btn-or':'btn-ol'),disabled:!!noXL,
+                    title:noXL?'日本製Ver.2 には XL の扉がありません':(l.id?('扉だけ「'+l.name+'」の在庫から引き当てます'):'扉も本体と同じ製品ラインから引き当てます'),
                     onClick:function(){changeDoorLine(l.id);}},l.mark+' '+l.name);
                 })
               ),
@@ -13036,7 +13039,7 @@ function InvPage(p){
                 '⚠ 扉は「'+((LINES.find(function(l){return l.id===doorLn[0];})||{name:''}).name)+'」の在庫から引き当てます（本体は「'+((LINES.find(function(l){return l.id===ln[0];})||{name:''}).name)+'」）。扉カラーと在庫数もそのラインのものです'):null
             ):null,
             /* Door type selector - only for jp01/jp2 and 扉あり */
-            isJP&&hasDoor[0]?h('div',{style:{marginBottom:6}},
+            doorIsJP&&hasDoor[0]?h('div',{style:{marginBottom:6}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)'}},'扉タイプ'),
               h('select',{className:'inp',value:doorType[0],onChange:function(e){doorType[1](e.target.value);}},
                 h('option',{value:'door'},'同色扉'),
