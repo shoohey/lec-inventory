@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.81（帳票に会社の角印）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.81（帳票に会社の角印・本社発チャーターの注意）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2953,13 +2953,10 @@ function charterFeeOf(order,cust){
     if(!order||!cust||!(order.lines||[]).length)return null;
     var sc=cust;
     if(order.shipDest==='end'&&order.endUser&&order.endUser.address){var ep=prefFromAddress(order.endUser.address);if(ep)sc=Object.assign({},cust,{pref:ep,city:''});}
-    var fr=calcFreight({wh:order.wh,lines:order.lines,spareParts:order.spareParts},sc.city||'',sc.pref||'');
-    if(!fr)return null;
-    var chDist=fr.distance;
-    if(fr.yamato&&chDist==null&&order.wh==='kansai'){var dd=destDistanceFor('r5_amago',sc.city||'',sc.pref||'');chDist=dd?dd.km:null;}
-    var ch=charterCost(order.wh,chDist,fr.weight,sc.city||'',fr.actualWeight,fr.volumeWeight);
-    if(!ch||!ch.ok||!ch.suggest||!ch.prices[ch.suggest]||ch.prices[ch.suggest].price==null)return null;
-    return {car:ch.suggest,price:ch.prices[ch.suggest].price};
+    /* v19.81: 案件の料金形態（order.charterTariff）の料金表で引く。手入力・料金表なしは null */
+    var r=charterPick(order.wh,order.lines,order.spareParts,sc,order.charterTariff||'');
+    if(!r||!r.ok||r.price==null)return null;
+    return {car:r.car,price:r.price};
   }catch(e){return null;}
 }
 function charterCarLabel(k){return k?(String(k).replace(/t$/,'')+'ｔ車'):'';}
@@ -5572,25 +5569,21 @@ function officialShipping(lines,wh,cust,fallback){
 /* v18.38 修正箇所3⑤: チャーター便を選択した場合の見積送料。
    推奨車格（実重量・容積重量から自動判定）の見積記載価格を採用し、見積記載価格が表に無ければ
    混載と同じ考え方で原価×1.1・千円未満切上げ(markupCeil)を使う。該当行先が無い場合は null。 */
-function charterQuotedFor(lines,wh,cust){
+function charterQuotedFor(lines,wh,cust,tariff){
   if(!cust||!lines||!lines.length)return null;
   try{
-    var fr=calcFreight({wh:wh,lines:lines},cust.city||'',cust.pref||'');
-    if(!fr)return null;
-    var chDist=fr.distance;
-    /* ヤマト系(本社・関西発)は距離を持たないため、関西発のみ尼高表の距離で補完（案件詳細の比較表示と同じ扱い） */
-    if(fr.yamato&&chDist==null&&wh==='kansai'){var dd=destDistanceFor('r5_amago',cust.city||'',cust.pref||'');chDist=dd?dd.km:null;}
-    var ch=charterCost(wh,chDist,fr.weight,cust.city||'',fr.actualWeight,fr.volumeWeight);
-    if(!ch||!ch.ok||!ch.suggest||!ch.prices[ch.suggest])return null;
-    var pick=ch.prices[ch.suggest];
-    return pick.quote!=null?pick.quote:markupCeil(pick.price);
+    /* v19.81: 料金形態（tariff）の料金表で引く。距離はその料金表の発地から（関西発は従来どおり尼高表の距離） */
+    var r=charterPick(wh,lines,undefined,cust,tariff);
+    if(!r||!r.ok||r.price==null)return null;
+    return r.quote!=null?r.quote:markupCeil(r.price);
   }catch(e){return null;}
 }
 /* 送付方法(''=未選択/'mix'=混載/'charter'=チャーター)に応じた見積送料。
    未選択と混載は従来どおり officialShipping。チャーターは表に該当が無ければ混載へフォールバックする。 */
-function shippingByMethod(lines,wh,cust,fallback,method){
+function shippingByMethod(lines,wh,cust,fallback,method,tariff){
   if(method==='charter'){
-    var cq=charterQuotedFor(lines,wh,cust);
+    if(tariff==='manual')return 0;/* v19.81: 手入力（見積書作成画面で入れる） */
+    var cq=charterQuotedFor(lines,wh,cust,tariff);
     if(cq!=null)return cq;
   }
   return officialShipping(lines,wh,cust,fallback);
@@ -5611,6 +5604,49 @@ function charterTableForWarehouse(whId){
   if(whId==='kashiwa')return 'shinkashiwa';
   return null;
 }
+/* ===== v19.81（2026-11-06 チャット依頼「本社発のチャーターは基本無い。本社発でチャーターを選んだら原則無しとアラート。
+   チャーターで送る場合はどの料金形態を使うか聞く」）=====
+   【元の不具合】本社発はチャーター料金表が無いため、チャーターを選んでも黙って混載（ヤマト）の送料になり、
+   　　　　　　　見積書の名称だけ「チャーター便」になっていた（例 QT-2026-279: 838,000 円＝ヤマト 160 サイズ 590 箱）。
+   【対応】案件に料金形態 order.charterTariff を持たせる。''＝倉庫の料金表（関西/尼高・札幌・新柏）、
+   　　　　'kansai'/'sapporo'/'shinkashiwa'＝その料金表、'manual'＝手入力（見積書作成画面で送料を入れる。送料の行は0円でも出す）。
+   　　　　料金表の無い倉庫（本社）でチャーターを選ぶとアラート、料金形態を選ぶまで仮押さえ・見積作成をさせない。
+   　　　　距離は料金表ごとの発地で引く（関西＝尼高の運賃表 r5_amago・札幌＝r6_sapporo）。新柏は行先別。 */
+var CHARTER_TARIFFS=[
+  {k:'kansai',l:'関西（尼高）発の料金表',d:'距離×車格（2t/4t/10t）'},
+  {k:'sapporo',l:'札幌発の料金表',d:'距離×車格'},
+  {k:'shinkashiwa',l:'新柏発の料金表',d:'行先別（2t/4t）'},
+  {k:'manual',l:'手入力',d:'料金表を使わず、見積書作成画面で送料を入力する'}
+];
+function charterTariffLabel(k){var t=CHARTER_TARIFFS.filter(function(x){return x.k===k;})[0];return t?t.l:'';}
+/* 料金表の無い倉庫（本社など）＝チャーターは原則なし。チャーターにするなら料金形態を選ばせる */
+function charterNeedsTariff(whId){return !charterTableForWarehouse(whId);}
+/* 使うチャーター料金表。tariff 未選択なら倉庫の料金表、'manual' は null */
+function charterTableFor(whId,tariff){
+  if(tariff==='manual')return null;
+  if(tariff&&effCT(tariff))return tariff;
+  return charterTableForWarehouse(whId);
+}
+var CHARTER_DIST_TABLE={kansai:'r5_amago',sapporo:'r6_sapporo'};
+/* 距離表のチャーター料金表で使う距離（その料金表の発地からの距離）。行先別の表（新柏）は距離を使わない */
+function charterDistanceFor(tableKey,fr,city,pref){
+  var ft=CHARTER_DIST_TABLE[tableKey];if(!ft)return null;
+  if(fr&&fr.table===ft&&fr.distance!=null)return fr.distance;
+  var dd=destDistanceFor(ft,city||'',pref||'');return dd?dd.km:null;
+}
+/* チャーター料金（推奨車格）。sc＝送り先（顧客かエンドの都道府県で差し替えたもの）。
+   戻り値 {ok,table,car,price,quote} ／ {manual:true} ／ {needTariff:true}（料金表なし・未選択） ／ {table,noHit:true}（表に行先なし） */
+function charterPick(wh,lines,spareParts,sc,tariff){
+  if(tariff==='manual')return {manual:true};
+  var tk=charterTableFor(wh,tariff);if(!tk)return {needTariff:true};
+  var fr=calcFreight({wh:wh,lines:lines,spareParts:spareParts},sc.city||'',sc.pref||'');
+  if(!fr)return {table:tk,noHit:true};
+  var d=charterDistanceFor(tk,fr,sc.city||'',sc.pref||'');
+  var ch=charterCost(wh,d,fr.weight,sc.city||'',fr.actualWeight,fr.volumeWeight,tk,sc.pref||'');
+  if(!ch||!ch.ok||!ch.suggest||!ch.prices[ch.suggest])return {table:tk,noHit:true};
+  var pk=ch.prices[ch.suggest];
+  return {ok:true,table:tk,car:ch.suggest,price:pk.price,quote:pk.quote,dest:ch.dest,viaPref:ch.viaPref};
+}
 /* 距離km＋車格→チャーター料金。距離は次のkmブラケットへ繰上げ。 */
 function charterRate(tableKey,distanceKm,sharkaku){
   var t=effCT(tableKey);if(!t)return null;var row=t[sharkaku];if(!row)return null;
@@ -5620,18 +5656,29 @@ function charterRate(tableKey,distanceKm,sharkaku){
   return {price:row[di],quote:q,distBracket:t.dist[di]};
 }
 /* v18.30 要望④: 行先ベースのチャーター表(新柏全国チャーター)を行先市名の部分一致で引く */
-function charterCostDest(tableKey,destCity,weightKg,awD,vwD){
+function charterCostDest(tableKey,destCity,weightKg,awD,vwD,destPref){
   awD=(awD!=null?awD:weightKg)||0;vwD=(vwD!=null?vwD:weightKg)||0;/* v18.34 ⑨-5: 二系統判定 */
   var t=effCT(tableKey);if(!t||!t.entries)return {ok:false};
   var dcRaw=String(destCity||'').trim();
-  var dc=dcRaw.replace(/[市区町村郡]/g,'').trim();if(!dc)return {ok:false};
-  var hit=null;
-  for(var i=0;i<t.entries.length;i++){
+  var dc=dcRaw.replace(/[市区町村郡]/g,'').trim();
+  var hit=null,viaPref=null;
+  for(var i=0;dc&&i<t.entries.length;i++){
     var e=t.entries[i];var dRaw=String(e.dest||'').trim();var d=dRaw.replace(/[市区町村郡]/g,'').trim();
     /* v18.33 要望⑨バグ修正: 1文字一致の誤爆防止（destFindDistanceと同じガード） */
     if(d&&(d.indexOf(dc)>=0||dc.indexOf(d)>=0)){
       if(Math.min(d.length,dc.length)>=2){hit=e;break;}
       if(dRaw.indexOf(dcRaw)>=0||dcRaw.indexOf(dRaw)>=0){hit=e;break;}
+    }
+  }
+  /* v19.81: 市で当たらないとき（顧客の city に番地まで入っている等）は都道府県で当てる。
+     東京都は 23 区＝「都内」・それ以外＝「都下」。ほかは県名（埼玉・群馬…）、無ければ代表都市（横浜・水戸…）。★完全一致だけ */
+  if(!hit&&destPref){
+    var cands=[];
+    if(destPref==='東京都')cands.push((!dcRaw||/区/.test(dcRaw))?'都内':'都下');
+    cands.push(String(destPref).replace(/[都道府県]$/,''));
+    if(PREF_MAIN_CITY[destPref])cands.push(PREF_MAIN_CITY[destPref]);
+    for(var ci=0;ci<cands.length&&!hit;ci++){
+      for(var j=0;j<t.entries.length;j++){if(String(t.entries[j].dest||'').trim()===cands[ci]){hit=t.entries[j];viaPref=cands[ci];break;}}
     }
   }
   if(!hit)return {ok:false};
@@ -5640,14 +5687,14 @@ function charterCostDest(tableKey,destCity,weightKg,awD,vwD){
   if(hit.p4t)prices['4t']={price:hit.p4t};
   var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&charterFits(sk,awD,vwD))suggest=sk;});
   if(!suggest){var ks=Object.keys(prices);suggest=ks.length?ks[ks.length-1]:null;}
-  return {ok:!!Object.keys(prices).length,table:tableKey,dest:hit.dest,region:hit.region,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
+  return {ok:!!Object.keys(prices).length,table:tableKey,dest:hit.dest,region:hit.region,viaPref:viaPref,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
 }
 /* 請求重量→推奨車格(参考)。v18.34 ⑨-5: 実重量aw・容積重量vwの二系統で車格制限を判定（未指定時はweightKgを両方に適用） */
-function charterCost(whId,distanceKm,weightKg,destCity,aw,vw){
-  var tableKey=charterTableForWarehouse(whId);if(!tableKey)return {ok:false};
+function charterCost(whId,distanceKm,weightKg,destCity,aw,vw,tableKeyOv,destPref){
+  var tableKey=tableKeyOv||charterTableForWarehouse(whId);if(!tableKey)return {ok:false};/* v19.81: 料金形態で表を指定できる */
   var t=effCT(tableKey);
   var aw2=(aw!=null?aw:weightKg)||0,vw2=(vw!=null?vw:weightKg)||0;
-  if(t&&t.type==='dest')return charterCostDest(tableKey,destCity,weightKg,aw2,vw2);
+  if(t&&t.type==='dest')return charterCostDest(tableKey,destCity,weightKg,aw2,vw2,destPref);
   if(distanceKm==null)return {ok:false};
   var prices={};['2t','4t','10t'].forEach(function(sk){if(t[sk]){var r=charterRate(tableKey,distanceKm,sk);if(r&&r.price!=null)prices[sk]={price:r.price,quote:r.quote,distBracket:r.distBracket};}});
   var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&charterFits(sk,aw2,vw2))suggest=sk;});
@@ -8188,7 +8235,7 @@ function buildQuoteRows(order){
   /* v18.62 修正12⑥: 送料行の名称は送付方法（混載／チャーター）で切り替え、手入力(shipLabel)があればそれを使う */
   /* v18.99 修正28: 送料の行の備考は既定で「※設置工事費別途」（v19.58 で「組立」→「設置」）（見積書作成画面の備考欄で消す・書き換えることができる） */
   /* v19.39 修正35③: 送料サービス（0円）でも行を残す。見積書作成画面で送料欄を触った案件（shipKeep）は0円でも行を出す */
-  if(ship>0||order.shipKeep)rows.push({rkey:'SHIP',code:shipRowCode(order),name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP',SHIP_ROW_REMARK_DEFAULT)});
+  if(ship>0||order.shipKeep||(order.shipMethod==='charter'&&order.charterTariff==='manual'))rows.push({rkey:'SHIP',code:shipRowCode(order),name:shipRowName(order),qty:1,unit:'式',price:ship,amount:ship,tax:'10%(外)',remark:rowRemark(order,'SHIP',SHIP_ROW_REMARK_DEFAULT)});
   /* v18.62 修正12②: 値引きは項目名付きで複数行。金額が入っていない行は出力しない
      修正17⑬: 値引き単価と数量が入っていれば「単価×数量」で表記する
      ★v18.73: 行キー(DISC/DISC1…)は order.discounts の★元の並び順で振る。
@@ -11802,6 +11849,8 @@ function InvPage(p){
   /* v18.38 修正箇所3⑤: 送付方法の選択（''=未選択で現行どおり / 'mix'=混載 / 'charter'=チャーター）。
      選択すると倉庫カードの送料表記と、見積書に載る送料の両方が切り替わる。 */
   var shipMethod=us('');
+  var chTariff=us('');/* v19.81: チャーターの料金形態（''＝倉庫の料金表／kansai／sapporo／shinkashiwa／manual） */
+  var chAlertR=ur('');/* v19.81: 本社発チャーターのアラートを同じ組み合わせで何度も出さない */
   /* v18.46 修正５⑨: 送付先の選択。顧客属性が「代理店」の場合、代理店宛とエンドユーザー宛の2パターンがあり
      距離＝送料が変わるため、どちらで試算するかを選べるようにする。
      'cust'=顧客(代理店)住所宛（従来どおり） / 'end'=エンド納品先住所宛 */
@@ -11814,6 +11863,21 @@ function InvPage(p){
     return Object.assign({},cust,{pref:ep,city:''});
   }
   function shipPref(){var sc=shipCust();return sc?sc.pref:'';}
+  /* v19.81: 料金表の無い倉庫（本社）でチャーターを選び、料金形態が未選択なら止める */
+  function charterGuard(whId){
+    if(shipMethod[0]!=='charter'||chTariff[0]||!whId||!charterNeedsTariff(whId))return true;
+    var wn=(WH_MAP[whId]&&WH_MAP[whId].s)||whId;
+    alert(wn+'発のチャーター便は原則ありません。\n\nチャーターで送る場合は、「送付方法」の横の「チャーター料金」で、使う料金形態（関西・札幌・新柏の料金表／手入力）を選んでから、もう一度押してください。\nチャーターにしない場合は「混載」を選んでください。');
+    return false;
+  }
+  ue(function(){
+    var w=selWH[0];
+    if(shipMethod[0]!=='charter'||chTariff[0]||!w||!charterNeedsTariff(w)){chAlertR.current='';return;}
+    if(chAlertR.current===w)return;
+    chAlertR.current=w;
+    var wn=(WH_MAP[w]&&WH_MAP[w].s)||w;
+    setTimeout(function(){alert('⚠ '+wn+'発のチャーター便は原則ありません。\n\nチャーターで送る場合は、「チャーター料金」で使う料金形態（関西・札幌・新柏の料金表／手入力）を選んでください。');},0);
+  },[shipMethod[0],selWH[0],chTariff[0]]);
   var showPartWh=us(false),partWhSel=us({});/* v18.30 要望③: 部材別倉庫指定の仮押さえ（例: 本体=新柏、鍵=本社） */
   var showQuote=us(false),quoteOrder=us(null);
   /* v18.46 修正５⑤: 登録済み案件の修正中は、その案件番号へ上書き保存する（新規採番しない）。
@@ -12038,7 +12102,7 @@ function InvPage(p){
     doorType[1]('door');hasDoor[1](true);doorLn[1]('');hasNameplate[1](false);hasNamePaper[1](false);
     inputMode[1]('grid');blocks[1]([{c:'1',t:'1',g:0}]);dQty[1]('');dBase[1]('');
     extraJointScrew[1](0);extraCapScrew[1](0);extraCapScrewGy[1](0);extraSideJoint[1](0);
-    selWH[1](null);selMulti[1](null);shipMethod[1]('');showPartWh[1](false);partWhSel[1]({});
+    selWH[1](null);selMulti[1](null);shipMethod[1]('');chTariff[1]('');showPartWh[1](false);partWhSel[1]({});
     baseColor[1]('gy');hasBase[1](true);hasCap[1](true);shelfQty[1](0);shelfColor[1]('bk');
     vjNeed[1](null);vjQty[1]('');multiColor[1](false);colorBreak[1]([]);hasSideJt[1](true);
     rentalView[1](null);rentalPick[1](null);rentalFy[1](rentalDefaultFY());rentalApply[1](true);rentalPrefillNote[1]('');
@@ -12122,6 +12186,7 @@ function InvPage(p){
     /* v18.48 修正６④⑤: 送付方法・送付先も引き継ぐ。案件修正（修正５⑤）はこの経路で内容を読み込むため、
        引き継がないと上書き保存で「混載/チャーター」「代理店宛/エンドユーザー宛」が黙って初期値へ戻ってしまう。 */
     shipMethod[1](ro.shipMethod||'');
+    chTariff[1](ro.charterTariff||'');/* v19.81 */
     shipDest[1](ro.shipDest||'cust');
     /* v18.55 修正９④: 元の案件が使っていた倉庫を優先選択として渡す（全量OKの倉庫が無くても倉庫未選択にならないように） */
     if(typeof doCheck==='function')doCheck(cloned,ro.wh||'');
@@ -12539,6 +12604,7 @@ function InvPage(p){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
     if(springDeny([selWH[0]],p.toast))return;/* v19.44 春先: 倉庫別の編集権限 */
+    if(!charterGuard(selWH[0]))return;/* v19.81 */
     /* 重複仮押さえ防止: 既に同じ顧客の仮押さえドラフトがある場合は警告
        v18.67 修正14①: 案件修正モードで上書きしようとしている案件そのものは警告の対象外。
        上書き＝押さえ直しなので在庫は追加消費されない（直後の releaseEditingHold で一度解放する）。 */
@@ -12572,7 +12638,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,shipPref()):null;
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var pt=payTermsFor(cust);
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0],chTariff[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);
     p.toast(ovwTag()+'仮押さえ＆見積作成完了: '+no+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -12621,7 +12687,7 @@ function InvPage(p){
     var totalShip=multiShipTotal({lines:clonedLinesM,wh:whA,whs:mwhs.slice()},simpleShipM);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var pt2=payTermsFor(cust);
-    var order={no:no,cid:cust.id,wh:whA,wh2:mwhs[1]||null,whs:mwhs,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:whA,wh2:mwhs[1]||null,whs:mwhs,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);
     p.toast(ovwTag()+'仮押さえ＆見積作成完了（'+mwhs.length+'倉庫）: '+no);
@@ -12852,7 +12918,7 @@ function InvPage(p){
     var totalShip=multiShipTotal({lines:clonedLines,wh:main,whs:whList.slice()},simpleShipA);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var ptA=payTermsFor(cust);
-    var order={no:no,cid:cust.id,wh:main,whs:whList.slice(),status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:main,whs:whList.slice(),status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     if(second)order.wh2=second;
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);showPartWh[1](false);
@@ -12872,6 +12938,7 @@ function InvPage(p){
        後発ログインのロック中でも見積を採番して案件管理へ保存できるようにした（従来はプレビュー表示のみだった）。
        見積作成は STK/HELD を動かさないので、仮押さえの競合は起きない。仮押さえ・受注確定は従来どおり編集権限が必要。 */
     var wh=selWH[0]||'honsha';
+    if(!charterGuard(wh))return;/* v19.81 */
     var shipInfo=cust?calcShipping(lines[0],wh,shipPref()):null;
     var pt3=payTermsFor(cust);
     /* 既存の見積ドラフトがあれば上書き、それ以外は新規作成 */
@@ -12880,7 +12947,7 @@ function InvPage(p){
     var isUpdate=existing&&existing.status==='見積作成'&&existing.cid===cust.id&&(!editingNo[0]||existing.no===editingNo[0]);
     releaseEditingHold();/* v18.67 修正14①: 仮押さえ済みの案件を見積作成で上書きするときは押さえを解放する */
     var no=isUpdate?existing.no:takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
-    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shippingByMethod(lines[0],wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shippingByMethod(lines[0],wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0],chTariff[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     if(isUpdate){
       /* v18.34 ⑪バグ修正: 見積書作成画面(モーダル)で直接編集した値を再作成で消さない。
          既存値優先は「左ペインに入力UIが無い項目」に限定する。
@@ -12946,6 +13013,7 @@ function InvPage(p){
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
     if(springDeny([selWH[0]],p.toast))return;/* v19.44 */
+    if(!charterGuard(selWH[0]))return;/* v19.81 */
     /* 重複仮押さえ防止 */
     var existingR=quoteOrder[0];
     if(existingR&&existingR.status==='仮押さえ'&&existingR.cid===cust.id&&existingR.no!==editingNo[0]){
@@ -12979,7 +13047,7 @@ function InvPage(p){
     var shipInfo=cust?calcShipping(clonedLines,wh,shipPref()):null;
     var no=takeOrderNo('RS');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var ptR=payTermsFor(cust);
-    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0]||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts,deliveryDate:dlvIn};
+    var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0],chTariff[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts,deliveryDate:dlvIn};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);
     p.toast(ovwTag()+'仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -13502,6 +13570,23 @@ function InvPage(p){
                     m[1]
                   );
                 }),
+                /* v19.81: チャーターを選んだら料金形態を聞く（料金表の無い本社発は選ぶまで保存させない） */
+                shipMethod[0]==='charter'?(function(){
+                  var w=selWH[0];
+                  var need=!!(w&&charterNeedsTariff(w)&&!chTariff[0]);
+                  var own=w?charterTableForWarehouse(w):null;
+                  var autoL=w?(own?charterTariffLabel(own):'この倉庫は料金表なし'):'倉庫ごと';
+                  return h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}},
+                    h('span',{style:{fontSize:8,fontWeight:700,color:need?'#c53030':'var(--g500)'}},'チャーター料金'),
+                    h('select',{className:'inp','data-chtariff':'1',value:chTariff[0],style:{fontSize:9,padding:'1px 4px',width:'auto',borderColor:need?'#c53030':undefined},
+                      title:CHARTER_TARIFFS.map(function(t){return t.l+'：'+t.d;}).join('\n'),
+                      onChange:function(e){chTariff[1](e.target.value);}},
+                      h('option',{value:''},'倉庫の料金表（'+autoL+'）'),
+                      CHARTER_TARIFFS.map(function(t){return h('option',{key:t.k,value:t.k},t.l);})),
+                    need?h('span',{style:{fontSize:8,fontWeight:700,color:'#c53030'}},'⚠ '+((WH_MAP[w]&&WH_MAP[w].s)||w)+'発のチャーターは原則なし。使う料金形態を選んでください'):null,
+                    chTariff[0]==='manual'?h('span',{style:{fontSize:8,color:'#975a16'}},'送料は見積書作成画面で入力'):null
+                  );
+                })():null,
                 /* v18.46 修正５⑨: 送付先の選択。代理店の案件はエンドユーザー宛と代理店宛で距離＝送料が変わるため、
                    どちらで試算するかを選べるようにする。エンド納品先の住所から都道府県を判定して送料を計算する。 */
                 (function(){
@@ -13540,9 +13625,12 @@ function InvPage(p){
                      未選択時は従来どおり簡易送料（重量×単価）を表示する。 */
                   (function(){
                     if(!shipMethod[0]||!cust)return null;
-                    var q=shippingByMethod(lines[0],wr.whId,shipCust(),wr.ship?wr.ship.shipping:0,shipMethod[0]);
                     var isCh=shipMethod[0]==='charter';
-                    var chOk=isCh?(charterQuotedFor(lines[0],wr.whId,cust)!=null):true;
+                    /* v19.81: 料金表の無い倉庫（本社）で料金形態が未選択 → 送料は出さず注意だけ */
+                    if(isCh&&!chTariff[0]&&charterNeedsTariff(wr.whId))return h('div',{style:{marginTop:2,fontSize:9,fontWeight:700,color:'#c53030'}},'⚠ チャーターは原則なし（料金形態を選ぶ）');
+                    if(isCh&&chTariff[0]==='manual')return h('div',{style:{marginTop:2,fontSize:10,fontWeight:700,color:'#c53030'}},'チャーター送料: 手入力');
+                    var q=shippingByMethod(lines[0],wr.whId,shipCust(),wr.ship?wr.ship.shipping:0,shipMethod[0],chTariff[0]);
+                    var chOk=isCh?(charterQuotedFor(lines[0],wr.whId,shipCust(),chTariff[0])!=null):true;
                     return h('div',{style:{marginTop:2}},
                       h('div',{style:{fontSize:11,fontWeight:700,color:isCh?'#c53030':'#276749'}},(isCh?'チャーター': '混載')+'送料: ¥'+fm(q)),
                       isCh&&!chOk?h('div',{style:{fontSize:8,color:'#975a16'}},'※チャーター表に該当行先なし → 混載の見積運賃を表示'):null
@@ -15338,7 +15426,7 @@ function OrdersPage(p){
                送付先は「送付先を選べる案件」（顧客属性=代理店、またはエンド納品先が入力されている案件）にだけ出す。
                それ以外は宛先が顧客1択で選択の意味が無いため、従来どおり送付方法だけを表示する。 */
             h('td',{style:{fontSize:9}},o.shipping?'¥'+fm(o.shipping):'-',
-              o.shipMethod?h('div',{style:{fontSize:8,color:o.shipMethod==='charter'?'#c53030':'#276749'}},shipMethodShortLabel(o.shipMethod)):null,
+              o.shipMethod?h('div',{style:{fontSize:8,color:o.shipMethod==='charter'?'#c53030':'#276749'}},shipMethodShortLabel(o.shipMethod)+(o.shipMethod==='charter'&&o.charterTariff?'（'+charterTariffLabel(o.charterTariff).replace('の料金表','')+'）':'')):null,
               (function(){
                 var canDest=(c&&c.attr==='代理店')||!!(o.endUser&&(o.endUser.name||o.endUser.address));
                 if(!canDest)return null;
