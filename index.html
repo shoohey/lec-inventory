@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.75（請求書の備考の手修正・Sαの扉の表記）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.76（請求書の明細の備考の手修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -8600,6 +8600,9 @@ function docEditHeader(order,cust,docType,sheetIdx){
   /* v19.75: 備考の自動値は見積書の備考（order.notes）。「備考を載せない」なら空 */
   if(!hv.edited.notes){var _on=order&&order.notes;hv.notes=Array.isArray(_on)?_on.join('\n'):String(_on||'');}
   if(hv.notesOff)hv.notes='';
+  /* v19.76（2026-11-05 依頼「請求書の備考は明細行の備考欄の修正」）: 明細の各行の備考をこの帳票だけ上書き（行キー→備考。'' も「空にする」として有効） */
+  hv.rowRemarks=(de.rowRemarks&&typeof de.rowRemarks==='object')?de.rowRemarks:{};
+  if(Object.keys(hv.rowRemarks).length)hv.edited.rowRemarks=true;
   if(de.showRep!==undefined&&de.showRep!==null&&de.showRep!==''){hv.showRep=!!de.showRep;hv.edited.showRep=true;}
   if(de.repName){hv.repName=de.repName;hv.edited.repName=true;}
   /* 納品書で「請求書の手修正から来た項目」の印（記載内容の画面でその欄を入力不可にするのに使う） */
@@ -8608,11 +8611,18 @@ function docEditHeader(order,cust,docType,sheetIdx){
   return hv;
 }
 /* その帳票に手修正が保存されているか（✎ボタンの表示に使う） */
+/* v19.76: 帳票の明細行に、✎ 記載内容で直した行の備考を当てる（行キー rkey で対応） */
+function docRowRemarkApply(rows,dv){
+  var m=dv&&dv.rowRemarks;
+  if(!m||!Object.keys(m).length)return rows;
+  return rows.map(function(r){return (r&&r.rkey&&Object.prototype.hasOwnProperty.call(m,r.rkey))?Object.assign({},r,{remark:String(m[r.rkey]==null?'':m[r.rkey])}):r;});
+}
 function hasDocEdit(order,docType){
   var de=docEditFor(order,docType);
   function any(x){
     return DOC_EDIT_KEYS.some(function(k){return !!x[k];})
-      ||(x.showRep!==undefined&&x.showRep!==null&&x.showRep!=='')||!!x.repName;
+      ||(x.showRep!==undefined&&x.showRep!==null&&x.showRep!=='')||!!x.repName
+      ||!!(x.rowRemarks&&Object.keys(x.rowRemarks).length);/* v19.76 */
   }
   if(any(de))return true;
   /* v18.97 修正27⑥: 紙ごとの手修正 */
@@ -9309,6 +9319,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
   var dv=isBill?docEditHeader(order,cust,docType,invSheetIdx):null;/* v18.97 修正27⑥⑦: 分けた紙はその紙の手修正 */
   /* v18.95 修正26③: 分けて出す請求書は伝票コードに枚数の枝番を付ける（手修正があればそちらが優先） */
   if(dv&&invSheetIdx!=null&&!dv.edited.slip)dv.slip=dv.slip+'-'+(invSheetIdx+1);
+  if(dv)rows=docRowRemarkApply(rows,dv);/* v19.76: 明細の行の備考の手修正 */
   var paidStampHTML='';
   if(docType==='invoice'&&scope.paidStamp){
     var psAt=String(scope.paidStamp.at||'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$1/$2/$3');
@@ -10087,7 +10098,7 @@ var HELP_QA=[
     tip:'ステータスによって出せる帳票が変わります（見積作成・仮押さえは見積書、受注確定以降は請求書なども）。',rel:['docs-edit','docs-split']},
   {id:'docs-edit',cat:'docs',tab:'orders',ver:'v19.57',q:'帳票の宛先・日付・品名・備考などを手で直したい',kw:['手修正','宛先','日付','品名','直す','書き換え','備考','請求書の備考'],
     steps:['「📄帳票」で帳票を選ぶ','「✎ 記載内容の手修正」を押す（空欄＝自動の内容）','直して「保存して印刷」'],
-    tip:'元に戻すときは「自動値に戻す」。納品書は請求書の手修正を引き継ぎます（備考は帳票ごと）。v19.75〜 請求書・納品書・物品受領書の備考もこの画面で直せます（空欄＝見積書の備考。「この帳票には備考を載せない」もあります）。',rel:['docs-print']},
+    tip:'元に戻すときは「自動値に戻す」。納品書は請求書の手修正を引き継ぎます（備考は帳票ごと）。v19.75〜 請求書・納品書・物品受領書の備考もこの画面で直せます（空欄＝見積書の備考。「この帳票には備考を載せない」もあります）。v19.76〜 明細の行ごとの備考も直せます（その帳票だけ。↺で元に戻す）。',rel:['docs-print']},
   {id:'docs-split',cat:'docs',tab:'orders',ver:'v19.57',q:'請求書を複数枚に分けたい',kw:['請求書','分割','分ける','複数枚','枚数'],
     steps:['「📄帳票」で請求書を選ぶ','「請求書の枚数」を選ぶ','「金額で分ける」または「台数で分ける」で振り分けて保存する'],
     tip:'入金は紙ごとにチェックできます。「分割しない」にすると従来どおり1枚です。',rel:['ship-paid']},
@@ -14237,6 +14248,7 @@ function QuotePreview(p){
     var _isP=buildInvoiceSheets(o).sheets[invSheetP];
     rows=_isP.rows;subtotal=_isP.subtotal;tax10=_isP.tax;total=_isP.total;
   }
+  if(dvP)rows=docRowRemarkApply(rows,dvP);/* v19.76: 明細の行の備考の手修正（印刷用HTMLと同じ） */
   var subject=quoteSubjectOf(o);
   var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
   var salesP2=orderSalesPersonRaw(o,cust)||'齋藤 勝';/* v18.97 修正27④ */
@@ -14954,6 +14966,7 @@ function OrdersPage(p){
       var hv=docEditHeader(o,c,docType,k);
       var v={showRep:hv.showRep,repName:layer.repName||''};
       DOC_EDIT_KEYS.forEach(function(key){v[key]=layer[key]||'';});
+      v.rowRemarks=Object.assign({},(layer.rowRemarks&&typeof layer.rowRemarks==='object')?layer.rowRemarks:{});/* v19.76 */
       sheets.push({v:v});
     }
     /* 紙の枚数ぶんの自動値。★納品書は手修正は全枚共通のまま、プレビューと自動値だけ紙ごとに切り替える
@@ -14983,6 +14996,8 @@ function OrdersPage(p){
       if(!!v.showRep!==!!o2.showRepName)de.showRep=!!v.showRep;
       var rn=String(v.repName||'').trim();
       if(rn&&rn!==(o2.repName||REP_NAME_DEFAULT))de.repName=rn;
+      /* v19.76: 明細の行の備考（自動と同じ文に戻した行は入っていない） */
+      if(v.rowRemarks&&Object.keys(v.rowRemarks).length)de.rowRemarks=Object.assign({},v.rowRemarks);
       return de;
     }
     var sh=m0.sheets||[];
@@ -16418,7 +16433,7 @@ function OrdersPage(p){
             ):null,
             (DOC_EDIT_TYPES.indexOf(d[0])>=0)?h('div',{style:{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'}},
               h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},
-                title:d[1]+'の記載内容（件名・担当者・日付・伝票コード・納品先・代表者名・備考など）を手修正します',
+                title:d[1]+'の記載内容（件名・担当者・日付・伝票コード・納品先・代表者名・明細の備考・備考など）を手修正します',
                 onClick:function(){var lo=liveOrder(docPick[0])||docPick[0];docPick[1](null);openDocEdit(lo,d[0]);}},
                 '✎ 記載内容の手修正'),
               hasDocEdit(docPick[0],d[0])?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null,
@@ -16780,6 +16795,33 @@ function OrdersPage(p){
           isInv?h('div',{style:{display:'flex',gap:4,marginBottom:6}},
             fldD('payDue','支払期日（空欄=支払条件と請求日から自動計算。日付なら「支払期日」、前払い等の文言なら「支払条件」と印字）',{flex:3})
           ):null,
+          /* v19.76（2026-11-05 依頼「各明細行の備考を修正」）: 明細の行ごとの備考。入っている文＝今の備考（見積書の明細の備考）。直すとこの帳票だけに効く */
+          (function(){
+            var o0=m.order,rowsA;
+            try{
+              var nSp=(invSplitApplies(m.docType)&&invSplitCount(o0)>1)?invSplitCount(o0):1;
+              rowsA=nSp>1?buildInvoiceSheets(o0).sheets[Math.min(tab,nSp-1)].rows:buildQuoteRows(o0).rows;
+            }catch(e){rowsA=[];}
+            rowsA=(rowsA||[]).filter(function(r){return r&&r.rkey;});
+            if(!rowsA.length)return null;
+            var rr=v.rowRemarks||{},nEd=Object.keys(rr).length;
+            function setR(k,val,auto){var o={};Object.keys(rr).forEach(function(x){o[x]=rr[x];});if(val===auto)delete o[k];else o[k]=val;setV({rowRemarks:o});}
+            function plain(t){return String(t||'').replace(/<br\s*\/?>/gi,' ').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').trim();}
+            return h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4},'data-docrowrmk':'1'},
+              h('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:4}},
+                h('label',{style:Object.assign({},DLBL,{fontSize:10})},'明細の備考（行ごと。入っているのは今の備考です。直すと'+(DOC_TYPE_LABELS[m.docType]||'この帳票')+'だけに効きます）'),
+                nEd?h('span',{style:{fontSize:9,color:'#C2410C',fontWeight:700}},'✏ '+nEd+'行 手修正'):null,
+                (nSp>1&&isInv)?h('span',{style:{fontSize:9,color:'var(--g500)'}},'（'+(tab+1)+'枚目の明細）'):null),
+              h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:10}},h('tbody',null,rowsA.map(function(r){
+                var auto=String(r.remark||''),ed=Object.prototype.hasOwnProperty.call(rr,r.rkey),val=ed?String(rr[r.rkey]):auto;
+                return h('tr',{key:r.rkey,'data-docrowrmkrow':r.rkey},
+                  h('td',{style:{padding:'2px 4px',width:'42%',color:'var(--g600)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:320},title:plain(r.name)},plain(r.name)||'（品名なし）'),
+                  h('td',{style:{padding:'2px 4px'}},h('input',{className:'inp','data-docrowrmkin':r.rkey,value:val,placeholder:'（備考なし）',
+                    style:ed?{borderColor:'#C2410C',color:'#C2410C',fontWeight:700,background:'#FFF7ED'}:null,title:ed?'手修正（元: '+(plain(auto)||'空欄')+'）':'',
+                    onChange:function(e){setR(r.rkey,e.target.value,auto);}})),
+                  h('td',{style:{width:24,textAlign:'center'}},ed?h('button',{className:'btn btn-xs btn-ol','data-docrowrmkundo':r.rkey,title:'元の備考に戻す',style:{padding:'0 5px'},onClick:function(){setR(r.rkey,auto,auto);}},'↺'):null));
+              }))));
+          })(),
           /* v19.75（2026-11-05 依頼「請求書の備考欄を手修正」）: 備考。空欄＝見積書の備考。この帳票だけの備考にできる・載せないこともできる */
           h('div',{style:{marginBottom:6}},
             h('label',{style:DLBL},'備考（空欄＝見積書の備考のまま。ここで直すとこの帳票だけに効きます。改行できます）'),
