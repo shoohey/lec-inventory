@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.85（ヤマトはピックアップ料なし）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.86（金額未入力の値引き行も並べ替えられる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -13935,8 +13935,13 @@ function InvPage(p){
               var dk=discountRowKey(di);
               if(have[dk]||dr.amount>0)return;
               qRows=qRows.concat([{rkey:dk,no:qRows.length+1,code:'F00064',name:dr.name||'（値引き・金額未入力）',
-                qty:'',unit:'',price:'',amount:'',tax:'',remark:rowRemark(qo,dk,'')}]);
+                qty:'',unit:'',price:'',amount:'',tax:'',remark:rowRemark(qo,dk,''),pendingDisc:true}]);
             });
+            /* v19.86（2026-11-06 ユーザー「見積作成の画面で明細行の移動が出来ない。QT-2026-279」）:
+               金額未入力の値引き行は帳票の行に入らないため、いつも一番下に付け足していた。
+               並べ替えた順（rowOrder）は保存されるのに表示が一番下のまま＝動かせないように見えた。
+               → 保存された並び順どおりの位置に出す（金額を入れた後も同じ位置に出る）。 */
+            if(qRows.some(function(r){return r.pendingDisc;}))qRows=applyRowOrder(qo,qRows);
           })();
           /* v18.63 修正12の再修正②: 外寸は v18.62 で明細の備考へ自動反映するようになったため、
              「外寸を挿入…」プルダウン用の dimMap は不要になった（備考欄の直接編集のみに統一）。 */
