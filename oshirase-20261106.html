@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月6日の更新のお知らせ（v19.88）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>案件修正を「修正前に戻す」・<br>商品なしの見積・チャーター送料ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.88</span>
+      <span>2026年11月6日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。案件修正で間違えたときに<b>修正前の状態へ戻せる</b>ようになりました。また、<b>商品を選ばずに送料・作業費だけの見積</b>を作れるようになりました。</p>
+    <p>見積・案件を扱う方は<b>1番〜3番</b>を、チャーターで出荷する案件を扱う方は<b>4番〜6番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.88</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>古い画面のまま保存すると、他の人の変更や単価マスタが古い内容に戻ることがあります。</b>開きっぱなしの画面も、必ず一度再読み込みしてください。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">案件修正を「↩ 修正前に戻す」で取り消せます</a><span class="tag">新機能</span></li>
+      <li><a href="#s2">商品を選ばずに見積を作れます（送料・作業費だけの見積）</a><span class="tag">新機能</span></li>
+      <li><a href="#s3">案件修正で、入力した内容がそのまま残るようにしました</a></li>
+      <li><a href="#s4">本社発のチャーターはアラートが出ます・チャーター料金を選べます</a><span class="tag">重要</span></li>
+      <li><a href="#s5">チャーターは1台に載らなければ台数分の料金にします</a><span class="tag">重要</span></li>
+      <li><a href="#s6">チャーターの送料にピックアップ料（1箱100円）を入れます</a><span class="tag">重要</span></li>
+      <li><a href="#s7">見積書作成画面で明細行が動かせない不具合を直しました</a></li>
+      <li><a href="#s8">帳票に会社の角印が入ります</a></li>
+      <li><a href="#s9">同時に保存すると他の人の在庫の変更が消える不具合を直しました</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 見積・案件 ============ -->
+  <h2 class="sec">見積・案件</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>案件修正を「↩ 修正前に戻す」で取り消せます<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>案件管理の <kbd>✏ 案件修正</kbd> を押した時点の案件の内容（明細・金額・倉庫・見積書の内容・ステータス・仮押さえ在庫）を、システムが自動で控えておきます。間違えて直してしまったときは、その状態に戻せます。</p>
+    <div class="how">
+      <b>ボタンの場所（2か所）</b>
+      ① 在庫確認・見積画面の、案件修正モードのオレンジの帯の中 → <kbd>↩ 修正前に戻す</kbd>（保存する前でも、保存した後でも押せます。押すと案件修正モードが終わります）<br>
+      ② 案件管理の、その案件の操作欄 → <kbd>↩ 修正前に戻す</kbd>（画面を離れた後でも、次に案件修正するまで押せます）
+    </div>
+    <ul>
+      <li>押すと確認が出て、修正前の内容とステータスに戻ります。仮押さえだった案件は、<b>在庫も押さえ直します</b>。</li>
+      <li>修正している間に別の案件がその在庫を押さえていた場合、足りない分は「<b>発注待ち</b>」になり、画面にお知らせが出ます。</li>
+    </ul>
+    <div class="warnbox">
+      戻せるのは<b>1つ前（直前の案件修正を始める前）だけ</b>です。戻した後はボタンが消えます。<br>
+      出荷指示以降に進んだ案件は、在庫を使った後なので戻せません。<br>
+      今回の更新より前に案件修正を始めた案件には控えが無いため、ボタンは出ません。
+    </div>
+  </section>
+
+  <section class="item key" id="s2">
+    <h3><span class="n">2</span><span>商品を選ばずに見積を作れます（送料・作業費だけの見積）<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <div class="how">
+      <b>作りかた</b>
+      在庫確認・見積画面 → 製品ラインの上の <kbd>☑ 商品を選択しない（送料・作業費だけの見積）</kbd> → 右側で出荷元の倉庫を選ぶ → <kbd>見積書のみ作成</kbd>
+    </div>
+    <ul>
+      <li>送料・作業費などは、開いた見積書作成画面で入れてください。</li>
+      <li>在庫は押さえません（仮押さえのボタンは出ません）。</li>
+      <li>明細をすでに入れているときはチェックできません。案件修正で開くと、チェックが付いたまま開きます。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>案件修正で、入力した内容がそのまま残るようにしました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>案件管理の <kbd>✏ 案件修正</kbd> で在庫確認・見積画面に戻ると、一部の内容が初期値に戻っていたのを直しました。</p>
+    <ul>
+      <li><b>出荷倉庫</b>：送料の安い倉庫に勝手に変わっていたのを、元の倉庫のまま開くようにしました。</li>
+      <li><b>複数倉庫（部材別）</b>：前回の倉庫の割り当てを覚えておき、右側に「🔀 この案件は前回…」のお知らせが出ます。<kbd>前回の倉庫割当で開く</kbd> で同じ割り当てから直せます。</li>
+      <li><b>受注確定</b>の案件：直して押さえ直しても、受注確定のままにしました。</li>
+      <li><b>仮押さえのみ</b>の納品予定日：入力済みの日付を初期値にしました。</li>
+      <li><b>出荷先・荷送人・連絡事項・帳票の手修正（✎ 記載内容の手修正）</b>：上書き保存しても消えないようにしました。</li>
+    </ul>
+  </section>
+
+  <!-- ============ チャーター・送料 ============ -->
+  <h2 class="sec">チャーター・送料</h2>
+
+  <section class="item key" id="s4">
+    <h3><span class="n">4</span><span>本社発のチャーターはアラートが出ます・チャーター料金を選べます<span class="pill imp" style="margin-left:8px">変更</span></span></h3>
+    <p>本社・第一・第二倉庫にはチャーターの料金表が無いため、これまではチャーターを選んでも<b>混載（ヤマト）の金額で計算されていました</b>（名前だけ「チャーター便」）。</p>
+    <ul>
+      <li>本社・第一・第二倉庫からチャーターを選ぶと、<b>「本社発のチャーターは原則なし」</b>とアラートが出ます。</li>
+      <li>それでもチャーターで送る場合は、「送付方法」の横の <kbd>チャーター料金</kbd> で、<b>どの料金表を使うか</b>（関西・札幌・新柏・手入力）を選んでください。選ぶまで仮押さえ・見積書作成はできません。</li>
+      <li>「手入力」を選ぶと送料は0円で、見積書作成画面で金額を入れます。</li>
+      <li>新柏・関西・札幌など料金表のある倉庫は、選ばなければこれまでどおりその倉庫の表で計算します。</li>
+    </ul>
+  </section>
+
+  <section class="item key" id="s5">
+    <h3><span class="n">5</span><span>チャーターは1台に載らなければ台数分の料金にします<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>どの車にも載り切らない量でも、一番大きい車<b>1台分</b>の料金になっていました。重さ・容積から必要な台数を数え、<b>台数分の料金</b>にしました（一番安くなる車の大きさを選びます）。</p>
+    <div class="ex">
+      <span class="lbl">例（新柏発）</span>
+      QT-2026-279：<s>4t×1台</s> → <strong>4t×4台</strong><br>
+      送料計算の画面には「4t×4台」のように出ます。チャーター発注書は 数量＝台数・単価＝1台の金額 になります。
+    </div>
+    <p class="sub">1台に載る量なら、金額はこれまでと同じです。</p>
+  </section>
+
+  <section class="item key" id="s6">
+    <h3><span class="n">6</span><span>チャーターの送料にピックアップ料（1箱100円）を入れます<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <ul>
+      <li>チャーターの送料に、<b>ピックアップ料（箱数×100円）</b>を足して見積の送料にします。これまでどおり総額に ×1.1 します。</li>
+      <li>見積書には、送料と合わせた1行で出ます。チャーター発注書の金額は車の料金だけです。</li>
+      <li>混載（新柏・尼高・札幌の運賃表）は、もともと入っている<b>諸経費がピックアップ料</b>なので変わりません。本社・関西発のヤマトにも足しません。</li>
+    </ul>
+    <div class="warnbox">
+      <b>4番〜6番は、すでに保存してある案件の送料は変わりません。</b>新しい金額にするには、案件管理の <kbd>✏ 案件修正</kbd> で開いて保存し直してください（例：QT-2026-268・269・277・278・279）。
+    </div>
+  </section>
+
+  <section class="item" id="s7">
+    <h3><span class="n">7</span><span>見積書作成画面で明細行が動かせない不具合を直しました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>金額をまだ入れていない「出精値引き」などの行が、ドラッグしても一番下に戻ってしまっていたのを直しました（例：QT-2026-279）。</p>
+  </section>
+
+  <!-- ============ 帳票・在庫 ============ -->
+  <h2 class="sec">帳票・在庫</h2>
+
+  <section class="item" id="s8">
+    <h3><span class="n">8</span><span>帳票に会社の角印が入ります<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <ul>
+      <li>見積書・請求書・納品書・物品受領書・チャーター発注書・八木熊様の注文書・その他の発注書に、会社の角印が入ります。位置は会社住所に少し重なる所です。</li>
+      <li>出荷指示書には入りません。Excel 出力にも入りません。</li>
+      <li>Sα の棚板の商品名を「棚板（グレー）」にしました（マスタ一覧に合わせました）。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s9">
+    <h3><span class="n">9</span><span>同時に保存すると他の人の在庫の変更が消える不具合を直しました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>同じ時間に別の人が保存すると、在庫の手修正や入庫予定の変更が消えることがありました（例：11月5日 関西営業所の Sα の手修正）。重なっても両方の変更が残るようにしました。消えていた関西の Sα の在庫は、手修正した数に戻してあります。</p>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>案件番号と、画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.80〜v19.88】
+・★修正前に戻す：案件修正で間違えたら「↩ 修正前に戻す」で、案件修正を始める前の内容・ステータス・仮押さえに戻せます（案件修正モードの帯／案件管理の操作欄。1つ前だけ）
+・★商品なしの見積：在庫確認・見積画面の「商品を選択しない」にチェック →「見積書のみ作成」で、送料・作業費だけの見積を作れます
+・案件修正で倉庫・複数倉庫の割り当て・受注確定・出荷先などが初期値に戻る不具合を直しました
+・★本社・第一・第二発のチャーターはアラートが出ます。使う場合は「チャーター料金」で料金表（関西・札幌・新柏・手入力）を選んでください
+・★チャーターは1台に載らなければ台数分の料金に（例 279：4t×4台）。チャーターの送料にピックアップ料（1箱100円）を足します（混載・ヤマトは変更なし）
+　→保存済みの案件の送料は、案件修正で開いて保存し直すと新しい金額になります
+・見積書作成画面で、金額未入力の値引き行が動かせない不具合を直しました
+・帳票（出荷指示書以外）に会社の角印が入ります
+・同時に保存すると他の人の在庫の変更が消える不具合を直しました
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261106.html
+古い画面のまま保存すると内容が古く戻ることがあるので、必ず再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
