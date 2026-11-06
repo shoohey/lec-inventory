@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.83（チャーターは載り切らなければ台数分）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.84（送料にピックアップ料 1箱100円）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2960,7 +2960,7 @@ function charterFeeOf(order,cust){
     /* v19.81: 案件の料金形態（order.charterTariff）の料金表で引く。手入力・料金表なしは null */
     var r=charterPick(order.wh,order.lines,order.spareParts,sc,order.charterTariff||'');
     if(!r||!r.ok||r.price==null)return null;
-    return {car:r.car,price:r.price,count:r.count||1,unitPrice:r.unitPrice!=null?r.unitPrice:r.price};/* v19.83: price＝台数分の合計 */
+    return {car:r.car,price:r.price,count:r.count||1,unitPrice:r.unitPrice!=null?r.unitPrice:r.price,pickup:r.pickup||0};/* v19.83: price＝台数分の合計（車の料金）。v19.84: pickup＝ピックアップ料 */
   }catch(e){return null;}
 }
 function charterCarLabel(k){return k?(String(k).replace(/t$/,'')+'ｔ車'):'';}
@@ -5383,8 +5383,9 @@ function yamatoFreightCost(tableKey,destPref,boxes,boxSize){
   var row=t.rates[boxSize];if(!row)return null;
   var rate=row[ri];if(rate==null)return null;
   var boxCount=Math.max(1,Math.ceil(boxes||0));
-  var genka=rate*boxCount;
-  return {rate:rate,region:region,boxCount:boxCount,boxSize:boxSize,genka:genka,quoted:markupCeil(genka)};
+  var pickup=pickupFee(boxCount);/* v19.84: ピックアップ料 */
+  var genka=rate*boxCount+pickup;
+  return {rate:rate,region:region,boxCount:boxCount,boxSize:boxSize,pickup:pickup,genka:genka,quoted:markupCeil(genka)};
 }
 /* ===== v18.90 送料計算の修正1: 行先は「市区町村名」だけで突合する =====
    【事故】顧客の市区町村欄に番地まで入っている案件（例「深谷市上野台３６９番地」）で、
@@ -5441,6 +5442,15 @@ function freightDefShokei(tableKey){return (tableKey==='r5_amago'||tableKey==='r
    ※回答文言は「百円単位まで切り上げ」だが例が千円切上げのため例に準拠（7/30定例で最終確認）。
    ×1.1は0.01円単位に丸めてから切上げ（浮動小数点誤差対策・v18.33からの継承） */
 function markupCeil(genka){return Math.ceil(Math.round(genka*110)/100/1000)*1000;}
+/* v19.84（2026-11-06 ユーザー「送料計算でピックアップ料は含まれてる？」→「どの倉庫でもかかる・1箱×100円・見積は送料と合算・総額に×1.1」）:
+   ピックアップ料＝箱数×100円。
+   ・混載（新柏・尼高・札幌の運賃表）: 従来の「諸経費＝箱数×100（予備箱込み）」がこれにあたる（二重に足さない）。
+   ・ヤマト（本社・関西発）: 従来は諸経費なし → ヤマトの箱数（実際に送る箱数）×100 を運賃原価に足す。
+   ・チャーター: 従来は車の料金だけ → 箱数（予備箱込み・混載の諸経費と同じ数え方）×100 を足す。
+   見積の金額は（運賃＋ピックアップ料）×1.1・千円未満切上げ。関西表の見積記載価格があるときは 見積記載価格＋ピックアップ料×1.1 を千円未満切上げ。 */
+var PICKUP_PER_BOX=100;
+function pickupFee(boxes){return (boxes>0)?Math.round(boxes*PICKUP_PER_BOX):0;}
+function ceil1000(v){return Math.ceil(Math.round(v*100)/100/1000)*1000;}
 /* v18.30 要望④/v18.34 ⑨-1修正: 諸経費=箱数(予備箱込み)×100円を1回のみ算入。
    原典 送料計算表.xlsx の式チェーン: K22=L20(部材箱数計)+K20(追加箱数) → K25=K22×100。
    予備箱はK22の中で1回だけ算入されるため、呼出側は calcShipWeight の boxes(予備箱込み)をそのまま渡す（再加算しない）。
@@ -5551,7 +5561,7 @@ function calcFreight(order,destCity,destPref){
     var yamatoBoxes=Math.max(0,bw.boxes-(bw.extraBoxes||0));
     var yf=yamatoFreightCost(table,destPref,yamatoBoxes,bs);
     if(!yf)return {ok:false,reason:'distance_unknown',table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes};
-    return {ok:true,yamato:true,table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,extraBoxes:bw.extraBoxes,boxSize:yf.boxSize,boxCount:yf.boxCount,region:yf.region,rate:yf.rate,shokei:0,surcharge:0,chuukei:0,genka:yf.genka,quoted:yf.quoted};
+    return {ok:true,yamato:true,table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,extraBoxes:bw.extraBoxes,boxSize:yf.boxSize,boxCount:yf.boxCount,pickup:yf.pickup,region:yf.region,rate:yf.rate,shokei:0,surcharge:0,chuukei:0,genka:yf.genka,quoted:yf.quoted};
   }
   var dd=destDistanceFor(table,destCity,destPref);
   if(dd==null)return {ok:false,reason:'distance_unknown',table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes};
@@ -5579,7 +5589,7 @@ function charterQuotedFor(lines,wh,cust,tariff){
     /* v19.81: 料金形態（tariff）の料金表で引く。距離はその料金表の発地から（関西発は従来どおり尼高表の距離） */
     var r=charterPick(wh,lines,undefined,cust,tariff);
     if(!r||!r.ok||r.price==null)return null;
-    return r.quote!=null?r.quote:markupCeil(r.price);
+    return r.quoteAll;/* v19.84: 車＋ピックアップ料 */
   }catch(e){return null;}
 }
 /* 送付方法(''=未選択/'mix'=混載/'charter'=チャーター)に応じた見積送料。
@@ -5668,7 +5678,10 @@ function charterPick(wh,lines,spareParts,sc,tariff){
   var ch=charterCost(wh,d,fr.weight,sc.city||'',fr.actualWeight,fr.volumeWeight,tk,sc.pref||'');
   if(!ch||!ch.ok||!ch.suggest||!ch.prices[ch.suggest])return {table:tk,noHit:true};
   var pk=ch.prices[ch.suggest],n=charterCountOf(ch);
-  return {ok:true,table:tk,car:ch.suggest,count:n,unitPrice:pk.price,price:pk.price*n,quote:pk.quote!=null?pk.quote*n:pk.quote,dest:ch.dest,viaPref:ch.viaPref};
+  var pu=pickupFee(fr.boxes),car=pk.price*n,cq=pk.quote!=null?pk.quote*n:null;
+  /* v19.84: price＝車の料金（発注書の金額）。pickup＝ピックアップ料。quoteAll＝見積に出す送料（車＋ピックアップ料） */
+  return {ok:true,table:tk,car:ch.suggest,count:n,unitPrice:pk.price,price:car,quote:cq,pickup:pu,
+    quoteAll:cq!=null?ceil1000(cq+pu*1.1):markupCeil(car+pu),dest:ch.dest,viaPref:ch.viaPref};
 }
 /* 距離km＋車格→チャーター料金。距離は次のkmブラケットへ繰上げ。 */
 function charterRate(tableKey,distanceKm,sharkaku){
@@ -7919,7 +7932,7 @@ function orderShipCost(order){
   try{
     if(order.shipMethod==='charter'){
       var fee=charterFeeOf(order,cust);
-      if(fee&&fee.price>0)return {cost:fee.price,ok:true,how:'charter'};
+      if(fee&&fee.price>0)return {cost:fee.price+(fee.pickup||0),ok:true,how:'charter'};/* v19.84: ピックアップ料も原価 */
     }
     var sc=cust;
     if(order.shipDest==='end'&&order.endUser&&order.endUser.address){var ep=prefFromAddress(order.endUser.address);if(ep)sc=Object.assign({},cust,{pref:ep,city:''});}
@@ -15904,7 +15917,7 @@ function OrdersPage(p){
               h('table',{className:'tbl',style:{fontSize:9,minWidth:640}},
                 h('thead',null,h('tr',null,
                   h('th',null,'倉庫'),h('th',null,'運賃表'),h('th',null,'距離/地域'),h('th',null,'課金重量・箱数'),
-                  h('th',{style:{textAlign:'right'}},'地別運賃'),h('th',{style:{textAlign:'right'}},'諸経費'),
+                  h('th',{style:{textAlign:'right'}},'地別運賃'),h('th',{style:{textAlign:'right'}},'ピックアップ料'),
                   h('th',{style:{textAlign:'right'}},'運賃原価'),h('th',{style:{textAlign:'right'}},'見積運賃(×1.1)'))),
                 h('tbody',null,legs.map(function(g,gi){
                   var f=g.fr||{};
@@ -15921,7 +15934,7 @@ function OrdersPage(p){
                     h('td',null,f.yamato?(YAMATO_REGION_LABEL[f.region]||f.region):(f.distance+'km'+(f.approxDistance?'(暫定)':''))),
                     h('td',null,f.yamato?(f.boxSize+'サイズ×'+f.boxCount+'箱'):(f.weight+'kg / '+f.boxes+'箱'+(f.extraBoxes?'(予備'+f.extraBoxes+')':''))),
                     h('td',{style:{textAlign:'right'}},'¥'+fm(f.rate)),
-                    h('td',{style:{textAlign:'right'}},f.yamato?'-':('¥'+fm(f.shokei))),
+                    h('td',{style:{textAlign:'right'}},'¥'+fm(f.yamato?(f.pickup||0):f.shokei)),
                     h('td',{style:{textAlign:'right'}},'¥'+fm(f.genka)),
                     h('td',{style:{textAlign:'right',fontWeight:700,color:'#276749'}},'¥'+fm(f.quoted)));
                 }))
@@ -15955,7 +15968,7 @@ function OrdersPage(p){
               fr.yamato?h('span',null,h('b',null,'地域: '),(YAMATO_REGION_LABEL[fr.region]||fr.region)):h('span',null,h('b',null,'距離: '),fr.distance+'km'+(fr.approxDistance?'(暫定)':'')+' →'+fr.distBracket+'km区分'),
               fr.yamato?h('span',null,h('b',null,'箱: '),fr.boxSize+'サイズ×'+fr.boxCount+'箱（計算箱数'+fr.boxes+(fr.extraBoxes?'・予備箱'+fr.extraBoxes:'')+'）'):h('span',null,h('b',null,'課金重量: '),fr.weight+'kg →'+fr.weightBracket+'kg区分（実重'+(fr.actualWeight!=null?fr.actualWeight:'-')+'kg/容積'+(fr.volumeWeight!=null?fr.volumeWeight:'-')+'kg・'+fr.boxes+'箱'+(fr.extraBoxes?'/うち予備箱'+fr.extraBoxes:'')+'）'),
               h('span',null,h('b',null,fr.yamato?'1箱運賃: ':'地別運賃: '),'¥'+fm(fr.rate)),
-              fr.yamato?null:h('span',null,h('b',null,'諸経費(箱数×100・予備箱込み): '),'¥'+fm(fr.shokei)),
+              fr.yamato?h('span',null,h('b',null,'ピックアップ料(箱数×100): '),'¥'+fm(fr.pickup||0)):h('span',null,h('b',null,'諸経費＝ピックアップ料(箱数×100・予備箱込み): '),'¥'+fm(fr.shokei)),
               fr.surcharge?h('span',null,h('b',null,'燃料サーチャージ: '),'¥'+fm(fr.surcharge)):null,
               h('span',null,h('b',null,'運賃原価: '),'¥'+fm(fr.genka)),
               fr.chuukei?h('span',null,h('b',null,'中継料(1000kg超・原価に含む): '),'¥'+fm(fr.chuukei)):null,
@@ -15985,13 +15998,13 @@ function OrdersPage(p){
                 return charterTableForWarehouse(o.wh)?h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※チャーター料金表に該当行先が見つかりません（行先市名をご確認ください）'):h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:4}},'※チャーター比較は尼高/関西/札幌/新柏発に対応（本社発のチャーター表は未提供）');
               }
               var mix=fr.ok?fr.genka:null;/* 混載は運賃原価で比較（上限超過時は混載自体が対象外のため比較なし） */
-              var cheaper=mix!=null&&ch.suggestPrice!=null&&ch.suggestPrice<mix?'charter':(mix!=null?'mix':null);
+              var cheaper=mix!=null&&ch.suggestPrice!=null&&(ch.suggestPrice+pickupFee(fr.boxes))<mix?'charter':(mix!=null?'mix':null);
               return h('div',{style:{marginTop:6,paddingTop:6,borderTop:'1px dashed var(--g300)'}},
                 h('div',{style:{fontSize:10,fontWeight:700,marginBottom:3}},mix!=null?'混載 vs チャーター（参考比較）':'チャーター内訳（混載上限超過のため）'),
                 h('div',{style:{display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}},
                   mix!=null?h('span',{style:cheaper==='mix'?{fontWeight:700,color:'#276749'}:{}},'混載 運賃原価: ¥'+fm(mix)+(cheaper==='mix'?' ◀安い':'')):null,
                   h('span',null,(mix!=null?'｜':'')+'チャーター: '+['2t','4t','10t'].map(function(sk){return ch.prices[sk]?sk+'=¥'+fm(ch.prices[sk].price)+(ch.prices[sk].quote!=null?'(見積'+fm(ch.prices[sk].quote)+')':''):null;}).filter(Boolean).join(' / ')),
-                  ch.suggestPrice!=null?h('span',{style:cheaper==='charter'?{fontWeight:700,color:'#c53030'}:{fontWeight:700,color:'#1e3a5f'}},'｜推奨車格 '+ch.suggest+(charterCountOf(ch)>1?'×'+ch.count+'台':'')+'=¥'+fm(ch.suggestPrice)+(cheaper==='charter'?' ◀安い':'')):null,
+                  ch.suggestPrice!=null?h('span',{style:cheaper==='charter'?{fontWeight:700,color:'#c53030'}:{fontWeight:700,color:'#1e3a5f'}},'｜推奨車格 '+ch.suggest+(charterCountOf(ch)>1?'×'+ch.count+'台':'')+'=¥'+fm(ch.suggestPrice)+'＋ピックアップ料¥'+fm(pickupFee(fr.boxes))+(cheaper==='charter'?' ◀安い':'')):null,
                   ch.dest?h('span',{style:{color:'var(--g400)'}},'｜該当行先: '+(ch.region?ch.region+'・':'')+ch.dest):null
                 ),
                 h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'※チャーター車格は積載量基準の参考（実際は容積で要判断）。価格表: 尼高2026.10改定(括弧内=関西見積記載)/新柏2025.4全国チャーター。')
