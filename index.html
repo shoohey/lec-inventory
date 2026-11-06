@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.82（角印の向きと位置）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.83（チャーターは載り切らなければ台数分）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2960,7 +2960,7 @@ function charterFeeOf(order,cust){
     /* v19.81: 案件の料金形態（order.charterTariff）の料金表で引く。手入力・料金表なしは null */
     var r=charterPick(order.wh,order.lines,order.spareParts,sc,order.charterTariff||'');
     if(!r||!r.ok||r.price==null)return null;
-    return {car:r.car,price:r.price};
+    return {car:r.car,price:r.price,count:r.count||1,unitPrice:r.unitPrice!=null?r.unitPrice:r.price};/* v19.83: price＝台数分の合計 */
   }catch(e){return null;}
 }
 function charterCarLabel(k){return k?(String(k).replace(/t$/,'')+'ｔ車'):'';}
@@ -2979,8 +2979,8 @@ function charterPOAuto(order,cust){
     payTerms:CHARTER_PAY_TERMS,
     staff:curUserName().replace(/^[^\/]*\//,''),
     item:fee?charterCarLabel(fee.car):'',
-    qty:'1',unit:'車',
-    price:fee?String(fee.price):'',
+    qty:fee?String(fee.count||1):'1',unit:'車',/* v19.83: 載り切らなければ台数分 */
+    price:fee?String(fee.unitPrice!=null?fee.unitPrice:fee.price):'',
     load:load,
     loadDetail:load?(CHARTER_LOADS[load]||''):'',
     /* v19.51（2026-10-20 ユーザー）: 納入先担当者＝出荷指示書の荷受人、電話＝納品先電話番号（どちらも出荷指示書の手修正があればその値） */
@@ -5601,6 +5601,25 @@ var CHARTER_TABLES={"kansai": {"dep": "amago","dist": [25,50,100,150,200,250,300
    実重量・容積重量の二系統で判定（片方でも超えたら上位車格へ）。10tの容積上限は表に記載なし＝実質無制限 */
 var CHARTER_CAP={'2t':{w:1500,v:3000},'4t':{w:2500,v:6500},'10t':{w:13000,v:Infinity}};
 function charterFits(sk,aw,vw){var c=CHARTER_CAP[sk];return !!c&&aw<=c.w&&vw<=c.v;}
+/* v19.83（2026-11-06 ユーザー「案件修正で出荷倉庫を変更してもチャーターの料金があってない。QT-2026-279、278」）:
+   【元の不具合】どの車格にも載り切らないときも「一番大きい車格1台分」の料金にしていた。
+   　　　　　　　新柏の表は 2t/4t だけなので、279（実重 8,479kg）も 278（実重 4,323kg）も 4t 1台＝38,000円（見積 42,000円）になっていた。
+   【対応】1台に載るなら従来どおり一番小さい車格・1台。載り切らないときは車格ごとに必要台数（実重・容積の多い方で切上げ）を数え、
+   　　　　合計原価の安い車格を使う。金額＝1台の料金×台数（見積記載価格も×台数）。 */
+function charterChoose(prices,aw,vw){
+  var ks=['2t','4t','10t'].filter(function(sk){return prices[sk]&&prices[sk].price!=null;});
+  if(!ks.length)return null;
+  for(var i=0;i<ks.length;i++){if(charterFits(ks[i],aw,vw))return {sk:ks[i],n:1};}
+  var best=null;
+  ks.forEach(function(sk){
+    var c=CHARTER_CAP[sk];if(!c)return;
+    var n=Math.max(1,Math.ceil((aw||0)/c.w),c.v===Infinity?1:Math.ceil((vw||0)/c.v));
+    var tot=n*prices[sk].price;
+    if(!best||tot<best.tot||(tot===best.tot&&n<best.n))best={sk:sk,n:n,tot:tot};
+  });
+  return best?{sk:best.sk,n:best.n}:{sk:ks[ks.length-1],n:1};
+}
+function charterCountOf(ch){return (ch&&ch.count>1)?ch.count:1;}
 /* 発倉庫→チャーター表。尼高/関西発=kansai、札幌発=sapporo、v18.30: 新柏発=shinkashiwa(行先ベース)。他=null(本社発チャーター表は未提供)。 */
 function charterTableForWarehouse(whId){
   if(whId==='amago'||whId==='kansai')return 'kansai';
@@ -5648,8 +5667,8 @@ function charterPick(wh,lines,spareParts,sc,tariff){
   var d=charterDistanceFor(tk,fr,sc.city||'',sc.pref||'');
   var ch=charterCost(wh,d,fr.weight,sc.city||'',fr.actualWeight,fr.volumeWeight,tk,sc.pref||'');
   if(!ch||!ch.ok||!ch.suggest||!ch.prices[ch.suggest])return {table:tk,noHit:true};
-  var pk=ch.prices[ch.suggest];
-  return {ok:true,table:tk,car:ch.suggest,price:pk.price,quote:pk.quote,dest:ch.dest,viaPref:ch.viaPref};
+  var pk=ch.prices[ch.suggest],n=charterCountOf(ch);
+  return {ok:true,table:tk,car:ch.suggest,count:n,unitPrice:pk.price,price:pk.price*n,quote:pk.quote!=null?pk.quote*n:pk.quote,dest:ch.dest,viaPref:ch.viaPref};
 }
 /* 距離km＋車格→チャーター料金。距離は次のkmブラケットへ繰上げ。 */
 function charterRate(tableKey,distanceKm,sharkaku){
@@ -5689,9 +5708,8 @@ function charterCostDest(tableKey,destCity,weightKg,awD,vwD,destPref){
   var prices={};
   if(hit.p2t)prices['2t']={price:hit.p2t};
   if(hit.p4t)prices['4t']={price:hit.p4t};
-  var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&charterFits(sk,awD,vwD))suggest=sk;});
-  if(!suggest){var ks=Object.keys(prices);suggest=ks.length?ks[ks.length-1]:null;}
-  return {ok:!!Object.keys(prices).length,table:tableKey,dest:hit.dest,region:hit.region,viaPref:viaPref,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
+  var cc=charterChoose(prices,awD,vwD);var suggest=cc?cc.sk:null,cnt=cc?cc.n:1;/* v19.83: 載り切らなければ台数分 */
+  return {ok:!!Object.keys(prices).length,table:tableKey,dest:hit.dest,region:hit.region,viaPref:viaPref,prices:prices,suggest:suggest,count:cnt,suggestPrice:suggest?prices[suggest].price*cnt:null};
 }
 /* 請求重量→推奨車格(参考)。v18.34 ⑨-5: 実重量aw・容積重量vwの二系統で車格制限を判定（未指定時はweightKgを両方に適用） */
 function charterCost(whId,distanceKm,weightKg,destCity,aw,vw,tableKeyOv,destPref){
@@ -5701,9 +5719,8 @@ function charterCost(whId,distanceKm,weightKg,destCity,aw,vw,tableKeyOv,destPref
   if(t&&t.type==='dest')return charterCostDest(tableKey,destCity,weightKg,aw2,vw2,destPref);
   if(distanceKm==null)return {ok:false};
   var prices={};['2t','4t','10t'].forEach(function(sk){if(t[sk]){var r=charterRate(tableKey,distanceKm,sk);if(r&&r.price!=null)prices[sk]={price:r.price,quote:r.quote,distBracket:r.distBracket};}});
-  var suggest=null;['2t','4t','10t'].forEach(function(sk){if(!suggest&&prices[sk]&&charterFits(sk,aw2,vw2))suggest=sk;});
-  if(!suggest){var keys=Object.keys(prices);suggest=keys.length?keys[keys.length-1]:null;}
-  return {ok:Object.keys(prices).length>0,table:tableKey,prices:prices,suggest:suggest,suggestPrice:suggest?prices[suggest].price:null};
+  var cc=charterChoose(prices,aw2,vw2);var suggest=cc?cc.sk:null,cnt=cc?cc.n:1;/* v19.83: 載り切らなければ台数分 */
+  return {ok:Object.keys(prices).length>0,table:tableKey,prices:prices,suggest:suggest,count:cnt,suggestPrice:suggest?prices[suggest].price*cnt:null};
 }
 /* v18.33 要望⑨: 注文台数に応じた追加箱数（予備箱）。送料計算表 表1（K26/K20セルへの手入力を自動化）。
    1〜30台=1箱 / 31〜50=2 / 51〜100=3 / 101〜200=4 / 201〜300=6 / 301〜500=10（500超は表の上限10を維持）。
@@ -15974,7 +15991,7 @@ function OrdersPage(p){
                 h('div',{style:{display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}},
                   mix!=null?h('span',{style:cheaper==='mix'?{fontWeight:700,color:'#276749'}:{}},'混載 運賃原価: ¥'+fm(mix)+(cheaper==='mix'?' ◀安い':'')):null,
                   h('span',null,(mix!=null?'｜':'')+'チャーター: '+['2t','4t','10t'].map(function(sk){return ch.prices[sk]?sk+'=¥'+fm(ch.prices[sk].price)+(ch.prices[sk].quote!=null?'(見積'+fm(ch.prices[sk].quote)+')':''):null;}).filter(Boolean).join(' / ')),
-                  ch.suggestPrice!=null?h('span',{style:cheaper==='charter'?{fontWeight:700,color:'#c53030'}:{fontWeight:700,color:'#1e3a5f'}},'｜推奨車格 '+ch.suggest+'=¥'+fm(ch.suggestPrice)+(cheaper==='charter'?' ◀安い':'')):null,
+                  ch.suggestPrice!=null?h('span',{style:cheaper==='charter'?{fontWeight:700,color:'#c53030'}:{fontWeight:700,color:'#1e3a5f'}},'｜推奨車格 '+ch.suggest+(charterCountOf(ch)>1?'×'+ch.count+'台':'')+'=¥'+fm(ch.suggestPrice)+(cheaper==='charter'?' ◀安い':'')):null,
                   ch.dest?h('span',{style:{color:'var(--g400)'}},'｜該当行先: '+(ch.region?ch.region+'・':'')+ch.dest):null
                 ),
                 h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:2}},'※チャーター車格は積載量基準の参考（実際は容積で要判断）。価格表: 尼高2026.10改定(括弧内=関西見積記載)/新柏2025.4全国チャーター。')
@@ -16853,7 +16870,7 @@ function OrdersPage(p){
         h('div',{style:{fontSize:12}},
           h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.6}},
             '空欄の項目は自動値（薄い文字）が使われます。入力した内容は案件に保存され、全端末で共有されます。',h('br'),
-            '金額: 送料計算のチャーター料金（'+(fee?charterCarLabel(fee.car)+' ¥'+fm(fee.price)+'・税抜・×1.1前':'この倉庫・行先ではチャーター料金表に該当がありません。単価を手入力してください')+'）'),
+            '金額: 送料計算のチャーター料金（'+(fee?charterCarLabel(fee.car)+((fee.count||1)>1?' ¥'+fm(fee.unitPrice)+'×'+fee.count+'台＝':' ')+'¥'+fm(fee.price)+'・税抜・×1.1前':'この倉庫・行先ではチャーター料金表に該当がありません。単価を手入力してください')+'）'),
           h('div',{style:{display:'flex',gap:8,marginBottom:6}},
             h('div',{style:{flex:2}},h('label',{style:LBL},'御中（宛先）'),
               /* 尼高＝尼高運輸・新柏＝ダイレクトが自動値（入力欄の薄い文字。書き換え可）。それ以外の倉庫は手入力。
