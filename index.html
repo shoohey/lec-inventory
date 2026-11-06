@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.87（商品なしの見積・案件修正で入力内容を引き継ぐ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.88（案件修正を修正前に戻す）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9969,7 +9969,63 @@ function generateExcel(order,docType){
 var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
   'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO',
   'showRepName','repName','rowCost',
-  'shipper','shipNo','shipTo','shippingNotes','docEdit'];/* v19.87 依頼②: 出荷先・荷送人・帳票の記載内容の手修正も引き継ぐ *//* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
+  'shipper','shipNo','shipTo','shippingNotes','docEdit',
+  'beforeEdit'];/* v19.88: 案件修正を始める前の控え（「↩ 修正前に戻す」用） */
+/* ===== v19.88（2026-11-06 依頼「案件修正で間違って修正してしまった場合に、一つ前の状態に戻すボタン」）=====
+   ✏ 案件修正を押した時点の案件をまるごと order.beforeEdit={at,by,data} に控える（1つ前の1世代だけ。次の案件修正で上書き）。
+   restoreBeforeEdit(no) で、いまの押さえを解除 → 控えの内容・ステータスに戻す → 控えで押さえていた在庫を押さえ直す。
+   押さえ直すときに別の案件が先に押さえていて足りない分は、未確保（発注待ち）にする。
+   戻せるのは今のステータスも控えのステータスも「見積作成・仮押さえ・受注確定」のときだけ（出荷指示以降は在庫を消費済みのため）。 */
+var BEFORE_EDIT_ST=['見積作成','仮押さえ','受注確定'];
+function beforeEditSnap(o){var c=JSON.parse(JSON.stringify(o));delete c.beforeEdit;return {at:new Date().toLocaleString('ja-JP'),by:USER_NAME_FOR_SAVE||'',data:c};}
+function canRestoreBeforeEdit(o){return !!(o&&o.beforeEdit&&o.beforeEdit.data&&BEFORE_EDIT_ST.indexOf(o.status)>=0&&BEFORE_EDIT_ST.indexOf(o.beforeEdit.data.status)>=0);}
+function restoreBeforeEdit(no,userName){
+  var ix=ORDERS.findIndex(function(x){return x.no===no;});
+  if(ix<0)return {ok:false,msg:'案件が見つかりません'};
+  var cur=ORDERS[ix];
+  if(!canRestoreBeforeEdit(cur))return {ok:false,msg:'この案件は修正前に戻せません（控えが無いか、出荷指示以降に進んでいます）'};
+  /* 1) いまの押さえを解除 */
+  if(cur.status==='仮押さえ'||cur.status==='受注確定'){
+    (cur.lines||[]).forEach(function(ln){if(ln.isFreeInput)return;orderWhs(cur).forEach(function(w){releaseLine(ln,w);});});
+    cur.status='見積作成';
+  }
+  rebuildHeldFromOrders();
+  /* 2) 控えの内容に戻す */
+  var r=JSON.parse(JSON.stringify(cur.beforeEdit.data));
+  delete r.beforeEdit;
+  var shorts=[];
+  if(r.status==='仮押さえ'||r.status==='受注確定'){
+    var used={};
+    (r.lines||[]).forEach(function(ln){
+      if(ln.isFreeInput||!ln._actualHeld)return;
+      var kept=[];
+      ln._actualHeld.forEach(function(e){
+        var hl=e.heldLine||normalizeStockLine(ln.line,e.key);
+        var wh=e._wh||ln._heldWh||r.wh;
+        var q=parseInt(e.qty)||0;if(!hl||!wh||q<=0)return;
+        var bk=[hl,wh,e.key,e.sub,e.isDoor?e.color:'',e.isDoor?e.size:''].join('|');
+        var free;
+        try{free=e.isDoor?availD(hl,wh,e.color,e.size,e.key):(e.sub!==undefined?avail(hl,wh,e.key,e.sub):avail(hl,wh,e.key));}catch(ex){free=0;}
+        var left=Math.max(0,(free||0)-(used[bk]||0));
+        var take=Math.min(q,left);
+        used[bk]=(used[bk]||0)+take;
+        if(take>0)kept.push(Object.assign({},e,{qty:take}));
+        if(q-take>0){
+          shorts.push({line:hl,wh:wh,key:e.key,sub:e.sub,color:e.color,size:e.size,qty:q-take,label:e.key,isDoor:!!e.isDoor});
+        }
+      });
+      ln._actualHeld=kept;ln._hadActualHeld=true;
+    });
+    if(shorts.length)r.unsecuredParts=(r.unsecuredParts||[]).concat(shorts);
+  }
+  r.restoredAt=new Date().toLocaleString('ja-JP');r.restoredBy=userName||'';
+  ORDERS[ix]=r;
+  rebuildHeldFromOrders();
+  try{syncAgentDisc(r);}catch(e){}
+  saveAll();
+  broadcastOrderUpdate(userName||'',no+' 修正前に戻す');
+  return {ok:true,order:r,shorts:shorts};
+}/* v19.87 依頼②: 出荷先・荷送人・帳票の記載内容の手修正も引き継ぐ *//* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
 /* ===== v19.59（2026-10-27 依頼「送料を変更→見積を閉じる→見積書修正に戻ると変更前に戻る」）=====
    【原因】見積を作り直す（✏ 案件修正 →「見積書のみ作成」「仮押さえ＆見積書作成」、同じ画面で「見積書のみ作成」を押し直す）たびに、
    　　　　送料を運賃表から自動計算し直して上書きしていたため、見積書作成画面で手入力した送料が捨てられていた。
@@ -13178,7 +13234,25 @@ function InvPage(p){
       h('button',{className:'btn btn-xs btn-ol',onClick:function(){
         editingNo[1](null);editingMeta[1](null);
         p.toast('案件修正モードを解除しました。以降の登録は新規案件として採番されます');
-      }},'修正をやめる（新規として登録）')
+      }},'修正をやめる（新規として登録）'),
+      /* v19.88: 案件修正を始める前の状態へ戻す（保存前でも保存後でも） */
+      (function(){
+        var eo=ORDERS.find(function(x){return x.no===editingNo[0];});
+        if(!canRestoreBeforeEdit(eo))return null;
+        return h('button',{className:'btn btn-xs btn-or','data-restore-edit-bar':'1',style:{fontWeight:700},title:'✏ 案件修正を始める前（'+(eo.beforeEdit.at||'')+'）の内容・ステータス・仮押さえに戻します',onClick:function(){
+          var bd=eo.beforeEdit.data;
+          if(p.isReadOnly&&(eo.status!=='見積作成'||bd.status!=='見積作成')){p.toast('読み取り専用モード中は仮押さえ在庫を動かせません');return;}
+          if(!confirm('案件 '+eo.no+' を、案件修正を始める前（'+(eo.beforeEdit.at||'')+'）の状態に戻します。\n\n・明細・金額・倉庫・見積書の内容など：修正前の内容\n・ステータス：'+eo.status+' → '+bd.status+'\n'+((bd.status==='仮押さえ'||bd.status==='受注確定')?'・仮押さえ在庫：修正前に押さえていた在庫を押さえ直します（足りない分は発注待ち）\n':'')+'\n※ この画面の修正内容は捨てて、案件修正モードを終わります。よろしいですか？'))return;
+          var res=restoreBeforeEdit(eo.no,p.userName);
+          if(!res.ok){p.toast(res.msg);return;}
+          editingNo[1](null);editingMeta[1](null);removedLinesR.current=[];
+          lines[1]([]);whResults[1]([]);multiWH[1]([]);selWH[1](null);selMulti[1](null);
+          quoteOrder[1](null);showQuote[1](false);showPartWh[1](false);partWhSel[1]({});multiPrev[1](null);noProd[1](false);
+          p.bump&&p.bump();
+          p.toast('修正前に戻しました: '+eo.no+(res.shorts.length?'（在庫が足りない '+res.shorts.length+' 件は発注待ち）':''));
+          if(res.shorts.length)alert('修正前に押さえていた在庫のうち、別の案件が先に押さえていて足りない分を「発注待ち（未確保）」にしました:\n'+res.shorts.slice(0,8).map(function(x){return '・'+x.key+(x.sub?' '+x.sub:'')+(x.color?' '+x.color:'')+'（'+((WH_MAP[x.wh]||{}).s||x.wh)+'）'+x.qty;}).join('\n'));
+        }},'↩ 修正前に戻す');
+      })()
     ):null,
 
     /* v14.2: 左右独立スクロール - 商品選択と倉庫別在庫を別々にスクロール可能に */
@@ -15684,6 +15758,7 @@ function OrdersPage(p){
                 if(!p.requestEdit||!p.requestRepeat){p.toast('この環境では案件修正を利用できません');return;}
                 var held=(o.status==='仮押さえ'||o.status==='受注確定');
                 /* v19.87 依頼②: 解除する前の押さえ台帳とステータスを控える（複数倉庫の割当・受注確定を引き継ぐため） */
+                o.beforeEdit=beforeEditSnap(o);/* v19.88: 修正前に戻す用の控え（解除する前の内容・押さえ） */
                 var editSnap={status:o.status,held:(o.lines||[]).map(function(ln){return JSON.parse(JSON.stringify(ln._actualHeld||[]));}),heldWh:(o.lines||[]).map(function(ln){return ln._heldWh||'';})};
                 if(!confirm('案件 '+o.no+' を修正します。\n'+(held?'\n⚠️ この案件の仮押さえ在庫を一度解除してから編集します。\n修正後に改めて「仮押さえ」すると、同じ案件番号（'+o.no+'）へ上書き保存されます。\n':'\n在庫確認・見積画面へ内容を読み込みます。\n')+'\nよろしいですか？'))return;
                 if(held){
@@ -15696,13 +15771,26 @@ function OrdersPage(p){
                   rebuildHeldFromOrders();
                   saveAll();
                   broadcastOrderUpdate(p.userName||'',o.no+' 修正のため仮押さえ解除');
-                }
+                }else{saveAll();cloudSave(p.userName);}/* v19.88: 見積作成の案件も控えを保存する */
                 p.setCust&&p.setCust(ec);
                 p.requestRepeat(Object.assign({},o,{_editSnap:editSnap}));/* 明細をビルダーへ読み込む（リピート発注と同じ経路） */
                 p.requestEdit(Object.assign({},o,{_prevStatus:editSnap.status}));/* 同じ案件番号へ上書きする指定 */
                 p.setTab&&p.setTab('inv');
                 p.toast('案件修正: '+o.no+' を読み込みました。修正後に「仮押さえ」すると同じ案件番号へ上書きされます');
               }},'✏ 案件修正'):null,
+              /* v19.88: 直前の案件修正を始める前の状態へ戻す */
+              canRestoreBeforeEdit(o)?h('button',{className:'btn btn-xs btn-ol','data-restore-edit':o.no,style:{marginLeft:2,fontWeight:700,color:'#9A3412',borderColor:'#FB923C'},
+                title:'直前の ✏ 案件修正を始める前（'+(o.beforeEdit.at||'')+'）の内容・ステータス・仮押さえに戻します',onClick:function(){
+                var bd=o.beforeEdit.data;
+                if(RO_&&(o.status!=='見積作成'||bd.status!=='見積作成')){p.toast('編集権限がないため、仮押さえ在庫を動かす「修正前に戻す」はできません');return;}
+                if(!confirm('案件 '+o.no+' を、案件修正を始める前（'+(o.beforeEdit.at||'')+'）の状態に戻します。\n\n・明細・金額・倉庫・見積書の内容など：修正前の内容\n・ステータス：'+o.status+' → '+bd.status+'\n'+((bd.status==='仮押さえ'||bd.status==='受注確定')?'・仮押さえ在庫：修正前に押さえていた在庫を押さえ直します（足りない分は発注待ち）\n':'')+'\n※ 戻した後は、今の修正内容は残りません。よろしいですか？'))return;
+                var res=restoreBeforeEdit(o.no,p.userName);
+                if(!res.ok){p.toast(res.msg);return;}
+                p.bump&&p.bump();
+                if(p.onRestoredEdit)p.onRestoredEdit(o.no);
+                p.toast('修正前に戻しました: '+o.no+(res.shorts.length?'（在庫が足りない '+res.shorts.length+' 件は発注待ち）':''));
+                if(res.shorts.length)alert('修正前に押さえていた在庫のうち、別の案件が先に押さえていて足りない分を「発注待ち（未確保）」にしました:\n'+res.shorts.slice(0,8).map(function(x){return '・'+x.key+(x.sub?' '+x.sub:'')+(x.color?' '+x.color:'')+'（'+((WH_MAP[x.wh]||{}).s||x.wh)+'）'+x.qty;}).join('\n'));
+              }},'↩ 修正前に戻す'):null,
               /* v18.55 修正９④: 予備パーツ（見積外の持ち出し・持ち帰り）。納品完了の案件でも押せる（持ち帰りは納品後に起きるため） */
               h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'見積外の予備パーツの持ち出し・持ち帰りを登録します',onClick:function(){
                 spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:o.wh||WH_IDS[0]}));spareSet[1]({units:1,wh:o.wh||WH_IDS[0],note:''});spareBulkWh[1](o.wh||'');/* v18.68 修正15④ */spareModal[1](liveOrder(o));
