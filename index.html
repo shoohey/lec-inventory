@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.88（案件修正を修正前に戻す）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.89（未紐づけだった部材9品に単価マスタを紐づけ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -7182,7 +7182,7 @@ var PART_CODE_MAP={
   'carryBag|':['F00147','持ち帰り用袋'],
   'anchorCap|':['MYPL-E-AC-G','ベースボード用　アンカー穴キャップ（グレー）'],
   'hingeCoverSML|':['F00129','ヒンジキャップ（SML用）'],'hingeCoverSS|':['F00130','ヒンジキャップ（SS/３S用）'],
-  'namePlatePaper|':['F00116','ネーム用厚紙/100枚'],'namePlateCoverSML|':['F00109','ネームプレートカバー'],
+  'namePlatePaper|':['F00116','ネーム用厚紙（SML・SS/3S）/100枚'],/* v19.89: マスタ一覧 11/6 版の名称 */'namePlateCoverSML|':['F00109','ネームプレートカバー'],
   'namePlateCoverSS|':['F00109','ネームプレートカバー'],
   'topJoint|':['F00114','トップジョイント（クローバー）'],
   'topJointLeaf|':['F00085','トップジョイントセット（葉っぱ）'],/* v18.72 修正17㉒: 葉っぱは別商品コード */
@@ -7197,7 +7197,7 @@ var PART_CODE_MAP={
   /* v19.26（2026-10-07 ユーザー回答）: SS・3S共通のレールは専用コード F00200／F00201 */
   'railSideSS|':['F00200','SS･3S共通サイドレール（２本）'],'railBackSS|':['F00201','SS･3S共通バックレール'],
   /* v18.70 修正16③: CSVに行があるのに未紐づけだった部材を追加 */
-  'masterKey|':['F00031','コインリターン錠マスターキー'],
+  'masterKey|':['F00031','マスターキー'],/* v19.89: マスタ一覧 11/6 版の名称 */
   'dialKeyDST|':['F00133','DST4桁ダイヤル錠用検索キー'],/* 修正15⑥で追加した検索キー */
   'anchorCap|bk':['MYPL-E-AC-B','ベースボード用　アンカー穴キャップ（黒）'],
   'anchorCap|gy':['MYPL-E-AC-G','ベースボード用　アンカー穴キャップ（グレー）'],
@@ -7215,7 +7215,16 @@ var PART_CODE_MAP={
   'dialKeyD003|':['F00028','４桁ダイヤル錠　検索用キー'],'dialKeyD018|':['F00028','４桁ダイヤル錠　検索用キー'],
   'coinReturn100|':['F00030','コインリターン錠'],/* カスタム部材「コナミ100円コインリターン錠」 */
   'totte_tw|':['F00017','トッテ'],
-  'namePlateCoverSML_tw|':['F00109','ネームプレートカバー'],'namePlateCoverSS_tw|':['F00109','ネームプレートカバー']
+  'namePlateCoverSML_tw|':['F00109','ネームプレートカバー'],'namePlateCoverSS_tw|':['F00109','ネームプレートカバー'],
+  /* v19.89（2026-11-06 ユーザー「価格マスタと紐づけ出来ていなかったアイテムをシステムの名称とマスタの名称を揃えた」）:
+     v19.58 で足した10品のうち、商品コードが未登録だった9品を単価マスタの行へ紐づける（ネーム厚紙(SML) は従来から F00116） */
+  'keyBandRV|':['F00059','キーバンド（RV型・SV型・FV型）　※塩ビ'],'keyBandSV|':['F00059','キーバンド（RV型・SV型・FV型）　※塩ビ'],
+  'keyBandFV|':['F00059','キーバンド（RV型・SV型・FV型）　※塩ビ'],
+  'doorNoSealSML|':['F00060','扉№シール（SML・SS/3S）（白地に黒文字）'],'doorNoSealSS|':['F00060','扉№シール（SML・SS/3S）（白地に黒文字）'],
+  'namePlatePaperSS|':['F00116','ネーム用厚紙（SML・SS/3S）/100枚'],
+  'hatome|':['F00112','ハトメ　50個入り（J型）'],
+  'masterKeyStd|':['F00031','マスターキー'],
+  'changeMasterKey|':['F00032','チェンジマスターキー']
 };
 /* v18.70 修正16③: 台湾製・Sα の単品パーツは商品コードが別で単価も違う（例: 3Sサイドボード ECO¥10,000 / 台湾¥1,700）。
    従来は製品ラインに関係なくECOのコードを引いていたため、見積の単価が単価表と食い違っていた。
