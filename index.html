@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.84（送料にピックアップ料 1箱100円）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.85（ヤマトはピックアップ料なし）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -5383,9 +5383,8 @@ function yamatoFreightCost(tableKey,destPref,boxes,boxSize){
   var row=t.rates[boxSize];if(!row)return null;
   var rate=row[ri];if(rate==null)return null;
   var boxCount=Math.max(1,Math.ceil(boxes||0));
-  var pickup=pickupFee(boxCount);/* v19.84: ピックアップ料 */
-  var genka=rate*boxCount+pickup;
-  return {rate:rate,region:region,boxCount:boxCount,boxSize:boxSize,pickup:pickup,genka:genka,quoted:markupCeil(genka)};
+  var genka=rate*boxCount;/* v19.85: ヤマトはピックアップ料なし */
+  return {rate:rate,region:region,boxCount:boxCount,boxSize:boxSize,genka:genka,quoted:markupCeil(genka)};
 }
 /* ===== v18.90 送料計算の修正1: 行先は「市区町村名」だけで突合する =====
    【事故】顧客の市区町村欄に番地まで入っている案件（例「深谷市上野台３６９番地」）で、
@@ -5445,7 +5444,7 @@ function markupCeil(genka){return Math.ceil(Math.round(genka*110)/100/1000)*1000
 /* v19.84（2026-11-06 ユーザー「送料計算でピックアップ料は含まれてる？」→「どの倉庫でもかかる・1箱×100円・見積は送料と合算・総額に×1.1」）:
    ピックアップ料＝箱数×100円。
    ・混載（新柏・尼高・札幌の運賃表）: 従来の「諸経費＝箱数×100（予備箱込み）」がこれにあたる（二重に足さない）。
-   ・ヤマト（本社・関西発）: 従来は諸経費なし → ヤマトの箱数（実際に送る箱数）×100 を運賃原価に足す。
+   ・ヤマト（本社・関西発）: v19.85（同日ユーザー「本社と関西発のヤマトは×100円は不要」）でピックアップ料なしに戻した。
    ・チャーター: 従来は車の料金だけ → 箱数（予備箱込み・混載の諸経費と同じ数え方）×100 を足す。
    見積の金額は（運賃＋ピックアップ料）×1.1・千円未満切上げ。関西表の見積記載価格があるときは 見積記載価格＋ピックアップ料×1.1 を千円未満切上げ。 */
 var PICKUP_PER_BOX=100;
@@ -5561,7 +5560,7 @@ function calcFreight(order,destCity,destPref){
     var yamatoBoxes=Math.max(0,bw.boxes-(bw.extraBoxes||0));
     var yf=yamatoFreightCost(table,destPref,yamatoBoxes,bs);
     if(!yf)return {ok:false,reason:'distance_unknown',table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes};
-    return {ok:true,yamato:true,table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,extraBoxes:bw.extraBoxes,boxSize:yf.boxSize,boxCount:yf.boxCount,pickup:yf.pickup,region:yf.region,rate:yf.rate,shokei:0,surcharge:0,chuukei:0,genka:yf.genka,quoted:yf.quoted};
+    return {ok:true,yamato:true,table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes,extraBoxes:bw.extraBoxes,boxSize:yf.boxSize,boxCount:yf.boxCount,region:yf.region,rate:yf.rate,shokei:0,surcharge:0,chuukei:0,genka:yf.genka,quoted:yf.quoted};
   }
   var dd=destDistanceFor(table,destCity,destPref);
   if(dd==null)return {ok:false,reason:'distance_unknown',table:table,weight:cw,actualWeight:bw.actualWeight,volumeWeight:bw.volumeWeight,boxes:bw.boxes};
@@ -15934,7 +15933,7 @@ function OrdersPage(p){
                     h('td',null,f.yamato?(YAMATO_REGION_LABEL[f.region]||f.region):(f.distance+'km'+(f.approxDistance?'(暫定)':''))),
                     h('td',null,f.yamato?(f.boxSize+'サイズ×'+f.boxCount+'箱'):(f.weight+'kg / '+f.boxes+'箱'+(f.extraBoxes?'(予備'+f.extraBoxes+')':''))),
                     h('td',{style:{textAlign:'right'}},'¥'+fm(f.rate)),
-                    h('td',{style:{textAlign:'right'}},'¥'+fm(f.yamato?(f.pickup||0):f.shokei)),
+                    h('td',{style:{textAlign:'right'}},f.yamato?'-':('¥'+fm(f.shokei))),
                     h('td',{style:{textAlign:'right'}},'¥'+fm(f.genka)),
                     h('td',{style:{textAlign:'right',fontWeight:700,color:'#276749'}},'¥'+fm(f.quoted)));
                 }))
@@ -15968,7 +15967,7 @@ function OrdersPage(p){
               fr.yamato?h('span',null,h('b',null,'地域: '),(YAMATO_REGION_LABEL[fr.region]||fr.region)):h('span',null,h('b',null,'距離: '),fr.distance+'km'+(fr.approxDistance?'(暫定)':'')+' →'+fr.distBracket+'km区分'),
               fr.yamato?h('span',null,h('b',null,'箱: '),fr.boxSize+'サイズ×'+fr.boxCount+'箱（計算箱数'+fr.boxes+(fr.extraBoxes?'・予備箱'+fr.extraBoxes:'')+'）'):h('span',null,h('b',null,'課金重量: '),fr.weight+'kg →'+fr.weightBracket+'kg区分（実重'+(fr.actualWeight!=null?fr.actualWeight:'-')+'kg/容積'+(fr.volumeWeight!=null?fr.volumeWeight:'-')+'kg・'+fr.boxes+'箱'+(fr.extraBoxes?'/うち予備箱'+fr.extraBoxes:'')+'）'),
               h('span',null,h('b',null,fr.yamato?'1箱運賃: ':'地別運賃: '),'¥'+fm(fr.rate)),
-              fr.yamato?h('span',null,h('b',null,'ピックアップ料(箱数×100): '),'¥'+fm(fr.pickup||0)):h('span',null,h('b',null,'諸経費＝ピックアップ料(箱数×100・予備箱込み): '),'¥'+fm(fr.shokei)),
+              fr.yamato?null:h('span',null,h('b',null,'諸経費＝ピックアップ料(箱数×100・予備箱込み): '),'¥'+fm(fr.shokei)),
               fr.surcharge?h('span',null,h('b',null,'燃料サーチャージ: '),'¥'+fm(fr.surcharge)):null,
               h('span',null,h('b',null,'運賃原価: '),'¥'+fm(fr.genka)),
               fr.chuukei?h('span',null,h('b',null,'中継料(1000kg超・原価に含む): '),'¥'+fm(fr.chuukei)):null,
