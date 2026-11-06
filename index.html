@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.86（金額未入力の値引き行も並べ替えられる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.87（商品なしの見積・案件修正で入力内容を引き継ぐ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9968,7 +9968,8 @@ function generateExcel(order,docType){
    見積書作成画面の直接編集・帳票の手修正でしか入力しない項目。在庫・出荷の記録（_stockConsumed・shippedDate 等）は入れない。 */
 var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
   'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO',
-  'showRepName','repName','rowCost'];/* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
+  'showRepName','repName','rowCost',
+  'shipper','shipNo','shipTo','shippingNotes','docEdit'];/* v19.87 依頼②: 出荷先・荷送人・帳票の記載内容の手修正も引き継ぐ *//* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
 /* ===== v19.59（2026-10-27 依頼「送料を変更→見積を閉じる→見積書修正に戻ると変更前に戻る」）=====
    【原因】見積を作り直す（✏ 案件修正 →「見積書のみ作成」「仮押さえ＆見積書作成」、同じ画面で「見積書のみ作成」を押し直す）たびに、
    　　　　送料を運賃表から自動計算し直して上書きしていたため、見積書作成画面で手入力した送料が捨てられていた。
@@ -11881,6 +11882,10 @@ function InvPage(p){
   /* v18.38 修正箇所3⑤: 送付方法の選択（''=未選択で現行どおり / 'mix'=混載 / 'charter'=チャーター）。
      選択すると倉庫カードの送料表記と、見積書に載る送料の両方が切り替わる。 */
   var shipMethod=us('');
+  /* v19.87（2026-11-06 依頼①）: 商品を選択しない見積（送料・作業費だけ）。order.noProduct=true で保存 */
+  var noProd=us(false);
+  /* v19.87（依頼②）: 案件修正で読み込んだ案件が複数倉庫で押さえていたときの前回の割当 {whs,alloc}（部材別倉庫指定の初期値に使う） */
+  var multiPrev=us(null);
   var chTariff=us('');/* v19.81: チャーターの料金形態（''＝倉庫の料金表／kansai／sapporo／shinkashiwa／manual） */
   var chAlertR=ur('');/* v19.81: 本社発チャーターのアラートを同じ組み合わせで何度も出さない */
   /* v18.46 修正５⑨: 送付先の選択。顧客属性が「代理店」の場合、代理店宛とエンドユーザー宛の2パターンがあり
@@ -11957,6 +11962,8 @@ function InvPage(p){
       if(em.createdBy)order.createdBy=em.createdBy;
       order.editedAt=new Date().toLocaleString('ja-JP');
       order.editedBy=p.userName||'';
+      /* v19.87 依頼②: 受注確定の案件を案件修正で押さえ直したら受注確定のまま（従来は仮押さえに戻っていた） */
+      if(em.status==='受注確定'&&order.status==='仮押さえ')order.status='受注確定';
       delete order.holdReleasedAt;delete order.holdReleasedBy;/* 修正して押さえ直したので解除記録は消す */
       var ix=ORDERS.findIndex(function(x){return x.no===order.no;});
       /* v18.55: 案件修正で作り直す order は「在庫確認・見積画面で入力できる項目」だけを持つため、
@@ -12134,7 +12141,7 @@ function InvPage(p){
     doorType[1]('door');hasDoor[1](true);doorLn[1]('');hasNameplate[1](false);hasNamePaper[1](false);
     inputMode[1]('grid');blocks[1]([{c:'1',t:'1',g:0}]);dQty[1]('');dBase[1]('');
     extraJointScrew[1](0);extraCapScrew[1](0);extraCapScrewGy[1](0);extraSideJoint[1](0);
-    selWH[1](null);selMulti[1](null);shipMethod[1]('');chTariff[1]('');showPartWh[1](false);partWhSel[1]({});
+    selWH[1](null);selMulti[1](null);shipMethod[1]('');chTariff[1]('');showPartWh[1](false);partWhSel[1]({});noProd[1](false);multiPrev[1](null);
     baseColor[1]('gy');hasBase[1](true);hasCap[1](true);shelfQty[1](0);shelfColor[1]('bk');
     vjNeed[1](null);vjQty[1]('');multiColor[1](false);colorBreak[1]([]);hasSideJt[1](true);
     rentalView[1](null);rentalPick[1](null);rentalFy[1](rentalDefaultFY());rentalApply[1](true);rentalPrefillNote[1]('');
@@ -12205,6 +12212,18 @@ function InvPage(p){
     }
     if(ro.wh)selWH[1](ro.wh);
     multiWH[1]([]);selMulti[1](null);
+    /* v19.87（2026-11-06 依頼②「案件修正で在庫確認・見積画面に戻ると入力内容がリセットされる（複数倉庫など）」）:
+       ・商品なしの見積はチェックを付けたまま読み込む。
+       ・複数倉庫で押さえていた案件は、前回の割当（部材ごとの倉庫と数量）を部材別倉庫指定の初期値に入れる。
+       　割当は order.partWhAlloc（v19.87 以降に部材別で保存した案件）→ 無ければ ✏ 案件修正で解除する直前の押さえ台帳（_editSnap）から作る。 */
+    noProd[1](!!ro.noProduct);
+    var wsPrev=orderWhs(ro);
+    if(wsPrev.length>1){
+      var allocPrev=ro.partWhAlloc?JSON.parse(JSON.stringify(ro.partWhAlloc))
+        :allocFromHeld(cloned,ro._editSnap?ro._editSnap.held:(ro.lines||[]).map(function(l){return l._actualHeld||[];}),
+                       ro._editSnap?ro._editSnap.heldWh:(ro.lines||[]).map(function(l){return l._heldWh||'';}),ro.wh);
+      multiPrev[1]({whs:wsPrev,alloc:allocPrev});partWhSel[1](allocPrev);
+    }else{multiPrev[1](null);partWhSel[1]({});}
     quoteOrder[1](null);showQuote[1](false);
     quoteSubject[1](ro.subject||'');
     if(ro.paymentTerms)paymentTerms[1](ro.paymentTerms);
@@ -12234,7 +12253,7 @@ function InvPage(p){
     var eo=p.editOrder;
     if(!eo)return;
     editingNo[1](eo.no);
-    editingMeta[1]({no:eo.no,date:eo.date,createdBy:eo.createdBy||'',status:eo.status||''});
+    editingMeta[1]({no:eo.no,date:eo.date,createdBy:eo.createdBy||'',status:eo._prevStatus||eo.status||''});/* v19.87: 解除する前のステータス */
     p.clearEditOrder&&p.clearEditOrder();
   },[p.editOrder]);
   /* v19.31: 貸与品データのある学校へ遷移したら、前年の導入内容を商品選択に入れる（島数は入れない）。
@@ -12511,7 +12530,10 @@ function InvPage(p){
       var pr=results.find(function(r){return r.whId===prefWh&&!r.noLine;});
       if(pr)fallbackWh=pr.whId;
     }
-    selWH[1](best?best.whId:fallbackWh);
+    /* v19.87 依頼②: prefWh（案件修正で読み込んだ案件の倉庫・押さえた直後の倉庫）が扱える倉庫ならそれを選ぶ。
+       従来は全量OKの倉庫のうち送料の安い倉庫を選んでいたため、案件修正で開くと別の倉庫に変わっていた。 */
+    var prefR=prefWh?results.find(function(r){return r.whId===prefWh&&!r.noLine;}):null;
+    selWH[1](prefR?prefR.whId:(best?best.whId:fallbackWh));
     selMulti[1](null);
     /* If no single warehouse can fulfill, try pairs */
     var okResults=results.filter(function(r){return r.check.ok&&!r.noLine;});
@@ -12637,6 +12659,7 @@ function InvPage(p){
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
     if(springDeny([selWH[0]],p.toast))return;/* v19.44 春先: 倉庫別の編集権限 */
     if(!charterGuard(selWH[0]))return;/* v19.81 */
+    if(!multiPrevGuard())return;/* v19.87 依頼②: 前回は複数倉庫 */
     /* 重複仮押さえ防止: 既に同じ顧客の仮押さえドラフトがある場合は警告
        v18.67 修正14①: 案件修正モードで上書きしようとしている案件そのものは警告の対象外。
        上書き＝押さえ直しなので在庫は追加消費されない（直後の releaseEditingHold で一度解放する）。 */
@@ -12823,6 +12846,39 @@ function InvPage(p){
     });
     return Object.keys(ws);
   }
+  /* v19.87 依頼②: 押さえ台帳（_actualHeld）→ 部材別倉庫の割当 {行キー:[{wh,qty}]}。台帳が空なら {}（初期値の倉庫で全量） */
+  function allocFromHeld(ls,held,heldWh,defWh){
+    var out={};
+    (ls||[]).forEach(function(ln,li){
+      if(ln.isFreeInput)return;
+      var hs=(held&&held[li])||[];if(!hs.length)return;
+      partWhRows(ln,li).forEach(function(row){
+        var b=row.b,m={},order2=[];
+        hs.forEach(function(e){
+          if(!e||e.key!==b.key||!!e.isDoor!==!!b.isDoor)return;
+          if(b.isDoor){if(row.color&&e.color!==row.color)return;}
+          else if(b.sub!==undefined&&e.sub!==b.sub)return;
+          var w=e._wh||(heldWh&&heldWh[li])||defWh;
+          if(!(w in m)){m[w]=0;order2.push(w);}
+          m[w]+=parseInt(e.qty)||0;
+        });
+        var arr=order2.filter(function(w){return m[w]>0;}).map(function(w){return {wh:w,qty:Math.min(m[w],row.need)};});
+        /* 在庫不足で押さえきれなかった分（発注待ち）も、押さえた倉庫の割当に戻す（前回と同じ指定になる） */
+        var sm=allocSum(arr);if(arr.length&&sm<row.need)arr[arr.length-1].qty+=row.need-sm;
+        if(arr.length)out[row.key]=arr;
+      });
+    });
+    return out;
+  }
+  /* 前回は複数倉庫だった案件を、1つの倉庫で押さえ直そうとしたときの確認 */
+  function multiPrevGuard(){
+    var mp=multiPrev[0];
+    if(!mp||!editingNo[0])return true;
+    var nm=mp.whs.map(function(w){return (WH_MAP[w]||{}).s||w;}).join('・');
+    if(confirm('この案件は前回「'+nm+'」の複数倉庫で押さえていました。\n\n［OK］前回の倉庫割当の画面を開く（部材別に倉庫を指定）\n［キャンセル］選んだ倉庫（'+((WH_MAP[selWH[0]]||{}).s||selWH[0])+'）だけで押さえる')){openPartWh();return false;}
+    multiPrev[1](null);
+    return true;
+  }
   function openPartWh(){
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
     if(!lines[0].length){p.toast('明細を追加してください');return;}
@@ -12831,7 +12887,11 @@ function InvPage(p){
     lines[0].forEach(function(ln,li){
       if(ln.isFreeInput)return;
       /* v18.71 修正17: 扉は色ごとの行になる */
-      partWhRows(ln,li).forEach(function(row){init[row.key]=[{wh:def,qty:row.need}];});
+      partWhRows(ln,li).forEach(function(row){
+        /* v19.87 依頼②: 案件修正で読み込んだ前回の割当があればそれを使う（明細を変えて数量が合わない行は初期値） */
+        var rv=multiPrev[0]&&multiPrev[0].alloc&&multiPrev[0].alloc[row.key];
+        init[row.key]=(rv&&rv.length&&allocSum(rv)<=row.need)?rv.map(function(a){return {wh:a.wh,qty:a.qty};}):[{wh:def,qty:row.need}];
+      });
     });
     partWhSel[1](init);showPartWh[1](true);
   }
@@ -12950,7 +13010,7 @@ function InvPage(p){
     var totalShip=multiShipTotal({lines:clonedLines,wh:main,whs:whList.slice()},simpleShipA);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var ptA=payTermsFor(cust);
-    var order={no:no,cid:cust.id,wh:main,whs:whList.slice(),status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:main,whs:whList.slice(),partWhAlloc:JSON.parse(JSON.stringify(partWhSel[0]||{}))/* v19.87 */,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     if(second)order.wh2=second;
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);showPartWh[1](false);
@@ -12961,7 +13021,7 @@ function InvPage(p){
   }
 
   function doQuoteOnly(){
-    if(!lines[0].length)return;
+    if(!lines[0].length&&!noProd[0])return;/* v19.87 依頼①: 商品を選択しない見積は明細なしで作れる */
     /* v18 P2(要望3/4): 後発ログインは見積「確認」のみ。ORDERSへ保存せず採番もしない（プレビュー表示だけ）
        v18.38 修正箇所3②: 営業ロールが作成した見積は案件管理一覧に保存する（従来はプレビューのみ）。
        仮押さえ・在庫引当は引き続き事務のみ（doReserveOnly/doHoldAndQuote は salesView で非表示のまま）。
@@ -12980,6 +13040,9 @@ function InvPage(p){
     releaseEditingHold();/* v18.67 修正14①: 仮押さえ済みの案件を見積作成で上書きするときは押さえを解放する */
     var no=isUpdate?existing.no:takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var order={no:no,cid:cust.id,wh:wh,status:'見積作成',date:isUpdate?existing.date:td2(),lines:lines[0].slice(),shipping:shippingByMethod(lines[0],wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0],chTariff[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt3,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    if(noProd[0]&&!lines[0].length)order.noProduct=true;/* v19.87 依頼① */
+    /* v19.87 依頼②: 複数倉庫の案件を案件修正 →「見積書のみ作成」したときも倉庫の組み合わせを残す（主倉庫を変えていなければ） */
+    if(editingNo[0]&&multiPrev[0]&&wh===multiPrev[0].whs[0]){order.whs=multiPrev[0].whs.slice();order.wh2=order.whs[1]||null;if(multiPrev[0].alloc)order.partWhAlloc=JSON.parse(JSON.stringify(multiPrev[0].alloc));}
     if(isUpdate){
       /* v18.34 ⑪バグ修正: 見積書作成画面(モーダル)で直接編集した値を再作成で消さない。
          既存値優先は「左ペインに入力UIが無い項目」に限定する。
@@ -13046,6 +13109,7 @@ function InvPage(p){
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
     if(springDeny([selWH[0]],p.toast))return;/* v19.44 */
     if(!charterGuard(selWH[0]))return;/* v19.81 */
+    if(!multiPrevGuard())return;/* v19.87 依頼②: 前回は複数倉庫 */
     /* 重複仮押さえ防止 */
     var existingR=quoteOrder[0];
     if(existingR&&existingR.status==='仮押さえ'&&existingR.cid===cust.id&&existingR.no!==editingNo[0]){
@@ -13065,7 +13129,8 @@ function InvPage(p){
       if(!confirm(msg))return;
     }
     /* v18.44 修正３④: 仮押さえのみは見積書が無く納品予定日の記載先が無いため、登録時に入力してもらう（空欄可・後から出荷指示等でも設定可能） */
-    var dlvIn=prompt('納品予定日を入力してください（例: 2026-08-20）\n※未定の場合は空欄のまま「OK」で登録できます','');
+    var dlv0=(editingNo[0]&&(ORDERS.find(function(x){return x.no===editingNo[0];})||{}).deliveryDate)||'';/* v19.87 依頼②: 案件修正では入力済みの納品予定日を初期値に */
+    var dlvIn=prompt('納品予定日を入力してください（例: 2026-08-20）\n※未定の場合は空欄のまま「OK」で登録できます',dlv0);
     if(dlvIn===null)dlvIn='';
     dlvIn=String(dlvIn).trim();
     /* v14 Codex P1対応: clonedLines にして共有参照を防ぐ */
@@ -13122,7 +13187,12 @@ function InvPage(p){
       h('div',{style:{width:isMobile[0]?'100%':320,flexShrink:0,overflowY:isMobile[0]?'visible':'auto',overflowX:'hidden',maxHeight:isMobile[0]?'none':'100%',paddingRight:isMobile[0]?0:4}},
         h('div',{className:'card',style:{marginBottom:8}},
           h('div',{className:'chd'},h('h3',null,'商品選択')),
-          h('div',{style:{padding:10}},
+          /* v19.87 依頼①: 商品を選択しない（送料・作業費だけの見積） */
+          h('label',{style:{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',fontSize:10,fontWeight:700,color:noProd[0]?'#c53030':'#1e3a5f',padding:'8px 10px 0',cursor:(lines[0].length&&!noProd[0])?'not-allowed':'pointer'}},
+            h('input',{type:'checkbox','data-noprod':'1',checked:noProd[0],disabled:!!lines[0].length&&!noProd[0],onChange:function(e){noProd[1](e.target.checked);}}),
+            '商品を選択しない（送料・作業費だけの見積）',
+            (lines[0].length&&!noProd[0])?h('span',{style:{fontSize:8,fontWeight:400,color:'var(--g400)'}},'※明細があるときは選べません'):null),
+          h('div',{style:noProd[0]?{padding:10,opacity:.35,pointerEvents:'none'}:{padding:10}},
             /* v19.46: 代理店の顧客では、エンド納品先（学校）を選ぶまで貸与品データを探せず、パーソナル貸与品の欄が出なかった
                （エンド納品先の欄は明細を追加した後の「見積オプション」にしか無い）。貸与品データにひも付いたエンド納品先がある顧客は、ここで先に選べるようにする。
                選ぶと見積オプションのエンド納品先にも入り、前年の導入内容の自動入力（パーソナル・貸与品の欄）が動く。 */
@@ -13525,7 +13595,7 @@ function InvPage(p){
             );
           }))
         ):null,
-        lines[0].length>0?h('div',{className:'card'},
+        (lines[0].length>0||noProd[0])?h('div',{className:'card'},
           h('div',{className:'chd'},h('h3',null,'見積オプション')),
           h('div',{style:{padding:10}},
             /* v18.33 要望⑪: 件名・値引き・支払条件は見積オプションから削除（見積書作成画面で直接編集する方式へ移行）
@@ -13586,6 +13656,22 @@ function InvPage(p){
       /* RIGHT: Results */
       /* RIGHT: 倉庫別在庫（独立スクロール。スマホでは全幅・縦積み） */
       h('div',{style:{flex:1,width:isMobile[0]?'100%':'auto',minWidth:0,overflowY:isMobile[0]?'visible':'auto',overflowX:'hidden',maxHeight:isMobile[0]?'none':'100%',paddingRight:isMobile[0]?0:4}},
+        /* v19.87 依頼②: 前回は複数倉庫で押さえていた案件 */
+        (multiPrev[0]&&editingNo[0]&&lines[0].length)?h('div',{'data-multiprev':'1',style:{marginBottom:8,padding:'8px 12px',background:'#FEF3C7',border:'1.5px solid #F59E0B',borderRadius:8,fontSize:11,color:'#78350F',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+          h('b',null,'🔀 この案件は前回「'+multiPrev[0].whs.map(function(w){return (WH_MAP[w]||{}).s||w;}).join('・')+'」の複数倉庫で押さえていました'),
+          h('button',{className:'btn btn-xs btn-or',onClick:openPartWh},'前回の倉庫割当で開く（部材別に倉庫を指定）')
+        ):null,
+        /* v19.87 依頼①: 商品なしの見積 */
+        (noProd[0]&&!lines[0].length)?h('div',{className:'card','data-noprod-card':'1',style:{marginBottom:8}},
+          h('div',{className:'chd'},h('h3',null,'商品なしの見積（送料・作業費だけ）')),
+          h('div',{style:{padding:10,fontSize:10}},
+            h('div',{style:{marginBottom:8,color:'var(--g500)'}},'部材を選ばずに見積書を作ります（在庫は押さえません）。見積書作成画面で「＋ 自由入力の行を追加」（作業費など）や送料を入力してください。'),
+            h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'}},'出荷元の倉庫'),
+            h('select',{className:'inp',style:{fontSize:10,width:'auto',marginBottom:8},value:selWH[0]||'honsha',onChange:function(e){selWH[1](e.target.value);}},
+              WH_IDS.map(function(w){return h('option',{key:w,value:w},(WH_MAP[w]||{}).n||w);})),
+            h('div',null,h('button',{className:'btn btn-nv',onClick:doQuoteOnly},'見積書のみ作成'))
+          )
+        ):null,
         whResults[0].length>0?h('div',{className:'fi'},
           /* Warehouse comparison */
           h('div',{className:'card',style:{marginBottom:8}},
@@ -15597,6 +15683,8 @@ function OrdersPage(p){
                 if(!ec){p.toast('顧客情報が見つかりません');return;}
                 if(!p.requestEdit||!p.requestRepeat){p.toast('この環境では案件修正を利用できません');return;}
                 var held=(o.status==='仮押さえ'||o.status==='受注確定');
+                /* v19.87 依頼②: 解除する前の押さえ台帳とステータスを控える（複数倉庫の割当・受注確定を引き継ぐため） */
+                var editSnap={status:o.status,held:(o.lines||[]).map(function(ln){return JSON.parse(JSON.stringify(ln._actualHeld||[]));}),heldWh:(o.lines||[]).map(function(ln){return ln._heldWh||'';})};
                 if(!confirm('案件 '+o.no+' を修正します。\n'+(held?'\n⚠️ この案件の仮押さえ在庫を一度解除してから編集します。\n修正後に改めて「仮押さえ」すると、同じ案件番号（'+o.no+'）へ上書き保存されます。\n':'\n在庫確認・見積画面へ内容を読み込みます。\n')+'\nよろしいですか？'))return;
                 if(held){
                   o.lines.forEach(function(ln){
@@ -15610,8 +15698,8 @@ function OrdersPage(p){
                   broadcastOrderUpdate(p.userName||'',o.no+' 修正のため仮押さえ解除');
                 }
                 p.setCust&&p.setCust(ec);
-                p.requestRepeat(o);/* 明細をビルダーへ読み込む（リピート発注と同じ経路） */
-                p.requestEdit(o);/* 同じ案件番号へ上書きする指定 */
+                p.requestRepeat(Object.assign({},o,{_editSnap:editSnap}));/* 明細をビルダーへ読み込む（リピート発注と同じ経路） */
+                p.requestEdit(Object.assign({},o,{_prevStatus:editSnap.status}));/* 同じ案件番号へ上書きする指定 */
                 p.setTab&&p.setTab('inv');
                 p.toast('案件修正: '+o.no+' を読み込みました。修正後に「仮押さえ」すると同じ案件番号へ上書きされます');
               }},'✏ 案件修正'):null,
