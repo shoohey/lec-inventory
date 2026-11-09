@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月9日の更新のお知らせ（v19.92）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>入庫依頼書・鍵の業者の入庫予定・<br>入荷状況の倉庫別表示ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.92</span>
+      <span>2026年11月9日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました。倉庫へ出す<b>入庫依頼書</b>を作れるようになりました。また、<b>鍵の業者からの入庫も、八木熊と同じように入庫予定に登録</b>できるようになりました。</p>
+    <p>入庫・発注を扱う方は<b>1番〜6番</b>を、案件修正をする方は<b>7番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.92</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>古い画面のまま保存すると、他の人の変更や単価マスタが古い内容に戻ることがあります。</b>開きっぱなしの画面も、必ず一度再読み込みしてください。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">「入庫予定」ボタンの場所が変わりました</a><span class="tag">重要</span></li>
+      <li><a href="#s2">倉庫へ出す「入庫依頼書」を作れます</a><span class="tag">新機能</span></li>
+      <li><a href="#s3">鍵の業者からの入庫も、入庫予定に登録できます</a><span class="tag">新機能</span></li>
+      <li><a href="#s4">入荷状況を入庫倉庫ごとに表示・倉庫と月で絞って金額も出ます</a></li>
+      <li><a href="#s5">入荷状況に「完納済」のチェックと「発注書番号」の列</a></li>
+      <li><a href="#s6">発注書一覧の回答欄に入庫済の日付が出ます</a></li>
+      <li><a href="#s7">「↩ 修正前に戻す」は案件修正モードのまま続けられます</a><span class="tag">変更</span></li>
+      <li><a href="#s8">部材9品に単価マスタを紐づけました</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 入庫・発注書 ============ -->
+  <h2 class="sec">入庫・発注書</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>「入庫予定」ボタンの場所が変わりました<span class="pill imp" style="margin-left:8px">変更</span></span></h3>
+    <p>部材在庫一覧の上に並んでいた緑の <kbd>入庫予定</kbd> ボタンを、<b>発注書一覧の中</b>に移しました。色は今までと同じ緑です。</p>
+    <div class="how">
+      <b>新しい場所</b>
+      部材在庫一覧 → 右上の <kbd>📋 発注書一覧</kbd> → 左上の緑の <kbd>入庫予定</kbd>（「八木熊」タブの左）
+    </div>
+    <ul>
+      <li>入庫予定一覧に<b>「発注書番号」の列</b>を足しました。Excel 出力にも入ります。</li>
+      <li>入庫処理をした日が記録され、状態の下に表示されます。</li>
+    </ul>
+  </section>
+
+  <section class="item key" id="s2">
+    <h3><span class="n">2</span><span>倉庫へ出す「入庫依頼書」を作れます<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>入庫予定日の連絡が来たら、入庫先の倉庫へ出す入庫依頼書を作れます。形は出荷指示書と同じで、<b>PDF と Excel</b> の両方で出せます。<b>同じ日・同じ倉庫の入庫なら、業者が違っても1枚にまとめられます。</b></p>
+    <div class="how">
+      <b>作りかた（その1：入庫予定から）</b>
+      <kbd>入庫予定</kbd> を開く → 同じ日・同じ倉庫の予定に ☑ を付ける → <kbd>🚛 選んだ予定で入庫依頼書を作る</kbd>
+    </div>
+    <div class="how">
+      <b>作りかた（その2：一から）</b>
+      <kbd>📋 発注書一覧</kbd> → <kbd>🚛 入庫依頼書</kbd> → <kbd>＋ 新しく作る</kbd> → 入庫予定・発注書から取り込むか、<kbd>＋ 業者を追加（手入力）</kbd>
+    </div>
+    <ul>
+      <li>紙全体には <b>入庫先倉庫・入庫予定日・時間指定・依頼日・担当・連絡事項</b> を入れます。</li>
+      <li>業者ごとに、次の項目を選びます。
+        <ul>
+          <li><b>仕入先</b>：一覧にない業者は「その他」で名前を入れられます。</li>
+          <li><b>発注書番号</b></li>
+          <li><b>製品ライン</b>：日本製Ver.2・台湾製・Sα から複数選べます。</li>
+          <li><b>納品方法</b>：混載／チャーター。チャーターは 2t・4t・10t・その他から選びます。</li>
+          <li><b>積み方</b>：バラ積み／パレット積み／その他。</li>
+        </ul>
+      </li>
+      <li>名称・品番・数量・備考は、取り込んだあとも手で直せます。</li>
+      <li>PDF・Excel を出すと <b>IR-2026-001</b> のような番号が付き、入庫依頼書の一覧に残ります。一覧から編集・複製・出し直しができます（全員で共有）。</li>
+    </ul>
+    <p class="sub">入庫依頼書を作っても、在庫や入庫予定は変わりません（紙を作るだけです）。宛名は出荷指示書と同じで、倉庫会社名に「御中」が付きます。角印は入りません。</p>
+  </section>
+
+  <section class="item key" id="s3">
+    <h3><span class="n">3</span><span>鍵の業者からの入庫も、入庫予定に登録できます<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>井門・スターリーロッカーズなどの鍵の業者からの入庫も、八木熊と同じ流れで扱えるようになりました。</p>
+    <div class="how">
+      <b>流れ</b>
+      ① 発注書を作るとき、品名の上の <kbd>品目（在庫につなぐ）</kbd> から品目を選ぶ<br>
+      ② 入庫予定日の連絡が来たら、<kbd>📋 発注書一覧</kbd> → <kbd>鍵</kbd> → その発注書の <kbd>📅 入庫予定</kbd> で、入庫予定日・倉庫・入る数を登録<br>
+      ③ 届いたら <kbd>入庫予定</kbd> 一覧で <kbd>入庫処理</kbd>（在庫に入ります）
+    </div>
+    <ul>
+      <li>分けて入るときは、入る日ごとに何回でも登録できます。日付が決まっていなければ空欄（未定）で登録できます。</li>
+      <li>①で品目を選んでいなくても、②の画面で選べます。</li>
+      <li>鍵の発注書一覧にも「入庫予定」「未納」の列と <kbd>📦 入荷状況</kbd> が付きました（4番と同じ見方です）。</li>
+    </ul>
+    <div class="warnbox">
+      品目のプルダウンは<b>仮のリスト</b>です（井門・スターリー・サラの、受注発注品の表にある品目だけ）。業者ごとの正式な品目リストが届いたら差し替えます。<br>
+      リストに無い品目は、在庫につながらないため入庫予定に登録できません。入庫依頼書には、手入力で載せられます。
+    </div>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>入荷状況を入庫倉庫ごとに表示・倉庫と月で絞って金額も出ます<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p><kbd>📋 発注書一覧</kbd> → <kbd>📦 入荷状況（未納の管理）</kbd> の表を変えました。</p>
+    <ul>
+      <li><b>同じ品目でも、入庫倉庫が違えば行を分けて</b>表示します。回答をまだ取り込んでいない数は、倉庫「未登録」の行に出ます。</li>
+      <li>上の <kbd>倉庫</kbd>・<kbd>月</kbd> で絞り込めます。月は入庫予定日で分けます（入庫済のものは入庫処理をした日）。</li>
+      <li>絞り込んだ範囲の <b>入庫予定の金額（税抜・税込）と入庫済の金額</b> が上の緑の帯に出ます。表にも「入庫予定金額（税抜）」の列があります。金額は発注書の単価×数量です。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>入荷状況に「完納済」のチェックと「発注書番号」の列<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <ul>
+      <li>「未納があるものだけ」の右に <kbd>☑ 完納済</kbd> を足しました。チェックすると、完納した品目だけを表示します（どちらか一方だけ選べます）。</li>
+      <li>「未納のある発注書」の列を<b>「発注書番号」</b>にしました。完納した品目にも発注書番号を載せます。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>発注書一覧の回答欄に入庫済の日付が出ます<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <p>八木熊の発注書一覧の「回答」欄に、「入庫済 10/30、11/5」のように<b>入庫した日付</b>を出します。</p>
+    <p class="sub">今回の更新より前に入庫処理したものは、入庫処理した日の記録が無いため、入庫予定日を表示します。</p>
+  </section>
+
+  <!-- ============ 見積・案件 ============ -->
+  <h2 class="sec">見積・案件</h2>
+
+  <section class="item key" id="s7">
+    <h3><span class="n">7</span><span>「↩ 修正前に戻す」は案件修正モードのまま続けられます<span class="pill imp" style="margin-left:8px">変更</span></span></h3>
+    <p>案件修正モードの帯の <kbd>↩ 修正前に戻す</kbd> を押したときの動きを変えました。</p>
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        修正前の内容・ステータス・仮押さえに戻して、<b>案件修正モードを終了</b>していました。
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        <b>✏ 案件修正を押した直後の状態</b>に画面ごと戻り、<b>案件修正モードのまま</b>続けられます。直して保存すれば、同じ案件番号に上書きされます。
+      </div>
+    </div>
+    <ul>
+      <li>仮押さえ在庫は、案件修正を押した直後と同じく<b>外れた状態</b>です。保存するときに改めて仮押さえしてください。</li>
+      <li>何度でも戻せます。</li>
+      <li><b>案件管理（案件一覧）の「↩ 修正前に戻す」ボタンはなくしました。</b></li>
+    </ul>
+  </section>
+
+  <!-- ============ 単価 ============ -->
+  <h2 class="sec">単価</h2>
+
+  <section class="item" id="s8">
+    <h3><span class="n">8</span><span>部材9品に単価マスタを紐づけました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>（11月6日 v19.89）マスタ一覧の名称をシステムに揃えていただいた部材のうち、単価が付いていなかった9品に単価を紐づけました。</p>
+    <p class="sub">キーバンド（RV型・SV型・FV型）、扉No.シール（SML・SS/3S）、ネーム厚紙SS、ハトメ、マスターキー、チェンジマスターキー。保存済みの案件の単価は変わりません（パーツ単品で追加するときに使われます）。</p>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>案件番号・発注書番号と、画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.89〜v19.92】
+・★「入庫予定」ボタンは、部材在庫一覧の上から「📋 発注書一覧」の左上（八木熊の左）へ移しました。入庫予定一覧に発注書番号が出ます
+・★入庫依頼書：入庫予定に ☑ →「🚛 選んだ予定で入庫依頼書を作る」で、倉庫へ出す入庫依頼書（PDF・Excel）を作れます。同じ日・同じ倉庫なら業者が違っても1枚。製品ライン・納品方法（混載／チャーター 2t・4t・10t）・積み方（バラ／パレット）を選べます
+・★鍵の業者の入庫：発注書一覧の「鍵」→「📅 入庫予定」で入庫予定に登録 → 届いたら入庫処理（八木熊と同じ）。品目のプルダウンは仮のリストです
+・入荷状況：入庫倉庫ごとに行を分け、倉庫・月で絞って入庫予定の金額を出せます。「完納済」チェック・「発注書番号」の列を追加
+・発注書一覧の回答欄に入庫済の日付が出ます
+・★案件修正の「↩ 修正前に戻す」は、案件修正を押した直後に戻り、案件修正モードのまま続けられます（案件一覧のボタンは廃止）
+・部材9品（キーバンド・扉No.シール・ハトメ・マスターキーなど）に単価を紐づけました
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261109.html
+古い画面のまま保存すると内容が古く戻ることがあるので、必ず再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
