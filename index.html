@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.93（納品完了タブに請求書送付のチェック）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.94（鍵の部材を追加・鍵の発注書に品名の選択肢）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1178,7 +1178,7 @@ var LOCK_TYPES=[
   {v:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター',s:'シリンダー錠'},
   {v:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター',s:'シリンダー錠'},
   {v:'cylinderExchange',l:'内筒交換錠',s:'シリンダー錠'},
-  {v:'cylinderExchangeSpare',l:'内筒交換用予備',s:'シリンダー錠'},
+  {v:'cylinderExchangeSpare',l:'予備シリンダー（内筒交換錠用）',s:'シリンダー錠'},
   {v:'coinReturn',l:'コインリターン錠',s:'コインリターン錠'},
   {v:'none',l:'鍵なし',s:''}
 ];
@@ -2725,7 +2725,12 @@ var PART_ADD_DEFS=[
   {k:'cylinderShortB',l:'シリンダー錠(2本キー)カム短Bマスター'},
   {k:'cylinderShortC',l:'シリンダー錠(2本キー)カム短Cマスター'},
   {k:'cylinderExchange',l:'内筒交換錠'},
-  {k:'cylinderExchangeSpare',l:'内筒交換用予備'},
+  /* v19.94（鍵の発注書マスタ.xlsx・ユーザー「内筒交換錠予備＝予備シリンダー、内筒交換錠用スペアキーは単独で存在」）:
+     在庫キー cylinderExchangeSpare は予備シリンダー（F00033）。スペアキー（F00143）・ケース（F00121）・DSS-909 スペアキー（F00036）・小判札（F00066）を追加 */
+  {k:'cylinderExchangeSpare',l:'予備シリンダー（内筒交換錠用）'},
+  {k:'cylinderExchangeKey',l:'内筒交換錠用スペアキー'},
+  {k:'cylinderExchangeCase',l:'内筒交換錠ケース'},
+  {k:'cylinderSpareKey',l:'シリンダー錠スペアキー（DSS-909・番号指定）'},
   {k:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター'},
   {k:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター'},
   /* v18.97 修正27① 共通: マスターキー5種 */
@@ -2772,7 +2777,8 @@ var PART_ADD_DEFS=[
   {k:'namePlatePaperSS',l:'ネーム厚紙(SS/3S)'},
   {k:'hatome',l:'ハトメ'},
   {k:'masterKeyStd',l:'マスターキー'},
-  {k:'changeMasterKey',l:'チェンジマスターキー'}
+  {k:'changeMasterKey',l:'チェンジマスターキー'},
+  {k:'kobanFuda',l:'小判札（No有 連番）'}/* v19.94 */
 ];
 /* v18.97 修正27②: パーツ単品追加の選択肢をパーツの製品ラインで絞る（ライン限定の部材は他ラインに出さない）。
    台湾製では汎用のネームプレートカバーを出さず(台湾)の方を出す。名称もラインに合わせる（ハンガーパイプの色）。 */
@@ -2821,7 +2827,8 @@ var PART_LABELS={
   /* v18.44 修正３⑥: シリンダー錠の名称を在庫表の記載と同一に統一 */
   cylinderLongStd:'シリンダー錠(2本キー)カム長スタンダード',cylinderLongF:'シリンダー錠(2本キー)カム長Fマスター',cylinderLongB:'シリンダー錠(2本キー)カム長Bマスター',
   cylinderShortStd:'シリンダー錠(2本キー)カム短スタンダード',cylinderShortF:'シリンダー錠(2本キー)カム短Fマスター',cylinderShortB:'シリンダー錠(2本キー)カム短Bマスター',cylinderShortC:'シリンダー錠(2本キー)カム短Cマスター',
-  cylinderExchange:'内筒交換錠',cylinderExchangeSpare:'内筒交換用予備',
+  cylinderExchange:'内筒交換錠',cylinderExchangeSpare:'予備シリンダー（内筒交換錠用）',
+  cylinderExchangeKey:'内筒交換錠用スペアキー',cylinderExchangeCase:'内筒交換錠ケース',cylinderSpareKey:'シリンダー錠スペアキー（DSS-909）',kobanFuda:'小判札（No有 連番）',/* v19.94 */
   coinReturn:'コインリターン錠',railSideSML:'SMLXL共通サイドレール',railBackSML:'SMLXL共通バックレール',railSideSS:'SS・3S共通サイドレール',railBackSS:'SS・3S共通バックレール',
   /* v18.76 修正18①: Sα（新台湾製）専用のレール。在庫キー railLong/railShort は v15 時代から新柏に実データがあったが、
      どの一覧にも行が無く画面から見えていなかった（新柏の商品コードは LR / SR）。 */
@@ -3139,7 +3146,8 @@ doorPocket:108,carryBag:200,/* v18.82 修正21②の追加: 持ち帰り用袋�
   hanger_gy:16,totte_tw:100,namePlateCoverSML_tw:200,namePlateCoverSS_tw:200,
   masterKeyF:100,masterKeyB:100,masterKeyC:100,masterKeyD:100,masterKeyL:100,dialD003:100,/* v19.13 入数訂正: D003は100（暫定50を訂正） */
   /* v19.58: 追加10品の入数は★暫定で同種の部材に合わせた（実数が分かれば在庫項目マスタで変更可） */
-  keyBandRV:100,keyBandSV:100,keyBandFV:100,doorNoSealSML:500,doorNoSealSS:500,namePlatePaperSS:500,hatome:50,masterKeyStd:100,changeMasterKey:100
+  keyBandRV:100,keyBandSV:100,keyBandFV:100,doorNoSealSML:500,doorNoSealSS:500,namePlatePaperSS:500,hatome:50,masterKeyStd:100,changeMasterKey:100,
+  cylinderExchangeKey:100,cylinderExchangeCase:100,cylinderSpareKey:100,kobanFuda:100/* v19.94: ★暫定 */
 };
 /* ===== v19.13 入数訂正: 製品ラインで入数が違う部材 =====
    Sα（新台湾製）は在庫キーを日本製と共有している部材（サイド/バックボード S・扉 S・横連結ネジ・目隠しネジ）が
@@ -3299,7 +3307,8 @@ var BOX_WEIGHT={
   /* v18.97 修正27①: 追加部材の箱重量は★暫定で同種の部材に合わせた */
   hanger_gy:5.0,totte_tw:5.0,masterKeyF:1.0,masterKeyB:1.0,masterKeyC:1.0,masterKeyD:1.0,masterKeyL:1.0,dialD003:3.0,
   /* v19.58: 追加10品の箱重量は★暫定（ネーム厚紙・シールは0.3kg、それ以外は1.0kg） */
-  keyBandRV:1.0,keyBandSV:1.0,keyBandFV:1.0,doorNoSealSML:0.3,doorNoSealSS:0.3,namePlatePaperSS:0.3,hatome:1.0,masterKeyStd:1.0,changeMasterKey:1.0
+  keyBandRV:1.0,keyBandSV:1.0,keyBandFV:1.0,doorNoSealSML:0.3,doorNoSealSS:0.3,namePlatePaperSS:0.3,hatome:1.0,masterKeyStd:1.0,changeMasterKey:1.0,
+  cylinderExchangeKey:1.0,cylinderExchangeCase:1.0,cylinderSpareKey:1.0,kobanFuda:0.3/* v19.94: ★暫定 */
 };
 var MISC_FEE=325;
 var MARKUP=1.1;
@@ -3447,14 +3456,17 @@ var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock',
   /* v18.97 修正27①「共通」: マスターキー5種・ダイヤル錠(D003) */
   'masterKeyF','masterKeyB','masterKeyC','masterKeyD','masterKeyL','dialD003',
   /* v19.58: マスターキー・チェンジマスターキー・キーバンド3種 */
-  'masterKeyStd','changeMasterKey','keyBandRV','keyBandSV','keyBandFV'];
+  'masterKeyStd','changeMasterKey','keyBandRV','keyBandSV','keyBandFV',
+  /* v19.94 */
+  'cylinderExchangeKey','cylinderExchangeCase','cylinderSpareKey','kobanFuda'];
 function isCommonStockKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0;}
 /* v18.44 修正３⑥: 受注発注部材（原則在庫なし・見積時のみ使用。最終的に入庫された段階で出荷する）。
    在庫確認で不足でも案件全体をNGにせず「受発注」バッジ表示にし、他部材の仮押さえを妨げない。
    仮押さえ時は在庫があればその分だけ押さえ、無い分は従来どおり発注待ち（未確保）に登録される。
    v18.45 修正３⑥追: 顧客指示によりシリンダー錠全種・内筒交換錠（＋予備）・コインリターン錠へ拡大。
    在庫が足りている場合は通常どおり在庫数を表示して押さえ、不足時のみ受発注扱い（NGにしない）。 */
-var ORDER_ONLY_KEYS=['cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderDMaster','cylinderLMaster','cylinderExchange','cylinderExchangeSpare','coinReturn'];
+var ORDER_ONLY_KEYS=['cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderDMaster','cylinderLMaster','cylinderExchange','cylinderExchangeSpare','coinReturn',
+  'cylinderExchangeKey','cylinderExchangeCase','cylinderSpareKey','kobanFuda'];/* v19.94 */
 function isOrderOnlyKey(key){return ORDER_ONLY_KEYS.indexOf(key)>=0;}
 /* v18.66 修正13②: 受注発注品は在庫を持たず都度メーカーから仕入れるため、見積に「仕入れ送料」を
    乗せ忘れると赤字になる。パーツ単品追加でこれらを選んだ時点でポップアップ注意喚起を出す。
@@ -3474,7 +3486,9 @@ var ORDER_SUPPLIER_MAP={
   cylinderShortStd:'井門',cylinderShortF:'井門',cylinderShortB:'井門',cylinderShortC:'井門',
   padlockGreen:'井門',padlockBlack:'井門',padlockRed:'井門',
   cylinderExchange:'スターリー',cylinderExchangeSpare:'スターリー',coinReturn:'スターリー',
-  numLabel:'サラ'
+  numLabel:'サラ',
+  /* v19.94: 鍵の発注書マスタ.xlsx の発注先 */
+  cylinderExchangeKey:'スターリー',cylinderExchangeCase:'スターリー',cylinderSpareKey:'井門',kobanFuda:'サラ'
 };
 var ORDER_FREIGHT_NOTE='受注発注品の為、仕入れ送料を加算してください。例：サラ ¥1,500〜、スターリー・井門 ¥1,000〜';
 function orderSupplierOf(key){return ORDER_SUPPLIER_MAP[key]||'';}
@@ -7155,7 +7169,8 @@ var LOCK_CODE_MAP={
   'cylinderDMaster':['F00145','シリンダー錠（２本キー）マスター'],
   'cylinderLMaster':['F00145','シリンダー錠（２本キー）マスター'],
   'cylinderExchange':['F00029','シリンダー錠（内筒交換タイプ）'],
-  'cylinderExchangeSpare':['F00143','内筒交換錠用スペアキー']
+  /* v19.94: 内筒交換用予備＝予備シリンダー（F00033）。従来は F00143（内筒交換錠用スペアキー）を引いていた → スペアキーは cylinderExchangeKey */
+  'cylinderExchangeSpare':['F00033','予備シリンダー']
 };
 /* パーツ単品（部材在庫のキー＋サイズ）→ 商品コード */
 var PART_CODE_MAP={
@@ -7233,7 +7248,10 @@ var PART_CODE_MAP={
   'namePlatePaperSS|':['F00116','ネーム用厚紙（SML・SS/3S）/100枚'],
   'hatome|':['F00112','ハトメ　50個入り（J型）'],
   'masterKeyStd|':['F00031','マスターキー'],
-  'changeMasterKey|':['F00032','チェンジマスターキー']
+  'changeMasterKey|':['F00032','チェンジマスターキー'],
+  /* v19.94（鍵の発注書マスタ.xlsx の水色の列）: 追加した4品 */
+  'cylinderExchangeKey|':['F00143','内筒交換錠用スペアキー'],'cylinderExchangeCase|':['F00121','内筒交換錠ケース'],
+  'cylinderSpareKey|':['F00036','ＤSS-909シリンダー錠　スペアキー'],'kobanFuda|':['F00066','小判札No有　連番']
 };
 /* v18.70 修正16③: 台湾製・Sα の単品パーツは商品コードが別で単価も違う（例: 3Sサイドボード ECO¥10,000 / 台湾¥1,700）。
    従来は製品ラインに関係なくECOのコードを引いていたため、見積の単価が単価表と食い違っていた。
@@ -10364,6 +10382,9 @@ var HELP_QA=[
   {id:'gp-inc',cat:'stock',tab:'parts',ver:'v19.92',q:'鍵の業者から入庫予定日の連絡が来た（入庫予定に登録したい）',kw:['鍵','井門','スターリー','サラ','日乃本','入庫予定','入庫日','未納','入荷状況'],
     steps:['「部材在庫一覧」→「📋 発注書一覧」→「鍵」を開く','その発注書の「📅 入庫予定」を押す','入庫予定日・入庫倉庫・今回入る数を入れて「入庫予定に登録」（品名が在庫の部材につながっていない行は、品目を選ぶ）','届いたら「入庫予定」一覧で「入庫処理」（八木熊と同じ）'],
     tip:'発注書を作るときに品名の上の「品目」から選んでおくと、在庫の部材につながります。「📦 入荷状況」で未納・入庫予定を倉庫・月ごとに見られます。',rel:['ir-make','yk-status']},
+  {id:'gp-keypo',cat:'stock',tab:'parts',ver:'v19.94',q:'鍵の業者（井門・日乃本錠前・スターリー・サラ）の発注書で品名を選びたい／ロットの単価を知りたい',kw:['鍵','発注書','品名','井門','日乃本','スターリー','サラ','ロット','単価','送料','キーバンド','シリンダー'],
+    steps:['「部材在庫一覧」の「📝 発注書」タブを開き、上の「発注先」で鍵の業者（井門・日乃本錠前・スターリー・サラ）を選ぶ','明細の行の「品名を選ぶ（発注書マスタ）」で品名を選ぶ（色・種類・キー番号があるものは右のプルダウンでも選ぶ）','数量を入れる（ロットに合った単価に自動で変わる。単価を手で直したときはそのまま）','送料は画面上部のオレンジの欄に業者の決まりが出る。掛かるときは行を追加して入力'],
+    tip:'品名・単価は「鍵の発注書マスタ.xlsx」のオレンジの列です。選んだ品名は在庫の部材にもつながるので、そのまま入庫予定に登録できます。番号指定の品は品名の欄に番号を書き足してください。',rel:['gp-inc']},
   {id:'yk-status',cat:'stock',tab:'parts',ver:'v19.72',q:'八木熊に発注したもののうち、まだ入ってきていない（未納の）ものを見たい',kw:['八木熊','未納','入荷状況','分納','残り','まだ','入ってきていない','発注残','完納'],
     steps:['「部材在庫一覧」→「📋 発注書一覧」を開く','「📦 入荷状況（未納の管理）」を押す（全発注書の合計）','発注書ごとに見るときは、上のプルダウンで発注書を選ぶ（一覧の「未納」の数を押しても開きます）'],
     tip:'品目×入庫倉庫ごとに 発注数・入庫済・入庫予定（日付別）・入庫日未定・未登録・未納・入庫予定金額 が出ます（同じ品目でも倉庫が違えば別の行）。上の「倉庫」「月」で絞ると、その範囲の入庫予定・入庫済の金額（税抜）が出ます。「完納済」にチェックで完納した品目だけを見られます。入庫済は入庫予定一覧で「入庫処理」した数です。「📊 Excel出力」もできます。発注書Excelにも、回答欄の右に行ごとの「入庫合計」「未納数」（計算式）が入ります。',rel:['yk-reply','yk-po-list']},
@@ -18946,6 +18967,11 @@ function GpPOPanel(p){
     h('div',{style:{padding:'8px 12px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:8,fontSize:11,color:'#1E3A8A',marginBottom:8,lineHeight:1.7}},
       ven.short+'様への'+gpPOTitle(v)+'を作ります。品名・数量・単位・単価を入れると金額・小計・消費税・合計は自動で計算します（品名だけの行は見出しや注記になります）。',
       h('br'),'「🖨 PDF」「📊 Excel」のどちらを出しても「📋 発注書一覧」（'+gpCatLabel(ven.cat)+'）に記録されます。同じ番号で出し直すと上書きです。入力中の内容は業者ごとにこの端末に残ります。'),
+    /* v19.94: 鍵の業者は品名を発注書マスタから選べる。送料は選択肢にせず表示だけ */
+    ven.cat==='key'&&keyPOItems(vid).length?h('div',{'data-keyposhipnote':vid,style:{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',padding:'6px 12px',background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:8,fontSize:12,color:'#7C2D12',marginBottom:8}},
+      h('b',null,'🚚 '+(keyPOShip(vid)||'送料の決まりは未登録')),
+      h('span',{style:{fontSize:11}},'送料が掛かるときは「＋ 行を追加」で品名「送料」と金額を入れてください。'),
+      h('span',{style:{fontSize:11,color:'var(--g500)'}},'品名は各行の「品名を選ぶ（発注書マスタ）」から選ぶと、品名と数量に合ったロットの単価が入ります（選ばずに自由入力もできます）。')):null,
     h('div',{'data-gppono':v.no,style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'8px 12px',marginBottom:8,borderRadius:8,
         background:listed?(dirty?'#FFF7ED':'#F0FDF4'):'#F8FAFC',border:'2px solid '+(listed?(dirty?'#FDBA74':'#86EFAC'):'var(--g300)')}},
       h('span',{style:{fontSize:11,fontWeight:700,color:'var(--g500)'}},'発注書番号'),
@@ -18982,13 +19008,14 @@ function GpPOPanel(p){
         var warn={borderColor:'#DC2626',background:'#FEF2F2'};
         return h('tr',{key:l.id,'data-gpline':i},
           h('td',{style:{textAlign:'center',color:'var(--g500)',width:24}},i+1),
-          h('td',null,gpItemSelect(p.vendor,l,function(it){
+          h('td',null,ven.cat==='key'?keyPOSelect(p.vendor,l,function(nl){set('lines',v.lines.map(function(x){return x.id===l.id?nl:x;}));},i):null,
+            l.kp?null:gpItemSelect(p.vendor,l,function(it){
               /* v19.92: 業者の品目を選ぶと在庫の部材につながる（品名が空か前の品目名のときは品目名を入れる） */
               set('lines',v.lines.map(function(x){if(x.id!==l.id)return x;var o=Object.assign({},x),pn=String(x.name||'').trim();
                 if(it){o.item={key:it.key,lineId:it.lineId,l:it.l};if(!pn||(x.item&&pn===x.item.l))o.name=it.l;}else delete o.item;return o;}));
             },i),
             h('textarea',{value:l.name||'',rows:Math.max(1,String(l.name||'').split('\n').length),'data-gpname':i,style:Object.assign({},cin,{width:'100%',resize:'vertical',minWidth:280}),onChange:function(ev){setLine(l.id,'name',ev.target.value);}})),
-          h('td',null,h('input',{type:'text',inputMode:'decimal',value:l.qty==null?'':l.qty,'data-gpqty':i,style:Object.assign({},cin,{width:70,textAlign:'right'},badQ?warn:null),onChange:function(ev){setLine(l.id,'qty',ev.target.value);}})),
+          h('td',null,h('input',{type:'text',inputMode:'decimal',value:l.qty==null?'':l.qty,'data-gpqty':i,style:Object.assign({},cin,{width:70,textAlign:'right'},badQ?warn:null),onChange:function(ev){var val=ev.target.value;if(l.kp)set('lines',v.lines.map(function(x){return x.id===l.id?keyPOQty(x,vid,val):x;}));else setLine(l.id,'qty',val);}})),
           h('td',null,h('input',{type:'text',list:'gp-units',value:l.unit||'','data-gpunit':i,style:Object.assign({},cin,{width:56,textAlign:'center'}),onChange:function(ev){setLine(l.id,'unit',ev.target.value);}})),
           h('td',null,h('input',{type:'text',inputMode:'decimal',value:l.price==null?'':l.price,'data-gpprice':i,style:Object.assign({},cin,{width:90,textAlign:'right'},badP?warn:null),onChange:function(ev){setLine(l.id,'price',ev.target.value);}})),
           h('td',{style:{textAlign:'right',whiteSpace:'nowrap',minWidth:80},'data-gpamt':i},a==null?'':fm(Math.round(a*100)/100)),
@@ -19806,7 +19833,147 @@ function POListTabs(p){
    ・作り方: 入庫予定一覧で ☑ → 「🚛 選んだ予定で入庫依頼書を作る」／「🚛 入庫依頼書」→「＋ 新しく作る」で入庫予定・発注書から取り込み、手入力も可。
    ・在庫・入庫予定には触らない（入庫依頼書は紙を作るだけ）。 */
 var GP_SUPPLIER_VID={'井門':'IM','スターリー':'SL','サラ':'SR','日乃本錠前':'HN'};
-var GP_VENDOR_ITEMS=null;/* {業者ID:[{key,lineId,l}]}。ユーザーの業者別リストが届いたらここに書く（書いていない業者は受注発注品の表から作る） */
+var GP_VENDOR_ITEMS=null;/* {業者ID:[{key,lineId,l}]}。ユーザーの業者別リストが届いたらここに書く（書いていない業者は受注発注品の表から作る）。v19.94: 鍵の4社は下の KEY_PO_MASTER から作る */
+/* ===== v19.94（2026-11-09 チャット「単価マスタに入ってる鍵の一覧を連携するのでパーツ単品追加と照らし合わせて不足分は追加して。
+   発注書画面で現状鍵関係は自由入力になってるけど、このExcelデータに入ってるオレンジ列をそれぞれの鍵業者毎に追加して。
+   水色の列が在庫管理システムマスタで、オレンジが発注書を入力するときの選択肢。送料は選択肢ではなく、入力時の画面のどこかに表示」）=====
+   出所: NAS マスタデータ\価格表\鍵の発注書マスタ.xlsx（発注先・発注書品名・色/種類・ロット（個）・単価）。
+   ・it.nm＝発注書に載せる品名（Excel の「発注書品名」そのまま）。it.sub＝同じ品名で単価が違う行（キーオメイト 番号無／番号指定有り）。
+   ・it.opts＝色/種類（選ぶと品名の下に「色/種類：○○」を付ける）。it.okeys＝色/種類ごとの在庫の部材（3桁南京錠の色・マスターの種類など）。
+   ・it.tiers＝[[ロット（個）,単価],…]。数量がロット以上の一番大きい段の単価を入れる（ロット0＝指定なし）。
+   ・key/okeys が無い品目は在庫の部材が無い（コインリターン錠ケース・キーオメイト・ポリウレタンのキーバンド等）。入庫予定では手で品目を選ぶ。
+   ・送料は選択肢にせず、画面に表示するだけ（ship）。 */
+var KEY_PO_MASTER={
+  IM:{ship:'送料（商品合計5万円以上はサービス）',items:[
+    {id:'IM01',code:'F00017',nm:'鍵ナシ取手　DSK-909　OK　Bラッチ\n本体色：ニューグレー\n※プラスチックロッカー用',key:'totte',tiers:[[192,156],[960,151],[1920,146]]},
+    {id:'IM02',code:'F00034',nm:'南京錠　DSN-909　AL　5.5㎜段\nケース色：アイボリー\n※プラスチックロッカー用',key:'padlock',tiers:[[150,315],[750,310],[1500,305],[3000,285]]},
+    {id:'IM03',code:'F00110',nm:'3桁ダイヤル式　SDL南京錠\nタイプＡ　DSN-909用\n※プラスチックロッカー用',opts:['ブラック','レッド','グリーン'],olbl:'色',okeys:{'ブラック':'padlockBlack','レッド':'padlockRed','グリーン':'padlockGreen'},tiers:[[1,650],[50,630],[250,600],[500,550]]},
+    {id:'IM04',code:'F00144',nm:'シリンダー錠　DSS-909 4P 2㎜段 32mm\n2本キータイプ\n※プラスチックロッカー用\n※カムの短いタイプでお願いします',key:'cylinderShortStd',tiers:[[120,455],[240,440],[600,405]]},
+    {id:'IM05',code:'F00145',nm:'シリンダー錠　DSS-909 5PMK 2㎜段 32mm\nマスター仕様　2本キータイプ\n※プラスチックロッカー用\n※カムの短いタイプでお願いします',opts:['Fマスター','Bマスター','Cマスター','Dマスター','Lマスター'],olbl:'種類',okeys:{'Fマスター':'cylinderShortF','Bマスター':'cylinderShortB','Cマスター':'cylinderShortC','Dマスター':'cylinderDMaster','Lマスター':'cylinderLMaster'},tiers:[[1,725],[100,665]]},
+    {id:'IM06',code:'F00036',nm:'ＤSS-909シリンダー錠　スペアキー',opts:['F000','B000','C000','D000','L000'],olbl:'キー番号',note:'※番号指定',key:'cylinderSpareKey',tiers:[[1,350]]},
+    {id:'IM07',code:'F00037',nm:'ＤSS-909シリンダー錠　マスターキー',opts:['Fマスター','Bマスター','Cマスター','Dマスター','Lマスター'],olbl:'種類',okeys:{'Fマスター':'masterKeyF','Bマスター':'masterKeyB','Cマスター':'masterKeyC','Dマスター':'masterKeyD','Lマスター':'masterKeyL'},tiers:[[1,450]]},
+    {id:'IM08',code:'F00132',nm:'ダイヤル錠　ＤＳＴ錠　４㎜段\n本体色：ニューグレー\n※プラスチックロッカー用',key:'dialDST',tiers:[[1,1600],[80,1450]]},
+    {id:'IM09',code:'F00133',nm:'ダイヤル錠　ＤＳＴ錠　暗証番号検索キー',key:'dialKeyDST',tiers:[[1,1600]]},
+    {id:'IM10',code:'',nm:'スペアキーA627\n※D003用解錠キー',key:'dialKeyD003',tiers:[[1,600]]}]},
+  HN:{ship:'送料（商品150個以上はサービス）',items:[
+    {id:'HN01',code:'F00027',nm:'4連ダイヤルロッカー錠　固定仕様',opts:['H110','H111'],olbl:'キー番号',okeys:{'H110':'dialH110new','H111':'dialH111new'},tiers:[[50,830]]},
+    {id:'HN02',code:'F00028',nm:'4連ダイヤルロッカー錠　検索キー',opts:['H110','H111'],olbl:'キー番号',okeys:{'H110':'dialKeyH110','H111':'dialKeyH111'},tiers:[[100,500]]}]},
+  SL:{ship:'送料（1箱 ¥1,000～）',items:[
+    {id:'SL01',code:'F00030',nm:'コインリターン錠',opts:['100円','10円','500円'],olbl:'種類',key:'coinReturn',tiers:[[1,1950]]},
+    {id:'SL02',code:'F00029',nm:'内筒交換錠　W/1（1本キー）',key:'cylinderExchange',tiers:[[0,1350]]},
+    {id:'SL03',code:'F00029',nm:'内筒交換錠　W/2（2本キー）',key:'cylinderExchange',tiers:[[0,1700]]},
+    {id:'SL04',code:'F00033',nm:'予備シリンダー　W/1（1本キー）',key:'cylinderExchangeSpare',tiers:[[1,1000]]},
+    {id:'SL05',code:'F00033',nm:'予備シリンダー　W/2（2本キー）',key:'cylinderExchangeSpare',tiers:[[1,1400]]},
+    {id:'SL06',code:'F00143',nm:'内筒交換錠用スペアキー',key:'cylinderExchangeKey',tiers:[[1,1000]]},
+    {id:'SL07',code:'F00032',nm:'チェンジマスターキー',key:'changeMasterKey',tiers:[[1,800]]},
+    {id:'SL08',code:'F00031',nm:'マスターキー',key:'masterKeyStd',tiers:[[1,800]]},
+    {id:'SL09',code:'F00121',nm:'内筒交換錠ケース',key:'cylinderExchangeCase',tiers:[[1,900]]},
+    {id:'SL10',code:'',nm:'コインリターン錠ケース',opts:['100円','10円','500円'],olbl:'種類',tiers:[[1,1450]]},
+    {id:'SL11',code:'',nm:'キーオメイト　R型',sub:'番号無',tiers:[[1,700]]},
+    {id:'SL12',code:'',nm:'キーオメイト　R型',sub:'番号指定有り',tiers:[[1,750]]},
+    {id:'SL13',code:'',nm:'ハトメ　J型',tiers:[[10,60]]}]},
+  SR:{ship:'送料（1箱 ¥1,500～）',items:[
+    {id:'SR01',code:'F00059',nm:'キーバンド　RV型　塩ビ',opts:KEY_PO_COLORS6(),olbl:'色',note:'※番号指定有り',key:'keyBandRV',tiers:[[1,650]]},
+    {id:'SR02',code:'F00059',nm:'キーバンド　SV型　塩ビ',opts:KEY_PO_COLORS6(),olbl:'色',note:'※番号指定有り',key:'keyBandSV',tiers:[[1,650]]},
+    {id:'SR03',code:'F00059',nm:'キーバンド　FV型　塩ビ',opts:KEY_PO_COLORS6(),olbl:'色',note:'※番号指定有り',key:'keyBandFV',tiers:[[1,650]]},
+    {id:'SR04',code:'',nm:'キーバンド　R型　ポリウレタン',opts:KEY_PO_COLORS6(),olbl:'色',note:'※番号指定有り',tiers:[[1,650]]},
+    {id:'SR05',code:'',nm:'キーバンド　S型　ポリウレタン',opts:KEY_PO_COLORS6(),olbl:'色',note:'※番号指定有り',tiers:[[1,650]]},
+    {id:'SR06',code:'',nm:'キーバンド　F型　ポリウレタン',opts:KEY_PO_COLORS6(),olbl:'色',note:'※番号指定有り',tiers:[[1,650]]},
+    {id:'SR07',code:'F00112',nm:'キーオメイト用　ハトメ　50組セット（J型）',key:'hatome',tiers:[[1,2750]]},
+    {id:'SR08',code:'',nm:'キーオメイト用　ハトメ　50組セット（E型）',tiers:[[1,2750]]},
+    {id:'SR09',code:'F00060',nm:'扉Noシール　23*75（白地黒文字）',note:'※番号指定有り',key:'doorNoSealSML',tiers:[[1,150]]},
+    {id:'SR10',code:'',nm:'扉Noシール　16*47（白地黒文字）',note:'※番号指定有り',key:'doorNoSealSS',tiers:[[1,150]]},
+    {id:'SR11',code:'F00066',nm:'小判札',opts:['ブルー','レッド','グリーン','オレンジ','イエロー','ピンク','ホワイト'],olbl:'色',note:'※番号指定有り',key:'kobanFuda',tiers:[[1,100]]}]}
+};
+function KEY_PO_COLORS6(){return ['ブルー','レッド','グリーン','オレンジ','イエロー','グレー'];}
+function keyPOItems(vid){return (KEY_PO_MASTER[vid]&&KEY_PO_MASTER[vid].items)||[];}
+function keyPOItem(vid,id){return keyPOItems(vid).filter(function(x){return x.id===id;})[0]||null;}
+function keyPOShip(vid){return (KEY_PO_MASTER[vid]&&KEY_PO_MASTER[vid].ship)||'';}
+/* 色/種類まで決めたときの在庫の部材（無ければ ''） */
+function keyPOKeyOf(it,opt){if(!it)return '';if(it.okeys)return (opt&&it.okeys[opt])||'';return it.key||'';}
+/* 数量に合う単価（ロット以上の一番大きい段。数量が空・ロット未満なら一番小さい段） */
+function keyPOPrice(it,qty){
+  if(!it||!it.tiers||!it.tiers.length)return null;
+  var q=parseFloat(qty),p=it.tiers[0][1];
+  if(!isNaN(q))it.tiers.forEach(function(t){if(q>=t[0])p=t[1];});
+  return p;
+}
+function keyPOUnderLot(it,qty){var q=parseFloat(qty);return !!(it&&it.tiers&&it.tiers.length&&it.tiers[0][0]>1&&!isNaN(q)&&q<it.tiers[0][0]);}
+function keyPOTierText(it){
+  if(!it||!it.tiers)return '';
+  return it.tiers.map(function(t){return (t[0]>1?t[0]+'個〜 ':(t[0]===1?'1個〜 ':''))+'¥'+fm(t[1]);}).join(' ／ ');
+}
+/* 発注書に載せる品名（品名＋（単価違いの行）＋色/種類＋注記） */
+function keyPOName(it,opt){
+  if(!it)return '';
+  var a=[it.nm];if(it.sub)a.push(it.sub);
+  if(opt)a.push((it.olbl||'色/種類')+'：'+opt);
+  if(it.note)a.push(it.note);
+  return a.join('\n');
+}
+function keyPOItemLabel(it){return String(it.nm).split('\n')[0]+(it.sub?'（'+it.sub+'）':'');}
+/* 選んだ品目を明細の行へ入れる（品名・単価・在庫の部材）。数量はそのまま */
+function keyPOApply(line,vid,id,opt){
+  var o=Object.assign({},line),it=keyPOItem(vid,id);
+  if(!it){delete o.kp;return o;}
+  if(it.opts&&it.opts.indexOf(opt)<0)opt=it.opts.length===1?it.opts[0]:'';
+  var pr=keyPOPrice(it,o.qty);
+  o.kp={id:it.id,o:opt||'',auto:pr==null?'':String(pr),nm:keyPOName(it,opt)};
+  o.name=o.kp.nm;
+  if(pr!=null)o.price=String(pr);
+  if(!o.unit)o.unit='個';
+  var k=keyPOKeyOf(it,opt);
+  if(k)o.item={key:k,lineId:'jp2',l:partLabelJP(k)||k};else delete o.item;
+  return o;
+}
+/* 数量を変えたとき、単価が自動で入れたままならロットに合わせて入れ直す */
+function keyPOQty(line,vid,val){
+  var o=Object.assign({},line);o.qty=val;
+  var it=o.kp?keyPOItem(vid,o.kp.id):null;
+  if(it&&String(o.price||'')===String(o.kp.auto||'')){var pr=keyPOPrice(it,val);if(pr!=null){o.price=String(pr);o.kp=Object.assign({},o.kp,{auto:String(pr)});}}
+  return o;
+}
+/* 鍵の発注書の明細: 品目（発注書品名）と色/種類のプルダウン */
+function keyPOSelect(vid,l,onLine,i){
+  var its=keyPOItems(vid);if(!its.length)return null;
+  var kp=l.kp||null,it=kp?keyPOItem(vid,kp.id):null;
+  var edited=it&&String(l.name||'')!==String(kp.nm||'');
+  var k=it?keyPOKeyOf(it,kp.o):'';
+  return h('div',{'data-keypo':i,style:{marginBottom:3}},
+    h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
+      h('select',{className:'inp','data-keypoitem':i,value:it?it.id:'',style:{fontSize:11,flex:'2 1 220px',color:it?'var(--nv)':'var(--g500)',fontWeight:it?700:400},
+        title:'発注書マスタ（鍵の発注書マスタ.xlsx）の品名から選びます。選ぶと品名・単価が入ります（あとから書き換えもできます）',
+        onChange:function(e){var id=e.target.value;onLine(id?keyPOApply(l,vid,id,kp&&kp.o):(function(){var o=Object.assign({},l);delete o.kp;return o;})());}},
+        h('option',{value:''},'品名を選ぶ（発注書マスタ）／自由入力'),
+        its.map(function(x){return h('option',{key:x.id,value:x.id},keyPOItemLabel(x)+'　'+keyPOTierText(x).split(' ／ ')[0]+(x.tiers.length>1?'〜':''));})),
+      it&&it.opts?h('select',{className:'inp','data-keypoopt':i,value:kp.o||'',style:{fontSize:11,flex:'1 1 110px',borderColor:kp.o?'var(--g300)':'#F59E0B',background:kp.o?'':'#FFFBEB'},
+        onChange:function(e){onLine(keyPOApply(l,vid,it.id,e.target.value));}},
+        h('option',{value:''},(it.olbl||'色/種類')+'を選ぶ'),
+        it.opts.map(function(x){return h('option',{key:x,value:x},x);})):null),
+    it?h('div',{'data-keypohint':i,style:{fontSize:10,color:'var(--g500)',marginTop:2,lineHeight:1.5}},
+      '単価: '+keyPOTierText(it),
+      keyPOUnderLot(it,l.qty)?h('span',{style:{color:'#B45309',fontWeight:700,marginLeft:6}},'⚠ ロット（'+it.tiers[0][0]+'個）未満です'):null,
+      h('span',{style:{marginLeft:6}},k?('→ 在庫: '+(partLabelJP(k)||k)):(it.okeys&&!kp.o?'→ 在庫: '+(it.olbl||'色/種類')+'を選ぶとつながります':'→ 在庫の部材はありません')),
+      edited?h('span',{style:{marginLeft:6,color:'#B45309'}},'（品名を書き換えています）'):null):null);
+}
+/* v19.92 の入庫予定の品目プルダウンも、この発注書マスタの在庫の部材から作る */
+GP_VENDOR_ITEMS=(function(){
+  var m={};
+  Object.keys(KEY_PO_MASTER).forEach(function(vid){
+    var seen={},out=[];
+    keyPOItems(vid).forEach(function(it){
+      var ks=it.okeys?Object.keys(it.okeys).map(function(o){return it.okeys[o];}):(it.key?[it.key]:[]);
+      ks.forEach(function(k){if(seen[k])return;seen[k]=1;out.push({key:k,lineId:'jp2',l:partLabelJP(k)||k});});
+    });
+    /* 発注書マスタに無い受注発注品（ダイヤル錠オプナスなど）も、従来どおり受注発注品の表から足す */
+    Object.keys(ORDER_SUPPLIER_MAP).forEach(function(k){
+      if(seen[k]||GP_SUPPLIER_VID[ORDER_SUPPLIER_MAP[k]]!==vid)return;
+      seen[k]=1;out.push({key:k,lineId:'jp2',l:partLabelJP(k)||k});
+    });
+    m[vid]=out;
+  });
+  return m;
+})();
 function gpVendorItems(vid){
   if(GP_VENDOR_ITEMS&&GP_VENDOR_ITEMS[vid])return GP_VENDOR_ITEMS[vid];
   var out=[];
@@ -21393,7 +21560,10 @@ function PartsPage(p){
     {label:'シリンダー錠(2本キー)カム短Bマスター',key:'cylinderShortB',cat:'lock',alias:['シリンダー錠(カム短B)']},
     {label:'シリンダー錠(2本キー)カム短Cマスター',key:'cylinderShortC',cat:'lock',alias:['シリンダー錠(カム短C)']},
     {label:'内筒交換錠',key:'cylinderExchange',cat:'lock'},
-    {label:'内筒交換用予備',key:'cylinderExchangeSpare',cat:'lock'},
+    {label:'予備シリンダー（内筒交換錠用）',key:'cylinderExchangeSpare',cat:'lock',alias:['内筒交換用予備']},
+    {label:'内筒交換錠用スペアキー',key:'cylinderExchangeKey',cat:'lock'},/* v19.94 */
+    {label:'内筒交換錠ケース',key:'cylinderExchangeCase',cat:'lock'},
+    {label:'シリンダー錠スペアキー（DSS-909）',key:'cylinderSpareKey',cat:'lock'},
     /* v18.34 追A追随: 表示から「(新)」を削除し型番のみに（在庫キーは不変。業者取込の旧表記マッチはaliasで互換維持） */
     {label:'ダイヤル錠 H110',key:'dialH110new',cat:'lock',alias:['ダイヤル錠 H110(新)']},
     {label:'ダイヤル錠 H111',key:'dialH111new',cat:'lock',alias:['ダイヤル錠 H111(新)']},
@@ -21437,6 +21607,7 @@ function PartsPage(p){
     {label:'キーバンドFV型',key:'keyBandFV',cat:'lock'},
     {label:'マスターキー',key:'masterKeyStd',cat:'lock'},
     {label:'チェンジマスターキー',key:'changeMasterKey',cat:'lock'},
+    {label:'小判札（No有 連番）',key:'kobanFuda',cat:'option'},/* v19.94 */
     {label:'3桁ダイヤル南京錠 グリーン',key:'padlockGreen',cat:'lock'},
     {label:'3桁ダイヤル南京錠 ブラック',key:'padlockBlack',cat:'lock'},
     {label:'3桁ダイヤル南京錠 レッド',key:'padlockRed',cat:'lock'}
@@ -21597,7 +21768,10 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'(2本キー)カム短Dマスター',key:'cylinderDMaster',irisu:iGet('cylinderDMaster')});
           uniRows.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
           uniRows.push({item:'',variant:'内筒交換錠',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
-          uniRows.push({item:'',variant:'内筒交換用予備',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
+          uniRows.push({item:'',variant:'予備シリンダー（内筒交換錠用）',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
+          uniRows.push({item:'',variant:'内筒交換錠用スペアキー',key:'cylinderExchangeKey',irisu:iGet('cylinderExchangeKey')});/* v19.94 */
+          uniRows.push({item:'',variant:'内筒交換錠ケース',key:'cylinderExchangeCase',irisu:iGet('cylinderExchangeCase')});
+          uniRows.push({item:'',variant:'スペアキー（DSS-909）',key:'cylinderSpareKey',irisu:iGet('cylinderSpareKey')});
           /* v18.97 修正27① 共通: マスターキー5種 */
           ['F','B','C','D','L'].forEach(function(mk,mi){
             uniRows.push({item:mi===0?'マスターキー':'',variant:mk+'マスターキー',key:'masterKey'+mk,irisu:iGet('masterKey'+mk)});
@@ -21653,6 +21827,7 @@ function PartsPage(p){
           uniRows.push({item:'',variant:'FV型',key:'keyBandFV',irisu:iGet('keyBandFV')});
           uniRows.push({item:'マスターキー',variant:'',key:'masterKeyStd',irisu:iGet('masterKeyStd')});
           uniRows.push({item:'チェンジマスターキー',variant:'',key:'changeMasterKey',irisu:iGet('changeMasterKey')});
+          uniRows.push({item:'小判札',variant:'No有 連番',key:'kobanFuda',irisu:iGet('kobanFuda')});/* v19.94 */
           /* v14.2: 40-42. 3桁ダイヤル南京錠（3種） */
           uniRows.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iGet('padlockGreen')});
           uniRows.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iGet('padlockBlack')});
@@ -22037,7 +22212,7 @@ function PartsPage(p){
               snapRows.push({item:'シリンダー錠 カム短Bマスター',key:'cylinderShortB'});
               snapRows.push({item:'シリンダー錠 カム短Cマスター',key:'cylinderShortC'});
               snapRows.push({item:'シリンダー錠 内筒交換錠',key:'cylinderExchange'});
-              snapRows.push({item:'シリンダー錠 内筒交換用予備',key:'cylinderExchangeSpare'});
+              snapRows.push({item:'シリンダー錠 予備シリンダー（内筒交換錠用）',key:'cylinderExchangeSpare'});
               ['F','B','C','D','L'].forEach(function(mk){snapRows.push({item:mk+'マスターキー',key:'masterKey'+mk});});/* v18.97 修正27① */
               snapRows.push({item:'コインリターン錠',key:'coinReturn'});
               snapRows.push({item:'SMLXL共通サイドレール',key:'railSideSML'});
@@ -22065,7 +22240,8 @@ function PartsPage(p){
               snapRows.push({item:'ネームプレートカバー SS・3S(台湾)',key:'namePlateCoverSS_tw'});
               snapRows.push({item:'ネーム厚紙(SML)',key:'namePlatePaper'});/* v19.58: 旧「ネームプレート厚紙」 */
               [['namePlatePaperSS','ネーム厚紙(SS/3S)'],['doorNoSealSML','扉No.シール(SML)'],['doorNoSealSS','扉No.シール(SS/3S)'],['hatome','ハトメ'],
-               ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー']]
+               ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー'],
+               ['cylinderExchangeKey','内筒交換錠用スペアキー'],['cylinderExchangeCase','内筒交換錠ケース'],['cylinderSpareKey','シリンダー錠スペアキー（DSS-909）'],['kobanFuda','小判札（No有 連番）']]
                 .forEach(function(a){snapRows.push({item:a[1],key:a[0]});});/* v19.58 */
               snapRows.push({item:'3桁ダイヤル南京錠 グリーン',key:'padlockGreen'});
               snapRows.push({item:'3桁ダイヤル南京錠 ブラック',key:'padlockBlack'});
@@ -22448,7 +22624,8 @@ function PartsPage(p){
         uniR.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iG('namePlateCoverSS_tw'),onlyIfUsed:true});
         uniR.push({item:'ネーム厚紙(SML)',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});/* v19.58: 旧「ネームプレート厚紙」 */
         [['namePlatePaperSS','ネーム厚紙(SS/3S)'],['doorNoSealSML','扉No.シール(SML)'],['doorNoSealSS','扉No.シール(SS/3S)'],['hatome','ハトメ'],
-         ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー']]
+         ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー'],
+               ['cylinderExchangeKey','内筒交換錠用スペアキー'],['cylinderExchangeCase','内筒交換錠ケース'],['cylinderSpareKey','シリンダー錠スペアキー（DSS-909）'],['kobanFuda','小判札（No有 連番）']]
           .forEach(function(a){uniR.push({item:a[1],variant:'',key:a[0],irisu:iG(a[0]),onlyIfUsed:true});});/* v19.58 */
         uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
@@ -22804,7 +22981,8 @@ function PartsPage(p){
         uniR.push({item:'ネームプレートカバー SS・3S(台湾)',variant:'',key:'namePlateCoverSS_tw',irisu:iG('namePlateCoverSS_tw'),onlyIfUsed:true});
         uniR.push({item:'ネーム厚紙(SML)',variant:'',key:'namePlatePaper',irisu:iG('namePlatePaper')});/* v19.58: 旧「ネームプレート厚紙」 */
         [['namePlatePaperSS','ネーム厚紙(SS/3S)'],['doorNoSealSML','扉No.シール(SML)'],['doorNoSealSS','扉No.シール(SS/3S)'],['hatome','ハトメ'],
-         ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー']]
+         ['keyBandRV','キーバンドRV型'],['keyBandSV','キーバンドSV型'],['keyBandFV','キーバンドFV型'],['masterKeyStd','マスターキー'],['changeMasterKey','チェンジマスターキー'],
+               ['cylinderExchangeKey','内筒交換錠用スペアキー'],['cylinderExchangeCase','内筒交換錠ケース'],['cylinderSpareKey','シリンダー錠スペアキー（DSS-909）'],['kobanFuda','小判札（No有 連番）']]
           .forEach(function(a){uniR.push({item:a[1],variant:'',key:a[0],irisu:iG(a[0]),onlyIfUsed:true});});/* v19.58 */
         uniR.push({item:'3桁ダイヤル南京錠',variant:'グリーン',key:'padlockGreen',irisu:iG('padlockGreen')});
         uniR.push({item:'',variant:'ブラック',key:'padlockBlack',irisu:iG('padlockBlack')});
