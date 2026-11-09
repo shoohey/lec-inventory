@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.89（未紐づけだった部材9品に単価マスタを紐づけ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.91（入荷状況を倉庫別・月別に／入庫予定ボタンを発注書一覧へ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -9982,58 +9982,41 @@ var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes'
   'beforeEdit'];/* v19.88: 案件修正を始める前の控え（「↩ 修正前に戻す」用） */
 /* ===== v19.88（2026-11-06 依頼「案件修正で間違って修正してしまった場合に、一つ前の状態に戻すボタン」）=====
    ✏ 案件修正を押した時点の案件をまるごと order.beforeEdit={at,by,data} に控える（1つ前の1世代だけ。次の案件修正で上書き）。
-   restoreBeforeEdit(no) で、いまの押さえを解除 → 控えの内容・ステータスに戻す → 控えで押さえていた在庫を押さえ直す。
-   押さえ直すときに別の案件が先に押さえていて足りない分は、未確保（発注待ち）にする。
+   v19.90（2026-11-09 ユーザー「戻すのは案件修正ボタンを押した直後までで。案件修正モードのまま続ける運用で」「案件一覧の修正前に戻すは不要」）:
+   rewindToEditStart(no) で、修正中に押さえた分を解除 → 控えの内容に戻す（押さえは外したまま＝✏ 案件修正を押した直後と同じ）
+   → 在庫確認・見積画面へ読み込み直し、案件修正モードは続ける。ボタンは案件修正モードの帯だけ（案件一覧のボタンは廃止）。
+   ★v19.88 の「控えで押さえていた在庫を押さえ直してモードを終える」動きは廃止した。
    戻せるのは今のステータスも控えのステータスも「見積作成・仮押さえ・受注確定」のときだけ（出荷指示以降は在庫を消費済みのため）。 */
 var BEFORE_EDIT_ST=['見積作成','仮押さえ','受注確定'];
 function beforeEditSnap(o){var c=JSON.parse(JSON.stringify(o));delete c.beforeEdit;return {at:new Date().toLocaleString('ja-JP'),by:USER_NAME_FOR_SAVE||'',data:c};}
 function canRestoreBeforeEdit(o){return !!(o&&o.beforeEdit&&o.beforeEdit.data&&BEFORE_EDIT_ST.indexOf(o.status)>=0&&BEFORE_EDIT_ST.indexOf(o.beforeEdit.data.status)>=0);}
-function restoreBeforeEdit(no,userName){
+function rewindToEditStart(no,userName){
   var ix=ORDERS.findIndex(function(x){return x.no===no;});
   if(ix<0)return {ok:false,msg:'案件が見つかりません'};
   var cur=ORDERS[ix];
   if(!canRestoreBeforeEdit(cur))return {ok:false,msg:'この案件は修正前に戻せません（控えが無いか、出荷指示以降に進んでいます）'};
-  /* 1) いまの押さえを解除 */
+  /* 1) 修正中に仮押さえ・受注確定で保存していたら、その押さえを解除 */
   if(cur.status==='仮押さえ'||cur.status==='受注確定'){
     (cur.lines||[]).forEach(function(ln){if(ln.isFreeInput)return;orderWhs(cur).forEach(function(w){releaseLine(ln,w);});});
     cur.status='見積作成';
   }
   rebuildHeldFromOrders();
-  /* 2) 控えの内容に戻す */
+  /* 2) 控えの内容に戻す。✏ 案件修正を押した直後と同じく、押さえは外した状態（見積作成）にする */
   var r=JSON.parse(JSON.stringify(cur.beforeEdit.data));
-  delete r.beforeEdit;
-  var shorts=[];
+  var editSnap={status:r.status,held:(r.lines||[]).map(function(ln){return JSON.parse(JSON.stringify(ln._actualHeld||[]));}),heldWh:(r.lines||[]).map(function(ln){return ln._heldWh||'';})};
   if(r.status==='仮押さえ'||r.status==='受注確定'){
-    var used={};
-    (r.lines||[]).forEach(function(ln){
-      if(ln.isFreeInput||!ln._actualHeld)return;
-      var kept=[];
-      ln._actualHeld.forEach(function(e){
-        var hl=e.heldLine||normalizeStockLine(ln.line,e.key);
-        var wh=e._wh||ln._heldWh||r.wh;
-        var q=parseInt(e.qty)||0;if(!hl||!wh||q<=0)return;
-        var bk=[hl,wh,e.key,e.sub,e.isDoor?e.color:'',e.isDoor?e.size:''].join('|');
-        var free;
-        try{free=e.isDoor?availD(hl,wh,e.color,e.size,e.key):(e.sub!==undefined?avail(hl,wh,e.key,e.sub):avail(hl,wh,e.key));}catch(ex){free=0;}
-        var left=Math.max(0,(free||0)-(used[bk]||0));
-        var take=Math.min(q,left);
-        used[bk]=(used[bk]||0)+take;
-        if(take>0)kept.push(Object.assign({},e,{qty:take}));
-        if(q-take>0){
-          shorts.push({line:hl,wh:wh,key:e.key,sub:e.sub,color:e.color,size:e.size,qty:q-take,label:e.key,isDoor:!!e.isDoor});
-        }
-      });
-      ln._actualHeld=kept;ln._hadActualHeld=true;
-    });
-    if(shorts.length)r.unsecuredParts=(r.unsecuredParts||[]).concat(shorts);
+    (r.lines||[]).forEach(function(ln){if(ln.isFreeInput)return;if(ln._actualHeld&&ln._actualHeld.length){ln._actualHeld=[];ln._hadActualHeld=true;}});
+    r.status='見積作成';
+    r.holdReleasedAt=new Date().toLocaleString('ja-JP');r.holdReleasedBy=userName||'';
   }
+  r.beforeEdit=cur.beforeEdit;/* 何度でも戻せるよう控えは残す */
   r.restoredAt=new Date().toLocaleString('ja-JP');r.restoredBy=userName||'';
   ORDERS[ix]=r;
   rebuildHeldFromOrders();
   try{syncAgentDisc(r);}catch(e){}
   saveAll();
-  broadcastOrderUpdate(userName||'',no+' 修正前に戻す');
-  return {ok:true,order:r,shorts:shorts};
+  broadcastOrderUpdate(userName||'',no+' 案件修正を修正前に戻す');
+  return {ok:true,order:r,editSnap:editSnap};
 }/* v19.87 依頼②: 出荷先・荷送人・帳票の記載内容の手修正も引き継ぐ *//* v19.59: 代表者名の表記も見積書作成画面でしか入力しないので引き継ぐ（従来は作り直すと消えていた） */
 /* ===== v19.59（2026-10-27 依頼「送料を変更→見積を閉じる→見積書修正に戻ると変更前に戻る」）=====
    【原因】見積を作り直す（✏ 案件修正 →「見積書のみ作成」「仮押さえ＆見積書作成」、同じ画面で「見積書のみ作成」を押し直す）たびに、
@@ -10329,7 +10312,7 @@ var HELP_QA=[
     steps:['「部材在庫一覧」の「🔄 倉庫間移動（取り寄せ）」を押す','移動元・移動先・部材・数を選ぶ','「移動」を押す'],
     rel:[]},
   {id:'stock-incoming',cat:'stock',tab:'parts',ver:'v19.72',q:'入庫予定を登録したい・届いた分を在庫に入れたい',kw:['入庫','入荷','入庫予定','届いた','発注','並び順','並べ替え','倉庫ごと'],
-    steps:['「部材在庫一覧」の「入庫予定」を開く','「＋ 入庫予定を追加」で入庫予定日・入庫先倉庫・部材・数を入れて登録','届いたら「入庫処理」→「完了」（在庫に足されます）'],
+    steps:['「部材在庫一覧」→「📋 発注書一覧」の左上の緑の「入庫予定」を開く（v19.91 で部材在庫一覧の上から移動）','「＋ 入庫予定を追加」で入庫予定日・入庫先倉庫・部材・数を入れて登録','届いたら「入庫処理」→「完了」（在庫に足されます）'],
     tip:'一覧は登録の新しい順（IDの大きい順）です。上の「倉庫:」のボタンで倉庫ごとに、「並び順:」で入庫予定日の早い順・遅い順に変えられます。',
     rel:[]},
   {id:'stock-excel',cat:'stock',tab:'parts',ver:'v19.57',q:'在庫をExcelで出したい（ある日の在庫・倉庫別・期間）',kw:['excel','エクセル','出力','日付指定','倉庫別','期間','在庫表'],
@@ -10355,9 +10338,9 @@ var HELP_QA=[
     tip:'発注書タブで Excel を出すと記録されます（全端末で共有）。社内備考も一覧で見られます。発注書は発注書番号で管理し、同じ番号で出し直すと上書きされます。回答Excelを取り込んだ発注書には「取込済」と出ます。',rel:['yk-po','yk-reply']},
   {id:'yk-status',cat:'stock',tab:'parts',ver:'v19.72',q:'八木熊に発注したもののうち、まだ入ってきていない（未納の）ものを見たい',kw:['八木熊','未納','入荷状況','分納','残り','まだ','入ってきていない','発注残','完納'],
     steps:['「部材在庫一覧」→「📋 発注書一覧」を開く','「📦 入荷状況（未納の管理）」を押す（全発注書の合計）','発注書ごとに見るときは、上のプルダウンで発注書を選ぶ（一覧の「未納」の数を押しても開きます）'],
-    tip:'品目ごとに 発注数・入庫済・入庫予定（日付別）・入庫日未定・未登録・未納 が出ます。入庫済は入庫予定一覧で「入庫処理」した数です。「📊 Excel出力」もできます。発注書Excelにも、回答欄の右に行ごとの「入庫合計」「未納数」（計算式）が入ります。',rel:['yk-reply','yk-po-list']},
+    tip:'品目×入庫倉庫ごとに 発注数・入庫済・入庫予定（日付別）・入庫日未定・未登録・未納・入庫予定金額 が出ます（同じ品目でも倉庫が違えば別の行）。上の「倉庫」「月」で絞ると、その範囲の入庫予定・入庫済の金額（税抜）が出ます。「完納済」にチェックで完納した品目だけを見られます。入庫済は入庫予定一覧で「入庫処理」した数です。「📊 Excel出力」もできます。発注書Excelにも、回答欄の右に行ごとの「入庫合計」「未納数」（計算式）が入ります。',rel:['yk-reply','yk-po-list']},
   {id:'yk-reply',cat:'stock',tab:'parts',ver:'v19.72',q:'八木熊から返ってきた回答Excel（入庫予定日）を取り込みたい',kw:['八木熊','回答','返信','入庫予定日','取込','取り込み','納期'],
-    steps:['「部材在庫一覧」の「入庫予定」を開く','「📥 八木熊の回答Excel」で、八木熊様から返ってきた注文書Excelを選ぶ','確認画面で入庫予定日・数量・入庫先倉庫を確かめ（直せます）、「✅ 入庫予定に登録」'],
+    steps:['「部材在庫一覧」→「📋 発注書一覧」の左上の緑の「入庫予定」を開く','「📥 八木熊の回答Excel」で、八木熊様から返ってきた注文書Excelを選ぶ','確認画面で入庫予定日・数量・入庫先倉庫を確かめ（直せます）、「✅ 入庫予定に登録」'],
     tip:'回答欄（①②③…）が増えていても読めます。回答の数量が足りない分や日付が「未定」の品目は「入庫日未定」で登録します。同じ発注の回答を取り込み直すと、入庫済の分は残して入庫予定を置き換えます（入庫済の分は同じ入庫日の欄から先に差し引きます。確認画面の「入庫済」の列で分かります）。どの発注書の回答かは、Excelの右上の発注書番号で見分けます。',rel:['yk-po','yk-status']},
   {id:'stock-history',cat:'stock',tab:'parts',ver:'v19.57',q:'在庫を誰がいつ変えたか（変更履歴）を見たい',kw:['履歴','変更履歴','誰が','いつ','ログ'],
     steps:['「部材在庫一覧」の「履歴」を開く'],
@@ -11208,7 +11191,7 @@ function App(){
        削除・顧客一括取込は従来どおり isReadOnly（＝営業は不可）で制限。 */
     /* v18.39: 顧客の追加・編集をクラウド保存するため userName を渡す（保存者の記録に使用） */
     h(CustPage,{tab:tab[0],selectCust:function(c){cust[1](c);custPick[1](custPick[0]+1);tab[1]('inv');},setTab:function(t){tab[1](t);},isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,userName:userName[0]}),
-    h(InvPage,{tab:tab[0],selCust:cust[0],custPick:custPick[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);},editOrder:editOrder[0],clearEditOrder:function(){editOrder[1](null);}}),
+    h(InvPage,{tab:tab[0],selCust:cust[0],custPick:custPick[0],setTab:function(t){tab[1](t);},toast:showToast,bump:function(){bump[1](bump[0]+1);},userName:userName[0],isReadOnly:effRO,lockReadOnly:isReadOnly[0],salesView:roleReadOnly,repeatOrder:repeatOrder[0],clearRepeat:function(){repeatOrder[1](null);},editOrder:editOrder[0],clearEditOrder:function(){editOrder[1](null);},requestRepeat:function(o){repeatOrder[1](o);},requestEdit:function(o){editOrder[1](o);}/* v19.90: 修正前に戻すで読み込み直す */}),
     h(OrdersPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],bump:function(){bump[1](bump[0]+1);},isReadOnly:effRO,setTab:function(t){tab[1](t);},setCust:function(c){cust[1](c);},requestRepeat:function(o){repeatOrder[1](o);},requestEdit:function(o){editOrder[1](o);}}),
     h(PartsPage,{tab:tab[0],toast:showToast,ver:bump[0],userName:userName[0],isReadOnly:effRO}),
     h(HelpPanel,{show:showHelp[0],onClose:function(){showHelp[1](false);},tab:tab[0],setTab:function(t){tab[1](t);},userName:userName[0],
@@ -12308,7 +12291,7 @@ function InvPage(p){
     if(typeof doCheck==='function')doCheck(cloned,ro.wh||'');
     /* v18.32 要望⑥: 旧jp2 XL扉あり明細は clone時に扉・錠前を除外するため、黙って金額が変わらないよう明示通知 */
     var strippedXLDoor=(ro.lines||[]).some(function(l){return isJp2XLDoorBlocked(l.line,l.size)&&!l.noDoor;});
-    p.toast('リピート発注: '+(ro.no||'')+' の内容を読み込みました。倉庫・在庫を確認して見積/仮押さえしてください'+(strippedXLDoor?'　※日本製Ver.2のXL扉は取扱がないため扉・錠前を除外しました（XL扉は台湾製をパーツ単品追加でご選択ください）':''));
+    if(ro._loadMsg)p.toast(ro._loadMsg);else p.toast('リピート発注: '+(ro.no||'')+' の内容を読み込みました。倉庫・在庫を確認して見積/仮押さえしてください'+(strippedXLDoor?'　※日本製Ver.2のXL扉は取扱がないため扉・錠前を除外しました（XL扉は台湾製をパーツ単品追加でご選択ください）':''));
     p.clearRepeat&&p.clearRepeat();
   },[p.repeatOrder]);
   /* v18.46 修正５⑤: 「案件修正」で渡された案件を編集対象として記録する。
@@ -13244,22 +13227,23 @@ function InvPage(p){
         editingNo[1](null);editingMeta[1](null);
         p.toast('案件修正モードを解除しました。以降の登録は新規案件として採番されます');
       }},'修正をやめる（新規として登録）'),
-      /* v19.88: 案件修正を始める前の状態へ戻す（保存前でも保存後でも） */
+      /* v19.88: 案件修正を始める前の状態へ戻す（保存前でも保存後でも）。v19.90: 案件修正モードのまま続ける */
       (function(){
         var eo=ORDERS.find(function(x){return x.no===editingNo[0];});
         if(!canRestoreBeforeEdit(eo))return null;
-        return h('button',{className:'btn btn-xs btn-or','data-restore-edit-bar':'1',style:{fontWeight:700},title:'✏ 案件修正を始める前（'+(eo.beforeEdit.at||'')+'）の内容・ステータス・仮押さえに戻します',onClick:function(){
+        return h('button',{className:'btn btn-xs btn-or','data-restore-edit-bar':'1',style:{fontWeight:700},title:'✏ 案件修正を押した直後（'+(eo.beforeEdit.at||'')+'）の内容に戻します。案件修正モードはそのまま続きます',onClick:function(){
           var bd=eo.beforeEdit.data;
-          if(p.isReadOnly&&(eo.status!=='見積作成'||bd.status!=='見積作成')){p.toast('読み取り専用モード中は仮押さえ在庫を動かせません');return;}
-          if(!confirm('案件 '+eo.no+' を、案件修正を始める前（'+(eo.beforeEdit.at||'')+'）の状態に戻します。\n\n・明細・金額・倉庫・見積書の内容など：修正前の内容\n・ステータス：'+eo.status+' → '+bd.status+'\n'+((bd.status==='仮押さえ'||bd.status==='受注確定')?'・仮押さえ在庫：修正前に押さえていた在庫を押さえ直します（足りない分は発注待ち）\n':'')+'\n※ この画面の修正内容は捨てて、案件修正モードを終わります。よろしいですか？'))return;
-          var res=restoreBeforeEdit(eo.no,p.userName);
+          if(p.isReadOnly&&eo.status!=='見積作成'){p.toast('読み取り専用モード中は仮押さえ在庫を動かせません');return;}
+          if(!p.requestRepeat||!p.requestEdit){p.toast('この環境では修正前に戻せません');return;}
+          var wasHeld=(eo.status==='仮押さえ'||eo.status==='受注確定');
+          if(!confirm('案件 '+eo.no+' を、✏ 案件修正を押した直後（'+(eo.beforeEdit.at||'')+'）の状態に戻します。\n\n・明細・金額・倉庫・見積書の内容など：修正前の内容を読み込み直します（この画面の修正内容は捨てます）\n'+(wasHeld?'・修正中に仮押さえした在庫：解除します\n':'')+((bd.status==='仮押さえ'||bd.status==='受注確定')?'・仮押さえ在庫：案件修正を押した直後と同じく外れたままです。保存するときに改めて仮押さえしてください\n':'')+'・案件修正モードはそのまま続きます（保存すると同じ案件番号へ上書き）\n\nよろしいですか？'))return;
+          var res=rewindToEditStart(eo.no,p.userName);
           if(!res.ok){p.toast(res.msg);return;}
-          editingNo[1](null);editingMeta[1](null);removedLinesR.current=[];
-          lines[1]([]);whResults[1]([]);multiWH[1]([]);selWH[1](null);selMulti[1](null);
-          quoteOrder[1](null);showQuote[1](false);showPartWh[1](false);partWhSel[1]({});multiPrev[1](null);noProd[1](false);
+          removedLinesR.current=[];whResults[1]([]);showPartWh[1](false);
           p.bump&&p.bump();
-          p.toast('修正前に戻しました: '+eo.no+(res.shorts.length?'（在庫が足りない '+res.shorts.length+' 件は発注待ち）':''));
-          if(res.shorts.length)alert('修正前に押さえていた在庫のうち、別の案件が先に押さえていて足りない分を「発注待ち（未確保）」にしました:\n'+res.shorts.slice(0,8).map(function(x){return '・'+x.key+(x.sub?' '+x.sub:'')+(x.color?' '+x.color:'')+'（'+((WH_MAP[x.wh]||{}).s||x.wh)+'）'+x.qty;}).join('\n'));
+          /* ✏ 案件修正と同じ経路で読み込み直す（requestRepeat → requestEdit の順。editingNo は読み込み後に入り直す） */
+          p.requestRepeat(Object.assign({},res.order,{_editSnap:res.editSnap,_loadMsg:'修正前に戻しました: '+eo.no+'（案件修正モードのまま続けられます）'}));
+          p.requestEdit(Object.assign({},res.order,{_prevStatus:res.editSnap.status}));
         }},'↩ 修正前に戻す');
       })()
     ):null,
@@ -15787,19 +15771,7 @@ function OrdersPage(p){
                 p.setTab&&p.setTab('inv');
                 p.toast('案件修正: '+o.no+' を読み込みました。修正後に「仮押さえ」すると同じ案件番号へ上書きされます');
               }},'✏ 案件修正'):null,
-              /* v19.88: 直前の案件修正を始める前の状態へ戻す */
-              canRestoreBeforeEdit(o)?h('button',{className:'btn btn-xs btn-ol','data-restore-edit':o.no,style:{marginLeft:2,fontWeight:700,color:'#9A3412',borderColor:'#FB923C'},
-                title:'直前の ✏ 案件修正を始める前（'+(o.beforeEdit.at||'')+'）の内容・ステータス・仮押さえに戻します',onClick:function(){
-                var bd=o.beforeEdit.data;
-                if(RO_&&(o.status!=='見積作成'||bd.status!=='見積作成')){p.toast('編集権限がないため、仮押さえ在庫を動かす「修正前に戻す」はできません');return;}
-                if(!confirm('案件 '+o.no+' を、案件修正を始める前（'+(o.beforeEdit.at||'')+'）の状態に戻します。\n\n・明細・金額・倉庫・見積書の内容など：修正前の内容\n・ステータス：'+o.status+' → '+bd.status+'\n'+((bd.status==='仮押さえ'||bd.status==='受注確定')?'・仮押さえ在庫：修正前に押さえていた在庫を押さえ直します（足りない分は発注待ち）\n':'')+'\n※ 戻した後は、今の修正内容は残りません。よろしいですか？'))return;
-                var res=restoreBeforeEdit(o.no,p.userName);
-                if(!res.ok){p.toast(res.msg);return;}
-                p.bump&&p.bump();
-                if(p.onRestoredEdit)p.onRestoredEdit(o.no);
-                p.toast('修正前に戻しました: '+o.no+(res.shorts.length?'（在庫が足りない '+res.shorts.length+' 件は発注待ち）':''));
-                if(res.shorts.length)alert('修正前に押さえていた在庫のうち、別の案件が先に押さえていて足りない分を「発注待ち（未確保）」にしました:\n'+res.shorts.slice(0,8).map(function(x){return '・'+x.key+(x.sub?' '+x.sub:'')+(x.color?' '+x.color:'')+'（'+((WH_MAP[x.wh]||{}).s||x.wh)+'）'+x.qty;}).join('\n'));
-              }},'↩ 修正前に戻す'):null,
+              /* v19.90: 案件一覧の「↩ 修正前に戻す」は廃止（案件修正モードの帯のボタンだけ残す） */
               /* v18.55 修正９④: 予備パーツ（見積外の持ち出し・持ち帰り）。納品完了の案件でも押せる（持ち帰りは納品後に起きるため） */
               h('button',{className:'btn btn-xs btn-or',style:{marginLeft:2,fontWeight:700},title:'見積外の予備パーツの持ち出し・持ち帰りを登録します',onClick:function(){
                 spareRet[1]({});spareForm[1](Object.assign({},spareForm[0],{wh:o.wh||WH_IDS[0]}));spareSet[1]({units:1,wh:o.wh||WH_IDS[0],note:''});spareBulkWh[1](o.wh||'');/* v18.68 修正15④ */spareModal[1](liveOrder(o));
@@ -18108,7 +18080,7 @@ function YkPOPanel(p){
       h('br'),'単価は2026年12月改定の八木熊新価格です。数量の無い品目は Excel では隠し、PDF には載せません。入力中の内容はこの端末に残ります（在庫・案件には反映しません）。Excelを出した発注書は「📋 発注書一覧」に残ります。',
       h('br'),'発注書は発注書番号で管理します。次の発注書は「＋ 新規発注書作成」で新しい番号にします（入力した内容は残ります。消すときは「数量をクリア」）。',
       h('br'),'品番・品名・単価などは「✏ 品目を手修正」で直せます。一覧に無い品目は「＋ 品目を追加」で足せます（Excel では一覧の最後の行の下に入ります）。',
-      h('br'),'八木熊様から返ってきた回答Excelは、在庫表の「入庫予定」→「📥 八木熊の回答Excel」で入庫予定に取り込めます。'),
+      h('br'),'八木熊様から返ってきた回答Excelは、「📋 発注書一覧」の「入庫予定」→「📥 八木熊の回答Excel」で入庫予定に取り込めます。'),
     h('div',{'data-ykpono':v.no,style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'8px 12px',marginBottom:8,borderRadius:8,
         background:listed?(dirty?'#FFF7ED':'#F0FDF4'):'#F8FAFC',border:'2px solid '+(listed?(dirty?'#FDBA74':'#86EFAC'):'var(--g300)')}},
       h('span',{style:{fontSize:11,fontWeight:700,color:'var(--g500)'}},'発注書番号'),
@@ -18265,13 +18237,14 @@ function ykPOStatusOf(r){
   var inc=INCOMING.filter(function(x){return x&&x.poNo===r.no&&x.status!=='取消';});
   var rows=lines.map(function(l){
     var er=l.extra?(178+(xi++)):l.row;
-    var o={row:er,code:l.code||'',label:l.label,qty:l.qty,done:0,plan:0,und:0,dates:{}};
+    var o={row:er,code:l.code||'',label:l.label,qty:l.qty,price:l.price==null?null:+l.price,done:0,plan:0,und:0,dates:{},ent:[]};
     inc.forEach(function(x){(x.items||[]).forEach(function(it){
       if(!it.poMain||it.poRow!==er)return;
-      var n=it.qty||0;
-      if(x.status==='入庫済')o.done+=n;
-      else if(x.expectedDate){o.plan+=n;o.dates[x.expectedDate]=(o.dates[x.expectedDate]||0)+n;}
-      else o.und+=n;
+      var n=it.qty||0,k=x.status==='入庫済'?'done':(x.expectedDate?'plan':'und');
+      o[k]+=n;
+      if(k==='plan')o.dates[x.expectedDate]=(o.dates[x.expectedDate]||0)+n;
+      /* v19.91: 倉庫別・月別に分けるための明細（入庫済は入庫処理した日、無ければ入庫予定日） */
+      o.ent.push({wh:x.wh||'',k:k,d:k==='done'?ykIncDoneDate(x):(x.expectedDate||''),q:n});
     });});
     o.left=Math.max(0,o.qty-o.done);
     o.none=Math.max(0,o.qty-o.done-o.plan-o.und);
@@ -18281,62 +18254,125 @@ function ykPOStatusOf(r){
   rows.forEach(function(o){['qty','done','plan','und','none','left'].forEach(function(k){t[k]+=o[k];});});
   return {rows:rows,total:t,replied:inc.length>0};
 }
+/* v19.91: 入庫済にした日（v19.91 より前に入庫処理したものは入庫予定日） */
+function ykIncDoneDate(x){return (x&&(x.doneDate||x.expectedDate))||'';}
+function ykMD(d){var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d||'');return m?(+m[2])+'/'+(+m[3]):String(d||'');}
+/* ===== v19.91（2026-11-09 依頼①②④⑤）入荷状況を入庫倉庫ごとの行に分け、倉庫・月で絞り込み、入庫予定の金額を出す =====
+   ・行＝品目×入庫倉庫（同じ品目でも倉庫が違えば別の行）。回答を取り込んでいない数（未登録）は倉庫「未登録」の行。
+   　倉庫の行の「発注数」はその倉庫に入る（入った）数＝入庫済＋入庫予定＋入庫日未定。全部の行を足すと発注数になる。
+   ・f.wh 倉庫で絞る（未登録の行は出さない）／f.mon 月（YYYY-MM）で絞る＝入庫予定日（入庫済は入庫処理した日）がその月のもの。
+   　月で絞ると、日付の無い入庫日未定・未登録は出さない。
+   ・金額＝発注書の単価（税抜）×数。amtPlan＝入庫予定、amtDone＝入庫済、amtUnd＝入庫日未定。
+   ・pos＝発注書番号（完納の品目も載せる。依頼④） */
+function ykPOStatusRows(list,f){
+  var agg={},order=[];
+  list.forEach(function(r){ykPOStatusOf(r).rows.forEach(function(o){
+    var g={};
+    o.ent.forEach(function(e){
+      if(f.wh!=='all'&&e.wh!==f.wh)return;
+      if(f.mon!=='all'&&(!e.d||e.d.slice(0,7)!==f.mon))return;
+      var a=g[e.wh]||(g[e.wh]={wh:e.wh,done:0,plan:0,und:0,none:0,dates:{}});
+      a[e.k]+=e.q;
+      if(e.k==='plan')a.dates[e.d]=(a.dates[e.d]||0)+e.q;
+    });
+    var none=Math.max(0,o.qty-o.done-o.plan-o.und);
+    if(f.wh==='all'&&f.mon==='all'&&none>0)g['\u0000']={wh:'',done:0,plan:0,und:0,none:none,dates:{}};
+    Object.keys(g).forEach(function(gk){
+      var x=g[gk],k=o.code+'|'+o.label+'|'+x.wh,pr=o.price;
+      var a=agg[k];
+      if(!a){a=agg[k]={code:o.code,label:o.label,wh:x.wh,qty:0,done:0,plan:0,und:0,none:0,left:0,dates:{},pos:[],amtPlan:0,amtDone:0,amtUnd:0,noPrice:false};order.push(k);}
+      ['done','plan','und','none'].forEach(function(z){a[z]+=x[z];});
+      a.qty+=x.done+x.plan+x.und+x.none;
+      Object.keys(x.dates).forEach(function(d){a.dates[d]=(a.dates[d]||0)+x.dates[d];});
+      if(pr==null){if(x.plan||x.done||x.und)a.noPrice=true;}
+      else{a.amtPlan+=x.plan*pr;a.amtDone+=x.done*pr;a.amtUnd+=x.und*pr;}
+      if(a.pos.indexOf(r.no)<0)a.pos.push(r.no);
+    });
+  });});
+  var whIx=function(w){var i=WH_IDS.indexOf(w);return w===''?9999:(i<0?999:i);};
+  return order.map(function(k){var a=agg[k];a.left=Math.max(0,a.qty-a.done);
+    ['amtPlan','amtDone','amtUnd'].forEach(function(z){a[z]=Math.round(a[z]*10)/10;});return a;})
+    .sort(function(a,b){return (b.left>0)-(a.left>0)||String(a.label).localeCompare(String(b.label),'ja')||whIx(a.wh)-whIx(b.wh);});
+}
+/* 絞り込みの選択肢（入庫予定・入庫済のある倉庫と月） */
+function ykPOStatusOpts(list){
+  var whs={},mons={};
+  list.forEach(function(r){ykPOStatusOf(r).rows.forEach(function(o){o.ent.forEach(function(e){if(e.wh)whs[e.wh]=1;if(e.d)mons[e.d.slice(0,7)]=1;});});});
+  return {whs:WH_IDS.filter(function(w){return whs[w];}).concat(Object.keys(whs).filter(function(w){return WH_IDS.indexOf(w)<0;})),mons:Object.keys(mons).sort()};
+}
+function ykWhName(w){return w?((WH_MAP[w]||{}).s||w):'未登録';}
+function ykMonName(m){var x=/^(\d{4})-(\d{2})$/.exec(m||'');return x?x[1]+'年'+(+x[2])+'月':m;}
 function ykPODatesText(d){return Object.keys(d||{}).sort().map(function(k){return k.slice(5).replace('-','/')+' '+fm(d[k]);}).join('、');}
 function YkPOStatusView(p){
-  var only=us(true),sel=p.sel;
+  /* v19.91 依頼⑤: 「未納があるものだけ」の右に「完納済」。mode＝left（未納のみ）／done（完納済のみ）／all */
+  var mode=us('left'),whF=us('all'),monF=us('all'),sel=p.sel;
   var list=p.list,one=sel?list.find(function(r){return r.no===sel;}):null;
   var th={position:'sticky',top:0,zIndex:1,fontSize:10};
   var num=function(v,c){return h('td',{style:{textAlign:'right',fontSize:11,color:v?(c||'inherit'):'var(--g400)',fontWeight:v&&c?700:400}},v?fm(v):'—');};
-  var rows,title;
-  if(one){
-    var stt=ykPOStatusOf(one);
-    rows=stt.rows.map(function(o){return Object.assign({},o,{pos:[]});});
-    title=one.no+'「'+((one.st||{}).subject||'')+'」の入荷状況'+(stt.replied?'':'（回答Excelはまだ取り込んでいません）');
-  }else{
-    var agg={};
-    list.forEach(function(r){ykPOStatusOf(r).rows.forEach(function(o){
-      var k=o.code+'|'+o.label,a=agg[k]||(agg[k]={code:o.code,label:o.label,qty:0,done:0,plan:0,und:0,none:0,left:0,dates:{},pos:[]});
-      ['qty','done','plan','und','none','left'].forEach(function(x){a[x]+=o[x];});
-      Object.keys(o.dates).forEach(function(d){a.dates[d]=(a.dates[d]||0)+o.dates[d];});
-      if(o.left>0)a.pos.push(r.no);
-    });});
-    rows=Object.keys(agg).map(function(k){return agg[k];}).sort(function(a,b){return (b.left>0)-(a.left>0)||String(a.label).localeCompare(String(b.label),'ja');});
-    title='全発注書（'+list.length+'件）の合計';
-  }
-  var shown=only[0]?rows.filter(function(o){return o.left>0;}):rows;
-  var T={qty:0,done:0,plan:0,und:0,none:0,left:0};shown.forEach(function(o){Object.keys(T).forEach(function(k){T[k]+=o[k];});});
+  var yen=function(v){return '¥'+fm(Math.round(v||0));};
+  var scope=one?[one]:list;
+  var opt=ykPOStatusOpts(scope);
+  var f={wh:opt.whs.indexOf(whF[0])>=0?whF[0]:'all',mon:opt.mons.indexOf(monF[0])>=0?monF[0]:'all'};
+  var rows=ykPOStatusRows(scope,f);
+  var title;
+  if(one){var stt=ykPOStatusOf(one);title=one.no+'「'+((one.st||{}).subject||'')+'」の入荷状況'+(stt.replied?'':'（回答Excelはまだ取り込んでいません）');}
+  else title='全発注書（'+list.length+'件）の合計';
+  var fText=(f.wh!=='all'?'倉庫: '+ykWhName(f.wh):'')+(f.mon!=='all'?(f.wh!=='all'?'・':'')+ykMonName(f.mon):'');
+  var shown=mode[0]==='left'?rows.filter(function(o){return o.left>0;}):mode[0]==='done'?rows.filter(function(o){return o.left===0;}):rows;
+  var T={qty:0,done:0,plan:0,und:0,none:0,left:0,amtPlan:0,amtDone:0,amtUnd:0};shown.forEach(function(o){Object.keys(T).forEach(function(k){T[k]+=o[k];});});
+  var noPrice=shown.some(function(o){return o.noPrice;});
+  var cols=['品目','八木熊品番','入庫倉庫','発注数','入庫済','入庫予定（日付別）','入庫日未定','未登録','未納','入庫予定金額（税抜）'].concat(one?[]:['発注書番号']);
   function excel(){
     try{
-      var aoa=[['【八木熊 入荷状況】'+title+'　出力日: '+td2()],[],['品目','八木熊品番','発注数','入庫済','入庫予定','入庫予定（日付別）','入庫日未定','未登録','未納'].concat(one?[]:['未納のある発注書'])];
-      shown.forEach(function(o){aoa.push([o.label,o.code,o.qty,o.done,o.plan,ykPODatesText(o.dates),o.und,o.none,o.left].concat(one?[]:[o.pos.join('、')]));});
-      aoa.push(['合計','',T.qty,T.done,T.plan,'',T.und,T.none,T.left]);
-      var wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:36},{wch:11},{wch:8},{wch:8},{wch:8},{wch:30},{wch:9},{wch:8},{wch:8},{wch:30}];
-      XLSX.utils.book_append_sheet(wb,ws,'入荷状況');XLSX.writeFile(wb,'八木熊_入荷状況_'+(one?one.no+'_':'')+td2().replace(/\//g,'-')+'.xlsx');
+      var aoa=[['【八木熊 入荷状況】'+title+(fText?'（'+fText+'）':'')+'　出力日: '+td2()],[],['品目','八木熊品番','入庫倉庫','発注数','入庫済','入庫予定','入庫予定（日付別）','入庫日未定','未登録','未納','入庫予定金額（税抜）','入庫済金額（税抜）'].concat(one?[]:['発注書番号'])];
+      shown.forEach(function(o){aoa.push([o.label,o.code,ykWhName(o.wh),o.qty,o.done,o.plan,ykPODatesText(o.dates),o.und,o.none,o.left,Math.round(o.amtPlan),Math.round(o.amtDone)].concat(one?[]:[o.pos.join('、')]));});
+      aoa.push(['合計','','',T.qty,T.done,T.plan,'',T.und,T.none,T.left,Math.round(T.amtPlan),Math.round(T.amtDone)]);
+      var wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:36},{wch:11},{wch:10},{wch:8},{wch:8},{wch:8},{wch:30},{wch:9},{wch:8},{wch:8},{wch:14},{wch:14},{wch:30}];
+      XLSX.utils.book_append_sheet(wb,ws,'入荷状況');XLSX.writeFile(wb,'八木熊_入荷状況_'+(one?one.no+'_':'')+(f.wh!=='all'?ykWhName(f.wh)+'_':'')+(f.mon!=='all'?f.mon+'_':'')+td2().replace(/\//g,'-')+'.xlsx');
     }catch(e){p.toast&&p.toast('Excel出力に失敗: '+(e&&e.message||e));}
   }
+  var lbl={fontSize:11,display:'flex',alignItems:'center',gap:3,cursor:'pointer'};
   return h('div',{'data-ykpostatus':one?one.no:'all'},
     h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:6}},
       h('b',{style:{fontSize:12,color:'var(--nv)'}},title),
       h('select',{className:'inp','data-ykposel':'1',style:{fontSize:11,width:'auto'},value:sel||'',onChange:function(e){p.onSel(e.target.value||null);}},
         h('option',{value:''},'全発注書の合計'),list.map(function(r){return h('option',{key:r.no,value:r.no},r.no+' '+((r.st||{}).subject||''));})),
-      h('label',{style:{fontSize:11,display:'flex',alignItems:'center',gap:3,cursor:'pointer'}},h('input',{type:'checkbox','data-ykpoonly':'1',checked:only[0],onChange:function(){only[1](!only[0]);}}),'未納があるものだけ'),
+      /* v19.91 依頼②: 倉庫・月で絞り込む */
+      h('span',{style:{fontSize:10,fontWeight:700,color:'var(--g500)'}},'倉庫:'),
+      h('select',{className:'inp','data-ykpowh':'1',style:{fontSize:11,width:'auto'},value:f.wh,onChange:function(e){whF[1](e.target.value);}},
+        h('option',{value:'all'},'すべて'),opt.whs.map(function(w){return h('option',{key:w,value:w},ykWhName(w));})),
+      h('span',{style:{fontSize:10,fontWeight:700,color:'var(--g500)'}},'月:'),
+      h('select',{className:'inp','data-ykpomon':'1',style:{fontSize:11,width:'auto'},value:f.mon,onChange:function(e){monF[1](e.target.value);}},
+        h('option',{value:'all'},'すべて'),opt.mons.map(function(m){return h('option',{key:m,value:m},ykMonName(m));})),
+      h('label',{style:lbl},h('input',{type:'checkbox','data-ykpoonly':'1',checked:mode[0]==='left',onChange:function(){mode[1](mode[0]==='left'?'all':'left');}}),'未納があるものだけ'),
+      h('label',{style:lbl},h('input',{type:'checkbox','data-ykpodone':'1',checked:mode[0]==='done',onChange:function(){mode[1](mode[0]==='done'?'all':'done');}}),'完納済'),
       h('button',{className:'btn btn-xs btn-tl',onClick:excel},'📊 Excel出力')),
-    h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:4}},'入庫済＝入庫予定一覧で「入庫処理」した数。入庫予定・入庫日未定＝取り込んだ回答のうちまだ入庫処理していない数。未登録＝回答を取り込んでいない（または登録しなかった）数。未納＝発注数 − 入庫済。'),
+    /* v19.91 依頼②: 絞り込んだ範囲の金額 */
+    h('div',{'data-ykpoamt':'1',style:{display:'flex',gap:14,flexWrap:'wrap',alignItems:'baseline',padding:'5px 10px',marginBottom:6,background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:6,fontSize:11}},
+      h('span',{style:{fontWeight:700,color:'var(--g500)'}},(fText||'すべての倉庫・月')+'（表示中の行）'),
+      h('span',null,'入庫予定 ',h('b',{'data-ykpoamtplan':Math.round(T.amtPlan),style:{fontSize:14,color:'var(--nv)'}},yen(T.amtPlan)),h('span',{style:{fontSize:10,color:'var(--g500)'}},'（税抜・税込 '+yen(Math.round(T.amtPlan*1.1))+'）')),
+      h('span',null,'入庫済 ',h('b',{'data-ykpoamtdone':Math.round(T.amtDone),style:{color:'var(--gn)'}},yen(T.amtDone))),
+      f.mon==='all'&&T.amtUnd?h('span',null,'入庫日未定 ',h('b',{style:{color:'#B45309'}},yen(T.amtUnd))):null,
+      noPrice?h('span',{style:{fontSize:10,color:'#B45309'}},'※単価の無い品目は金額に入りません'):null),
+    h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:4}},'入庫済＝入庫予定一覧で「入庫処理」した数。入庫予定・入庫日未定＝取り込んだ回答のうちまだ入庫処理していない数。未登録＝回答を取り込んでいない（または登録しなかった）数。未納＝発注数 − 入庫済。同じ品目でも入庫倉庫が違えば行を分けます（倉庫の行の発注数＝その倉庫に入る数）。月で絞ると、入庫予定日（入庫済は入庫処理した日）がその月のものだけを出します。'),
     h('div',{className:'scy',style:{maxHeight:'60vh',overflow:'auto'}},
       h('table',{className:'tbl',style:{fontSize:11,width:'100%'}},
-        h('thead',null,h('tr',null,['品目','八木熊品番','発注数','入庫済','入庫予定（日付別）','入庫日未定','未登録','未納'].concat(one?[]:['未納のある発注書']).map(function(t,i){return h('th',{key:i,style:th},t);}))),
+        h('thead',null,h('tr',null,cols.map(function(t,i){return h('th',{key:i,style:th},t);}))),
         h('tbody',null,shown.length?shown.map(function(o,i){
-          return h('tr',{key:o.code+'|'+o.label+'|'+i,'data-ykpost':o.label,style:o.left>0?null:{background:'#F0FDF4'}},
+          return h('tr',{key:o.code+'|'+o.label+'|'+o.wh,'data-ykpost':o.label,'data-ykpostwh':o.wh||'-',style:o.left>0?null:{background:'#F0FDF4'}},
             h('td',{style:{fontWeight:700,fontSize:11}},o.label),
             h('td',{style:{fontFamily:'monospace',fontSize:10}},o.code),
+            h('td',{style:{fontSize:11,whiteSpace:'nowrap',fontWeight:700,color:o.wh?'var(--nv)':'var(--g400)'}},ykWhName(o.wh)),
             num(o.qty),num(o.done,'var(--gn)'),
             h('td',{style:{fontSize:10}},o.plan?fm(o.plan)+'（'+ykPODatesText(o.dates)+'）':h('span',{style:{color:'var(--g400)'}},'—')),
             num(o.und,'#B45309'),num(o.none,'#6B7280'),
             h('td',{'data-ykpoleft':o.left,style:{textAlign:'right',fontSize:12,fontWeight:700,color:o.left?'#DC2626':'var(--gn)'}},o.left?fm(o.left):'✓ 完納'),
-            one?null:h('td',{style:{fontSize:9,fontFamily:'monospace'}},o.pos.map(function(no){return h('a',{key:no,href:'#',style:{marginRight:6},onClick:function(e){e.preventDefault();p.onSel(no);}},no);})));
-        }):h('tr',null,h('td',{colSpan:9,style:{textAlign:'center',color:'var(--gn)',padding:16,fontWeight:700}},rows.length?'未納はありません（すべて入庫済）':'発注書がありません')),
-        shown.length?h('tr',{style:{background:'var(--g100)',fontWeight:700}},h('td',null,'合計'),h('td',null,''),num(T.qty),num(T.done,'var(--gn)'),h('td',{style:{fontSize:11}},T.plan?fm(T.plan):'—'),num(T.und,'#B45309'),num(T.none,'#6B7280'),
-          h('td',{style:{textAlign:'right',fontSize:12,color:T.left?'#DC2626':'var(--gn)'}},T.left?fm(T.left):'✓'),one?null:h('td',null,'')):null)
+            h('td',{style:{textAlign:'right',fontSize:11,color:o.amtPlan?'inherit':'var(--g400)'}},o.amtPlan?yen(o.amtPlan):(o.plan&&o.noPrice?'単価なし':'—')),
+            one?null:h('td',{'data-ykpopos':o.pos.join(','),style:{fontSize:9,fontFamily:'monospace'}},o.pos.map(function(no){return h('a',{key:no,href:'#',style:{marginRight:6},onClick:function(e){e.preventDefault();p.onSel(no);}},no);})));
+        }):h('tr',null,h('td',{colSpan:cols.length,style:{textAlign:'center',color:mode[0]==='left'?'var(--gn)':'var(--g500)',padding:16,fontWeight:700}},
+          !rows.length?(f.wh!=='all'||f.mon!=='all'?'この倉庫・月の入庫予定はありません':'発注書がありません'):mode[0]==='left'?'未納はありません（すべて入庫済）':'完納済の品目はありません')),
+        shown.length?h('tr',{style:{background:'var(--g100)',fontWeight:700}},h('td',null,'合計'),h('td',null,''),h('td',null,''),num(T.qty),num(T.done,'var(--gn)'),h('td',{style:{fontSize:11}},T.plan?fm(T.plan):'—'),num(T.und,'#B45309'),num(T.none,'#6B7280'),
+          h('td',{style:{textAlign:'right',fontSize:12,color:T.left?'#DC2626':'var(--gn)'}},T.left?fm(T.left):'✓'),h('td',{style:{textAlign:'right',fontSize:12}},T.amtPlan?yen(T.amtPlan):'—'),one?null:h('td',null,'')):null)
       )
     )
   );
@@ -18355,7 +18391,9 @@ function YkPOListPanel(p){
   function replyOf(no){
     var inc=INCOMING.filter(function(x){return x.poNo===no&&x.status!=='取消';});
     if(!inc.length)return null;
-    return {n:inc.length,done:inc.filter(function(x){return x.status==='入庫済';}).length,und:inc.some(function(x){return !x.expectedDate&&x.status!=='入庫済';})};
+    /* v19.91 依頼⑥: 入庫済の日付（入庫処理した日。v19.91 より前のものは入庫予定日） */
+    var dd={};inc.forEach(function(x){if(x.status==='入庫済'){var d=ykIncDoneDate(x);if(d)dd[d]=1;}});
+    return {n:inc.length,done:inc.filter(function(x){return x.status==='入庫済';}).length,doneDates:Object.keys(dd).sort(),und:inc.some(function(x){return !x.expectedDate&&x.status!=='入庫済';})};
   }
   function stOf(r){return Object.assign({},r.st,{no:r.no});}
   function pdf(r){if(!openPrintWindow(ykPOHTML(stOf(r))))p.toast&&p.toast('ポップアップを許可してください');}
@@ -18406,7 +18444,7 @@ function YkPOListPanel(p){
             /* v19.70: 社内備考（Excel・PDF には載せない社内用のメモ）も一覧で見る */
             h('td',{'data-ykpomemo':r.no,style:{fontSize:10,maxWidth:220,whiteSpace:'pre-wrap',wordBreak:'break-all',color:'#7C2D12'}},s.memo||''),
             h('td',{style:{fontSize:9,color:'var(--g500)',whiteSpace:'nowrap'}},ykPOAtLabel(r.at),h('br'),String(r.by||'').split('/').pop()),
-            h('td',{style:{fontSize:9,whiteSpace:'nowrap'}},rp?h('span',{style:{color:'var(--gn)',fontWeight:700}},'取込済',rp.done?'（入庫済 '+rp.done+'）':'',rp.und?h('span',{style:{color:'#B45309'}},' 未定あり'):null):h('span',{style:{color:'var(--g400)'}},'—')),
+            h('td',{'data-ykporeply':r.no,style:{fontSize:9,whiteSpace:'nowrap'}},rp?h('span',{style:{color:'var(--gn)',fontWeight:700}},'取込済',rp.done?h('div',{style:{fontWeight:600}},'入庫済 '+(rp.doneDates.length?rp.doneDates.map(ykMD).join('、'):rp.done+'件')):null,rp.und?h('span',{style:{color:'#B45309'}},' 未定あり'):null):h('span',{style:{color:'var(--g400)'}},'—')),
             /* v19.72 依頼①: 未納の数。押すとこの発注書の入荷状況 */
             (function(){var t=ykPOStatusOf(r).total;return h('td',{style:{whiteSpace:'nowrap',textAlign:'right'}},h('a',{href:'#','data-ykpoleftof':r.no,title:'この発注書の入荷状況を見る',style:{fontSize:11,fontWeight:700,color:t.left?'#DC2626':'var(--gn)'},onClick:function(e){e.preventDefault();stSel[1](r.no);view[1]('status');}},t.left?fm(t.left):'✓ 完納'));})(),
             h('td',{style:{whiteSpace:'nowrap'}},
@@ -19659,6 +19697,8 @@ function POListTabs(p){
   }
   return h('div',null,
     h('div',{style:{display:'flex',gap:0,borderBottom:'1px solid var(--g200)',padding:'8px 4px 0'}},
+      /* v19.91 依頼③: 部材在庫一覧の上にあった「入庫予定」をここ（八木熊の左）へ移した。色は今までと同じ緑 */
+      p.onIncoming?h('button',{className:'btn btn-sm btn-gn','data-polist-incoming':'1',style:{alignSelf:'center',marginRight:10,marginBottom:4},title:'入庫予定一覧（入庫処理・八木熊の回答Excelの取り込み）',onClick:p.onIncoming},'入庫予定'):null,
       GP_PO_CATS.map(function(c){
         var on=tab[0]===c.k,n=cnt(c.k);
         return h('button',{key:c.k,'data-polisttab':c.k,style:{padding:'6px 18px',fontSize:12,fontWeight:700,border:'1px solid '+(on?'var(--g300)':'transparent'),borderBottom:on?'2px solid #fff':'none',marginBottom:-1,
@@ -21092,7 +21132,7 @@ function PartsPage(p){
           h('button',{className:'btn btn-xs '+(showCodes[0]?'btn-nv':'btn-ol'),title:'新柏・尼高・八木熊の商品コードをアイテム名の下に表示します（請求書の確認用）。アイテム名検索でコードを入力しても探せます',onClick:function(){showCodes[1](!showCodes[0]);}},(showCodes[0]?'✓ ':'🔖 ')+'コード表示'),
           h('button',{className:'btn btn-xs btn-or',onClick:function(){showHeldOrders[1](true);}},'仮押さえ案件'),
           h('button',{className:'btn btn-xs btn-pr',onClick:function(){showConfirmedOrders[1](true);}},'確定案件'),
-          h('button',{className:'btn btn-xs btn-gn',onClick:function(){showIncoming[1](true);}},'入庫予定'),
+          /* v19.91 依頼③: 「入庫予定」は 📋 発注書一覧（八木熊の左）へ移した */
           h('button',{className:'btn btn-xs btn-tl',onClick:function(){showCostMaster[1](true);}},'単価マスタ'),
           h('button',{className:'btn btn-xs btn-pr',style:{marginLeft:0},onClick:function(){showAssetCalc[1](true);}},'在庫資産'),
           h('button',{className:'btn btn-xs btn-ol',onClick:function(){showEditLog[1](true);}},'履歴'),
@@ -22272,7 +22312,7 @@ function PartsPage(p){
     /* v19.62: 八木熊様への注文書 */
     subTab[0]==='po'?h(POVendorPanel,{toast:p.toast,userName:p.userName}):null,/* v19.74: 上で発注先を選ぶ（八木熊＝今の画面） */
     /* v19.66: 発注書一覧 */
-    subTab[0]==='polist'?h(POListTabs,{toast:p.toast,userName:p.userName,isReadOnly:RO_,onOpen:function(){subTab[1]('po');}}):null,subTab[0]==='bill'?h(WhbPanel,{userName:p.userName,isReadOnly:RO_}):null/* v19.79: 倉庫・八木熊の請求の照合 *//* v19.74: 八木熊／人工／鍵／チャーター／その他 */
+    subTab[0]==='polist'?h(POListTabs,{toast:p.toast,userName:p.userName,isReadOnly:RO_,onOpen:function(){subTab[1]('po');},onIncoming:function(){showIncoming[1](true);}/* v19.91 */}):null,subTab[0]==='bill'?h(WhbPanel,{userName:p.userName,isReadOnly:RO_}):null/* v19.79: 倉庫・八木熊の請求の照合 *//* v19.74: 八木熊／人工／鍵／チャーター／その他 */
     ),
     /* Edit modal */
     editModal[0]?h(Modal,{show:true,title:'在庫編集: '+editModal[0].label+(editModal[0].onlyWh?'（'+((WH_MAP[editModal[0].onlyWh]||{}).n||editModal[0].onlyWh)+'のみ）':''),w:editModal[0].isDoor?700:500,onClose:function(){editModal[1](null);},
@@ -23073,10 +23113,10 @@ function PartsPage(p){
         h('button',{className:'btn btn-tl',onClick:function(){
           try{
             if(!INCOMING.some(function(x){return x.status!=='取消';})){p.toast('入庫予定がありません');return;}
-            var wsData=[['【入庫予定一覧】 出力日: '+td2()],[],['ID','入庫予定日','倉庫','部材','数量','備考','状態']];
+            var wsData=[['【入庫予定一覧】 出力日: '+td2()],[],['ID','発注書番号','入庫予定日','倉庫','部材','数量','備考','状態']];
             INCOMING.forEach(function(inc){
               inc.items.forEach(function(it){
-                wsData.push(['INC-'+inc.id,inc.expectedDate,WH_MAP[inc.wh]?WH_MAP[inc.wh].n:inc.wh,it.label,it.qty,inc.note||'',inc.status]);
+                wsData.push(['INC-'+inc.id,inc.poNo||'',inc.expectedDate,WH_MAP[inc.wh]?WH_MAP[inc.wh].n:inc.wh,it.label,it.qty,inc.note||'',inc.status]);
               });
             });
             var ws=XLSX.utils.aoa_to_sheet(wsData);
@@ -23149,15 +23189,17 @@ function PartsPage(p){
               h('option',{value:'id'},'登録の新しい順（ID）'),h('option',{value:'date'},'入庫予定日の早い順'),h('option',{value:'dateDesc'},'入庫予定日の遅い順')));
           if(!incVis.length)return h('div',null,bar,h('p',{style:{textAlign:'center',color:'var(--g400)',padding:20}},'この倉庫の入庫予定はありません'));
           return h('div',null,bar,h('table',{className:'tbl'},
-            h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'入庫予定日'),h('th',null,'倉庫'),h('th',null,'内容'),h('th',null,'備考'),h('th',null,'状態'),h('th',null,'操作'))),
+            h('thead',null,h('tr',null,h('th',null,'ID'),h('th',null,'発注書番号'),h('th',null,'入庫予定日'),h('th',null,'倉庫'),h('th',null,'内容'),h('th',null,'備考'),h('th',null,'状態'),h('th',null,'操作'))),
             h('tbody',null,incVis.map(function(inc){
               return h('tr',{key:inc.id},
                 h('td',null,h('b',null,'INC-'+inc.id)),
+                /* v19.91 依頼③: 発注書番号（八木熊の回答Excelから取り込んだ予定） */
+                h('td',{'data-incpo':inc.id,style:{fontFamily:'monospace',fontSize:10,whiteSpace:'nowrap',color:inc.poNo?'var(--nv)':'var(--g400)',fontWeight:inc.poNo?700:400}},inc.poNo||'—'),
                 h('td',null,inc.expectedDate),
                 h('td',null,WH_MAP[inc.wh]?WH_MAP[inc.wh].s:inc.wh),
                 h('td',{style:{fontSize:9}},inc.items.map(function(it){return it.label+' ×'+it.qty;}).join(', ')),
                 h('td',{style:{fontSize:9}},inc.note||''),
-                h('td',null,h('span',{className:'bg '+(inc.status==='入庫済'?'bg-g':'bg-o')},inc.status)),
+                h('td',null,h('span',{className:'bg '+(inc.status==='入庫済'?'bg-g':'bg-o')},inc.status),inc.status==='入庫済'&&inc.doneDate?h('div',{style:{fontSize:9,color:'var(--g500)'}},ykMD(inc.doneDate)):null),
                 h('td',null,inc.status!=='入庫済'?h('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
                   h('button',{className:'btn btn-xs btn-gn',onClick:function(){
                     if(RO_){p.toast('読み取り専用モード中は入庫処理できません');return;}
@@ -23178,7 +23220,7 @@ function PartsPage(p){
                       }
                       EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:inLine,key:it.key,sub:it.sub,color:it.color,wh:inc.wh,oldVal:'入庫前',newVal:'+'+it.qty,label:it.label+'（入庫）'+(inLine!==it.lineId?' [共通在庫: jp2集約]':''),editor:'入庫処理'});
                     });
-                    inc.status='入庫済';bump[1](bump[0]+1);p.toast('入庫処理完了: INC-'+inc.id);saveAll();broadcastEdit(p.userName||editorName[0]||'不明','入庫処理 INC-'+inc.id);
+                    inc.status='入庫済';inc.doneDate=td2();/* v19.91 依頼⑥: 入庫処理した日 */bump[1](bump[0]+1);p.toast('入庫処理完了: INC-'+inc.id);saveAll();broadcastEdit(p.userName||editorName[0]||'不明','入庫処理 INC-'+inc.id);
                   }},'入庫処理'),
                   h('button',{className:'btn btn-xs btn-tl',onClick:function(){
                     if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
@@ -23216,7 +23258,7 @@ function PartsPage(p){
                       }
                       EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:inLine,key:it.key,sub:it.sub,color:it.color,wh:inc.wh,oldVal:'入庫済',newVal:'-'+it.qty,label:it.label+'（入庫差戻し）'+(inLine!==it.lineId?' [共通在庫: jp2集約]':''),editor:'入庫差戻し'});
                     });
-                    inc.status='予定';bump[1](bump[0]+1);p.toast('入庫を差し戻しました: INC-'+inc.id);saveAll();broadcastEdit(p.userName||editorName[0]||'不明','入庫差戻し INC-'+inc.id);
+                    inc.status='予定';delete inc.doneDate;bump[1](bump[0]+1);p.toast('入庫を差し戻しました: INC-'+inc.id);saveAll();broadcastEdit(p.userName||editorName[0]||'不明','入庫差戻し INC-'+inc.id);
                   }},'差戻し')
                 ))
               );
