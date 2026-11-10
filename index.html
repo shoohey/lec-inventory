@@ -10112,6 +10112,7 @@ function isShipManual(o){return !!o&&(o.shipManual===true||(o.shipManual===undef
    　　　　貸与品の記載・手入力の送料は、案件修正（同じ番号）では元の案件から引き継ぐが、コピー再発注（新しい番号）では引き継いでいなかった。
    【対応】コピー元の案件を控え（repeatSrcR）、コピーした明細のまま新しい案件を作るときに同じ項目を入れる（upsertOrder）。
    　　　　出荷指示書・請求書などの手修正（その案件の出荷・請求のもの）と在庫の記録は引き継がない。 */
+function canRepeatAsSales(name){return roleOf(name)==='sales';}
 var ORDER_COPY_ON_REPEAT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
   'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','showRepName','repName','rowCost'];
 function copyValEmpty(v){
@@ -15905,7 +15906,9 @@ function OrdersPage(p){
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){showBom[1](false);detail[1](o);}},'詳細'),
               /* v17.2 要望26: 前回コピーでリピート発注 */
               h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2,fontWeight:700},title:'この案件の内容をコピーして新規見積（リピート発注）',onClick:function(){
-                if(RO_){p.toast('読み取り専用モード中はコピーできません');return;}
+                /* v19.99（2026-11-10 ユーザー「営業でもコピー再発注出来るようにして」）: コピー再発注は在庫を動かさず、
+                   在庫確認・見積画面へ読み込むだけ（営業は見積の作成・保存ができる）なので、営業アカウントでも使える */
+                if(RO_&&!canRepeatAsSales(p.userName)){p.toast('読み取り専用モード中はコピーできません');return;}
                 var rc=CUSTS.find(function(x){return x.id===o.cid;});
                 if(!rc){p.toast('顧客情報が見つかりません');return;}
                 if(!p.requestRepeat){p.toast('この環境ではリピート発注を利用できません');return;}
