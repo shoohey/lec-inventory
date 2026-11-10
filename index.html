@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.96（アウトレット台湾扉・黒ヒンジ扉／シリンダー錠の見積名称）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.97（見積書にもアウトレットと書く）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1080,15 +1080,15 @@ var LINE_COLORS={
     {v:'ly',l:'ライトイエロー',x:'#FFFACD'},{v:'lbr',l:'ライトブラウン',x:'#D2B48C'},{v:'iv',l:'アイボリー',x:'#FFFFF0'},
     {v:'cl',l:'クリア',x:'#E8E8E8'},
     /* v19.96（2026-11-10 依頼「システムにはいってない在庫.xlsx」）: アウトレット品の台湾扉。在庫のあるサイズだけ only に書く。
-       見積書などの帳票には ql（アウトレットを付けない色名）を出す */
-    {v:'o_or',l:'オレンジ（アウトレット）',ql:'オレンジ',x:'#F5A04A',outlet:true,only:{door:['M','L']}},
-    {v:'o_bl',l:'ブルー（アウトレット）',ql:'ブルー',x:'#4A8BD6',outlet:true,only:{door:['M','L']}},
-    {v:'o_gr',l:'グリーン（アウトレット）',ql:'グリーン',x:'#5DB85D',outlet:true,only:{door:['M','L']}},
-    {v:'o_rd',l:'レッド（アウトレット）',ql:'レッド',x:'#D9534F',outlet:true,only:{door:['S','M','L']}},
-    {v:'o_ye',l:'イエロー（アウトレット）',ql:'イエロー',x:'#F2D43D',outlet:true,only:{door:['M','L']}},
-    {v:'o_cl',l:'クリア（アウトレット）',ql:'クリア',x:'#E8E8E8',outlet:true,only:{door:['S','M','L']}},
-    {v:'o_iv',l:'アイボリー（アウトレット）',ql:'アイボリー',x:'#FFFFF0',outlet:true,only:{door:['M','L']}},
-    {v:'o_wd',l:'木目（アウトレット）',ql:'木目',x:'#A0784C',outlet:true,only:{door:['L']}},
+       v19.97（2026-11-10 ユーザー「アウトレットの文言は入れて大丈夫」）: 見積書などの帳票にも「〇〇（アウトレット）」と書く（ql を外した） */
+    {v:'o_or',l:'オレンジ（アウトレット）',x:'#F5A04A',outlet:true,only:{door:['M','L']}},
+    {v:'o_bl',l:'ブルー（アウトレット）',x:'#4A8BD6',outlet:true,only:{door:['M','L']}},
+    {v:'o_gr',l:'グリーン（アウトレット）',x:'#5DB85D',outlet:true,only:{door:['M','L']}},
+    {v:'o_rd',l:'レッド（アウトレット）',x:'#D9534F',outlet:true,only:{door:['S','M','L']}},
+    {v:'o_ye',l:'イエロー（アウトレット）',x:'#F2D43D',outlet:true,only:{door:['M','L']}},
+    {v:'o_cl',l:'クリア（アウトレット）',x:'#E8E8E8',outlet:true,only:{door:['S','M','L']}},
+    {v:'o_iv',l:'アイボリー（アウトレット）',x:'#FFFFF0',outlet:true,only:{door:['M','L']}},
+    {v:'o_wd',l:'木目（アウトレット）',x:'#A0784C',outlet:true,only:{door:['L']}},
     {v:'bk',l:'ブラック',x:'#3A3A3A',order:true},{v:'gy',l:'グレー',x:'#808080',order:true},
     UND_COLOR
   ],
@@ -1100,7 +1100,7 @@ var LINE_COLORS={
 function isUndColor(colorId){return colorId==='und';}
 /* v19.96: 扱うサイズが決まっている色（only）は、在庫一覧・倉庫Excel にその扉の種類・サイズの行だけを出す */
 function doorRowOk(c,dk,s){if(!c||!c.only)return true;return (c.only[dk]||[]).indexOf(s)>=0;}
-/* v19.96: 帳票（見積書・請求書・納品書）に出す扉色名。アウトレット扉は「アウトレット」を付けない */
+/* v19.96: 帳票（見積書・請求書・納品書）に出す扉色名。色に ql があればそれ（v19.97 でアウトレット扉の ql は外した＝今は l と同じ） */
 function quoteColorName(c){return c?(c.ql||c.l):'';}
 /* ===== v19.96（2026-11-10 依頼②）: シリンダー錠の見積書の名称 =====
    パーツ単品追加は在庫の名称（カム短…）、ロッカーとセットでは「シリンダー錠」（内筒交換錠も）と、名前がばらばらだった。
