@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月10日の更新のお知らせ（v19.93〜v19.99）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>コピー再発注・発注書・入庫依頼書・<br>アウトレット扉ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v19.99</span>
+      <span>2026年11月10日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました（11月9日〜10日の更新分 v19.93〜v19.99）。<b>コピー再発注で、見積書で足した行や送料がコピーされていなかった不具合</b>を直しました。</p>
+    <p>見積を作る方は<b>1番〜5番</b>を、在庫・扉を扱う方は<b>6番</b>を、発注書・入庫を扱う方は<b>7番〜12番</b>を、請求書を送る方は<b>13番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v19.99</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>古い画面のままだと、コピー再発注の不具合が残ったままです。</b>開きっぱなしの画面も、必ず一度再読み込みしてください。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">コピー再発注で、見積書の内容をそのままコピーします</a><span class="tag">重要</span></li>
+      <li><a href="#s2">営業アカウントでもコピー再発注ができます</a></li>
+      <li><a href="#s3">シリンダー錠の見積の名称を統一しました</a></li>
+      <li><a href="#s4">セットの内筒交換錠は「内筒交換錠」と書きます</a></li>
+      <li><a href="#s5">パーツ単品の行にも商品コードが出ます</a></li>
+      <li><a href="#s6">アウトレット扉・黒ヒンジ扉を在庫に追加しました</a><span class="tag">新機能</span></li>
+      <li><a href="#s7">発注書はPDFを出すと編集できなくなります</a><span class="tag">重要</span></li>
+      <li><a href="#s8">発注書一覧を上書き保存する前に確認が出ます</a></li>
+      <li><a href="#s9">八木熊の発注書：「単価未設定を隠す」ボタン</a></li>
+      <li><a href="#s10">入荷状況の入庫倉庫を、納品場所から自動で決めます</a></li>
+      <li><a href="#s11">入庫依頼書を出荷指示書と同じ形にしました</a><span class="tag">変更</span></li>
+      <li><a href="#s12">鍵の発注書で品名を選べます・鍵の部材を4品追加</a></li>
+      <li><a href="#s13">納品完了タブに「請求書送付」のチェック</a><span class="tag">新機能</span></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 見積・案件 ============ -->
+  <h2 class="sec">見積・案件</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>コピー再発注で、見積書の内容をそのままコピーします<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>案件一覧の <kbd>🔁 コピー再発注</kbd> で新しい見積を作ると、コピー元と内容が違う見積になることがありました（例：QT-2026-307 → QT-2026-318）。</p>
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        コピーされるのはロッカー・部材の明細だけで、見積書作成画面で足した行などが<b>抜けていました</b>。
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        コピー元の見積書の内容を<b>そのまま引き継いで</b>見積が始まります。
+      </div>
+    </div>
+    <ul>
+      <li>引き継ぐもの：搬入・設置工事費や値引きなどの<b>追加した行</b>、【生徒様ご負担分】などの<b>見出しの行</b>、<b>行の並び順</b>、<b>行ごとに直した単価</b>、構成表記の手修正、貸与品（学校保管備品）の記載、<b>手入力の送料</b>、納期・受渡地・有効期限。</li>
+      <li>引き継がないもの：出荷指示書・請求書などの手修正（その案件の出荷・請求のものなので）。</li>
+      <li>本体の単価は今までどおり、作った時点の単価マスタの金額になります。</li>
+      <li>コピーしたあと明細を全部入れ替えた場合や、顧客を変えた場合は引き継ぎません。</li>
+    </ul>
+    <p class="sub">すでにコピー再発注で作った見積は変わりません。内容が抜けている見積があれば、コピー元からもう一度コピー再発注してください。</p>
+  </section>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>営業アカウントでもコピー再発注ができます<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p>これまで営業アカウントで <kbd>🔁 コピー再発注</kbd> を押すと「読み取り専用モード中はコピーできません」と出ていました。営業アカウントでも使えるようにしました。</p>
+    <ul>
+      <li>在庫確認・見積画面に内容が読み込まれ、<kbd>見積書のみ作成</kbd> で見積を作って保存できます。在庫は動きません。</li>
+      <li>仮押さえは今までどおり事務の方が行います。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>シリンダー錠の見積の名称を統一しました<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p>パーツ単品で追加したときと、ロッカーとセットにしたときで、見積書などに書かれる名前が違っていたので揃えました。</p>
+    <ul>
+      <li>シリンダー錠(2本キー)カム短Fマスター → <b>シリンダー錠(2本キー)Fマスター</b>（B・C・D・L マスターも同じ）</li>
+      <li>シリンダー錠(2本キー)カム短スタンダード → <b>シリンダー錠(2本キー)</b></li>
+    </ul>
+    <p class="sub">変わるのは見積書・請求書などの帳票の書き方だけです。部材在庫一覧の名称と、在庫との紐づけは今までどおりです。</p>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>セットの内筒交換錠は「内筒交換錠」と書きます<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>ロッカーとセットで内筒交換錠を選んでも、見積書には「シリンダー錠」と書かれていました。<b>「内筒交換錠」</b>と書くように直しました。</p>
+  </section>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>パーツ単品の行にも商品コードが出ます<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>見積書・請求書などの帳票で、パーツ単品の行の商品コードが空欄になっていました。単価マスタの商品コードを出すように直しました。</p>
+  </section>
+
+  <!-- ============ 在庫・扉 ============ -->
+  <h2 class="sec">在庫・扉</h2>
+
+  <section class="item key" id="s6">
+    <h3><span class="n">6</span><span>アウトレット扉・黒ヒンジ扉を在庫に追加しました<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>システムに入っていなかった扉を、部材在庫一覧に追加しました（在庫数も登録済みです）。在庫確認の<b>扉の製品ライン</b>と<b>パーツ単品追加</b>で、扉の色として選べます。本体は今ある台湾製・日本製Ver.2と組み合わせて出荷します。</p>
+    <ul>
+      <li><b>台湾製のアウトレット扉</b>：オレンジ・ブルー・グリーン・レッド・イエロー・クリア・アイボリー・木目（それぞれ「〇〇（アウトレット）」）。サイズは色によって S・M・L。</li>
+      <li><b>日本製Ver.1</b>：パステルブラウン（黒ヒンジ細）のホタ扉 S</li>
+      <li><b>日本製Ver.2</b>：パステルイエロー（黒ヒンジ細）の扉 L</li>
+    </ul>
+    <p class="sub">見積書などの帳票にも「オレンジ（アウトレット）色」のように、アウトレットと書かれます。在庫一覧には、在庫のあるサイズの行だけを出しています。</p>
+  </section>
+
+  <!-- ============ 発注書・入庫 ============ -->
+  <h2 class="sec">発注書・入庫</h2>
+
+  <section class="item key" id="s7">
+    <h3><span class="n">7</span><span>発注書はPDFを出すと編集できなくなります<span class="pill imp" style="margin-left:8px">変更</span></span></h3>
+    <p>八木熊・鍵などすべての業者の発注書で、<kbd>🖨 PDF</kbd> を出したあとは、うっかり直してしまわないよう<b>入力欄が編集できなくなります</b>。発注書番号の右に「🔒 PDF出力済み」と出ます。</p>
+    <div class="how">
+      <b>直したいとき</b>
+      発注書番号の右の <kbd>✏ 編集する</kbd> → 「PDFを出力済みです。編集しますか？」で <kbd>OK</kbd>
+    </div>
+    <ul>
+      <li>発注書一覧の <kbd>✏ 編集</kbd> も、PDFを出した発注書なら同じ確認が出ます。一覧の番号の下に「🔒 PDF出力済」と出ます。</li>
+      <li>一覧の <kbd>🖨 PDF</kbd> で出し直したときも、同じく編集できない状態になります。</li>
+      <li>Excel の出力や、<kbd>＋ 新規発注書作成</kbd> はロック中もできます（新しい番号の発注書は編集できます）。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s8">
+    <h3><span class="n">8</span><span>発注書一覧を上書き保存する前に確認が出ます<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <p>一覧に登録済みの発注書を直して <kbd>💾 一覧に保存</kbd> を押すと、「本当によろしいですか？」と確認が出ます。直したあとに Excel・PDF を出して一覧が上書きされるときも同じです。<kbd>キャンセル</kbd> なら一覧は前の内容のままです。</p>
+  </section>
+
+  <section class="item" id="s9">
+    <h3><span class="n">9</span><span>八木熊の発注書：「単価未設定を隠す」ボタン<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <p>品目の絞り込みボタン「入力した品目だけ」の右に <kbd>単価未設定を隠す</kbd> を足しました。押すと単価が入っていない品目を一覧から隠します。もう一度押すと元に戻ります。</p>
+    <p class="sub">数量を入れた品目は、単価が無くても隠しません。</p>
+  </section>
+
+  <section class="item" id="s10">
+    <h3><span class="n">10</span><span>入荷状況の入庫倉庫を、納品場所から自動で決めます<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p><kbd>📦 入荷状況（未納の管理）</kbd> で、八木熊の回答を取り込む前の数が入庫倉庫「未登録」になっていました。発注書の納品場所から入庫倉庫を決めて、その倉庫の行に出すようにしました。</p>
+    <table class="tbl" style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0">
+      <tr><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">発注書の納品場所</th><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">入庫倉庫</th></tr>
+      <tr><td style="padding:4px">新柏倉庫株式会社 野田船形事業所 西村様宛</td><td style="padding:4px"><b>新柏</b></td></tr>
+      <tr><td style="padding:4px">LEC本社</td><td style="padding:4px"><b>本社</b></td></tr>
+      <tr><td style="padding:4px">LEC関西営業所</td><td style="padding:4px"><b>関西営業所</b></td></tr>
+      <tr><td style="padding:4px">尼高運輸株式会社 西宮北第四営業所 岡田様宛</td><td style="padding:4px"><b>尼高</b></td></tr>
+      <tr><td style="padding:4px">安田倉庫内 尼高運輸株式会社 尼高運輸白石倉庫 杉本様宛</td><td style="padding:4px"><b>札幌</b></td></tr>
+    </table>
+    <p class="sub">回答Excelを取り込むときの入庫倉庫も、この表で決めます（これまで白石倉庫が「尼高」と判定されることがありました）。納品場所を手で書き換えて表に当てはまらないときは、今までどおり「未登録」です。</p>
+  </section>
+
+  <section class="item key" id="s11">
+    <h3><span class="n">11</span><span>入庫依頼書を出荷指示書と同じ形にしました<span class="pill imp" style="margin-left:8px">変更</span></span></h3>
+    <p>倉庫へ出す入庫依頼書（PDF・Excel）の紙を、出荷指示書と同じ書き方にしました。</p>
+    <ul>
+      <li>表題の横に製品ライン：<b>入庫依頼書【日本製 Ver.2】</b></li>
+      <li>「伝票コード」は<b>「入庫依頼No」</b>に。入庫先倉庫・担当者は載せず、代わりに<b>納品方法・積み方</b>を上の枠に入れました。</li>
+      <li>業者名・発注書No・製品ラインの見出しと品番は紙に載せません（入庫依頼書の一覧で見られます）。</li>
+      <li>部材の名称は出荷指示書と同じです（例：バックボード(S)、上下共通ボード(SML)）。表は <b>名称・入数・入庫総数・入庫箱数・入庫バラ</b>、最後に<b>「正箱数：○箱 ＋ バラ○種」</b>。</li>
+      <li><b>複数の発注書から作っても、同じ部材は合計して1行</b>にまとめます。</li>
+    </ul>
+    <p class="sub">作成画面は今までどおり業者（発注書）ごとに入力します。明細に「入数」の欄を足しました（取り込むと自動で入ります）。今までに作った入庫依頼書も、出し直すと新しい形になります。</p>
+  </section>
+
+  <section class="item" id="s12">
+    <h3><span class="n">12</span><span>鍵の発注書で品名を選べます・鍵の部材を4品追加<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <ul>
+      <li>鍵の業者の発注書で、各行の <kbd>品名を選ぶ（発注書マスタ）</kbd> から品名を選ぶと、品名と数量に合ったロットの単価が入り、在庫の部材にもつながります。選ばずに自由入力もできます。</li>
+      <li>送料の決まりは、発注書の上に表示します。送料が掛かるときは「＋ 行を追加」で品名「送料」と金額を入れてください。</li>
+      <li>部材を追加しました：内筒交換錠用スペアキー、内筒交換錠ケース、シリンダー錠スペアキー（DSS-909）、小判札（No有 連番）。パーツ単品追加で選べます。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 請求 ============ -->
+  <h2 class="sec">請求</h2>
+
+  <section class="item key" id="s13">
+    <h3><span class="n">13</span><span>納品完了タブに「請求書送付」のチェック<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>案件管理の<b>納品完了</b>タブで、ステータスの右に<b>「請求書送付」</b>の列を足しました。請求書を送ったらチェックしてください。</p>
+    <ul>
+      <li>チェックすると送付日（今日）が入ります。日付はカレンダーで変えられます。</li>
+      <li>請求書を複数枚に分けた案件は、紙ごとにチェックできます。</li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>案件番号・発注書番号と、画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v19.93〜v19.99】
+・★コピー再発注で、見積書で足した行（工事費・値引き・見出し）・並び順・行の単価・手入力の送料なども、そのままコピーされるように直しました
+・営業アカウントでもコピー再発注ができます（見積の作成・保存まで。仮押さえは事務）
+・シリンダー錠の見積の名称を統一（例：カム短Fマスター → シリンダー錠(2本キー)Fマスター、カム短スタンダード → シリンダー錠(2本キー)）。セットの内筒交換錠は「内筒交換錠」と書きます
+・パーツ単品の行にも商品コードが出ます
+・★アウトレット扉（台湾製8色）・黒ヒンジ扉（Ver.1 ホタS パステルブラウン、Ver.2 L パステルイエロー）を在庫に追加。扉の製品ライン・パーツ単品追加で選べます
+・★発注書はPDFを出すと編集できなくなります。直すときは「✏ 編集する」→ OK
+・発注書一覧を上書き保存する前に「本当によろしいですか？」が出ます
+・八木熊の発注書に「単価未設定を隠す」ボタン
+・入荷状況の入庫倉庫を発注書の納品場所から自動で決めます（白石倉庫→札幌 など）
+・★入庫依頼書を出荷指示書と同じ形に（【製品ライン】・入庫依頼No・納品方法/積み方・名称/入数/総数/箱数/バラ・同じ部材は合計）
+・鍵の発注書で品名を選べます・鍵の部材4品追加
+・★納品完了タブに「請求書送付」のチェック（送付日つき・紙ごと）
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261110.html
+古い画面のままだと不具合が残るので、必ず再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
