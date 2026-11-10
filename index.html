@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.95（パーツ単品の行にも商品コード）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.96（アウトレット台湾扉・黒ヒンジ扉／シリンダー錠の見積名称）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1065,18 +1065,30 @@ var LINE_COLORS={
     {v:'pb',l:'パステルブルー',x:'#A8D5E2'},{v:'pg',l:'パステルグリーン',x:'#A8D8A0'},{v:'pp',l:'パステルピンク',x:'#F4B4C4'},
     {v:'py',l:'パステルイエロー',x:'#F4E5A0'},{v:'pbr',l:'パステルブラウン',x:'#C4A882'},
     {v:'bk',l:'ブラック',x:'#3A3A3A',order:true},{v:'gy',l:'グレー',x:'#808080'},{v:'iv',l:'アイボリー',x:'#FFFFF0'},
+    {v:'pbr_bh',l:'パステルブラウン（黒ヒンジ細）',x:'#C4A882',only:{doorH:['S']}},/* v19.96 */
     UND_COLOR
   ],
   jp2:[
     {v:'pb',l:'パステルブルー',x:'#A8D5E2'},{v:'pg',l:'パステルグリーン',x:'#A8D8A0'},{v:'pp',l:'パステルピンク',x:'#F4B4C4'},
     {v:'py',l:'パステルイエロー',x:'#F4E5A0'},{v:'pbr',l:'パステルブラウン',x:'#C4A882'},
     {v:'bk',l:'ブラック',x:'#3A3A3A',order:true},{v:'gy',l:'グレー',x:'#808080',order:true},{v:'iv',l:'アイボリー',x:'#FFFFF0',order:true},
+    {v:'py_bh',l:'パステルイエロー（黒ヒンジ細）',x:'#F4E5A0',only:{door:['L']}},/* v19.96 */
     UND_COLOR
   ],
   tw:[
     {v:'sb',l:'スカイブルー',x:'#87CEEB'},{v:'ag',l:'アップルグリーン',x:'#90EE90'},{v:'pk',l:'ピンク',x:'#FFB6C1'},
     {v:'ly',l:'ライトイエロー',x:'#FFFACD'},{v:'lbr',l:'ライトブラウン',x:'#D2B48C'},{v:'iv',l:'アイボリー',x:'#FFFFF0'},
     {v:'cl',l:'クリア',x:'#E8E8E8'},
+    /* v19.96（2026-11-10 依頼「システムにはいってない在庫.xlsx」）: アウトレット品の台湾扉。在庫のあるサイズだけ only に書く。
+       見積書などの帳票には ql（アウトレットを付けない色名）を出す */
+    {v:'o_or',l:'オレンジ（アウトレット）',ql:'オレンジ',x:'#F5A04A',outlet:true,only:{door:['M','L']}},
+    {v:'o_bl',l:'ブルー（アウトレット）',ql:'ブルー',x:'#4A8BD6',outlet:true,only:{door:['M','L']}},
+    {v:'o_gr',l:'グリーン（アウトレット）',ql:'グリーン',x:'#5DB85D',outlet:true,only:{door:['M','L']}},
+    {v:'o_rd',l:'レッド（アウトレット）',ql:'レッド',x:'#D9534F',outlet:true,only:{door:['S','M','L']}},
+    {v:'o_ye',l:'イエロー（アウトレット）',ql:'イエロー',x:'#F2D43D',outlet:true,only:{door:['M','L']}},
+    {v:'o_cl',l:'クリア（アウトレット）',ql:'クリア',x:'#E8E8E8',outlet:true,only:{door:['S','M','L']}},
+    {v:'o_iv',l:'アイボリー（アウトレット）',ql:'アイボリー',x:'#FFFFF0',outlet:true,only:{door:['M','L']}},
+    {v:'o_wd',l:'木目（アウトレット）',ql:'木目',x:'#A0784C',outlet:true,only:{door:['L']}},
     {v:'bk',l:'ブラック',x:'#3A3A3A',order:true},{v:'gy',l:'グレー',x:'#808080',order:true},
     UND_COLOR
   ],
@@ -1086,6 +1098,26 @@ var LINE_COLORS={
   ]
 };
 function isUndColor(colorId){return colorId==='und';}
+/* v19.96: 扱うサイズが決まっている色（only）は、在庫一覧・倉庫Excel にその扉の種類・サイズの行だけを出す */
+function doorRowOk(c,dk,s){if(!c||!c.only)return true;return (c.only[dk]||[]).indexOf(s)>=0;}
+/* v19.96: 帳票（見積書・請求書・納品書）に出す扉色名。アウトレット扉は「アウトレット」を付けない */
+function quoteColorName(c){return c?(c.ql||c.l):'';}
+/* ===== v19.96（2026-11-10 依頼②）: シリンダー錠の見積書の名称 =====
+   パーツ単品追加は在庫の名称（カム短…）、ロッカーとセットでは「シリンダー錠」（内筒交換錠も）と、名前がばらばらだった。
+   帳票に出す名前だけをここでそろえる。★在庫の名称（PART_LABELS・部材在庫一覧）と在庫キーは変えない（在庫の紐づけはそのまま） */
+var QUOTE_LOCK_NAMES={
+  cylinderShortStd:'シリンダー錠(2本キー)',cylinderShortF:'シリンダー錠(2本キー)Fマスター',
+  cylinderShortB:'シリンダー錠(2本キー)Bマスター',cylinderShortC:'シリンダー錠(2本キー)Cマスター',
+  cylinderDMaster:'シリンダー錠(2本キー)Dマスター',cylinderLMaster:'シリンダー錠(2本キー)Lマスター'
+};
+/* ロッカーとセットの明細に付ける錠前名。シリンダー錠の仲間（s が「シリンダー錠」）は種類ごとの名前、それ以外は従来どおり s */
+function setLockName(lockObj){
+  if(!lockObj)return '';
+  var k=lockObj.v;
+  if(QUOTE_LOCK_NAMES[k])return QUOTE_LOCK_NAMES[k];
+  if(lockObj.s==='シリンダー錠'&&k!=='cylinder')return PART_LABELS[k]||lockObj.l;
+  return lockObj.s||lockObj.l;
+}
 /* v18.76 修正18⑥: 商品選択の「扉カラー」は【色未定】→標準色→受注色 の順に並べる（既定の選択も色未定）。
    LINE_COLORS 自体の並び（在庫一覧・倉庫Excel等の並び）は変えず、商品選択の表示順だけをここで作る。
    受注色（order:true）は末尾へ寄せる。UND_COLOR も order:true を持つため und:true で先に拾っている。 */
@@ -8205,7 +8237,7 @@ function buildQuoteRows(order){
       /* 修正17⑥: パーツ単品は既定で「送料の上」に並べる（下の concat で送料の直前へ入れる） */
       var amt=(ln.qty||0)*(ln.unitPrice||0);
       /* v19.56: 本体以外の行は商品名の頭の「MyプラECOロッカー／Myプラロッカー」を付けない（改行される明細を減らす。依頼書 2026-10-22） */
-      var pName=ln.isFreeInput?(ln.name||''):stripLineTag(ln.partLabel);
+      var pName=ln.isFreeInput?(ln.name||''):(QUOTE_LOCK_NAMES[ln.partKey]||stripLineTag(ln.partLabel));/* v19.96 依頼②: シリンダー錠は見積の名称へ */
       if(!ln.isFreeInput&&ln.stockMul>1)pName+='（'+ln.stockMul+'本1組）';/* v19.56: 見積書は組で数える（出荷指示書・在庫は本数） */
       /* ===== v19.12 修正29⑦: パーツ単品追加で扉を選ぶと見積書に扉色が出ていなかった =====
          パーツ単品の品名は partLabel（例「扉（同色）(M)」）だけで色を持たないため、
@@ -8217,7 +8249,7 @@ function buildQuoteRows(order){
           if(isUndColor(pdc))pName+='（扉色未定）';
           else{
             var pdco=(LINE_COLORS[ln.line]||[]).find(function(c){return c.v===pdc;});
-            if(pdco)pName+='　'+pdco.l+'色';
+            if(pdco)pName+='　'+quoteColorName(pdco)+'色';
           }
         }
       }
@@ -8232,7 +8264,7 @@ function buildQuoteRows(order){
     var sz=sizeObj(ln.size);
     var co=lineColorObj(ln);/* v19.18 修正31②: 扉だけ別ラインの色も引く */
     var isOpenLn=lineIsOpen(ln);/* v19.18 修正31①: 扉なし（オープン） */
-    var colorName=(isOpenLn||!co)?'':co.l;
+    var colorName=(isOpenLn||!co)?'':quoteColorName(co);/* v19.96 */
     var isPersonal=ln.type==='personal';
     /* v18.73 修正17の追加: 扉色が複数ある場合は商品名称に色を書かず、本体行の下に色ごとの行を足す。
        1色のときは従来どおり商品名称に色を書く。 */
@@ -8245,7 +8277,7 @@ function buildQuoteRows(order){
       colorNote='＜扉色：'+cb.map(function(c){
         if(c.color==='open')return 'オープン'+c.qty+'台';
         var cn=lineColorObj(ln,c.color);/* v19.18 修正31② */
-        return (cn?((c.color==='cl'||isUndColor(c.color)?'':hotaPfx)+cn.l):'')+c.qty+'台';
+        return (cn?((c.color==='cl'||isUndColor(c.color)?'':hotaPfx)+quoteColorName(cn)):'')+c.qty+'台';
       }).join('、')+'＞';
     }else if(colorName){
       colorDesc=isUndColor(ln.color)?(hotaPfx?'　ホタ（扉色未定）':'（扉色未定）'):('　'+(ln.color==='cl'?'':hotaPfx)+colorName+'色');/* v18.31: und単色は二重表記を避ける */
@@ -8254,7 +8286,7 @@ function buildQuoteRows(order){
        （例 MyプラECOロッカーMサイズパーソナル　パステルピンク色） */
     var itemName=productName(ln.line)+(ln.line==='sa'?'Sα':sz.l)+lineTypeLabel(ln)+colorDesc;
     var lockObj=LOCK_TYPES.find(function(lt){return lt.v===ln.lock;});
-    if(lockObj&&ln.lock!=='none')itemName+='　'+(lockObj.s||lockObj.l);
+    if(lockObj&&ln.lock!=='none')itemName+='　'+setLockName(lockObj);/* v19.96 依頼②: 内筒交換錠もシリンダー錠と書いていた */
     if(isPersonal&&!isOpenLn&&!lockObj)itemName+='・トッテ';/* v19.18: 扉なしはトッテも無い。v19.71: 「鍵なし」を選んだ行もトッテを付けない */
     var sq=parseInt(ln.shelfQty)||0;
     if(sq>0){var sc2=SHELF_COLORS.find(function(x){return x.v===ln.shelfColor;})||{l:'グレー'};itemName+='・棚板（'+sc2.l+'）';}
@@ -21709,11 +21741,11 @@ function PartsPage(p){
           /* 5. 扉（色別: 各色→ホタ→次の色） */
           colors.forEach(function(c){
             /* 通常扉 */
-            ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
+            ['S','M','L','XL','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0&&doorRowOk(c,'door',s);}).forEach(function(s,i){
               uniRows.push({item:i===0?'扉　'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'door',color:c.v,colorObj:c,doorSub:s,irisu:iGet('door',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
             });
             /* ホタ扉 (XLなし) */
-            ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0;}).forEach(function(s,i){
+            ['S','M','L','SS','3S','SSA'].filter(function(s){return szDoor.indexOf(s)>=0&&doorRowOk(c,'doorH',s);}).forEach(function(s,i){
               uniRows.push({item:i===0?'扉〈ホタ〉'+c.l:'',variant:doorSizeLbl(selLine[0],s),isDoor:true,dk:'doorH',color:c.v,colorObj:c,doorSub:s,irisu:iGet('doorH',s),grp:(s==='3S'||s==='SS'||s==='SSA')?'ss':'sml'});
             });
           });
@@ -22147,8 +22179,8 @@ function PartsPage(p){
                 });
                 /* v14.9 #10: 倉庫別Excelにも扉(色別×サイズ)を反映（メイン在庫表Excelと統一。通常扉6サイズ/ホタ扉5サイズ） */
                 (LINE_COLORS[selLine[0]]||[]).filter(function(c){return !c.und;}).forEach(function(c){
-                  ['S','M','L','XL','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0){var dstk=gd(selLine[0],w,c.v,s,'door'),dhld=ghd(selLine[0],w,c.v,s,'door');data.push(['扉　'+c.l,s,irisuDisp('door',s,selLine[0]),dstk,dhld,dstk-dhld]);}});
-                  ['S','M','L','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0){var dstk=gd(selLine[0],w,c.v,s,'doorH'),dhld=ghd(selLine[0],w,c.v,s,'doorH');data.push(['扉〈ホタ〉'+c.l,s,irisuDisp('doorH',s,selLine[0]),dstk,dhld,dstk-dhld]);}});
+                  ['S','M','L','XL','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0&&doorRowOk(c,'door',s)){var dstk=gd(selLine[0],w,c.v,s,'door'),dhld=ghd(selLine[0],w,c.v,s,'door');data.push(['扉　'+c.l,s,irisuDisp('door',s,selLine[0]),dstk,dhld,dstk-dhld]);}});
+                  ['S','M','L','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0&&doorRowOk(c,'doorH',s)){var dstk=gd(selLine[0],w,c.v,s,'doorH'),dhld=ghd(selLine[0],w,c.v,s,'doorH');data.push(['扉〈ホタ〉'+c.l,s,irisuDisp('doorH',s,selLine[0]),dstk,dhld,dstk-dhld]);}});
                 });
                 XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(data),WH_MAP[w].s);
               });
@@ -22174,8 +22206,8 @@ function PartsPage(p){
               ['S','M','L','XL','SS','3S'].forEach(function(s){if(sizes.indexOf(s)>=0)snapRows.push({item:'バックボード('+s+')',key:'back',sub:s});});
               /* v14.8 #8/#9/#10: 扉を色別×サイズで個別にExcel出力（日本製/台湾製/Sαの全扉色を反映） */
               (LINE_COLORS[selLine[0]]||[]).filter(function(c){return !c.und;}).forEach(function(c){
-                ['S','M','L','XL','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0)snapRows.push({item:'扉　'+c.l,sub:s,isDoorRow:true,dk:'door',dcolor:c.v,dsize:s});});
-                ['S','M','L','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0)snapRows.push({item:'扉〈ホタ〉'+c.l,sub:s,isDoorRow:true,dk:'doorH',dcolor:c.v,dsize:s});});
+                ['S','M','L','XL','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0&&doorRowOk(c,'door',s))snapRows.push({item:'扉　'+c.l,sub:s,isDoorRow:true,dk:'door',dcolor:c.v,dsize:s});});
+                ['S','M','L','SS','3S'].forEach(function(s){if((LINE_SIZES[selLine[0]]||[]).indexOf(s)>=0&&doorRowOk(c,'doorH',s))snapRows.push({item:'扉〈ホタ〉'+c.l,sub:s,isDoorRow:true,dk:'doorH',dcolor:c.v,dsize:s});});
               });
               snapRows.push({item:'棚板(SML・グレー)',key:'shelf',sub:'sml'});
               snapRows.push({item:'棚板(SML・ブラック)',key:'shelf_bk',sub:'sml'});
@@ -23287,7 +23319,7 @@ function PartsPage(p){
                 var co=lineColorObj(l);/* v19.18 修正31② */
                 var sz=sizeObj(l.size);
                 var lockObj=LOCK_TYPES.find(function(lt){return lt.v===l.lock;});
-                return (ln2?ln2.mark:'')+' '+(l.line==='sa'?'Sα':sz.l)+(co&&l.type!=='open'?' '+co.l:'')+(l.type==='open'?' オープン':'')+' '+lineSpecLabel(l,'')+(lockObj&&l.lock!=='none'?' '+lockObj.s:'')+'×'+l.qty;/* v18.34 ⑧追随: saはSα表記 */
+                return (ln2?ln2.mark:'')+' '+(l.line==='sa'?'Sα':sz.l)+(co&&l.type!=='open'?' '+co.l:'')+(l.type==='open'?' オープン':'')+' '+lineSpecLabel(l,'')+(lockObj&&l.lock!=='none'?' '+setLockName(lockObj):'')+'×'+l.qty;/* v18.34 ⑧追随: saはSα表記 */
               });
               var summary=detailLines.join(' / ');
               /* 部材集計（押さえている主要パーツを表示・日本語ラベル） v14.2 */
