@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.97（見積書にもアウトレットと書く）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.98（管理者/中辻は編集権限の順番待ちに入らず常に編集できる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -177,6 +177,12 @@ function springNameHas(name,list){
   var n=String(name||'').split('/').pop().replace(/[\s　]/g,'');
   return !!n&&(list||[]).some(function(k){return n.indexOf(k)>=0;});
 }
+/* ===== v19.98（2026-11-10 ユーザー指示「管理者/中辻の権限をログイン時は全ての権限を付与＋その他のログイン者による編集権限の影響を受けない・与えない」） =====
+   SPRING_RIGHTS.all の人（中辻）は、通常の画面でも春先でも
+   ・常に編集できる（先勝ちロックで読み取り専用にならない）
+   ・編集権限の順番待ち（先勝ち・渡す・管理者の指定）に入らない＝ほかの人の編集権限を取らない
+   同時に保存しても、案件・在庫・入庫予定はクラウドと突き合わせてから書く（v19.80 cloudSaveNormal）ので消し合わない。 */
+function isFreeEditor(name){return springNameHas(name,SPRING_RIGHTS.all);}
 function springOrderWhs(o){
   var ws={};
   function add(w){if(w)ws[w]=1;}
@@ -6930,7 +6936,7 @@ var SYSTEM_LOCK={primary:null,/* presenceKey of primary user */ acquiredAt:null,
 /* v18.49 修正６⑩: 営業(role='sales')はそもそも書込不可（roleReadOnly）なので、編集権限の順番待ちに入れない。
    従来は入った順だけで決めていたため「営業・営業・事務」の順にログインすると、
    営業2人が抜けるまで事務が編集できなかった。営業を候補から外し、事務・管理者だけで順番が回るようにする。 */
-function canHoldEditRight(name){return roleOf(name)!=='sales';}
+function canHoldEditRight(name){return roleOf(name)!=='sales'&&!isFreeEditor(name);}/* v19.98: 中辻も順番待ちに入れない */
 function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
   var sorted=(allKeys||[]).slice().sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
   /* v18.49 修正６⑩: presenceKey → 名前 の対応から営業ロールを除外した「編集権限を持てる人」だけの一覧を作る */
@@ -6945,7 +6951,7 @@ function resolveEditor(allKeys,users,overrideName,myKey,currentPrimary){
   var primaryKey=null;
   /* 1) 管理者が手動で編集者を指定(override)した場合のみ最優先（自動ではなく明示操作） */
   if(overrideName){
-    var cand=(users||[]).filter(function(u){return u.name===overrideName;}).sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
+    var cand=(users||[]).filter(function(u){return u.name===overrideName&&canHoldEditRight(u.name);}).sort(function(a,b){return (a.joinedAt||0)-(b.joinedAt||0);});
     if(cand.length)primaryKey=cand[0].presenceKey;
   }
   /* 2) v18.25 要望⑤: 入った順(先勝ち)を最優先で維持。現在の編集者がオンラインのままなら、
@@ -10887,7 +10893,7 @@ function App(){
          v18.25 要望⑤: 現編集者(SYSTEM_LOCK.primary)がオンラインなら維持＝吉野さんログインでも権限を奪わない。 */
       var res=resolveEditor(allKeys,users,SYSTEM_LOCK.overrideName,myPresenceKey.current,SYSTEM_LOCK.primary);
       SYSTEM_LOCK.primary=res.primaryKey;
-      var newRO=!res.amIPrimary&&allKeys.length>1;
+      var newRO=!res.amIPrimary&&allKeys.length>1&&!isFreeEditor(userName[0]);/* v19.98: 中辻は常に編集できる */
       /* v19.44 春先: 全体の先勝ちロックは使わず、倉庫別の権限（springCanEdit）で判定する。先勝ちは優先の人がいない倉庫の決め手に使う */
       if(SPRING){
         var pu=users.find(function(u){return u.presenceKey===res.primaryKey;});
@@ -11296,10 +11302,10 @@ function App(){
           onlineUsers[0].length>=2?('👥 '+onlineUsers[0].length+'人が同時利用中'):
           onlineUsers[0].length===1?'👤 あなたのみログイン中':
           '⏳ 接続中…',
-          roleReadOnly?h('span',{style:{color:'#975a16',marginLeft:6,fontSize:10}},'🔒 営業（閲覧専用）'):(isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'+(lockEditorName(onlineUsers[0])?'（編集中: '+lockEditorName(onlineUsers[0])+'）':'')):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},'✓ 編集権限',
+          roleReadOnly?h('span',{style:{color:'#975a16',marginLeft:6,fontSize:10}},'🔒 営業（閲覧専用）'):(isReadOnly[0]?h('span',{style:{color:'#DC2626',marginLeft:6,fontSize:10}},'🔒 読み取り専用'+(lockEditorName(onlineUsers[0])?'（編集中: '+lockEditorName(onlineUsers[0])+'）':'')):h('span',{style:{color:'var(--gn)',marginLeft:6,fontSize:10}},isFreeEditor(userName[0])?'✓ 編集権限（常に編集可・ほかの人の権限に影響しません）':'✓ 編集権限',
             /* v18.30 要望①: 保持者本人が権限を任意に渡せる(放棄)。ログイン順取得→放棄/ログアウトまで保持がルール */
             /* v18.49 修正６⑩: 渡せる相手（営業を除く事務・管理者）がいる時だけボタンを出す */
-            onlineUsers[0].filter(function(u){return u.name!==userName[0]&&canHoldEditRight(u.name);}).length>0?h('button',{className:'btn btn-xs btn-ol',style:{marginLeft:6,padding:'1px 6px',fontSize:9},title:'編集権限を次のユーザー（自分の次に古くからログイン中の事務・管理者）に渡します',onClick:releaseEditRight},'渡す'):null))
+            (!isFreeEditor(userName[0])&&onlineUsers[0].filter(function(u){return u.name!==userName[0]&&canHoldEditRight(u.name);}).length>0)?h('button',{className:'btn btn-xs btn-ol',style:{marginLeft:6,padding:'1px 6px',fontSize:9},title:'編集権限を次のユーザー（自分の次に古くからログイン中の事務・管理者）に渡します',onClick:releaseEditRight},'渡す'):null))
         ),
         onlineUsers[0].length>0?h('div',{className:'pf-users'},onlineUsers[0].map(function(u){
           var me=u.name===userName[0];
