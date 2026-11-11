@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.00（在庫に関係しない項目は編集権限が無くても直せる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.01（発注書・入庫依頼書の一覧が全員で共有されない不具合を修正）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -308,6 +308,8 @@ function docPick(d,keys){var o={};keys.forEach(function(k){if(d&&d[k]!==undefine
 function docOmit(d,keys){var o={};Object.keys(d||{}).forEach(function(k){if(keys.indexOf(k)<0)o[k]=d[k];});return o;}
 /* 春先の画面で、共通の項目（顧客・マスタ・貸与品など）を最後にクラウドと揃えたときの内容。変わったときだけ通常の行へ書き戻す */
 var _sharedSig='';
+var _sharedBaseK=null;/* v20.01: 最後にクラウドとそろえた共通の設定（項目ごと） */
+function sharedSigKNow(){try{var p=sharedPartOf(buildCloudDoc()),m={};Object.keys(p).forEach(function(k){m[k]=JSON.stringify(_canonJ(p[k]===undefined?null:p[k]));});return m;}catch(e){return null;}}
 function sharedPartOf(full){return docOmit(full,CLOUD_SPLIT_KEYS.concat(['_ts']));}
 function sharedSigNow(){try{return JSON.stringify(sharedPartOf(buildCloudDoc()));}catch(e){return '';}}
 /* もう一方（通常の画面なら春先、春先の画面なら通常）の案件・在庫。売上集計の「合算」用で、読むだけ */
@@ -536,7 +538,7 @@ function cloudLoad(cb){
         /* v19.55: 同時に保存しても消えないための基準（最後にクラウドと揃えた案件と、その版） */
         if(d0){cloudSetBaseSig(d0);/* v20.00 */CLOUD_BASE_ORDERS=normOrders(cloudDeep(d0.orders||[]));CLOUD_ROW_TS=res.data.updated_at||null;if(CLOUD_ROW_TS)cloudRememberTs(CLOUD_ROW_TS);CLOUD_BASE_STK=cloudStkOf(d0);CLOUD_BASE_INC=Array.isArray(d0.incoming)?cloudDeep(d0.incoming):null;}
         else{CLOUD_BASE_ORDERS=null;CLOUD_ROW_TS=null;CLOUD_BASE_STK=null;CLOUD_BASE_INC=null;CLOUD_BASE_SIG=null;}
-        _sharedSig=sharedSigNow();
+        _sharedSig=sharedSigNow();_sharedBaseK=sharedSigKNow();
         if(cb)cb(true,!!d0);
         loadOtherSide();/* v19.43: 春先の案件（売上集計の合算用） */
         return;
@@ -546,7 +548,7 @@ function cloudLoad(cb){
         applyCloudDoc(docOmit(d0,CLOUD_SPLIT_KEYS),{replace:true});
         OTHER_SIDE={orders:normOrders(d0.orders||[]),stk:(d0.stkSnapshot===STK_SNAPSHOT_DATE?d0.stk:null)||null,loaded:true};
       }
-      _sharedSig=sharedSigNow();
+      _sharedSig=sharedSigNow();_sharedBaseK=sharedSigKNow();
       if(SPRING_CFG.years.indexOf(SPRING_FY)<0){SPRING_CFG.years.push(SPRING_FY);SPRING_CFG.years.sort();}/* 初めての年度 → 次の保存で通常の行へ */
       supaClient.from(CLOUD_TABLE).select('doc,updated_at').eq('id',CLOUD_SPRING_ID).maybeSingle().then(function(r2){
         if(r2.error){console.warn('[Cloud] 春先の行の読込失敗',r2.error.message);CLOUD_READY=false;if(cb)cb(false);return;}
@@ -925,6 +927,10 @@ function cloudSaveNormal(userName){
       cloudMergeInc(row.doc.incoming,row.doc.nextIncId);/* v19.80: 入庫予定も番号ごとに突き合わせる */
       try{saveIncoming();}catch(e){}
       try{cloudTakeUnchangedShared(row.doc);}catch(e){console.warn('[Cloud] 共有の設定の取り込み失敗',e);}/* v20.00: 古い単価マスタ等で上書きしない */
+      /* v20.01（2026-11-11「事務/岩上で作成した SL-2026-001 が一覧にない」）: 発注書一覧などは番号ごとに足し合わせてから保存する。
+         従来は案件・在庫しか取り込まず、手元の一覧（ほかの人の新しい発注書が無い）でクラウドを丸ごと上書きしていた
+         （本番の ykPOList/gpPOList/irList は 10/8 以降ずっと空＝一覧は作った人の端末の中にしか無かった） */
+      applyCloudDoc({ykPOList:row.doc.ykPOList,gpPOList:row.doc.gpPOList,irList:row.doc.irList,gpPdfPw:row.doc.gpPdfPw},{replace:false});
       applyCloudDoc({orders:merged,deletedNos:row.doc.deletedNos||[],nextON:row.doc.nextON,editLog:Array.isArray(row.doc.editLog)?row.doc.editLog:undefined},{replace:false});/* v19.80: 変更履歴も足し合わせる */
       try{saveStock();}catch(e){}
       if(SPRING_ONCHANGE)SPRING_ONCHANGE();
@@ -946,10 +952,19 @@ function springPushShared(part,userName){
     supaClient.from(CLOUD_TABLE).select('doc').eq('id',CLOUD_STATE_ID).maybeSingle().then(function(res){
       var cur=res&&res.data&&res.data.doc;
       if(res.error||!cur){console.warn('[Cloud] 共通項目の書き戻し: 通常の行を読めませんでした');_sharedSig='';return;}
-      var nd=Object.assign({},cur,part,{_ts:Date.now()});
+      /* v20.01: 春先で変えていない設定は通常の行の最新のまま（古い単価マスタ等で上書きしない）。一覧は番号ごとに足し合わせる */
+      var send={},LISTK={ykPOList:1,gpPOList:1,irList:1};
+      Object.keys(part).forEach(function(k){
+        if(LISTK[k]){send[k]=ykPOListMerge(cur[k]||{},part[k]||{});return;}
+        if(k==='gpPdfPw'){try{send[k]=gpPwMerge(cur[k]||{},part[k]||{});}catch(e){send[k]=part[k];}return;}
+        if(_sharedBaseK&&_sharedBaseK[k]===JSON.stringify(_canonJ(part[k]===undefined?null:part[k])))return;
+        send[k]=part[k];
+      });
+      var nd=Object.assign({},cur,send,{_ts:Date.now()});
       _cloudSelfWrite=true;
       supaClient.from(CLOUD_TABLE).upsert({id:CLOUD_STATE_ID,doc:nd,updated_at:new Date().toISOString(),updated_by:userName||''}).then(function(r2){
         if(r2&&r2.error){console.warn('[Cloud] 共通項目の書き戻し失敗',r2.error.message);_sharedSig='';}
+        else if(_sharedBaseK){Object.keys(send).forEach(function(k){_sharedBaseK[k]=JSON.stringify(_canonJ(send[k]===undefined?null:send[k]));});}
         setTimeout(function(){_cloudSelfWrite=false;},800);
       },function(){_cloudSelfWrite=false;_sharedSig='';});
     },function(){_sharedSig='';});
@@ -1059,7 +1074,7 @@ function springMergeToNormal(by,cb){
         });
         SPRING_CFG=sc;
         OTHER_SIDE={orders:normOrders(nd.orders||[]),stk:nd.stk,loaded:true};
-        _sharedSig=sharedSigNow();
+        _sharedSig=sharedSigNow();_sharedBaseK=sharedSigKNow();
         saveAll();cloudSave(by,true);
         cb(true,{items:applied.length,qty:total});
       },function(e){_cloudSelfWrite=false;cb(false,'通常の在庫へ保存できませんでした');});
@@ -11271,7 +11286,7 @@ function App(){
                 OTHER_SIDE={orders:normOrders(row.doc.orders||[]),stk:(row.doc.stkSnapshot===STK_SNAPSHOT_DATE?row.doc.stk:null)||null,loaded:true};
                 if(_cloudSelfWrite)return;
                 applyCloudDoc(docOmit(row.doc,CLOUD_SPLIT_KEYS),{replace:false});
-                _sharedSig=sharedSigNow();
+                _sharedSig=sharedSigNow();_sharedBaseK=sharedSigKNow();
                 bump[1](function(v){return v+1;});
               })
               .on('postgres_changes',{event:'*',schema:'public',table:CLOUD_TABLE,filter:'id=eq.'+CLOUD_SPRING_ID},function(payload){
