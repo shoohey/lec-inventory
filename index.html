@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.01（発注書・入庫依頼書の一覧の共有を修正・こねこ便の送料の行は「送料」）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.02（発注書の印刷: 角印が切れない・小計欄を数量の列にそろえる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2743,7 +2743,10 @@ var KAKUIN_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALEAAACvCAYAAACy9T
 /* v19.82（2026-11-06 ユーザー「角印が90度違う→反時計回りに90度」「FAX番号に重なっている→会社住所（7-4-1）あたりに重ねる」）:
    画像を反時計回りに90度回した。押す位置は住所の文字の右端（7-4-1）に重ねる＝kakuinAddr(住所の文字) で包む。 */
 var KAKUIN_ADDR_POS='left:calc(100% - 8mm);bottom:-1.5mm';
-function kakuinAddr(addrHtml){return '<span style="position:relative;display:inline-block">'+addrHtml+kakuinHTML(KAKUIN_ADDR_POS)+'</span>';}
+/* v20.02（2026-11-11 ユーザー「発注書を印刷した時に角印の右端が切れている」）: 発注書は会社名の欄が用紙の右端近くにあり、
+   住所の右端から13mmはみ出す角印がプリンターの印刷できない余白にかかっていた → 発注書は住所の右端の内側に押す（KAKUIN_PO_POS） */
+var KAKUIN_PO_POS='right:-1mm;bottom:-1.5mm';
+function kakuinAddr(addrHtml,pos){return '<span style="position:relative;display:inline-block">'+addrHtml+kakuinHTML(pos||KAKUIN_ADDR_POS)+'</span>';}
 function kakuinHTML(pos){return '<img class="kakuin" src="'+KAKUIN_SRC+'" alt="" style="position:absolute;'+(pos||'right:-8mm;top:0')+';width:21mm;height:21mm;mix-blend-mode:multiply;pointer-events:none;-webkit-print-color-adjust:exact;print-color-adjust:exact">';}
 
 var RENTAL_SUFFIX='(学校保管備品)';
@@ -3190,13 +3193,13 @@ function charterPOHTML(order,cust){
   s+='<div class="hd"><div class="ttl">発注書</div><div class="no">注文番号&nbsp;<b>'+e(order.no)+'</b></div></div>';
   s+='<div class="row"><div><div class="to">'+(e(v.to)||'&nbsp;')+'　御中</div>';
   s+='<div class="f"><div>■件名：'+e(v.subject)+'</div><div>■納品日時：'+e(v.delivery)+'</div><div>■納入場所：'+e(v.dest)+'</div><div>■支払条件：'+e(v.payTerms)+'</div></div></div>';
-  s+='<div class="lec"><div class="nm">株式会社LEC</div><div>'+kakuinAddr('東京都足立区綾瀬7-4-1')+'</div><div>TEL 03-5849-5563 / FAX 03-5849-5564</div><div>担当：'+e(v.staff)+'</div></div></div>';
+  s+='<div class="lec"><div class="nm">株式会社LEC</div><div>'+kakuinAddr('東京都足立区綾瀬7-4-1',KAKUIN_PO_POS)+'</div><div>TEL 03-5849-5563 / FAX 03-5849-5564</div><div>担当：'+e(v.staff)+'</div></div></div>';
   s+='<div class="tot">合計金額&nbsp;<b>&yen;'+fm(am.total)+'</b>&nbsp;<span style="font-size:12px;font-weight:400">(消費税含む)</span></div>';
   s+='<table><thead><tr><th style="width:44%">品　　名</th><th style="width:10%">数量</th><th style="width:10%">単位</th><th style="width:16%">単価</th><th style="width:20%">金額</th></tr></thead><tbody>';
   s+='<tr><td>'+e(v.item)+'</td><td class="n">'+(am.qty?fm(am.qty):'')+'</td><td style="text-align:center">'+e(v.unit)+'</td><td class="n">'+(am.price?fm(am.price):'')+'</td><td class="n">'+(am.sub?fm(am.sub):'')+'</td></tr>';
   s+='<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr></tbody></table>';
   s+='<table class="sum" style="margin-top:0"><tbody>';
-  s+='<tr><td style="width:64%"></td><td class="l" style="width:16%">小計</td><td class="n" style="width:20%">'+fm(am.sub)+'</td></tr>';
+  s+='<tr><td style="width:44%"></td><td class="l" style="width:36%">小計</td><td class="n" style="width:20%">'+fm(am.sub)+'</td></tr>';/* v20.02: 小計の左端を数量の列の左罫線に */
   s+='<tr><td></td><td class="l">消費税(10%)</td><td class="n">'+fm(am.tax)+'</td></tr>';
   s+='<tr><td></td><td class="l">合計金額</td><td class="n"><b>'+fm(am.total)+'</b></td></tr></tbody></table>';
   s+='<div class="bk"><div class="h">備考</div>';
@@ -18266,7 +18269,7 @@ function ykPOHTML(st){
   s+='<div class="dt">'+(st.no?'発注書No. '+e(st.no)+'<br>':'')+e(ykPOJpDate(st.date))+'</div><div class="ttl">注文書</div>';
   s+='<div class="row"><div><div class="to">株式会社八木熊　御中</div>';
   s+='<table class="f"><tr><td class="k">件名</td><td>'+e(st.subject)+'</td></tr><tr><td class="k">納品場所</td><td>'+e(st.dest).replace(/\n/g,'<br>')+'</td></tr><tr><td class="k">納品希望日</td><td>'+e(st.want)+'</td></tr></table></div>';
-  s+='<div class="lec"><div class="nm">株式会社LEC</div><div>'+kakuinAddr('〒120-0005 東京都足立区綾瀬7-4-1')+'</div><div>TEL 03-5849-5563 / FAX 03-5849-5564</div><div>担当：'+e(st.staff)+'</div></div></div>';
+  s+='<div class="lec"><div class="nm">株式会社LEC</div><div>'+kakuinAddr('〒120-0005 東京都足立区綾瀬7-4-1',KAKUIN_PO_POS)+'</div><div>TEL 03-5849-5563 / FAX 03-5849-5564</div><div>担当：'+e(st.staff)+'</div></div></div>';
   s+='<div class="tot">合計金額&nbsp;<b>&yen;'+n1(am.total)+'</b>&nbsp;<span style="font-size:11px;font-weight:400">(消費税含む)</span></div>';
   s+='<table class="d"><thead><tr><th>八木熊品番</th><th>サイズ</th><th>品名</th><th>扉色</th><th>カギ枠</th><th>本体色</th><th>入数</th><th>単価</th><th>数量</th><th>小計</th><th>箱数</th></tr></thead><tbody>';
   lines.forEach(function(l){
@@ -19106,22 +19109,25 @@ function gpPOHTML(st){
     +'.lec{font-size:11px;line-height:1.7}.lec .nm{font-size:13px;font-weight:700}'
     +'.tot{margin:12px 0 10px;font-size:15px;font-weight:700}.tot b{display:inline-block;min-width:50mm;border-bottom:2px solid #000;font-size:18px;text-align:right;padding-right:4px;margin-left:8px}'
     +'table.d{border-collapse:collapse;width:100%}table.d th,table.d td{border:1px solid #000;padding:3px 5px;font-size:11.5px;height:17px}table.d th{background:#d9d9d9}td.n{text-align:right;white-space:nowrap}td.c{text-align:center}'
-    +'.sum{margin-left:auto;border-collapse:collapse;margin-top:-1px}.sum td{border:1px solid #000;padding:3px 6px;font-size:12px;min-width:32mm}.sum td.l{background:#d9d9d9;font-weight:700;text-align:center}'
+    +'table.d td.nb{border:none}table.d tr.sm td.l{background:#d9d9d9;font-weight:700;text-align:center;font-size:12px}table.d tr.sm td.n{font-size:12px}'
     +'.bk{margin-top:12px}.bk .h{font-weight:700}.bk .b{border:1px solid #000;padding:6px 8px;min-height:24mm;line-height:1.6;font-size:11.5px}'
     +'@media screen{body{background:#f3f4f6}.pg{background:#fff;margin:10px auto;box-shadow:0 2px 8px rgba(0,0,0,.15)}}';
   var s='<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>'+e(gpPOFileBase(st))+'</title><style>'+css+'</style></head><body><div class="pg">';
   s+='<div class="top">'+e(ykPOJpDate(st.date))+'<br>注文番号　'+e(st.no||'')+'</div><div class="ttl">'+e(gpPOTitle(st))+'</div>';
   s+='<div class="row"><div><div class="to">'+e(st.to||v.name||'')+'　御中</div><table class="f">';
   gpPOFields(st).map(function(f){return ['■'+f[1],st[f[0]]];}).forEach(function(x){s+='<tr><td>'+e(x[0])+'</td><td class="v">'+br(x[1]||'')+'</td></tr>';});
-  s+='</table></div><div class="lec"><div class="nm">'+e(GP_LEC.name)+'</div><div>'+kakuinAddr(e(GP_LEC.addr))+'</div><div>'+e(GP_LEC.tel)+'</div><div>担当：'+e(st.staff)+'</div></div></div>';
+  s+='</table></div><div class="lec"><div class="nm">'+e(GP_LEC.name)+'</div><div>'+kakuinAddr(e(GP_LEC.addr),KAKUIN_PO_POS)+'</div><div>'+e(GP_LEC.tel)+'</div><div>担当：'+e(st.staff)+'</div></div></div>';
   s+='<div class="tot">合計金額<b>&yen;'+n(am.total)+'</b>&nbsp;<span style="font-size:11px;font-weight:400">(消費税含む)</span></div>';
   s+='<table class="d"><thead><tr><th style="width:56%">品　　名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr></thead><tbody>';
   for(var i=0;i<Math.max(GP_MIN_ROWS,ls.length);i++){
     var l=ls[i]||{},q=gpPONum(l.qty),p=gpPONum(l.price);
     s+='<tr><td>'+br(l.name||'')+'</td><td class="n">'+n(q)+'</td><td class="c">'+((q!=null||p!=null)?e(l.unit||''):'')+'</td><td class="n">'+n(p)+'</td><td class="n">'+n(gpPOAmt(l))+'</td></tr>';
   }
+  /* v20.02 ユーザー「小計から合計金額欄の枠がその上の枠とずれている。小計の左端と数量列左罫線が合うように」→ 明細の表の続きの行にする */
+  [['小計',n(am.sub)],['消費税(10%)',n(am.tax)],['合計金額','<b>'+n(am.total)+'</b>']].forEach(function(x){
+    s+='<tr class="sm"><td class="nb"></td><td colspan="3" class="l">'+x[0]+'</td><td class="n">'+x[1]+'</td></tr>';
+  });
   s+='</tbody></table>';
-  s+='<table class="sum"><tr><td class="l">小計</td><td class="n">'+n(am.sub)+'</td></tr><tr><td class="l">消費税(10%)</td><td class="n">'+n(am.tax)+'</td></tr><tr><td class="l">合計金額</td><td class="n"><b>'+n(am.total)+'</b></td></tr></table>';
   var note=gpPONoteText(st);
   s+='<div class="bk"><div class="h">備考</div><div class="b">'+br(note)+'</div></div>';
   s+='</div></body></html>';
