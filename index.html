@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.01（発注書・入庫依頼書の一覧が全員で共有されない不具合を修正）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.01（発注書・入庫依頼書の一覧の共有を修正・こねこ便の送料の行は「送料」）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1712,7 +1712,7 @@ var SHIP_NAME_MIX='送料(混載便・時間指定不可)';
 /* v18.72 修正17⑲: チャーター便の既定文言に「日祝・お盆期間・年末年始別途」を追記（1枠2行になってもよい） */
 var SHIP_NAME_CHARTER='送料（9時チャーター便・軒先渡し）日祝・お盆期間・年末年始別途';
 /* ===== v20.00 修正依頼⑤: 送付方法に「こねこ便」。見積書記載の送料 500円・送付原価 420円（どちらも一律＝案件ごとに1回） ===== */
-var KONEKO_PRICE=500,KONEKO_COST=420,SHIP_NAME_KONEKO='送料（こねこ便）';
+var KONEKO_PRICE=500,KONEKO_COST=420,SHIP_NAME_KONEKO='送料';/* v20.01 ユーザー指示: 見積には「送料」だけ（こねこ便は書かない） */
 function shipRowNameDefault(order){
   if(order&&order.shipMethod==='koneko')return SHIP_NAME_KONEKO;
   return (order&&order.shipMethod==='charter')?SHIP_NAME_CHARTER:SHIP_NAME_MIX;
