@@ -534,8 +534,8 @@ function cloudLoad(cb){
       if(!SPRING){
         if(d0){applyCloudDoc(d0,{replace:true});}
         /* v19.55: 同時に保存しても消えないための基準（最後にクラウドと揃えた案件と、その版） */
-        if(d0){CLOUD_BASE_ORDERS=normOrders(cloudDeep(d0.orders||[]));CLOUD_ROW_TS=res.data.updated_at||null;if(CLOUD_ROW_TS)cloudRememberTs(CLOUD_ROW_TS);CLOUD_BASE_STK=cloudStkOf(d0);CLOUD_BASE_INC=Array.isArray(d0.incoming)?cloudDeep(d0.incoming):null;}
-        else{CLOUD_BASE_ORDERS=null;CLOUD_ROW_TS=null;CLOUD_BASE_STK=null;CLOUD_BASE_INC=null;}
+        if(d0){cloudSetBaseSig(d0);/* v20.00 */CLOUD_BASE_ORDERS=normOrders(cloudDeep(d0.orders||[]));CLOUD_ROW_TS=res.data.updated_at||null;if(CLOUD_ROW_TS)cloudRememberTs(CLOUD_ROW_TS);CLOUD_BASE_STK=cloudStkOf(d0);CLOUD_BASE_INC=Array.isArray(d0.incoming)?cloudDeep(d0.incoming):null;}
+        else{CLOUD_BASE_ORDERS=null;CLOUD_ROW_TS=null;CLOUD_BASE_STK=null;CLOUD_BASE_INC=null;CLOUD_BASE_SIG=null;}
         _sharedSig=sharedSigNow();
         if(cb)cb(true,!!d0);
         loadOtherSide();/* v19.43: 春先の案件（売上集計の合算用） */
@@ -587,7 +587,23 @@ function loadOtherSide(cb){
    ・在庫は数の増減で重ねる（クラウドの数＋手元で増減した分）。変更履歴は足し合わせ。仮押さえは案件から作り直す。 */
 var SPRING_BASE=null,SPRING_ROW_TS=null,_springSaving=false,_springSaveAgain=false;
 var SPRING_NOTIFY=null,SPRING_ONCHANGE=null;/* App が通知・再描画をつなぐ */
-function _jsonEq(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+/* ===== v20.00（2026-11-11 修正依頼④「案件作成や案件コピーした際、同じ案件が2個作成される」QT-2026-302/307/308/320/322） =====
+   【原因】クラウド（Supabase の jsonb）は保存した案件の項目の並び順を並べ替えて返す（例 no,wh,cid,date,lines…）。
+   　　　　突き合わせは JSON の文字列で比べていたため、中身が同じでも並び順が違うだけで「違う案件」と判断していた。
+   　　　　ほかの人が作った案件を通知（broadcast）で先に受け取った画面では、続いて届くクラウドの同じ案件と比べて
+   　　　　「同じ番号を別々に作った」と誤判定し、手元の方に新しい番号を振って保存していた（＝2個目の案件）。
+   【対応】① 比べるときは項目の並び順を無視する（_jsonEq）。
+   　　　　② 同じ番号で、顧客・作成者・作成日が同じなら同じ案件とみなし、新しい番号を振らない（orderSameOrigin）。 */
+function _canonJ(x){
+  if(Array.isArray(x))return x.map(_canonJ);
+  if(x&&typeof x==='object'){var o={};Object.keys(x).sort().forEach(function(k){if(x[k]!==undefined)o[k]=_canonJ(x[k]);});return o;}
+  return x;
+}
+function _jsonEq(a,b){if(a===b)return true;return JSON.stringify(_canonJ(a))===JSON.stringify(_canonJ(b));}
+function orderSameOrigin(l,r){
+  if(!l||!r||!l.cid||!l.date||!l.createdBy)return false;/* 顧客・作成日・作成者のどれかが空なら同じ案件とは言えない */
+  return String(l.cid||'')===String(r.cid||'')&&String(l.date||'')===String(r.date||'')&&String(l.createdBy||'')===String(r.createdBy||'');
+}
 function springSplitNow(){
   return JSON.parse(JSON.stringify({orders:ORDERS,nextON:nextON,held:HELD,stk:STK,incoming:INCOMING,nextIncId:nextIncId,
     editLog:(EDIT_LOG||[]).slice(-500),deletedNos:DELETED_ORDER_NOS.slice(-500),stkSnapshot:STK_SNAPSHOT_DATE}));
@@ -600,7 +616,11 @@ function springMergeList(L,B,R,key,onClash){
     var id=r[key],l=lm[id],b=bm[id];seen[id]=1;
     if(_jsonEq(l,b)){out.push(r);return;}/* 手元で変えていない → クラウド */
     if(l===undefined){if(b!==undefined&&!_jsonEq(r,b))out.push(r);return;}/* 手元で消した（クラウドで変わっていれば残す） */
-    if(b===undefined&&!_jsonEq(l,r)){out.push(r);var nl=onClash(l);seen[nl[key]]=1;out.push(nl);return;}/* 同じ番号を別々に作った */
+    if(b===undefined&&!_jsonEq(l,r)){
+      /* v20.00: 同じ案件（通知で先に届いた写しなど）なら番号を振り直さない。作った本人の画面は手元、ほかの人の画面はクラウドの内容 */
+      if(key==='no'&&orderSameOrigin(l,r)){out.push((r.createdBy&&r.createdBy===curUserName())?l:r);return;}
+      out.push(r);var nl=onClash(l);seen[nl[key]]=1;out.push(nl);return;
+    }/* 同じ番号を別々に作った */
     out.push(key==='no'?orderMergeOne(l,b,r):l);/* 手元で変えた → 手元（v19.100: 案件は片方が在庫に関係しない項目だけを直していれば項目ごとに重ねる） */
   });
   (L||[]).forEach(function(l){
@@ -822,10 +842,45 @@ function cloudApplyRemote(row){
   if(Array.isArray(doc.incoming)&&CLOUD_BASE_INC){cloudMergeInc(doc.incoming,doc.nextIncId);doc=docOmit(doc,['incoming']);}
   if(row.updated_at){CLOUD_ROW_TS=row.updated_at;cloudRememberTs(row.updated_at);}
   applyCloudDoc(doc,{replace:false});
+  cloudSetBaseSig(row.doc);/* v20.00: 共有の設定もこの版にそろった */
   if(notes.length){if(SPRING_NOTIFY)SPRING_NOTIFY(notes.join(' ／ '));cloudSave(USER_NAME_FOR_SAVE);}
   return true;
 }
 var USER_NAME_FOR_SAVE='';
+/* ===== v20.00（2026-11-11 単価マスタの反映が古い内容に戻っていた。10/8・10/27・11/6 午後の反映が消えた） =====
+   【原因】単価マスタ・顧客などの共有の設定は、保存のたびに画面が持っている内容で丸ごと上書きしていた。
+   　　　　更新の知らせを受け取り損ねた古い画面が保存すると、保存が重なったときの読み直し（tryMerge）でも
+   　　　　案件・在庫・入庫予定しか取り込まないため、古い単価マスタで上書きしていた。
+   【対応】最後にクラウドとそろえた時点の中身（クラウド側・手元側）を覚えておき、読み直したとき
+   　　　　「クラウドでは変わっていて、手元では変えていない」設定はクラウドの最新を取り込んでから保存する。
+   　　　　手元で変えた設定は従来どおり手元（後勝ち）。 */
+var CLOUD_LWW_KEYS=['priceMaster','costMaster','quoteOpts','honorifics','freightTables','vendorCodes','custs','users','charterLoads','rentalCfg','gpPdfPw','customParts','customIrisu','springCfg'];
+var CLOUD_BASE_SIG=null;/* {cloud:{key:sig},local:{key:sig}} */
+function cloudKeySig(v){return JSON.stringify(_canonJ(v===undefined?null:v));}
+function cloudSetBaseSig(cdoc){
+  if(!cdoc){CLOUD_BASE_SIG=null;return;}
+  var loc=buildCloudDoc(),b={cloud:{},local:{}};
+  CLOUD_LWW_KEYS.forEach(function(k){b.cloud[k]=cloudKeySig(cdoc[k]);b.local[k]=cloudKeySig(loc[k]);});
+  CLOUD_BASE_SIG=b;
+}
+function cloudTakeUnchangedShared(rdoc){
+  if(!CLOUD_BASE_SIG||!rdoc)return [];
+  var loc=buildCloudDoc(),patch={},took=[];
+  CLOUD_LWW_KEYS.forEach(function(k){
+    if(rdoc[k]===undefined||rdoc[k]===null)return;
+    var rs=cloudKeySig(rdoc[k]);
+    if(rs===CLOUD_BASE_SIG.cloud[k])return;/* クラウドは変わっていない */
+    if(cloudKeySig(loc[k])!==CLOUD_BASE_SIG.local[k])return;/* 手元で変えた → 手元のまま */
+    patch[k]=rdoc[k];took.push(k);
+  });
+  if(took.length){
+    applyCloudDoc(patch,{replace:false});
+    try{saveCusts();saveUsers();}catch(e){}
+    var loc2=buildCloudDoc();
+    took.forEach(function(k){CLOUD_BASE_SIG.cloud[k]=cloudKeySig(rdoc[k]);CLOUD_BASE_SIG.local[k]=cloudKeySig(loc2[k]);});
+  }
+  return took;
+}
 function cloudSaveNormal(userName){
   if(userName)USER_NAME_FOR_SAVE=userName;
   if(_cloudSaving){_cloudSaveAgain=true;return;}
@@ -850,6 +905,7 @@ function cloudSaveNormal(userName){
       }
       CLOUD_ROW_TS=r2.data[0].updated_at||ts;
       CLOUD_BASE_ORDERS=sent;
+      try{cloudSetBaseSig(doc);}catch(e){}/* v20.00: 保存した内容がクラウドの版 */
       if(sentStk)CLOUD_BASE_STK=sentStk;/* v19.80 */
       CLOUD_BASE_INC=sentInc;
       fin();
@@ -868,6 +924,7 @@ function cloudSaveNormal(userName){
       cloudMergeStk(cloudStkOf(row.doc));/* v19.80: 在庫も「クラウドの数＋手元の増減」 */
       cloudMergeInc(row.doc.incoming,row.doc.nextIncId);/* v19.80: 入庫予定も番号ごとに突き合わせる */
       try{saveIncoming();}catch(e){}
+      try{cloudTakeUnchangedShared(row.doc);}catch(e){console.warn('[Cloud] 共有の設定の取り込み失敗',e);}/* v20.00: 古い単価マスタ等で上書きしない */
       applyCloudDoc({orders:merged,deletedNos:row.doc.deletedNos||[],nextON:row.doc.nextON,editLog:Array.isArray(row.doc.editLog)?row.doc.editLog:undefined},{replace:false});/* v19.80: 変更履歴も足し合わせる */
       try{saveStock();}catch(e){}
       if(SPRING_ONCHANGE)SPRING_ONCHANGE();
@@ -1248,7 +1305,8 @@ var LOCK_TYPES=[
   {v:'cylinderShortC',l:'シリンダー錠(2本キー)カム短Cマスター',s:'シリンダー錠'},
   {v:'cylinderDMaster',l:'シリンダー錠(2本キー)カム短Dマスター',s:'シリンダー錠'},
   {v:'cylinderLMaster',l:'シリンダー錠(2本キー)カム短Lマスター',s:'シリンダー錠'},
-  {v:'cylinderExchange',l:'内筒交換錠',s:'シリンダー錠'},
+  {v:'cylinderExchange',l:'内筒交換錠（1本キー）',s:'シリンダー錠'},
+  {v:'cylinderExchange2',l:'内筒交換錠（2本キー）',s:'シリンダー錠'},/* v20.00 修正依頼② */
   {v:'cylinderExchangeSpare',l:'予備シリンダー（内筒交換錠用）',s:'シリンダー錠'},
   {v:'coinReturn',l:'コインリターン錠',s:'コインリターン錠'},
   {v:'none',l:'鍵なし',s:''}
@@ -1512,7 +1570,7 @@ function orderShipDate(order){return (order&&(order.shippedDate||order.shipSentD
 /* v18.48 修正６⑤: 案件の送付方法（混載/チャーター）・送付先（代理店宛/エンドユーザー宛）の表示名
    ★v18.89: v18.86 で同名の shipMethodLabel() を後から定義してしまい、この短い表記が
    　効かなくなっていた（案件管理のバッジが「混載便」表記に変わっていた）。名前を分けた。 */
-function shipMethodShortLabel(m){return m==='charter'?'チャーター':(m==='mix'?'混載':'');}
+function shipMethodShortLabel(m){return m==='charter'?'チャーター':(m==='mix'?'混載':(m==='koneko'?'こねこ便':''));}
 function shipDestLabel(d){return d==='end'?'エンド':(d==='cust'?'代理店':'');}
 function deliveryTermOf(order){
   if(order&&order.deliveryTerm)return order.deliveryTerm;
@@ -1638,7 +1696,12 @@ function discountRowKey(i){return i===0?'DISC':('DISC'+i);}
 var SHIP_NAME_MIX='送料(混載便・時間指定不可)';
 /* v18.72 修正17⑲: チャーター便の既定文言に「日祝・お盆期間・年末年始別途」を追記（1枠2行になってもよい） */
 var SHIP_NAME_CHARTER='送料（9時チャーター便・軒先渡し）日祝・お盆期間・年末年始別途';
-function shipRowNameDefault(order){return (order&&order.shipMethod==='charter')?SHIP_NAME_CHARTER:SHIP_NAME_MIX;}
+/* ===== v20.00 修正依頼⑤: 送付方法に「こねこ便」。見積書記載の送料 500円・送付原価 420円（どちらも一律＝案件ごとに1回） ===== */
+var KONEKO_PRICE=500,KONEKO_COST=420,SHIP_NAME_KONEKO='送料（こねこ便）';
+function shipRowNameDefault(order){
+  if(order&&order.shipMethod==='koneko')return SHIP_NAME_KONEKO;
+  return (order&&order.shipMethod==='charter')?SHIP_NAME_CHARTER:SHIP_NAME_MIX;
+}
 /* v19.28（2026-10-08 ユーザー回答）: 送料行の商品コード。送付方法で「混載便」を選んだ案件は単価マスタの混載便の行
    「F00063k」（マスタ一覧Excelの表記どおり。10/8 にユーザーが全角ｋ→半角kへ直した）、それ以外（チャーター便・未選択）は従来どおり F00063。 */
 var SHIP_CODE='F00063',SHIP_CODE_MIX='F00063k';
@@ -2795,7 +2858,8 @@ var PART_ADD_DEFS=[
   {k:'cylinderShortF',l:'シリンダー錠(2本キー)カム短Fマスター'},
   {k:'cylinderShortB',l:'シリンダー錠(2本キー)カム短Bマスター'},
   {k:'cylinderShortC',l:'シリンダー錠(2本キー)カム短Cマスター'},
-  {k:'cylinderExchange',l:'内筒交換錠'},
+  {k:'cylinderExchange',l:'内筒交換錠（1本キー）'},
+  {k:'cylinderExchange2',l:'内筒交換錠（2本キー）'},/* v20.00 修正依頼② */
   /* v19.94（鍵の発注書マスタ.xlsx・ユーザー「内筒交換錠予備＝予備シリンダー、内筒交換錠用スペアキーは単独で存在」）:
      在庫キー cylinderExchangeSpare は予備シリンダー（F00033）。スペアキー（F00143）・ケース（F00121）・DSS-909 スペアキー（F00036）・小判札（F00066）を追加 */
   {k:'cylinderExchangeSpare',l:'予備シリンダー（内筒交換錠用）'},
@@ -2898,7 +2962,7 @@ var PART_LABELS={
   /* v18.44 修正３⑥: シリンダー錠の名称を在庫表の記載と同一に統一 */
   cylinderLongStd:'シリンダー錠(2本キー)カム長スタンダード',cylinderLongF:'シリンダー錠(2本キー)カム長Fマスター',cylinderLongB:'シリンダー錠(2本キー)カム長Bマスター',
   cylinderShortStd:'シリンダー錠(2本キー)カム短スタンダード',cylinderShortF:'シリンダー錠(2本キー)カム短Fマスター',cylinderShortB:'シリンダー錠(2本キー)カム短Bマスター',cylinderShortC:'シリンダー錠(2本キー)カム短Cマスター',
-  cylinderExchange:'内筒交換錠',cylinderExchangeSpare:'予備シリンダー（内筒交換錠用）',
+  cylinderExchange:'内筒交換錠（1本キー）',cylinderExchange2:'内筒交換錠（2本キー）',cylinderExchangeSpare:'予備シリンダー（内筒交換錠用）',
   cylinderExchangeKey:'内筒交換錠用スペアキー',cylinderExchangeCase:'内筒交換錠ケース',cylinderSpareKey:'シリンダー錠スペアキー（DSS-909）',kobanFuda:'小判札（No有 連番）',/* v19.94 */
   coinReturn:'コインリターン錠',railSideSML:'SMLXL共通サイドレール',railBackSML:'SMLXL共通バックレール',railSideSS:'SS・3S共通サイドレール',railBackSS:'SS・3S共通バックレール',
   /* v18.76 修正18①: Sα（新台湾製）専用のレール。在庫キー railLong/railShort は v15 時代から新柏に実データがあったが、
@@ -3198,7 +3262,7 @@ var IRISU={
   dial:50,dialH110:50,dialH110new:50,dialH111:50,dialH111new:50,dialH112:50,dialImon:50,dialDST:50,totte:192,/* v19.13 入数訂正: トッテ(井門)は192 */
   searchKey:100,masterKey:100,
   padlock:150,
-  cylinder:100,cylinderLongStd:100,cylinderLongF:100,cylinderLongB:100,cylinderShortStd:100,cylinderShortF:100,cylinderShortB:100,cylinderShortC:100,cylinderExchange:100,cylinderExchangeSpare:100,cylinderMaster:50,
+  cylinder:100,cylinderLongStd:100,cylinderLongF:100,cylinderLongB:100,cylinderShortStd:100,cylinderShortF:100,cylinderShortB:100,cylinderShortC:100,cylinderExchange:100,cylinderExchange2:100,cylinderExchangeSpare:100,cylinderMaster:50,
   /* v19.13 入数訂正: レール4種・ネジ5種は入数が無く「1」扱いだった（出荷指示書で数量＝箱数になっていた）。
      ★Sα の横連結ネジ／目隠しネジは入数が違う（2000）ので IRISU_LINE.sa で持つ（在庫キーは日本製と共通）。 */
   coinReturn:50,railSideSML:400,railBackSML:400,railSideSS:500,railBackSS:500,jointScrew:1,capScrew:1,
@@ -3372,7 +3436,7 @@ var BOX_WEIGHT={
   dialH110:3.0,dialH110new:3.0,dialH111:3.0,dialH111new:3.0,dialH112:3.0,dialImon:3.0,dialDST:3.0,totte:5.0,
   searchKey:1.0,masterKey:1.0,
   padlock:5.0,
-  cylinder:3.0,cylinderLongStd:3.0,cylinderLongF:3.0,cylinderLongB:3.0,cylinderShortStd:3.0,cylinderShortF:3.0,cylinderShortB:3.0,cylinderShortC:3.0,cylinderExchange:3.0,cylinderExchangeSpare:3.0,cylinderMaster:3.0,
+  cylinder:3.0,cylinderLongStd:3.0,cylinderLongF:3.0,cylinderLongB:3.0,cylinderShortStd:3.0,cylinderShortF:3.0,cylinderShortB:3.0,cylinderShortC:3.0,cylinderExchange:3.0,cylinderExchange2:3.0,cylinderExchangeSpare:3.0,cylinderMaster:3.0,
   coinReturn:3.0,railSideSML:1.5,railBackSML:1.0,railSideSS:1.5,railBackSS:1.0,jointScrew:1.0,capScrew:0.5,doorPocket:1.0,carryBag:1.0,/* v18.82 修正21②の追加: 箱重量は暫定1.0kg（実測が分かれば在庫項目マスタで変更可） */
   railLong:1.5,railShort:1.0,/* v18.76 修正18① */
   /* v18.97 修正27①: 追加部材の箱重量は★暫定で同種の部材に合わせた */
@@ -3523,7 +3587,7 @@ var HELD={};
 })();
 
 /* v14: 鍵類は全製品ライン共通プール（A1）。物理在庫はラインを問わず合算 */
-var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock','cylinder','cylinderMaster','cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderExchange','cylinderExchangeSpare','coinReturn','dialH110new','dialH111new','dialH112','dialImon','searchKey','masterKey','dialOpnus','cylinderFMaster','cylinderBMaster','cylinderCMaster','cylinderDMaster','cylinderLMaster','dialKeyH110','dialKeyH111','dialKeyD003','dialKeyD018','dialKeyDST','padlockGreen','padlockBlack','padlockRed',
+var COMMON_STOCK_KEYS=['dialH110','dialH111','dialDST','dial','totte','padlock','cylinder','cylinderMaster','cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderExchange','cylinderExchange2','cylinderExchangeSpare','coinReturn','dialH110new','dialH111new','dialH112','dialImon','searchKey','masterKey','dialOpnus','cylinderFMaster','cylinderBMaster','cylinderCMaster','cylinderDMaster','cylinderLMaster','dialKeyH110','dialKeyH111','dialKeyD003','dialKeyD018','dialKeyDST','padlockGreen','padlockBlack','padlockRed',
   /* v18.97 修正27①「共通」: マスターキー5種・ダイヤル錠(D003) */
   'masterKeyF','masterKeyB','masterKeyC','masterKeyD','masterKeyL','dialD003',
   /* v19.58: マスターキー・チェンジマスターキー・キーバンド3種 */
@@ -3536,7 +3600,7 @@ function isCommonStockKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0;}
    仮押さえ時は在庫があればその分だけ押さえ、無い分は従来どおり発注待ち（未確保）に登録される。
    v18.45 修正３⑥追: 顧客指示によりシリンダー錠全種・内筒交換錠（＋予備）・コインリターン錠へ拡大。
    在庫が足りている場合は通常どおり在庫数を表示して押さえ、不足時のみ受発注扱い（NGにしない）。 */
-var ORDER_ONLY_KEYS=['cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderDMaster','cylinderLMaster','cylinderExchange','cylinderExchangeSpare','coinReturn',
+var ORDER_ONLY_KEYS=['cylinderLongStd','cylinderLongF','cylinderLongB','cylinderShortStd','cylinderShortF','cylinderShortB','cylinderShortC','cylinderDMaster','cylinderLMaster','cylinderExchange','cylinderExchange2','cylinderExchangeSpare','coinReturn',
   'cylinderExchangeKey','cylinderExchangeCase','cylinderSpareKey','kobanFuda'];/* v19.94 */
 function isOrderOnlyKey(key){return ORDER_ONLY_KEYS.indexOf(key)>=0;}
 /* v18.66 修正13②: 受注発注品は在庫を持たず都度メーカーから仕入れるため、見積に「仕入れ送料」を
@@ -3556,7 +3620,7 @@ var ORDER_SUPPLIER_MAP={
   /* v18.68 修正15②: カム短4種（スタンダード/F/B/Cマスター）も仕入先は井門 */
   cylinderShortStd:'井門',cylinderShortF:'井門',cylinderShortB:'井門',cylinderShortC:'井門',
   padlockGreen:'井門',padlockBlack:'井門',padlockRed:'井門',
-  cylinderExchange:'スターリー',cylinderExchangeSpare:'スターリー',coinReturn:'スターリー',
+  cylinderExchange:'スターリー',cylinderExchange2:'スターリー',cylinderExchangeSpare:'スターリー',coinReturn:'スターリー',
   numLabel:'サラ',
   /* v19.94: 鍵の発注書マスタ.xlsx の発注先 */
   cylinderExchangeKey:'スターリー',cylinderExchangeCase:'スターリー',cylinderSpareKey:'井門',kobanFuda:'サラ'
@@ -4478,7 +4542,7 @@ function cloneLinesForRepeat(srcLines){
     if(n.blocks)n.blocks=n.blocks.map(function(b){return Object.assign({},b);});/* v18.31: 複数ブロックの参照共有を防ぐ */
     if(n.colorBreakdown)n.colorBreakdown=n.colorBreakdown.map(function(c){return Object.assign({},c);});
     delete n._actualHeld;delete n._heldWh;delete n._hadActualHeld;delete n._shippedActualHeld;delete n._partialReleases;delete n._returned;/* v18.27: 返品フラグも除去。返品済み案件をリピート複製すると _returned が残り computeOrderParts(4967 if(ln._returned)return;) で新案件の部材が集計されないバグを修正 */
-    if(isJp2XLDoorBlocked(n.line,n.size)&&!n.noDoor){n.noDoor=true;n.lock='none';n.color='';delete n.colorBreakdown;}/* v18.32 要望⑥: jp2 XLの旧扉あり明細をリピート復元しても扉なしに強制 */
+    if(isJp2XLDoorBlocked(n.doorLine||n.line,n.size)&&!n.noDoor){n.noDoor=true;n.lock='none';n.color='';delete n.colorBreakdown;}/* v18.32 要望⑥: jp2 XLの旧扉あり明細をリピート復元しても扉なしに強制 */
     return n;
   });
 }
@@ -5688,6 +5752,7 @@ function charterQuotedFor(lines,wh,cust,tariff){
 /* 送付方法(''=未選択/'mix'=混載/'charter'=チャーター)に応じた見積送料。
    未選択と混載は従来どおり officialShipping。チャーターは表に該当が無ければ混載へフォールバックする。 */
 function shippingByMethod(lines,wh,cust,fallback,method,tariff){
+  if(method==='koneko')return KONEKO_PRICE;/* v20.00: こねこ便は一律 */
   if(method==='charter'){
     if(tariff==='manual')return 0;/* v19.81: 手入力（見積書作成画面で入れる） */
     var cq=charterQuotedFor(lines,wh,cust,tariff);
@@ -7239,7 +7304,8 @@ var LOCK_CODE_MAP={
   'cylinderShortC':['F00145','シリンダー錠（２本キー）マスター'],
   'cylinderDMaster':['F00145','シリンダー錠（２本キー）マスター'],
   'cylinderLMaster':['F00145','シリンダー錠（２本キー）マスター'],
-  'cylinderExchange':['F00029','シリンダー錠（内筒交換タイプ）'],
+  'cylinderExchange':['F00029-1','シリンダー錠（内筒交換タイプ）1本キー'],/* v20.00 修正依頼②: マスタの F00029 が1本キー・2本キーに分かれた */
+  'cylinderExchange2':['F00029-2','シリンダー錠（内筒交換タイプ）2本キー'],
   /* v19.94: 内筒交換用予備＝予備シリンダー（F00033）。従来は F00143（内筒交換錠用スペアキー）を引いていた → スペアキーは cylinderExchangeKey */
   'cylinderExchangeSpare':['F00033','予備シリンダー']
 };
@@ -8036,6 +8102,7 @@ function orderShipCost(order){
   var cust=CUSTS.find(function(c){return c.id===order.cid;});
   if(!cust||!(order.lines||[]).length)return {cost:0,ok:false,how:''};
   try{
+    if(order.shipMethod==='koneko')return {cost:KONEKO_COST,ok:true,how:'koneko'};/* v20.00: こねこ便の原価は一律 */
     if(order.shipMethod==='charter'){
       var fee=charterFeeOf(order,cust);
       if(fee&&fee.price>0)return {cost:fee.price+(fee.pickup||0),ok:true,how:'charter'};/* v19.84: ピックアップ料も原価 */
@@ -8927,6 +8994,7 @@ function canPickup(order){
 var SHIP_METHODS=[
   {v:'mix',l:'混載便'},
   {v:'charter',l:'チャーター便'},
+  {v:'koneko',l:'こねこ便'},/* v20.00 修正依頼⑤ */
   {v:'pickup',l:'引取り'},
   {v:'bring',l:'持参'}
 ];
@@ -12334,7 +12402,7 @@ function InvPage(p){
   var isJP=ln[0]==='jp01'||ln[0]==='jp2';
   var doorIsJP=doorLine==='jp01'||doorLine==='jp2';/* v19.79: 扉タイプ（同色/ホタ）は扉の製品ラインで決める（本体が台湾製で扉が日本製のときも選べる） */
   /* v18.33 要望⑤: SSWは扉なし製品のため、jp2×XLと同じ「扉なし強制」機構に乗せる（jp2XLNoDoor=強制扉なしフラグとして共用） */
-  var jp2XLNoDoor=isJp2XLDoorBlocked(ln[0],sz[0])||sz[0]==='SSW';/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ） */
+  var jp2XLNoDoor=isJp2XLDoorBlocked(doorLine,sz[0])||sz[0]==='SSW';/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ）。v20.00: 扉の製品ラインで判定（XL は扉を自動で台湾製にする） */
   function changeLine(v){ln[1](v);doorLn[1]('');/* v18.70 修正16②: 本体ラインを変えたら扉ラインも本体に合わせ直す */cl[1](defDoorColor(v));/* v18.76 修正18⑥: 既定は色未定 */var ss=LINE_SIZES[v]||[];sz[1](ss[0]||'S');}
   /* v18.70 修正16②: 扉ラインを変えたとき、選択中の色がそのラインに無ければ先頭色へ寄せる */
   function changeDoorLine(v){
@@ -12343,7 +12411,13 @@ function InvPage(p){
     if(nc.length&&!nc.find(function(c){return c.v===cl[0];}))cl[1](nc[0].v);
     multiColor[1](false);/* 色の品揃えが変わるため複数色配分はいったん解除 */
   }
-  ue(function(){if(doorLn[0]&&isJp2XLDoorBlocked(doorLn[0],sz[0]))changeDoorLine('');},[sz[0]]);/* v19.79: XL にしたら扉の Ver.2 を外す */
+  /* v20.00 修正依頼③: 日本製Ver.2 で XL を選んだら、アラートではなく扉を自動で台湾製の XL 扉にする（XL の扉は台湾製のみ）。
+     自動で台湾製にしたあと XL 以外へ戻したら、扉の製品ラインも本体と同じに戻す */
+  var xlTwAutoR=ur(false);
+  ue(function(){
+    if(isJp2XLDoorBlocked(doorLn[0]||ln[0],sz[0])){xlTwAutoR.current=true;changeDoorLine('tw');}
+    else if(xlTwAutoR.current&&sz[0]!=='XL'){xlTwAutoR.current=false;if(doorLn[0]==='tw'&&ln[0]!=='tw')changeDoorLine('');}
+  },[sz[0],ln[0],doorLn[0]]);
   /* Fix: sync lock state when switching to personal type (#16) */
   ue(function(){
     if(tp[0]==='personal'&&lk[0]==='none')lk[1]('dialH110new');
@@ -12494,7 +12568,7 @@ function InvPage(p){
     /* v18.55 修正９④: 元の案件が使っていた倉庫を優先選択として渡す（全量OKの倉庫が無くても倉庫未選択にならないように） */
     if(typeof doCheck==='function')doCheck(cloned,ro.wh||'');
     /* v18.32 要望⑥: 旧jp2 XL扉あり明細は clone時に扉・錠前を除外するため、黙って金額が変わらないよう明示通知 */
-    var strippedXLDoor=(ro.lines||[]).some(function(l){return isJp2XLDoorBlocked(l.line,l.size)&&!l.noDoor;});
+    var strippedXLDoor=(ro.lines||[]).some(function(l){return isJp2XLDoorBlocked(l.doorLine||l.line,l.size)&&!l.noDoor;});
     if(ro._loadMsg)p.toast(ro._loadMsg);else p.toast('リピート発注: '+(ro.no||'')+' の内容を読み込みました（見積書で足した行・並び順・単価・送料も引き継ぎます）。倉庫・在庫を確認して見積/仮押さえしてください'+(strippedXLDoor?'　※日本製Ver.2のXL扉は取扱がないため扉・錠前を除外しました（XL扉は台湾製をパーツ単品追加でご選択ください）':''));
     p.clearRepeat&&p.clearRepeat();
   },[p.repeatOrder]);
@@ -12994,7 +13068,7 @@ function InvPage(p){
     var totalShip=multiShipTotal({lines:clonedLinesM,wh:whA,whs:mwhs.slice()},simpleShipM);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var pt2=payTermsFor(cust);
-    var order={no:no,cid:cust.id,wh:whA,wh2:mwhs[1]||null,whs:mwhs,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
+    var order={no:no,cid:cust.id,wh:whA,wh2:mwhs[1]||null,whs:mwhs,status:'仮押さえ',date:td2(),lines:clonedLinesM,shipping:(shipMethod[0]==='koneko'?KONEKO_PRICE:totalShip)/* v20.00 */,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:pt2,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null};
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);
     p.toast(ovwTag()+'仮押さえ＆見積作成完了（'+mwhs.length+'倉庫）: '+no);
@@ -13262,7 +13336,7 @@ function InvPage(p){
     var totalShip=multiShipTotal({lines:clonedLines,wh:main,whs:whList.slice()},simpleShipA);
     var no=takeOrderNo('QT');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
     var ptA=payTermsFor(cust);
-    var order={no:no,cid:cust.id,wh:main,whs:whList.slice(),partWhAlloc:JSON.parse(JSON.stringify(partWhSel[0]||{}))/* v19.87 */,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:totalShip,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
+    var order={no:no,cid:cust.id,wh:main,whs:whList.slice(),partWhAlloc:JSON.parse(JSON.stringify(partWhSel[0]||{}))/* v19.87 */,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:(shipMethod[0]==='koneko'?KONEKO_PRICE:totalShip)/* v20.00 */,discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptA,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,unsecuredParts:unsecuredParts};
     if(second)order.wh2=second;
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);showQuote[1](true);showPartWh[1](false);
@@ -13505,6 +13579,9 @@ function InvPage(p){
             /* v18.32 要望⑥: jp2×XL＋扉の赤字アラート（この画面では扉を選択できない） */
             jp2XLNoDoor?h('div',{style:{marginBottom:6,padding:'5px 8px',background:sz[0]==='SSW'?'#EFF6FF':'#FEE2E2',border:'1px solid '+(sz[0]==='SSW'?'#93C5FD':'#FCA5A5'),borderRadius:5,fontSize:9,fontWeight:700,color:sz[0]==='SSW'?'#1e3a5f':'#DC2626',lineHeight:1.5}},
               sz[0]==='SSW'?'SSWは扉なし製品です（上下共通ボード1・SSサイド4・SSバックボード2）':'XLサイズの扉は台湾製になります。パーツ単品追加よりご選択ください'):null,
+            /* v20.00 修正依頼③: 日本製Ver.2 の XL は扉を自動で台湾製にしたことを知らせる */
+            (ln[0]==='jp2'&&sz[0]==='XL'&&doorLine==='tw'&&hasDoor[0])?h('div',{'data-xltwnote':1,style:{marginBottom:6,padding:'4px 8px',background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:5,fontSize:9,fontWeight:700,color:'#1e3a5f'}},
+              'XLサイズの扉は台湾製のみのため、扉は台湾製のXL扉になります'):null,
             /* v18.70 修正16②: 扉だけ別の製品ライン（日本製Ver.1・台湾製）を選べるようにする。
                本体がVer.2でも扉だけVer.1や台湾製、というケースがあるため（在庫限りの扉を使い切る運用）。
                選んだラインの在庫から照会・仮押さえ・出荷消費する。 */
@@ -13513,7 +13590,7 @@ function InvPage(p){
               h('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
                 [{id:'',mark:'＝',name:'本体と同じ'}].concat(DOOR_LINES).map(function(l){
                   var on=(doorLn[0]||'')===l.id;
-                  var noXL=l.id&&isJp2XLDoorBlocked(l.id,sz[0]);/* v19.79: 日本製Ver.2 は XL の扉が無い */
+                  var noXL=isJp2XLDoorBlocked(l.id||ln[0],sz[0]);/* v19.79: 日本製Ver.2 は XL の扉が無い（v20.00: 本体がVer.2 の「本体と同じ」も） */
                   return h('button',{key:l.id||'_same',className:'btn btn-xs '+(on?'btn-or':'btn-ol'),disabled:!!noXL,
                     title:noXL?'日本製Ver.2 には XL の扉がありません':(l.id?('扉だけ「'+l.name+'」の在庫から引き当てます'):'扉も本体と同じ製品ラインから引き当てます'),
                     onClick:function(){changeDoorLine(l.id);}},l.mark+' '+l.name);
@@ -13953,7 +14030,7 @@ function InvPage(p){
                  未選択のときは従来どおりの送料表記・見積送料。 */
               h('div',{style:{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}},
                 h('span',{style:{fontSize:8,fontWeight:700,color:'var(--g500)'}},'送付方法'),
-                [['mix','混載'],['charter','チャーター']].map(function(m){
+                [['mix','混載'],['charter','チャーター'],['koneko','こねこ便']].map(function(m){/* v20.00: こねこ便 */
                   return h('label',{key:m[0],style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3}},
                     h('input',{type:'checkbox',checked:shipMethod[0]===m[0],onChange:function(){shipMethod[1](shipMethod[0]===m[0]?'':m[0]);}}),
                     m[1]
@@ -14021,7 +14098,7 @@ function InvPage(p){
                     var q=shippingByMethod(lines[0],wr.whId,shipCust(),wr.ship?wr.ship.shipping:0,shipMethod[0],chTariff[0]);
                     var chOk=isCh?(charterQuotedFor(lines[0],wr.whId,shipCust(),chTariff[0])!=null):true;
                     return h('div',{style:{marginTop:2}},
-                      h('div',{style:{fontSize:11,fontWeight:700,color:isCh?'#c53030':'#276749'}},(isCh?'チャーター': '混載')+'送料: ¥'+fm(q)),
+                      h('div',{style:{fontSize:11,fontWeight:700,color:isCh?'#c53030':'#276749'}},(isCh?'チャーター':(shipMethod[0]==='koneko'?'こねこ便':'混載'))+'送料: ¥'+fm(q)),
                       isCh&&!chOk?h('div',{style:{fontSize:8,color:'#975a16'}},'※チャーター表に該当行先なし → 混載の見積運賃を表示'):null
                     );
                   })(),
@@ -20116,8 +20193,8 @@ var KEY_PO_MASTER={
     {id:'HN02',code:'F00028',nm:'4連ダイヤルロッカー錠　検索キー',opts:['H110','H111'],olbl:'キー番号',okeys:{'H110':'dialKeyH110','H111':'dialKeyH111'},tiers:[[100,500]]}]},
   SL:{ship:'送料（1箱 ¥1,000～）',items:[
     {id:'SL01',code:'F00030',nm:'コインリターン錠',opts:['100円','10円','500円'],olbl:'種類',key:'coinReturn',tiers:[[1,1950]]},
-    {id:'SL02',code:'F00029',nm:'内筒交換錠　W/1（1本キー）',key:'cylinderExchange',tiers:[[0,1350]]},
-    {id:'SL03',code:'F00029',nm:'内筒交換錠　W/2（2本キー）',key:'cylinderExchange',tiers:[[0,1700]]},
+    {id:'SL02',code:'F00029-1',nm:'内筒交換錠　W/1（1本キー）',key:'cylinderExchange',tiers:[[0,1350]]},
+    {id:'SL03',code:'F00029-2',nm:'内筒交換錠　W/2（2本キー）',key:'cylinderExchange2',tiers:[[0,1700]]},/* v20.00 */
     {id:'SL04',code:'F00033',nm:'予備シリンダー　W/1（1本キー）',key:'cylinderExchangeSpare',tiers:[[1,1000]]},
     {id:'SL05',code:'F00033',nm:'予備シリンダー　W/2（2本キー）',key:'cylinderExchangeSpare',tiers:[[1,1400]]},
     {id:'SL06',code:'F00143',nm:'内筒交換錠用スペアキー',key:'cylinderExchangeKey',tiers:[[1,1000]]},
@@ -21903,7 +21980,8 @@ function PartsPage(p){
     {label:'シリンダー錠(2本キー)カム短Fマスター',key:'cylinderShortF',cat:'lock',alias:['シリンダー錠(カム短F)']},
     {label:'シリンダー錠(2本キー)カム短Bマスター',key:'cylinderShortB',cat:'lock',alias:['シリンダー錠(カム短B)']},
     {label:'シリンダー錠(2本キー)カム短Cマスター',key:'cylinderShortC',cat:'lock',alias:['シリンダー錠(カム短C)']},
-    {label:'内筒交換錠',key:'cylinderExchange',cat:'lock'},
+    {label:'内筒交換錠（1本キー）',key:'cylinderExchange',cat:'lock'},
+    {label:'内筒交換錠（2本キー）',key:'cylinderExchange2',cat:'lock'},/* v20.00 */
     {label:'予備シリンダー（内筒交換錠用）',key:'cylinderExchangeSpare',cat:'lock',alias:['内筒交換用予備']},
     {label:'内筒交換錠用スペアキー',key:'cylinderExchangeKey',cat:'lock'},/* v19.94 */
     {label:'内筒交換錠ケース',key:'cylinderExchangeCase',cat:'lock'},
@@ -22111,7 +22189,8 @@ function PartsPage(p){
              （在庫キーは既存の cylinderDMaster/cylinderLMaster を継続使用。下部にあった単独行「シリンダー Dマスター/Lマスター」はここへ統合） */
           uniRows.push({item:'',variant:'(2本キー)カム短Dマスター',key:'cylinderDMaster',irisu:iGet('cylinderDMaster')});
           uniRows.push({item:'',variant:'(2本キー)カム短Lマスター',key:'cylinderLMaster',irisu:iGet('cylinderLMaster')});
-          uniRows.push({item:'',variant:'内筒交換錠',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
+          uniRows.push({item:'',variant:'内筒交換錠（1本キー）',key:'cylinderExchange',irisu:iGet('cylinderExchange')});
+          uniRows.push({item:'',variant:'内筒交換錠（2本キー）',key:'cylinderExchange2',irisu:iGet('cylinderExchange2')});/* v20.00 */
           uniRows.push({item:'',variant:'予備シリンダー（内筒交換錠用）',key:'cylinderExchangeSpare',irisu:iGet('cylinderExchangeSpare')});
           uniRows.push({item:'',variant:'内筒交換錠用スペアキー',key:'cylinderExchangeKey',irisu:iGet('cylinderExchangeKey')});/* v19.94 */
           uniRows.push({item:'',variant:'内筒交換錠ケース',key:'cylinderExchangeCase',irisu:iGet('cylinderExchangeCase')});
@@ -22555,7 +22634,8 @@ function PartsPage(p){
               snapRows.push({item:'シリンダー錠 カム短Fマスター',key:'cylinderShortF'});
               snapRows.push({item:'シリンダー錠 カム短Bマスター',key:'cylinderShortB'});
               snapRows.push({item:'シリンダー錠 カム短Cマスター',key:'cylinderShortC'});
-              snapRows.push({item:'シリンダー錠 内筒交換錠',key:'cylinderExchange'});
+              snapRows.push({item:'シリンダー錠 内筒交換錠（1本キー）',key:'cylinderExchange'});
+              snapRows.push({item:'シリンダー錠 内筒交換錠（2本キー）',key:'cylinderExchange2'});/* v20.00 */
               snapRows.push({item:'シリンダー錠 予備シリンダー（内筒交換錠用）',key:'cylinderExchangeSpare'});
               ['F','B','C','D','L'].forEach(function(mk){snapRows.push({item:mk+'マスターキー',key:'masterKey'+mk});});/* v18.97 修正27① */
               snapRows.push({item:'コインリターン錠',key:'coinReturn'});
@@ -23247,6 +23327,16 @@ function PartsPage(p){
           if(!(o.status==='出荷完了'||o.status==='納品完了'||o.status==='出荷指示'))return false;
           if(!o.lines.some(function(l){return l.line===selLine[0]||l.isFreeInput;}))return false;
           return orderHitsWh(o);/* v18.46 修正５⑥: 倉庫タブでの絞り込み */
+        });
+        /* v20.00 修正依頼①: 左から納品日（納品予定日）の早い順。日付の無い案件は右端に作成日順で並べる */
+        shipped=shipped.slice().sort(function(a,b){
+          var da=deliveryPlanMs(a),db=deliveryPlanMs(b);
+          if(da!=null&&db!=null&&da!==db)return da-db;
+          if(da!=null&&db==null)return -1;
+          if(da==null&&db!=null)return 1;
+          var ca=String(a.date||''),cb=String(b.date||'');
+          if(ca!==cb)return ca<cb?-1:1;
+          return String(a.no||'')<String(b.no||'')?-1:String(a.no||'')>String(b.no||'')?1:0;
         });
         if(!shipped.length)return h('p',{style:{textAlign:'center',color:'var(--g400)',padding:30,fontSize:14}},'出荷済みの案件はありません（'+(lineObj?lineObj.name:'')+(selWH[0]!=='all'?' / '+WH_MAP[selWH[0]].n:'')+'）');
         var uniR=[];
