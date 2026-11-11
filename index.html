@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.99（コピー再発注で見積書の行も引き継ぐ・発注書のPDF後ロック・入庫依頼書を出荷指示書の形に）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v19.100（在庫に関係しない項目は編集権限が無くても直せる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -601,7 +601,7 @@ function springMergeList(L,B,R,key,onClash){
     if(_jsonEq(l,b)){out.push(r);return;}/* 手元で変えていない → クラウド */
     if(l===undefined){if(b!==undefined&&!_jsonEq(r,b))out.push(r);return;}/* 手元で消した（クラウドで変わっていれば残す） */
     if(b===undefined&&!_jsonEq(l,r)){out.push(r);var nl=onClash(l);seen[nl[key]]=1;out.push(nl);return;}/* 同じ番号を別々に作った */
-    out.push(l);/* 手元で変えた → 手元 */
+    out.push(key==='no'?orderMergeOne(l,b,r):l);/* 手元で変えた → 手元（v19.100: 案件は片方が在庫に関係しない項目だけを直していれば項目ごとに重ねる） */
   });
   (L||[]).forEach(function(l){
     if(!l||l[key]==null||seen[l[key]])return;
@@ -610,6 +610,39 @@ function springMergeList(L,B,R,key,onClash){
     seen[l[key]]=1;out.push(l);
   });
   return out;
+}
+/* ===== v19.100（2026-11-11 ユーザー指示「在庫に係らない部分の編集は事務アカウントで権限関係なく」） =====
+   編集権限（先勝ち）が無くても直せる、在庫に関係しない案件の項目。
+   入金確認・請求書送付・帳票（請求書/納品書/物品受領書/出荷指示書/チャーター発注書）の記載内容の手修正・構成表記・
+   請求書の分割・件名・備考・納品予定日。★出荷日（shipDate）・明細・倉庫・ステータス・値引きは入れない（ユーザー指示）。 */
+var ORDER_FREE_KEYS=['paid','paidAt','paidBy','paidBank','paidSheets','invSent','docEdit','shipEdit','shipEdits','shipper','shipDocMode',
+  'cfgNotes','charterPO','invSplit','subject','notes','deliveryDate'];
+function orderDiffKeys(x,y){
+  x=x||{};y=y||{};var ks={};
+  Object.keys(x).concat(Object.keys(y)).forEach(function(k){if(!_jsonEq(x[k],y[k]))ks[k]=1;});
+  return Object.keys(ks);
+}
+function orderOnlyFree(keys){return keys.every(function(k){return ORDER_FREE_KEYS.indexOf(k)>=0;});}
+/* 手元 l・基準 b・クラウド r の同じ案件を重ねる。
+   ・手元が在庫に関係しない項目だけを直した → クラウドの案件に、手元で直した項目だけを書く（古い画面でも在庫・仮押さえを戻さない）
+   ・クラウド側が在庫に関係しない項目だけ直された → 手元の案件に、その項目だけを取り込む（手元で同じ項目を直していれば手元）
+   ・どちらも在庫に関係する項目を直した → 従来どおり手元 */
+function orderMergeOne(l,b,r){
+  if(!l||!b||!r)return l;
+  var rk=orderDiffKeys(r,b);
+  if(!rk.length)return l;
+  var lk=orderDiffKeys(l,b),o;
+  if(orderOnlyFree(lk)){
+    o=JSON.parse(JSON.stringify(r));
+    lk.forEach(function(k){if(l[k]===undefined)delete o[k];else o[k]=JSON.parse(JSON.stringify(l[k]));});
+    return o;
+  }
+  if(orderOnlyFree(rk)){
+    o=JSON.parse(JSON.stringify(l));
+    rk.forEach(function(k){if(lk.indexOf(k)>=0)return;if(r[k]===undefined)delete o[k];else o[k]=JSON.parse(JSON.stringify(r[k]));});
+    return o;
+  }
+  return l;
 }
 function springMergeNum(l,b,r){
   var isN=function(x){return typeof x==='number';};
@@ -10214,6 +10247,32 @@ function broadcastEdit(userName,detail){
 }
 /* v14.4: 案件管理のリアルタイム同期通知（ペイロードサイズチェック + STK は明示的に必要時のみ送信）
    ORDERS と HELD は仮押さえ即時反映のため必ず送信、STK は出荷処理時のみ更新するため別フラグ */
+/* v19.100: 在庫に関係しない項目を直したときの保存＋通知。
+   broadcastOrderUpdate は送り手の案件・仮押さえ・在庫を丸ごと送り、受け手はそれで置き換えるため、
+   古い画面の人（編集権限なし）が送ると編集中の人の画面が古い内容に戻ってしまう。
+   → 直した案件の ORDER_FREE_KEYS だけを送り、受け手はその項目だけを書き換える。クラウドへは cloudSave（項目ごとに重ねる）。 */
+function freeEditBroadcast(userName,detail,no){
+  cloudSave(userName);
+  if(!broadcastChannel)return;
+  try{
+    var o=ORDERS.find(function(x){return x.no===no;});
+    if(!o)return;
+    var patch={};ORDER_FREE_KEYS.forEach(function(k){patch[k]=(o[k]===undefined)?null:o[k];});
+    broadcastChannel.send({type:'broadcast',event:'order_update',payload:{user:userName,detail:detail,time:new Date().toLocaleTimeString('ja-JP'),freeEdit:{no:no,patch:patch}}});
+  }catch(e){console.warn('freeEditBroadcast failed',e);}
+}
+/* 受け手: 届いた項目だけを手元の案件に書く（ORDER_FREE_KEYS 以外は無視） */
+function applyFreeEdit(fe){
+  if(!fe||!fe.no||!fe.patch)return false;
+  var o=ORDERS.find(function(x){return x.no===fe.no;});
+  if(!o)return false;
+  Object.keys(fe.patch).forEach(function(k){
+    if(ORDER_FREE_KEYS.indexOf(k)<0)return;
+    var v=fe.patch[k];
+    if(v===null||v===undefined)delete o[k];else o[k]=v;
+  });
+  return true;
+}
 function broadcastOrderUpdate(userName,detail,opts){
   cloudSave(userName);/* v14.6: クラウド永続保存(テーブル未作成/オフライン時は no-op) */
   if(!broadcastChannel)return;
@@ -11009,6 +11068,11 @@ function App(){
         notif[1]('🔔 案件更新('+d.user+' '+d.time+'): '+d.detail+(d.heavy?' ⚠軽量同期':''));
         setTimeout(function(){notif[1](null);},6000);
         if(SPRING)return;/* v19.44 春先: 案件の丸ごと置き換えはしない（同時編集で他の人の変更を消さないため） */
+        /* v19.100: 在庫に関係しない項目の変更は、その案件のその項目だけを書く（案件・仮押さえ・在庫は置き換えない） */
+        if(d.freeEdit){
+          try{if(applyFreeEdit(d.freeEdit)){saveOrders();bump[1](function(v){return v+1;});}}catch(e){console.warn('freeEdit の適用に失敗',e);}
+          return;
+        }
         try{
           if(d.orders){
             d.orders=normOrders(d.orders);/* v14.7: lines欠落の不正payloadでも画面が落ちないよう正規化 */
@@ -15023,6 +15087,9 @@ function OrdersPage(p){
      既定はその人が編集できる側。画面内の読み取り専用の判定（RO_）はこれで決まる */
   var whGrp=us(SPRING?(function(){var me=curUserName();if(springNameHas(me,SPRING_RIGHTS.all))return 'all';if(springNameHas(me,SPRING_RIGHTS.amago))return 'amago';return 'main';})():'all');
   var RO_=p.isReadOnly||(SPRING&&(whGrp[0]==='all'?!(springCanEdit('amago')&&springCanEdit('main')):!springCanEdit(whGrp[0])));
+  /* v19.100: 在庫に関係しない項目（ORDER_FREE_KEYS）は、編集権限（先勝ち・春先の倉庫別）が無くても直せる。営業だけは従来どおり不可 */
+  var FREE_RO_=(roleOf(p.userName)==='sales')&&!TRAINING;
+  var FREE_RO_MSG='営業の権限では変更できません（事務の方へ依頼してください）';
   var showBom=us(false);/* v18.58 修正10①: 案件詳細の「部材内訳」を開いているか（案件詳細を開き直すたびに閉じる） */
   /* v18.46 修正４④/修正５③: 並び替え。既定は納品予定日の近い順（修正５③） */
   var sortKey=us('delivery');
@@ -15058,7 +15125,7 @@ function OrdersPage(p){
   var dlvEdit=us(null);
   /* 納品予定日を保存する。★order.deliveryDate は請求書・納品書の日付、出荷指示書の納品日時（自動値）にも使われる */
   function saveDeliveryDate(o,val){
-    if(RO_){p.toast('読み取り専用モード中は変更できません');return false;}
+    if(FREE_RO_){p.toast(FREE_RO_MSG);return false;}/* v19.100 */
     var lo=liveOrder(o)||o;
     if(isOrderLocked(lo)){p.toast('納品完了の案件は変更できません（ステータスを戻してから変更してください）');return false;}
     var v=String(val||'').trim();
@@ -15067,7 +15134,7 @@ function OrdersPage(p){
     if(v===before){dlvEdit[1](null);return true;}
     if(v)lo.deliveryDate=v;else delete lo.deliveryDate;
     saveAll();
-    broadcastOrderUpdate(p.userName||'',lo.no+' 納品予定日を変更（'+(before||'未設定')+' → '+(v||'未設定')+'）');
+    freeEditBroadcast(p.userName||'',lo.no+' 納品予定日を変更（'+(before||'未設定')+' → '+(v||'未設定')+'）',lo.no);
     p.toast('納品予定日を変更しました: '+(v||'未設定'));
     dlvEdit[1](null);p.bump&&p.bump();
     return true;
@@ -15212,7 +15279,7 @@ function OrdersPage(p){
   /* v19.07 口頭依頼: 請求書を分けた案件は紙ごとにチェックする。idx は紙の番号（0始まり）。
      ★1枚の案件は idx=0 だけなので、従来（v19.06 まで）とまったく同じ動きになる。 */
   function togglePaidSheet(o0,idx,on){
-    if(RO_){p.toast('読み取り専用モード中は入金確認を登録できません');return;}
+    if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
     var o=liveOrder(o0);
     var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0));
     var m=paidSheetsOf(o);
@@ -15230,12 +15297,12 @@ function OrdersPage(p){
     var lbl=n>1?('（'+(i+1)+'枚目）'):'';
     p.toast((on?'入金確認: ':'入金確認を解除: ')+o.no+lbl);
     saveAll();
-    broadcastOrderUpdate(p.userName||'',o.no+lbl+(on?' 入金確認':' 入金確認解除'));
+    freeEditBroadcast(p.userName||'',o.no+lbl+(on?' 入金確認':' 入金確認解除'),o.no);
     p.bump&&p.bump();
   }
   /* v19.93: 請求書送付のチェック（納品完了タブ）。入金確認と同じく納品完了の案件でも操作できる */
   function toggleInvSent(o0,idx,on){
-    if(RO_){p.toast('読み取り専用モード中は請求書送付を登録できません');return;}
+    if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
     var o=liveOrder(o0);
     var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0));
     var m=Object.assign({},o.invSent||{});
@@ -15245,22 +15312,22 @@ function OrdersPage(p){
     var lbl=n>1?('（'+(i+1)+'枚目）'):'';
     p.toast((on?'請求書送付: ':'請求書送付を解除: ')+o.no+lbl);
     saveAll();
-    broadcastOrderUpdate(p.userName||'',o.no+lbl+(on?' 請求書送付':' 請求書送付解除'));
+    freeEditBroadcast(p.userName||'',o.no+lbl+(on?' 請求書送付':' 請求書送付解除'),o.no);
     p.bump&&p.bump();
   }
   function setInvSentDate(o0,idx,at){
-    if(RO_){p.toast('読み取り専用モード中は送付日を変更できません');return;}
+    if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
     var o=liveOrder(o0),k=String(parseInt(idx)||0);
     if(!o.invSent||!o.invSent[k])return;
     o.invSent=Object.assign({},o.invSent);o.invSent[k]=Object.assign({},o.invSent[k],{at:at});
     saveAll();
-    broadcastOrderUpdate(p.userName||'',o.no+' 請求書の送付日');
+    freeEditBroadcast(p.userName||'',o.no+' 請求書の送付日',o.no);
     p.bump&&p.bump();
   }
   /* v19.08 口頭依頼: 入金日・口座の変更。チェック済みの紙だけが対象（未チェックなら何もしない）。
      ★o.paid が立っている（全枚そろっている）ときは案件直下の paidAt/paidBy/paidBank も追随させる。 */
   function setPaidSheetField(o0,idx,patch){
-    if(RO_){p.toast('読み取り専用モード中は入金内容を変更できません');return;}
+    if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
     var o=liveOrder(o0);
     var n=invSplitCount(o),i=Math.max(0,Math.min(n-1,parseInt(idx)||0)),k=String(i);
     var m=paidSheetsOf(o);
@@ -15270,7 +15337,7 @@ function OrdersPage(p){
     o.paidSheets=ps;
     if(o.paid){o.paidAt=ps[k].at;o.paidBy=ps[k].by;o.paidBank=ps[k].bank;}
     saveAll();
-    broadcastOrderUpdate(p.userName||'',o.no+(n>1?'（'+(i+1)+'枚目）':'')+' 入金内容を変更');
+    freeEditBroadcast(p.userName||'',o.no+(n>1?'（'+(i+1)+'枚目）':'')+' 入金内容を変更',o.no);
     p.bump&&p.bump();
   }
 
@@ -15759,7 +15826,7 @@ function OrdersPage(p){
                   (o.shipEdit&&o.shipEdit.delivery)||(o.shipEdits&&Object.keys(o.shipEdits).some(function(k){return o.shipEdits[k]&&o.shipEdits[k].delivery;}))
                     ?h('div',{style:{fontSize:8,color:'#975a16',lineHeight:1.4,maxWidth:160}},'※出荷指示書の納品日時は手修正されているため、そちらは変わりません'):null
                 )
-              :(!isOrderLocked(o)&&!RO_)?h('button',{className:'btn btn-xs btn-ol',style:{marginTop:3,fontSize:8,padding:'1px 5px'},title:'カレンダーから納品予定日を選んで変更します',
+              :(!isOrderLocked(o)&&!FREE_RO_)?h('button',{className:'btn btn-xs btn-ol',style:{marginTop:3,fontSize:8,padding:'1px 5px'},title:'カレンダーから納品予定日を選んで変更します',
                   onClick:function(){
                     /* 初期値は今の納品予定日（納期欄の文言しか無い案件は、日付として読めるときだけ入れる） */
                     var cur=String(o.deliveryDate||'');
@@ -15808,14 +15875,14 @@ function OrdersPage(p){
               function chk(i,text){
                 var st=sm[String(i)];
                 return h('div',{key:'is'+i},
-                  h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:RO_?'not-allowed':'pointer',color:st?'#1e3a5f':'var(--g500)'},
+                  h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:FREE_RO_?'not-allowed':'pointer',color:st?'#1e3a5f':'var(--g500)'},
                     title:st?('請求書送付済み'+(st.at?'（送付日 '+st.at+(st.by?' '+st.by:'')+'）':'')):'請求書を送ったらチェックを入れてください'},
-                    h('input',{type:'checkbox','data-invsentchk':o.no+':'+i,checked:!!st,disabled:!!RO_,onChange:function(e){toggleInvSent(o,i,e.target.checked);}}),
+                    h('input',{type:'checkbox','data-invsentchk':o.no+':'+i,checked:!!st,disabled:!!FREE_RO_,onChange:function(e){toggleInvSent(o,i,e.target.checked);}}),
                     text),
                   /* チェックを入れたら送付日（既定はチェックを入れた日。カレンダーで別の日に直せる） */
                   st?h('label',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'var(--g500)',marginLeft:16,marginTop:2}},'送付日',
                     h('input',{className:'inp',type:'date','data-invsentdate':o.no+':'+i,style:{fontSize:9,padding:'1px 3px',height:20,width:118},
-                      value:st.at||'',disabled:!!RO_,title:'請求書の送付日',
+                      value:st.at||'',disabled:!!FREE_RO_,title:'請求書の送付日',
                       onChange:function(e){setInvSentDate(o,i,e.target.value);}})):null,
                   st&&st.by?h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:1,marginLeft:16}},'記録: '+st.by):null);
               }
@@ -15866,9 +15933,9 @@ function OrdersPage(p){
                 function chk(i,text){
                   var st=pm[String(i)];
                   return h('div',{key:'ps'+i},
-                    h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:RO_?'not-allowed':'pointer',color:st?'#065F46':'var(--g500)'},
+                    h('label',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,fontSize:9,fontWeight:700,cursor:FREE_RO_?'not-allowed':'pointer',color:st?'#065F46':'var(--g500)'},
                       title:st?('入金確認済み'+(st.at?'（'+st.at+(st.by?' '+st.by:'')+'）':'')):'入金が確認できたらチェックを入れてください'},
-                      h('input',{type:'checkbox',checked:!!st,disabled:!!RO_,onChange:function(e){togglePaidSheet(o,i,e.target.checked);}}),
+                      h('input',{type:'checkbox',checked:!!st,disabled:!!FREE_RO_,onChange:function(e){togglePaidSheet(o,i,e.target.checked);}}),
                       text
                     ),
                     /* ===== v19.08 口頭依頼: チェックを入れたら入金日（カレンダー）と口座（選択式）を入れる =====
@@ -15876,11 +15943,11 @@ function OrdersPage(p){
                     st?h('div',{style:{marginLeft:16,marginTop:2,display:'flex',flexDirection:'column',gap:2}},
                       h('label',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'var(--g500)'}},'入金日',
                         h('input',{className:'inp',type:'date',style:{fontSize:9,padding:'1px 3px',height:20,width:118},
-                          value:st.at||'',disabled:!!RO_,title:'入金日',
+                          value:st.at||'',disabled:!!FREE_RO_,title:'入金日',
                           onChange:function(e){setPaidSheetField(o,i,{at:e.target.value});}})),
                       h('label',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'var(--g500)'}},'口座',
                         h('select',{className:'inp',style:{fontSize:9,padding:'1px 3px',height:20,width:118},
-                          value:st.bank||'',disabled:!!RO_,title:'入金された口座',
+                          value:st.bank||'',disabled:!!FREE_RO_,title:'入金された口座',
                           onChange:function(e){setPaidSheetField(o,i,{bank:e.target.value});}},
                           st.bank?null:h('option',{value:''},'（未選択）'),
                           PAID_BANKS.map(function(b){return h('option',{key:b,value:b},b);})))
@@ -16141,13 +16208,22 @@ function OrdersPage(p){
            v18.49 修正６⑨: 納品完了の案件は編集不可 */
         h('button',{className:'btn btn-tl',style:isOrderLocked(detail[0])?{opacity:.35,cursor:'not-allowed'}:null,
           title:isOrderLocked(detail[0])?'納品完了の案件は編集できません（下のステータス遷移で差し戻してから編集してください）':'',onClick:function(){
-          if(RO_){p.toast('読み取り専用モード中は編集できません');return;}
+          if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100: 件名・備考は編集権限が無くても直せる（値引きは編集権限が必要） */
           if(isOrderLocked(detail[0])){p.toast('納品完了の案件は編集できません。ステータスを差し戻してから編集してください');return;}
           var od=liveOrder(detail[0]);/* v18.68 修正15⑧: ORDERS内の実体を書き換える */
           var newSubject=prompt('件名を編集',od.subject||'');
           if(newSubject===null)return;
           var newNotes=prompt('備考を編集',od.notes||'');
           if(newNotes===null)return;
+          if(RO_){
+            /* v19.100: 編集権限が無いときは件名・備考だけ（値引きは金額なので従来どおり編集権限が必要） */
+            od.subject=newSubject;od.notes=newNotes;
+            p.toast('案件を更新しました（件名・備考）: '+od.no+'　※値引きの変更は編集権限が必要です');
+            detail[1](Object.assign({},od));
+            saveAll();
+            freeEditBroadcast(p.userName||'',od.no+' 件名・備考を編集',od.no);
+            return;
+          }
           /* v18.62 修正12②: 値引きは項目名付きの複数行になったため、ここは合計値の編集に限定する。
              金額を変えたときだけ1項目へまとめ直す（変えなければ項目別の内訳はそのまま残す）。 */
           var dRows=discountRowsOf(od),dSum=discountSum(dRows);
@@ -16162,6 +16238,9 @@ function OrdersPage(p){
           p.toast('案件を更新しました: '+od.no);
           detail[1](Object.assign({},od));/* force rerender */
           saveAll();
+          /* v19.100: 従来は端末内の保存だけだった → クラウドへも保存する */
+          if(dVal!==dSum)broadcastOrderUpdate(p.userName||'',od.no+' 案件を編集');
+          else freeEditBroadcast(p.userName||'',od.no+' 件名・備考を編集',od.no);
         }},'編集'),
         /* 案件の削除（仮押さえ解除も同時に実施） v14 Codex P2対応: 読み取り専用チェック
            v18.49 修正６⑨: 納品完了の案件は削除不可 */
@@ -16902,14 +16981,14 @@ function OrdersPage(p){
         footer:h('div',{style:{display:'flex',gap:6}},
           h('button',{className:'btn btn-ol',onClick:function(){cfgEdit[1](null);}},'キャンセル'),
           h('button',{className:'btn btn-rd',onClick:function(){
-            if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
+            if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
             var o2=ORDERS.find(function(x){return x.no===m.no;});
             if(!o2){p.toast('案件が見つかりません');return;}
             var cn=Object.assign({},o2.cfgNotes||{});
             m.rows.forEach(function(r){if(m.has[r.rk])cn[r.rk]=m.vals[r.rk]||'';else delete cn[r.rk];});
             if(Object.keys(cn).length)o2.cfgNotes=cn;else delete o2.cfgNotes;
             saveAll();
-            broadcastOrderUpdate(p.userName||'',o2.no+' 構成表記を手修正');
+            freeEditBroadcast(p.userName||'',o2.no+' 構成表記を手修正',o2.no);
             p.toast('構成表記を保存しました（見積書・請求書・納品書・物品受領書に反映されます）');
             cfgEdit[1](null);p.bump&&p.bump();
           }},'保存'))},
@@ -17072,12 +17151,12 @@ function OrdersPage(p){
           h('button',{className:'btn btn-ol',onClick:function(){invSplitModal[1](null);}},'キャンセル'),
           !chk.ok?h('span',{style:{fontSize:10,color:'#991B1B',fontWeight:700}},'⚠ 直す点があります（保存はできます）'):null,
           h('button',{className:'btn btn-rd',onClick:function(){
-            if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
+            if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
             var o2=liveOrder({no:m.no});
             if(!o2||!o2.no){invSplitModal[1](null);return;}
             if(m.n<=1)delete o2.invSplit;else o2.invSplit={n:m.n,alloc:m.alloc};
             saveAll();
-            broadcastOrderUpdate(p.userName||'',o2.no+' 請求書の分割を'+(m.n<=1?'解除':m.n+'枚に設定'));
+            freeEditBroadcast(p.userName||'',o2.no+' 請求書の分割を'+(m.n<=1?'解除':m.n+'枚に設定'),o2.no);
             p.toast(m.n<=1?'請求書・納品書の分割を解除しました':'請求書と納品書を'+m.n+'枚に分けました');
             invSplitModal[1](null);p.bump&&p.bump();
           }},'保存')
@@ -17205,7 +17284,7 @@ function OrdersPage(p){
       var fee=charterFeeOf(o,c);
       var am=charterAmounts(charterPOValues(Object.assign({},o,{charterPO:v}),c));
       function persist(){
-        if(RO_){p.toast('読み取り専用モード中は保存できません');return null;}
+        if(FREE_RO_){p.toast(FREE_RO_MSG);return null;}/* v19.100 */
         var o2=liveOrder(m.order)||m.order,e={};
         CHARTER_PO_KEYS.forEach(function(k){var x=v[k];if(x!==undefined&&x!==null&&String(x)!==''&&String(x)!==String(a[k]))e[k]=String(x);});
         if(v.load==='-')e.load='-';
@@ -17216,7 +17295,7 @@ function OrdersPage(p){
         delete e.loadDetail;/* 住所・電話は場所の記録（CHARTER_LOADS）から出す */
         if(Object.keys(e).length)o2.charterPO=e;else delete o2.charterPO;
         saveAll();
-        broadcastOrderUpdate(p.userName||'',o2.no+' チャーター発注書の記載内容');
+        freeEditBroadcast(p.userName||'',o2.no+' チャーター発注書の記載内容',o2.no);
         p.bump&&p.bump();
         return o2;
       }
@@ -17309,20 +17388,20 @@ function OrdersPage(p){
         footer:h('div',{style:{display:'flex',gap:6}},
           h('button',{className:'btn btn-ol',onClick:function(){docEditModal[1](null);}},'キャンセル'),
           h('button',{className:'btn btn-ol',title:'この帳票の手修正を消して自動値に戻す',onClick:function(){
-            if(RO_){p.toast('読み取り専用モード中は変更できません');return;}
+            if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
             var o3=liveOrder(m.order)||m.order;
             if(!hasDocEdit(o3,m.docType)){docEditModal[1](null);return;}
             var map=Object.assign({},o3.docEdit||{});delete map[m.docType];
             if(Object.keys(map).length)o3.docEdit=map;else delete o3.docEdit;
             saveAll();
-            broadcastOrderUpdate(p.userName||'',o3.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'の手修正をクリア');
+            freeEditBroadcast(p.userName||'',o3.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'の手修正をクリア',o3.no);
             p.toast('手修正をクリアしました（自動値に戻ります）');docEditModal[1](null);p.bump&&p.bump();
           }},'自動値に戻す'),
           h('button',{className:'btn btn-rd',onClick:function(){
-            if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
+            if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
             var o2=applyDocEdit(m);
             saveAll();
-            broadcastOrderUpdate(p.userName||'',o2.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'を手修正');
+            freeEditBroadcast(p.userName||'',o2.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'を手修正',o2.no);
             p.toast(hasDocEdit(o2,m.docType)?'手修正を保存しました（'+(DOC_TYPE_LABELS[m.docType]||'')+'の出力に反映されます）':'手修正なし（自動値のまま）');
             docEditModal[1](null);p.bump&&p.bump();
           }},'保存')
@@ -17436,20 +17515,20 @@ function OrdersPage(p){
       footer:h('div',{style:{display:'flex',gap:6}},
         h('button',{className:'btn btn-ol',onClick:function(){shipEditModal[1](null);}},'キャンセル'),
         h('button',{className:'btn btn-ol',title:'この案件の手修正をすべて消して自動値に戻す（全シートぶん）',onClick:function(){
-          if(RO_){p.toast('読み取り専用モード中は変更できません');return;}
+          if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
           var o3=liveOrder(shipEditModal[0].order)||shipEditModal[0].order;
           if(!o3.shipEdit&&!o3.shipEdits){shipEditModal[1](null);return;}
           delete o3.shipEdit;delete o3.shipEdits;/* v18.89 修正25②: 紙ごとの手修正もまとめて消す */
           saveAll();
-          broadcastOrderUpdate(p.userName||'',o3.no+' 出荷指示書の手修正をクリア');
+          freeEditBroadcast(p.userName||'',o3.no+' 出荷指示書の手修正をクリア',o3.no);
           p.toast('手修正をクリアしました（自動値に戻ります）');shipEditModal[1](null);p.bump&&p.bump();
         }},'自動値に戻す'),
         h('button',{className:'btn btn-rd',onClick:function(){
-          if(RO_){p.toast('読み取り専用モード中は保存できません');return;}
+          if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
           var m0=shipEditModal[0];
           var o2=applyShipEdit(m0);
           saveAll();
-          broadcastOrderUpdate(p.userName||'',o2.no+' 出荷指示書を手修正');
+          freeEditBroadcast(p.userName||'',o2.no+' 出荷指示書を手修正',o2.no);
           p.toast((o2.shipEdit||o2.shipEdits)?'手修正を保存しました（出荷指示書の出力に反映されます）':'手修正なし（自動値のまま）');
           shipEditModal[1](null);p.bump&&p.bump();
         }},'保存'))},
