@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.02（発注書の印刷: 角印が切れない・小計欄を数量の列にそろえる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.03（鍵の発注書: 納入場所は「下記備考欄参照」・キーオメイトの色）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -18933,6 +18933,7 @@ function gpPODefaults(vid,userName){
   var v=gpVendor(vid)||{},nm=gpStaffName(userName);
   var o={vendor:vid,no:'',uid:'',date:ykPOYmd(),to:v.name||'',office:0,subject:'',due:'最短',place:'弊社(東京)',pay:v.pay||'末締め翌月末振込支払い',staff:nm,
     lines:[{id:1,name:'',qty:'',unit:'個',price:''}],note:'※納期が分かり次第ご連絡ください。',ship:gpShipText(YK_PO_DESTS[0],nm),memo:''};
+  if(v.cat==='key')o.place=GP_KEY_PLACE;/* v20.03 */
   if(v.work){
     o.due='';o.time='9:00～17:00(1時間休憩含む)';o.place='';o.ship='';o.lines=[{id:1,name:'',qty:'',unit:'名',price:''}];
     o.note='【弊社担当者】\n　'+nm+'　/　';
@@ -18973,6 +18974,12 @@ function gpPOFields(st){
   if(v.fields)return v.fields;
   return [['subject','件名'],['due',v.charter?'納品日時':'納品期日'],['place','納入場所'],['pay','支払条件']];
 }
+/* ===== v20.03（2026-11-11 修正依頼.docx ＜修正依頼２＞①「鍵の発注書入力について納入場所欄を『下記備考欄参照』に統一」） =====
+   鍵の業者（cat:'key'＝井門・日乃本錠前・スターリーロッカーズ・サラインテリアシステム）は納入場所を固定する。
+   画面の入力欄は変えられない表示にし、印刷・Excel も必ずこの文にする（前の下書き・一覧の記録に「弊社(東京)」が残っていても） */
+var GP_KEY_PLACE='下記備考欄参照';
+function gpPOFixed(st,k){var v=gpVendor(st&&st.vendor)||{};return (k==='place'&&v.cat==='key')?GP_KEY_PLACE:null;}
+function gpPOVal(st,k){var f=gpPOFixed(st,k);return f!=null?f:(st?st[k]:'');}
 function gpPODueLabel(st){return gpPOFields(st).filter(function(f){return f[0]==='due';}).map(function(f){return f[1];})[0]||'納品期日';}
 function gpPOFileBase(st){
   var v=gpVendor(st.vendor)||{},sj=String(st.subject||'').replace(/[\\\/:*?"<>|\r\n]+/g,' ').trim();
@@ -19040,7 +19047,7 @@ function gpPOBuildXlsx(st){
   cell('F3',15,'s','注文番号');cell('G3',15,'s',st.no||'');
   cell('B6',2,'s',st.to||v.name||'');merge('B6','C6');box('B','C',6,2);cell('D6',2,'s','御中');ht(6,26);
   cell('E7',4,'s',GP_LEC.name);merge('E7','G7');
-  var lab=gpPOFields(st).map(function(f){return ['■'+f[1],st[f[0]]];});
+  var lab=gpPOFields(st).map(function(f){return ['■'+f[1],gpPOVal(st,f[0])];});/* v20.03 */
   lab.forEach(function(x,i){var r=8+i;cell('B'+r,3,'s',x[0]);cell('C'+r,18,'s',x[1]||'');merge('C'+r,'D'+r);box('C','D',r,18);});
   /* 欄が5つ以上なら、合計金額・明細をその分下げる（4つのとき 合計金額=13行・見出し=15行・明細=16行〜） */
   var R0=Math.max(0,lab.length-4),rTot=13+R0,rHd=15+R0;
@@ -19115,7 +19122,7 @@ function gpPOHTML(st){
   var s='<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>'+e(gpPOFileBase(st))+'</title><style>'+css+'</style></head><body><div class="pg">';
   s+='<div class="top">'+e(ykPOJpDate(st.date))+'<br>注文番号　'+e(st.no||'')+'</div><div class="ttl">'+e(gpPOTitle(st))+'</div>';
   s+='<div class="row"><div><div class="to">'+e(st.to||v.name||'')+'　御中</div><table class="f">';
-  gpPOFields(st).map(function(f){return ['■'+f[1],st[f[0]]];}).forEach(function(x){s+='<tr><td>'+e(x[0])+'</td><td class="v">'+br(x[1]||'')+'</td></tr>';});
+  gpPOFields(st).map(function(f){return ['■'+f[1],gpPOVal(st,f[0])];}).forEach(/* v20.03 */function(x){s+='<tr><td>'+e(x[0])+'</td><td class="v">'+br(x[1]||'')+'</td></tr>';});
   s+='</table></div><div class="lec"><div class="nm">'+e(GP_LEC.name)+'</div><div>'+kakuinAddr(e(GP_LEC.addr),KAKUIN_PO_POS)+'</div><div>'+e(GP_LEC.tel)+'</div><div>担当：'+e(st.staff)+'</div></div></div>';
   s+='<div class="tot">合計金額<b>&yen;'+n(am.total)+'</b>&nbsp;<span style="font-size:11px;font-weight:400">(消費税含む)</span></div>';
   s+='<table class="d"><thead><tr><th style="width:56%">品　　名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr></thead><tbody>';
@@ -19308,7 +19315,12 @@ function GpPOPanel(p){
   var cin={boxSizing:'border-box',fontSize:12,padding:'3px 5px',border:'1px solid var(--g300)',borderRadius:3,fontFamily:'inherit'};
   var offs=ven.offices||[],off=offs[+v.office||0]||offs[0]||{};
   var shipPreset=YK_PO_DESTS.map(function(d){return gpShipText(d,v.staff);}).indexOf(v.ship);
-  function fld(k,label,ph,span){return h('label',{style:span?{gridColumn:'span '+span}:null},h('span',{style:lab},label),h('input',{type:'text',value:v[k]||'',placeholder:ph||'','data-gpfield':k,style:inp,onChange:function(ev){set(k,ev.target.value);}}));}
+  function fld(k,label,ph,span){
+    var fx=gpPOFixed(v,k);/* v20.03: 鍵の発注書の納入場所は固定 */
+    return h('label',{style:span?{gridColumn:'span '+span}:null},h('span',{style:lab},label),
+      h('input',{type:'text',value:fx!=null?fx:(v[k]||''),placeholder:ph||'','data-gpfield':k,disabled:fx!=null,title:fx!=null?'鍵の発注書の納入場所は「'+fx+'」に統一しています（送り先は備考欄に書きます）':'',
+        style:fx!=null?Object.assign({},inp,{background:'#F3F4F6',color:'#374151'}):inp,onChange:function(ev){if(fx==null)set(k,ev.target.value);}}));
+  }
   var loadOpts=CHARTER_LOAD_DEFAULTS.concat(Object.keys(CHARTER_LOADS||{}).filter(function(k){return CHARTER_LOAD_DEFAULTS.indexOf(k)<0;}));
   return h('div',{style:{padding:'10px 4px'},'data-gppanel':vid},
     h('div',{style:{padding:'8px 12px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:8,fontSize:11,color:'#1E3A8A',marginBottom:8,lineHeight:1.7}},
@@ -20223,8 +20235,8 @@ var KEY_PO_MASTER={
     {id:'SL08',code:'F00031',nm:'マスターキー',key:'masterKeyStd',tiers:[[1,800]]},
     {id:'SL09',code:'F00121',nm:'内筒交換錠ケース',key:'cylinderExchangeCase',tiers:[[1,900]]},
     {id:'SL10',code:'',nm:'コインリターン錠ケース',opts:['100円','10円','500円'],olbl:'種類',tiers:[[1,1450]]},
-    {id:'SL11',code:'',nm:'キーオメイト　R型',sub:'番号無',tiers:[[1,700]]},
-    {id:'SL12',code:'',nm:'キーオメイト　R型',sub:'番号指定有り',tiers:[[1,750]]},
+    {id:'SL11',code:'',nm:'キーオメイト　R型',sub:'番号無し',opts:KEY_PO_COLORS6(),olbl:'色',tiers:[[1,700]]},/* v20.03: 鍵の発注書マスタ H40（色6種・※番号無し） */
+    {id:'SL12',code:'',nm:'キーオメイト　R型',sub:'番号指定有り',opts:KEY_PO_COLORS6(),olbl:'色',tiers:[[1,750]]},/* v20.03: H41（色6種・※番号指定有り） */
     {id:'SL13',code:'',nm:'ハトメ　J型',tiers:[[10,60]]}]},
   SR:{ship:'送料（1箱 ¥1,500～）',items:[
     {id:'SR01',code:'F00059',nm:'キーバンド　RV型　塩ビ',opts:KEY_PO_COLORS6(),olbl:'色',note:'※番号指定有り',key:'keyBandRV',tiers:[[1,650]]},
