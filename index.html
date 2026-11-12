@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.03（鍵の発注書: 納入場所は「下記備考欄参照」・キーオメイトの色）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.04（請求照合: 入庫処理・入庫差戻しを入出庫台帳に入れる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -19446,7 +19446,11 @@ function movRowsFromLog(log){
   var out=[];
   (log||[]).forEach(function(e){
     if(!e||!e.wh||!e.key||!WH_MAP[e.wh])return;
-    var o=parseInt(e.oldVal,10),n=parseInt(e.newVal,10);if(isNaN(o)||isNaN(n)||o===n)return;
+    var o=parseInt(e.oldVal,10),n=parseInt(e.newVal,10);
+    /* v20.04: 入庫処理（oldVal「入庫前」・newVal「+248」）と入庫差戻し（「入庫済」「-248」）は前後の在庫ではなく増減を記録している。
+       以前は数字でないため読み飛ばしていて、請求照合で入庫が0・月初が多く出ていた（2026-11-12 依頼 尼高関西 10月） */
+    if(isNaN(o)&&/^(入庫前|入庫済)$/.test(String(e.oldVal))&&/^[+-]\d+$/.test(String(e.newVal))){o=0;n=parseInt(e.newVal,10);}
+    if(isNaN(o)||isNaN(n)||o===n)return;
     var d=movYmd(e.timestamp);if(!d)return;
     var label=String(e.label||''),m=/([A-Z]{2}-\d{4}-[A-Z]?\d+)/.exec(label);
     out.push({i:movHash([e.timestamp,e.wh,e.lineId||'',e.key,e.sub||'',e.color||'',e.oldVal,e.newVal,label,e.by||''].join('|')),
