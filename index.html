@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.04（請求照合: 入庫処理・入庫差戻しを入出庫台帳に入れる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.05（請求照合: 予備パーツの持ち出しを案件の出荷日で数える）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -10586,8 +10586,9 @@ var HELP_QA=[
   {id:'stock-excel',cat:'stock',tab:'parts',ver:'v19.57',q:'在庫をExcelで出したい（ある日の在庫・倉庫別・期間）',kw:['excel','エクセル','出力','日付指定','倉庫別','期間','在庫表'],
     steps:['「部材在庫一覧」で目的のボタンを押す','ある日の在庫 →「📆 日付指定Excel」／倉庫別 →「📥 倉庫別Excel」／今の在庫表 →「📥 在庫表Excel」／期間の出入り →「📅 期間Excel」'],
     rel:['stock-history']},
-  {id:'bill-check',cat:'stock',tab:'parts',ver:'v19.79',q:'倉庫・八木熊の請求が正しいか確認したい',kw:['請求','照合','突合','新柏','尼高','札幌','関西','八木熊','保管料','検算'],
+  {id:'bill-check',cat:'stock',tab:'parts',ver:'v20.05',q:'倉庫・八木熊の請求が正しいか確認したい',kw:['請求','照合','突合','新柏','尼高','札幌','関西','八木熊','保管料','検算','予備パーツ','出荷日'],
     steps:['「部材在庫一覧」の「🧾 請求照合」を開く','倉庫（新柏倉庫／尼高札幌／尼高関西／八木熊）を選び、届いた請求のファイルを選ぶ','請求書の中の検算と、システムの入出庫（期ごとの入庫・出庫・在庫）との違いが出る。部材が「未対応」の行は「（選ぶ）」で一度だけ対応付ける'],
+    tip:'倉庫の出荷日と揃えるため、案件の出荷消費と予備パーツの持ち出しは、入力した日ではなく案件の出荷日で数えます（出荷日より後に持ち出した予備パーツ・返却入庫は入力した日）。',
     rel:['stock-excel']},
   {id:'yk-po',cat:'stock',tab:'parts',ver:'v19.62',q:'八木熊に発注書（注文書）を出したい',kw:['八木熊','発注','発注書','注文書','部材','仕入','手修正','品目追加'],
     steps:['「部材在庫一覧」の「📝 発注書」タブを開き、発注先の「八木熊」を選ぶ','件名・納品場所・納品希望日を入れ、品目の「数量」欄に個数を入れる','品番・品名・単価などを直すときは「✏ 品目を手修正」、一覧に無い品目は「＋ 品目を追加」','「📊 Excel（八木熊様へ送る）」でExcelを出してメールで送る（PDFは「🖨 PDF（印刷画面）」→ 送信先「PDFに保存」）','次の発注書は「＋ 新規発注書作成」で新しい発注書番号にする（入力した内容は残るので、消すときは「数量をクリア」）'],
@@ -19592,11 +19593,23 @@ function whbItemLabel(it){
 /* 台帳の全行（出荷消費は案件の出荷日に読み替え） */
 function whbLedgerRows(){
   var om={};(ORDERS||[]).forEach(function(o){om[o.no]=o;});
+  /* v20.05: 予備パーツの持ち出しも案件の出荷日に読み替える（倉庫は出荷のときに一緒に出庫するため。2026-11-12 依頼）。
+     台帳の行には案件番号が無いので、案件の spareParts（持ち出した日・倉庫・部材）からたどる。
+     持ち出しが出荷日より後（出荷後に追加で送った等）なら入力した日のまま。返却入庫・取消は入力した日のまま。 */
+  var spIx={};
+  (ORDERS||[]).forEach(function(o){
+    var sd=movYmd(o&&o.shippedDate);if(!sd)return;
+    (o.spareParts||[]).forEach(function(sp){
+      var d=movYmd(sp&&sp.shippedAt);if(!d||d>sd)return;
+      var key=[d,sp.wh,sp.key,sp.sub||'',sp.color||''].join('|');if(!spIx[key])spIx[key]={sd:sd,no:o.no};
+    });
+  });
   var out=[];
   Object.keys(MOV_LEDGER).forEach(function(ym){var m=MOV_LEDGER[ym];Object.keys(m).forEach(function(k){
-    var r=m[k],dd=r.d;
+    var r=m[k],dd=r.d,ex=null;
     if(r.t==='ship'&&r.r&&om[r.r]){var sd=movYmd(om[r.r].shippedDate);if(sd)dd=sd;}
-    out.push(Object.assign({dd:dd},r));
+    if(r.t==='spare'&&r.q<0){var hit=spIx[[r.d,r.w,r.k,r.s||'',r.c||''].join('|')];if(hit){dd=hit.sd;ex={spareOf:hit.no};}}
+    out.push(Object.assign({dd:dd},r,ex));
   });});
   return out;
 }
