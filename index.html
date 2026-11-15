@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.05（請求照合: 予備パーツの持ち出しを案件の出荷日で数える）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.06（出荷済み一覧は新しい順・出荷指示書の手修正でネジを追加・案件一覧に原価・貸与品のベースは台湾＋ECOの合計）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1792,6 +1792,7 @@ var RP_KEYS=[
   {k:'topBoard',l:'底上げ用トップボード'},
   {k:'railSet',l:'レールセット'}
 ];
+/* v20.06: 「回せる数」に合算する部材（ベース＝ECO（黒）＋台湾） */ var RENTAL_BASE_SUM={base:['base_tw']};
 var RP_GROUPS=[{g:'base',l:'ベース',main:'base_bk'},{g:'vj',l:'上下ジョイント',main:'vj_bk'},{g:'sj',l:'サイドジョイント',main:'sj_jp'}];
 /* v19.35: edits＝貸与品画面の手修正（{'W29#0':{'B':{units:…,parts:{…},_by,_at}}}。取り込んだ値は変えず上書きとして持つ）、memos＝学校ごとのメモ
    v19.42: titles＝ブロックのタイトル（Lサイズ・南京錠・棚板有 など）の手修正（{'W29#0':{title,_by,_at}}） */
@@ -2134,9 +2135,13 @@ function rentalStatus(s,bi,T,opt){
 function rentalCompare(st,need){
   return RP_GROUPS.map(function(G){
     var n=Math.max(0,parseInt(need[G.g])||0);
-    var a=st.avail[G.main]||0;
-    var other=RP_KEYS.filter(function(pk){return pk.g===G.g&&pk.k!==G.main&&(st.avail[pk.k]||0)>0;}).map(function(pk){return pk.l+' '+fm(st.avail[pk.k]);});
-    return {g:G.g,l:G.l,key:G.main,need:n,avail:a,diff:a-n,short:Math.max(0,n-Math.max(0,a)),other:other};
+    /* v20.06（2026-11-16 依頼）: ベースは台湾製・ECO（黒）を区別せず使うので、台湾ベースも「回せる数」に足す（ユーザー回答: グレー・フジプラは含めない） */
+    var incl=RENTAL_BASE_SUM[G.g]||[];
+    var a=(st.avail[G.main]||0)+incl.reduce(function(s,k){return s+(st.avail[k]||0);},0);
+    var other=RP_KEYS.filter(function(pk){return pk.g===G.g&&pk.k!==G.main&&incl.indexOf(pk.k)<0&&(st.avail[pk.k]||0)>0;}).map(function(pk){return pk.l+' '+fm(st.avail[pk.k]);});
+    /* 合算したときは内訳（ECO（黒）○・台湾○）を出す */
+    var inc=incl.some(function(k){return (st.avail[k]||0)!==0;})?RP_KEYS.filter(function(pk){return pk.k===G.main||incl.indexOf(pk.k)>=0;}).map(function(pk){return pk.l+' '+fm(st.avail[pk.k]||0);}):[];
+    return {g:G.g,l:G.l,key:G.main,need:n,avail:a,diff:a-n,short:Math.max(0,n-Math.max(0,a)),other:other,incl:inc};
   });
 }
 
@@ -2640,7 +2645,7 @@ function RentalShortPanel(p){
           return h('tr',{key:r.g},
             h('td',{style:Object.assign({},td,{textAlign:'left',fontWeight:700})},r.l),
             h('td',{style:td},fm(r.need)),
-            h('td',{style:td},fm(r.avail),r.other.length?h('div',{style:{fontSize:8,color:'var(--g500)',textAlign:'left'}},'別に '+r.other.join('・')):null),
+            h('td',{style:td},fm(r.avail),(r.incl&&r.incl.length)?h('div',{style:{fontSize:8,color:'#1e3a5f',textAlign:'left'}},'うち '+r.incl.join('・')):null,r.other.length?h('div',{style:{fontSize:8,color:'var(--g500)',textAlign:'left'}},'別に '+r.other.join('・')):null),
             h('td',{style:Object.assign({},td,{fontWeight:800,color:r.short>0?'#C53030':'#276749'})},
               r.short>0?[h('div',{key:'a'},'不足 '+fm(r.short)),h('div',{key:'b',style:{fontSize:8,fontWeight:700}},'追加レンタル')]
                        :(r.need>0?[h('div',{key:'a'},'OK'),h('div',{key:'b',style:{fontSize:8,fontWeight:700}},'余り '+fm(r.diff))]:'-')));
@@ -4851,6 +4856,34 @@ function shipLookupAgg(agg,m){
    同じ部材の2行目以降は0にする（合計が指示どおりになる）。品名の書換は一致した全行に適用する。
    どの内訳行にも一致しなかった手修正（見積に無い部材を手で足した場合）は shipEditRest() で末尾に追加する。
    ★数量0の手修正は「その部材を出荷しない」の意味なので、行ごと消える（様式Excelと同じ挙動）。 */
+/* ===== v20.06（2026-11-16 依頼「出荷指示書作成時にジョイントネジ・目隠しネジを足せるように」） =====
+   ✎記載内容の手修正の「ジョイントネジ」「目隠しネジ」の行は shipRowToBOM() が null（自動数量の対象外）のため、
+   手修正数量を入れても読み飛ばされていた（見積にネジが無いと出荷指示書に載せられない）。
+   ネジの行だけ別の突合キー 'S|<種類>' で受け、見積にあればその行の数量を置き換え、無ければ「追加分」に載せる。
+   ★shipRowToBOM() は変えない（他の自動数量・様式Excelに影響させないため）。 */
+function shipScrewGroupOfRow(name){
+  var n=String(name||'').replace(/[Ａ-Ｚａ-ｚ０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0xFEE0);}).replace(/[\s　]+/g,'');
+  if(/目隠しネジ|BLINDFOLD/i.test(n))return 'cap';
+  if(/ジョイントネジ|横連結ネジ|CONNEC\w*SCREW/i.test(n)){
+    if(/SS|3S|SSS/.test(n.replace(/SMLXL/g,'')))return 'joint_ss';
+    if(/SMLXL|S\/M\/L/.test(n))return 'joint_sml';
+    return 'joint';
+  }
+  return '';
+}
+function shipScrewGroupsOfKey(key){
+  key=String(key||'');
+  if(/^jointScrew_ss/.test(key))return ['joint_ss','joint'];
+  if(/^jointScrew/.test(key))return ['joint_sml','joint'];
+  if(/^capScrew/.test(key))return ['cap'];
+  return [];
+}
+/* 自動数量（部材内訳の合計）: 様式のネジの行に当たる部材をすべて足す */
+function shipScrewAuto(agg,grp){
+  var s=0;
+  Object.keys(agg||{}).forEach(function(k){if(shipScrewGroupsOfKey(k.split('|')[0]).indexOf(grp)>=0)s+=agg[k]||0;});
+  return s;
+}
 function shipEditGroupKey(m){
   if(!m)return '';
   if(m.isDoor)return 'D|'+m.key+'|'+(m.sub||'')+'|'+(m.color||'');
@@ -4865,6 +4898,7 @@ function shipEditRowKeys(b,ln){
   var ks=['K|'+b.key+'|'+sub];
   if(base!==b.key)ks.push('K|'+base+'|'+sub);
   ks.push('A|'+b.key);
+  shipScrewGroupsOfKey(b.key).forEach(function(g){ks.push('S|'+g);});/* v20.06: ネジの行 */
   return ks;
 }
 /* ===== v18.89 修正25②: 出荷指示書が倉庫別／タイプ別に分かれる案件は、紙ごとに手修正できる =====
@@ -4898,7 +4932,8 @@ function shipEditPool(order,scope){
     var hasQty=(ro.qty!=null&&ro.qty!=='');
     if(!hasQty&&!ro.label)return;
     var gk=shipEditGroupKey(shipRowToBOM(rw[2]));
-    if(!gk)return;/* ネジ・ジョイント等 様式に自動計算の対象が無い行は突合できない */
+    if(!gk){var sg=shipScrewGroupOfRow(rw[2]);if(sg)gk='S|'+sg;}/* v20.06: ジョイントネジ・目隠しネジの行も受ける */
+    if(!gk)return;/* ジョイント・レール等 様式に自動計算の対象が無い行は突合できない */
     pool[gk]={qty:hasQty?(parseInt(ro.qty)||0):null,label:ro.label||'',taken:false,srcName:rw[2]};
   });
   return pool;
@@ -8015,6 +8050,27 @@ function yagiCodeFor(key,sub,color){
 function isLockCostKey(key){return COMMON_STOCK_KEYS.indexOf(key)>=0||/^dial|^cylinder|^padlock|^totte|^searchKey|^masterKey|^coinReturn/.test(key);}
 /* 案件→粗利区分別の売価・原価集計。原価はBOM数量×COST_MASTER[品番]。品番or原価が無い部材は missing にカウント */
 function calcGrossProfit(order){return withPriceDate(order,function(){return calcGrossProfit0(order);});}
+/* v20.06: 案件一覧の「原価」欄（✅原価OK／⚠未入力あり＋原価・粗利・粗利率） */
+function orderCostInfo(o){
+  var gp;try{gp=calcGrossProfit(o);}catch(e){return null;}
+  if(!gp||!gp.total)return null;
+  var t=gp.total,sell=Math.round(t.sell||0),cost=Math.round(t.cost||0);
+  return {has:!!gp.hasCost,sell:sell,cost:cost,gp:sell-cost,rate:sell>0?Math.round((sell-cost)/sell*1000)/10:null,
+    freeNoCost:gp.freeNoCost||0,missing:t.missing||0,ok:!!gp.hasCost&&!(gp.freeNoCost>0)&&!(t.missing>0)};
+}
+function orderCostCell(o){
+  var ci=orderCostInfo(o);
+  if(!ci)return '-';
+  if(!ci.has)return h('span',{style:{color:'var(--g400)'}},'未設定');
+  var warn=[];
+  if(ci.freeNoCost>0)warn.push('自由入力の行 '+ci.freeNoCost+'行');
+  if(ci.missing>0)warn.push('未登録の部材 '+ci.missing+'種');
+  return h('div',{title:ci.ok?'原価がすべて入っています':('原価が入っていない所があります（'+warn.join('・')+'）。案件修正の粗利計算表で確認してください')},
+    ci.ok?h('div',{style:{fontWeight:700,color:'#276749'}},'✅ 原価OK'):h('div',{style:{fontWeight:700,color:'#c53030'}},'⚠ 未入力あり'),
+    ci.ok?null:h('div',{style:{fontSize:8,color:'#975a16'}},warn.join('・')),
+    h('div',null,'原価 ¥'+fm(ci.cost)),
+    h('div',{style:{color:ci.gp<0?'#c53030':'#1e3a5f'}},'粗利 ¥'+fm(ci.gp)+(ci.rate!=null?'（'+ci.rate+'%）':'')));
+}
 function calcGrossProfit0(order){
   var cat={body:{sell:0,cost:0,missing:0},lock:{sell:0,cost:0,missing:0},base:{sell:0,cost:0,missing:0},shelf:{sell:0,cost:0,missing:0}};
   /* v18.54 修正８①: 原価は「商品コード別の仕入単価」を最優先で使う（商品／部材ごとの単価マスタ）。
@@ -10506,9 +10562,9 @@ var HELP_QA=[
     warn:'直すのをやめるときは帯の「修正をやめる（新規として登録）」を押してください（そのあと登録すると新しい案件番号になります）。',
     tip:'見積書作成画面で直した送料（手入力）・件名・備考・値引き・代表者名などは、作り直しても引き継がれます（v19.59）。',rel:['stock-release']},
   /* ----- パーソナル・貸与品 ----- */
-  {id:'personal-continue',cat:'personal',tab:'inv',ver:'v19.57',q:'パーソナルの継続案件で、貸与品（学校保管のレンタル品）を手で入力して仮押さえしたい',kw:['継続','前年','貸与品','レンタル','学校保管','手入力','手で','仮押さえ','ベース','ジョイント'],
+  {id:'personal-continue',cat:'personal',tab:'inv',ver:'v20.06',q:'パーソナルの継続案件で、貸与品（学校保管のレンタル品）を手で入力して仮押さえしたい',kw:['継続','前年','貸与品','レンタル','学校保管','手入力','手で','仮押さえ','ベース','ジョイント'],
     steps:['「顧客選択」で学校（代理店経由なら代理店）を「選択 →」','「在庫確認・見積」の「商品選択」で、代理店の場合は先頭の「エンド納品先（パーソナル貸与品のある学校）」で学校を選ぶ','前年の導入内容（製品ライン・サイズ・錠前・扉色・台数・ベースの数・棚板）が自動で入り、「レンタル品の過不足（パーソナル貸与品）」欄に 必要数／学校保管で回せる数／過不足 が出ます','数を手で直すときは「台数・ベース数で入力」の 台数・ベースの数 を書き換える（過不足欄もすぐ計算し直します）。年度・学校も過不足欄で選び直せます','「明細追加時、在庫確認・仮押さえ・見積にはレンタル品の不足分だけを計上する」にチェックを入れると、学校保管で回せる分を差し引いた不足分だけを押さえます（外すと必要数をそのまま押さえます）','「＋ 在庫確認・明細追加」→ 倉庫を選ぶ →「仮押さえ＆見積書作成」（見積書が要らなければ「仮押さえのみ（見積無）」）'],
-    tip:'学校に置いてある数（貸与品データ）そのものを直すときは、過不足欄の「📋 貸与品データ」→「✎ 手修正」です。',warn:'入学シーズン（2〜5月）の案件は「🌸 春先モード」で登録します。',rel:['personal-data-edit','personal-mid','personal-rentalsel','spring-enter']},
+    tip:'学校に置いてある数（貸与品データ）そのものを直すときは、過不足欄の「📋 貸与品データ」→「✎ 手修正」です。v20.06〜 ベースは台湾製とECO（黒）を区別せず使うので、「学校保管で回せる数」は 台湾ベース＋ECOベース（黒）の合計です（グレー・フジプラ製は含めない）。',warn:'入学シーズン（2〜5月）の案件は「🌸 春先モード」で登録します。',rel:['personal-data-edit','personal-mid','personal-rentalsel','spring-enter']},
   {id:'personal-mid',cat:'personal',tab:'inv',ver:'v19.57',q:'転入生などで、期中に数台だけ追加したい',kw:['転入生','期中','途中','追加','数台'],
     steps:['学校を選んで「在庫確認・見積」を開く','「レンタル品の過不足」欄の「期中の追加（転入生など）」にチェック','何年生に足すかを選ぶ（その学年の扉色の目安も出ます）','台数を入れて「＋ 在庫確認・明細追加」'],
     rel:['personal-continue']},
@@ -10550,6 +10606,12 @@ var HELP_QA=[
   {id:'docs-edit',cat:'docs',tab:'orders',ver:'v19.57',q:'帳票の宛先・日付・品名・備考などを手で直したい',kw:['手修正','宛先','日付','品名','直す','書き換え','備考','請求書の備考'],
     steps:['「📄帳票」で帳票を選ぶ','「✎ 記載内容の手修正」を押す（空欄＝自動の内容）','直して「保存して印刷」'],
     tip:'元に戻すときは「自動値に戻す」。納品書は請求書の手修正を引き継ぎます（備考は帳票ごと）。v19.75〜 請求書・納品書・物品受領書の備考もこの画面で直せます（空欄＝見積書の備考。「この帳票には備考を載せない」もあります）。v19.76〜 明細の行ごとの備考も直せます（その帳票だけ。↺で元に戻す）。',rel:['docs-print']},
+  {id:'ship-screw',cat:'docs',tab:'orders',ver:'v20.06',q:'見積書に載せずに、出荷指示書にだけジョイントネジ・目隠しネジを足したい',kw:['ネジ','ねじ','ジョイントネジ','目隠しネジ','出荷指示書','追加','足す','見積に載せない'],
+    steps:['「📄帳票」で出荷指示書を選び「✎ 記載内容の手修正」を押す','下の「部材行」の「ジョイントネジ」「目隠しネジ」の行の「手修正数量」に数を入れる','下のプレビューで載ったことを確かめて保存する'],
+    tip:'見積にネジがあればその数を置き換え、無ければ出荷指示書の「追加分」に載ります。見積書・請求書には出ません。★この手修正は出荷指示書の記載だけで、在庫の数は動きません（在庫も減らすときは案件の「予備パーツ」で持ち出す）。',rel:['docs-edit']},
+  {id:'orders-cost',cat:'ship',tab:'orders',ver:'v20.06',q:'案件の原価が入っているか（粗利）を一覧で確かめたい',kw:['原価','粗利','粗利率','未入力','仕入','一覧','確認'],
+    steps:['「案件管理」の一覧の「原価」の列を見る','「✅ 原価OK」なら原価がすべて入っている。「⚠ 未入力あり」は 原価が空欄の自由入力の行・単価マスタに原価の無い部材 の数が出る','直すときは案件修正（見積書作成画面）の明細の緑の欄（原価）に入れる'],
+    tip:'原価・粗利は案件修正の「📊 粗利計算表」と同じ計算です（送料は含めません）。',rel:['quote-free']},
   {id:'docs-split',cat:'docs',tab:'orders',ver:'v19.57',q:'請求書を複数枚に分けたい',kw:['請求書','分割','分ける','複数枚','枚数'],
     steps:['「📄帳票」で請求書を選ぶ','「請求書の枚数」を選ぶ','「金額で分ける」または「台数で分ける」で振り分けて保存する'],
     tip:'入金は紙ごとにチェックできます。「分割しない」にすると従来どおり1枚です。',rel:['ship-paid']},
@@ -15610,6 +15672,7 @@ function OrdersPage(p){
         label:sc.label||'この案件ぶん',
         rows:((tpl&&tpl.rows)||[]).map(function(rw){
           var m=shipRowToBOM(rw[2]);var auto=m?shipLookupAgg(agg,m):0;
+          if(!m){var sg0=shipScrewGroupOfRow(rw[2]);if(sg0)auto=shipScrewAuto(agg,sg0);}/* v20.06: ネジの行の自動数量 */
           var ro=ser[rw[0]]||{};
           return {ri:rw[0],iri:rw[1]||0,name:rw[2],auto:auto,label:ro.label||'',qty:(ro.qty!=null&&ro.qty!=='')?String(ro.qty):''};
         })};
@@ -15877,7 +15940,7 @@ function OrdersPage(p){
       /* v18.50 修正６⑧(再修正): 一覧ボックスを画面内に収め、下端の横スクロールバーへ常に手が届くようにする */
       h('div',{className:'scy',ref:fitList.ref,style:{maxHeight:fitList.maxHeight||'72vh'}},h('table',{className:'tbl'},
         /* v18.67 修正14⑤: 納品完了タブだけ、ステータスの右に「総金額／入金チェック」の列を足す */
-        h('thead',null,h('tr',null,h('th',null,'No.'),h('th',null,'日付'),h('th',null,'顧客'),h('th',null,'明細'),h('th',null,'台数'),h('th',null,'倉庫'),h('th',null,'送料'),h('th',null,'ステータス'),
+        h('thead',null,h('tr',null,h('th',null,'No.'),h('th',null,'日付'),h('th',null,'顧客'),h('th',null,'明細'),h('th',null,'台数'),h('th',null,'倉庫'),h('th',null,'送料'),h('th',{title:'原価が入っているか（案件修正の粗利計算表と同じ計算）'},'原価'),h('th',null,'ステータス'),
           baseTab[0]==='done'?h('th',null,'請求書送付'):null,/* v19.93 */
           baseTab[0]==='done'?h('th',null,'総金額 ／ 入金'):null,
           h('th',null,'操作'))),
@@ -15953,6 +16016,10 @@ function OrdersPage(p){
                 var isEnd=o.shipDest==='end';
                 return h('div',{style:{fontSize:8,fontWeight:700,color:isEnd?'#0E7490':'var(--g500)'},title:isEnd?'送付先: エンドユーザー宛（エンド納品先の住所で送料を試算）':'送付先: 代理店宛（顧客住所で送料を試算）'},shipDestLabel(isEnd?'end':'cust')+'宛');
               })()),
+            /* ===== v20.06（2026-11-16 依頼「案件修正しないと原価が入っているか確認できない。案件一覧から確認できるように」） =====
+               案件修正画面の粗利計算表と同じ calcGrossProfit（ユーザー回答「印＋原価・粗利」）。
+               ✅原価OK＝原価未入力の自由入力の行・原価未登録の部材が無い／⚠＝どちらかがある（件数を出す）。 */
+            h('td',{style:{fontSize:9,whiteSpace:'nowrap'},'data-costcell':o.no},orderCostCell(o)),
             h('td',null,h('span',{className:'bg '+(STATUS_CLS[o.status]||'bg-b')},stLabel(o.status)),
               (function(){var rd=orderReadiness(o);if(!rd.has)return null;
                 /* v18.40 修正１⑧: 在庫不足で仮押さえしきれなかった分は、その不足数量を赤字で明示する */
@@ -23378,10 +23445,11 @@ function PartsPage(p){
           if(!o.lines.some(function(l){return l.line===selLine[0]||l.isFreeInput;}))return false;
           return orderHitsWh(o);/* v18.46 修正５⑥: 倉庫タブでの絞り込み */
         });
-        /* v20.00 修正依頼①: 左から納品日（納品予定日）の早い順。日付の無い案件は右端に作成日順で並べる */
+        /* v20.00 修正依頼①: 左から納品日（納品予定日）の早い順。日付の無い案件は右端に作成日順で並べる
+           v20.06（2026-11-16 依頼）: 左から直近の納品日 → 右へ古い日付（新しい順）。日付の無い案件は今までどおり右端 */
         shipped=shipped.slice().sort(function(a,b){
           var da=deliveryPlanMs(a),db=deliveryPlanMs(b);
-          if(da!=null&&db!=null&&da!==db)return da-db;
+          if(da!=null&&db!=null&&da!==db)return db-da;
           if(da!=null&&db==null)return -1;
           if(da==null&&db!=null)return 1;
           var ca=String(a.date||''),cb=String(b.date||'');
