@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月16日の更新のお知らせ（v20.04〜v20.07）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>出荷指示書のネジ・案件一覧の原価・<br>貸与品・請求照合ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v20.07</span>
+      <span>2026年11月16日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました（11月12日〜16日の更新分 v20.04〜v20.07）。<b>出荷指示書の手修正でジョイントネジ・目隠しネジを足せるようになり、足したネジは在庫からも引き落とされます。</b></p>
+    <p>出荷指示書を作る方は<b>1番・2番</b>を、案件を管理する方は<b>3番</b>を、見積を作る方は<b>4番〜6番</b>を、倉庫の請求を確かめる方は<b>7番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v20.07</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>古い画面のままだと、手修正で足したネジが在庫から引かれません。</b>開きっぱなしの画面も、必ず一度再読み込みしてください。<br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">出荷指示書の手修正で、ジョイントネジ・目隠しネジを足せます</a><span class="tag">重要</span></li>
+      <li><a href="#s2">出荷済み一覧は、新しい納品日から並びます</a></li>
+      <li><a href="#s3">案件一覧に「原価」の列を足しました</a><span class="tag">新機能</span></li>
+      <li><a href="#s4">Sαレールセット（3本1組）をパーツ単品で選べます</a><span class="tag">新機能</span></li>
+      <li><a href="#s5">貸与品のベースは、ECOベース（黒）＋台湾ベースの合計で見ます</a></li>
+      <li><a href="#s6">見積画面の「貸与品データ」も、学校の全ブロックを出します</a></li>
+      <li><a href="#s7">請求照合：入庫と予備パーツの数え方を直しました</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 出荷 ============ -->
+  <h2 class="sec">出荷・案件</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>出荷指示書の手修正で、ジョイントネジ・目隠しネジを足せます<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>見積にネジを入れていない案件でも、出荷指示書にだけネジを載せられるようになりました。<b>見積書・請求書にはネジは出ません。</b></p>
+    <div class="how">
+      <b>操作</b>
+      <kbd>📄 帳票</kbd> → 出荷指示書の <kbd>✎ 記載内容の手修正</kbd> → 部材行の「ジョイントネジ」「目隠しネジ」の<strong>手修正数量</strong>に数を入れて <kbd>保存</kbd>
+    </div>
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        見積にネジが無いと、手修正で数を入れても出荷指示書に載りませんでした。見積まで戻ってネジを入れる必要がありました。
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        見積にネジがあればその数を置き換え、無ければ出荷指示書の「追加分」に載ります。<b>案件を「出荷指示書送付済」にしたとき、ほかの部材と一緒に在庫から引き落とします。</b>
+      </div>
+    </div>
+    <ul>
+      <li>案件詳細の <kbd>📦 部材内訳</kbd> に「✎ 出荷指示書の手修正で追加したネジ」として出ます（引き落とす前か、引き落とし済みかも出ます）。</li>
+      <li>「出荷指示書送付済」から差し戻すと、ネジの在庫も戻ります。</li>
+      <li>手修正でネジを見積より減らしたときは、在庫から引く数は見積どおりのままです。</li>
+    </ul>
+    <div class="warnbox">
+      ⚠ <b>「出荷指示書送付済」にした後で</b>手修正でネジを増やした分は、在庫から引かれません（保存したときに注意が出ます）。在庫も減らすときは、案件の「予備パーツ」で持ち出しを入力してください。
+    </div>
+  </section>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>出荷済み一覧は、新しい納品日から並びます<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p>部材在庫一覧の <kbd>出荷済み一覧</kbd> は、<b>左が直近の納品日、右へ行くほど古い日付</b>になりました。納品日の入っていない案件は、今までどおり右の端です。</p>
+    <p class="sub">仮押さえ一覧の並び（古い順）は変えていません。</p>
+  </section>
+
+  <section class="item key" id="s3">
+    <h3><span class="n">3</span><span>案件一覧に「原価」の列を足しました<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>これまでは案件修正を開かないと、原価が入っているか分かりませんでした。案件管理の一覧の「送料」の右に<b>「原価」</b>の列を足しました。</p>
+    <ul>
+      <li><b>✅ 原価OK</b>：すべての行に原価があります。原価・粗利・粗利率も出ます（案件修正の粗利計算表と同じ計算です）。</li>
+      <li><b>⚠ 未入力あり</b>：原価の分からない行があります。自由入力の行で原価が空欄の数や、単価マスタに原価の無い部材の数が出ます。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 見積 ============ -->
+  <h2 class="sec">見積・貸与品</h2>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>Sαレールセット（3本1組）をパーツ単品で選べます<span class="pill add" style="margin-left:8px">追加</span></span></h3>
+    <p>在庫確認のパーツ単品追加で、製品ラインを <kbd>Sα</kbd> にすると<b>「Sαレールセット（3本1組）」</b>を選べます（サイドレール2本・バックレール1本のセット）。</p>
+    <ul>
+      <li>明細は「Sαサイドレール 1組（2本）」と「Sαバックレール 1本」の2行に分かれて入ります（SMLXL共通レールセットと同じ入り方です）。</li>
+      <li>単価は単価マスタの金額が自動で入ります。在庫はサイドレール2本・バックレール1本ずつ減ります。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>貸与品のベースは、ECOベース（黒）＋台湾ベースの合計で見ます<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p>ベースは台湾製・ECOに関係なく使うので、見積画面の「レンタル品の過不足（パーソナル貸与品）」で、<b>ベース（黒）とベース（台湾）の合計が足りていれば追加の貸与なし</b>になります。</p>
+    <p class="sub">「学校保管で回せる数」の下に「うち ベース（黒）○・ベース（台湾）○」と内訳が出ます。グレーのベースなどは今までどおり合計に入れません。</p>
+  </section>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>見積画面の「貸与品データ」も、学校の全ブロックを出します<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>顧客選択画面と見積画面で、見える貸与品データが違っていました（見積画面からは、過不足欄で使っている1ブロックだけが出ていました）。</p>
+    <ul>
+      <li>見積画面の <kbd>📋 貸与品データ</kbd> も、顧客選択画面と同じく<b>学校の全ブロック</b>（中学・高校など）を出します。過不足欄で使っているブロックには<b>「◀ 過不足欄で使用中」</b>の印が付きます。</li>
+      <li>武蔵野大学中学・高等学校の2つのブロックは名前が同じで見分けられなかったので、<b>【中学】【高校】</b>を付けました。顧客「武蔵野大学高等学校」で見積を作ると、最初から高校のブロックを選びます。</li>
+      <li>中学・高校を切り替えるときは、過不足欄の学校名の下の選択欄で選んでください。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 請求照合 ============ -->
+  <h2 class="sec">倉庫の請求照合</h2>
+
+  <section class="item" id="s7">
+    <h3><span class="n">7</span><span>請求照合：入庫と予備パーツの数え方を直しました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>部材在庫一覧の <kbd>請求照合</kbd> で倉庫の在庫表（xlsm）を読むと、実際は合っている部材まで「不一致」と出ていました。</p>
+    <ul>
+      <li><b>入庫</b>：入庫処理・入庫の差し戻しが入出庫の記録に入っておらず、「入庫0・月初が多い」と出ていました。記録に入るように直しました（9月25日以降の入庫は、請求照合を開くと自動で入ります）。保管料のケース数のずれも小さくなりました。</li>
+      <li><b>予備パーツ</b>：持ち出しを入力した日ではなく、<b>その案件の出荷日</b>で数えます（倉庫が出荷日に計上するのと揃えました）。持ち出しを出荷日に入力しなくても大丈夫です。</li>
+    </ul>
+    <p class="sub">10月の尼高関西で確かめると、不一致は9件から2件になりました。残る2件（扉 アイボリーL・パステルブラウンS）は10月より前からのずれのため、倉庫の実数の確認をお願いします。</p>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>案件番号と、画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v20.04〜v20.07】
+・★出荷指示書の「✎ 記載内容の手修正」で、ジョイントネジ・目隠しネジを足せます（見積書・請求書には出ません）。足したネジは「出荷指示書送付済」にしたとき在庫から引き落とします。送付済にした後で増やした分は引かれないので、予備パーツで持ち出してください
+・出荷済み一覧は、左が直近の納品日（新しい順）になりました
+・★案件一覧に「原価」の列（✅原価OK／⚠未入力あり・原価・粗利・粗利率）
+・パーツ単品追加（Sα）に「Sαレールセット（3本1組）」
+・貸与品のベースは、ECOベース（黒）＋台湾ベースの合計で足りれば追加貸与なし
+・見積画面の「📋 貸与品データ」も学校の全ブロックを表示（使っているブロックに印）。武蔵野大学中高のブロックに【中学】【高校】
+・請求照合：入庫が入っていなかった不具合を修正、予備パーツは案件の出荷日で数えます
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261116.html
+古い画面のままだとネジが在庫から引かれないので、必ず再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
