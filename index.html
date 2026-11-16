@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.07（見積画面の貸与品データも全ブロックを表示・武蔵野大学中高のブロックに【中学】【高校】）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.07（見積画面の貸与品データも全ブロックを表示・武蔵野大学中高のブロックに【中学】【高校】・Sαレールセット・手修正で増やしたネジを在庫から引き落とし）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1278,7 +1278,7 @@ function saPartOf(key,sub){return SA_PART_MAP[key+'|'+(sub||'')]||null;}
    ★どのラインに出すかはこの表の1か所で決まる（在庫表・在庫編集・Excel・パーツ単品追加が共通で見る）。
    　表に無いキーは従来どおり全ラインに出る。 */
 var LINE_ONLY_PART_KEYS={hanger_gy:['jp2'],totte_tw:['tw'],namePlateCoverSML_tw:['tw'],namePlateCoverSS_tw:['tw'],
-  railLong:['sa'],railShort:['sa']};/* v19.56: Sα のレール（パーツ単品追加） */
+  railLong:['sa'],railShort:['sa'],railSetSa:['sa']};/* v19.56: Sα のレール（パーツ単品追加）。v20.07: Sαレールセット */
 function partShownInLine(key,lineId){
   var a=LINE_ONLY_PART_KEYS[key];
   return !a||a.indexOf(lineId)>=0;
@@ -2923,6 +2923,10 @@ var PART_ADD_DEFS=[
      サイドレールは2本1組で単価も組の金額（ユーザー回答）→ 数量は「組」、在庫は 組×2本 減る（setOf → 明細の stockMul） */
   {k:'railLong',l:'Sαサイドレール（2本1組）',lineLabel:'Sαサイドレール',setOf:2,unit:'組'},
   {k:'railShort',l:'Sαバックレール',unit:'本'},
+  /* v20.07（2026-11-16 依頼）: Sαレールセット（3本1組＝サイドレール2本・バックレール1本）。
+     SMLXL共通レールセットと同じく構成部材へ分けて明細に入れる（サイドレール1組＝2本・バックレール1本）。
+     単価はそれぞれの単価マスタ（F00202・F00203）から入れる（price:true） */
+  {k:'railSetSa',l:'Sαレールセット（3本1組）',expand:[{key:'railLong',qty:1,label:'Sαサイドレール',stockMul:2,unit:'組',price:true},{key:'railShort',qty:1,label:'Sαバックレール',unit:'本',price:true}]},
   /* v19.58 依頼書 2026-10-23_110810: 番号シール・マグネット・フック・ネームプレート厚紙はパーツ単品追加から外した（保存済みの案件の表示用に PART_LABELS は残す） */
   {k:'hingeCoverSML',l:'ヒンジカバー SML共通'},
   {k:'hingeCoverSS',l:'ヒンジカバー SS'},
@@ -2958,7 +2962,7 @@ function partAddDefsForLine(lineId){
     return true;
   });
 }
-var SA_PART_KEYS_ADD=['top','base','side','back','door','shelf','railLong','railShort','jointScrew_sml_bk','capScrew_gy'];
+var SA_PART_KEYS_ADD=['top','base','side','back','door','shelf','railLong','railShort','railSetSa','jointScrew_sml_bk','capScrew_gy'];
 /* v19.56: 在庫を数えるときの数量。組で売る部材（Sαサイドレール＝2本1組）は 組数×stockMul（本数） */
 function partStockQty(l){return (l&&l.qty||0)*((l&&l.stockMul>1)?l.stockMul:1);}
 function partAddLabel(d,lineId){return (d&&d.lineLabels&&d.lineLabels[lineId])||(d&&d.l)||'';}
@@ -4522,6 +4526,7 @@ function rollbackInventory(order,fromStatus,toStatus){
   if(fromShipped&&!toShipped){
     restoreShippedStock(order);
     clearStockConsumed(order);/* v18.76 修正18③: 在庫を戻したので消費の記録も消す */
+    delete order._shipAdd;/* v20.07: 手修正で増やしたネジの引き落としの記録（数は _stockConsumed.items で戻した） */
     if(toHeld){reHoldFromSnapshot(order);return {ok:true,mode:'unship_rehold'};}
     order.lines.forEach(function(ln){if(ln.isFreeInput)return;delete ln._shippedActualHeld;ln._actualHeld=[];ln._hadActualHeld=false;});
     return {ok:true,mode:'unship_to_quote'};
@@ -4892,6 +4897,69 @@ function shipScrewAuto(agg,grp){
   Object.keys(agg||{}).forEach(function(k){if(shipScrewGroupsOfKey(k.split('|')[0]).indexOf(grp)>=0)s+=agg[k]||0;});
   return s;
 }
+/* ===== v20.07（2026-11-16 依頼「手修正でネジを足せるようになったが、案件の部材内訳に入らず在庫が引き落とされない」） =====
+   出荷指示書（本体の紙。予備パーツの紙は除く）に載るネジの数 − 手修正なしの数 ＝ 手修正で増やしたネジ。
+   これを「出荷指示」（runShipOrder）のとき、ほかの部材と同じく在庫から引き落とす（shipOrder／shipOrderMulti に仮の明細として渡す）。
+   ★減らした場合は在庫の引き落としを減らさない（見積どおり引く）。★手修正の保存では在庫を動かさない（在庫に関係しない項目のまま）。
+   戻り値 [{key,line,qty,label}] */
+function shipScrewKind(r,order){
+  var k=String(r&&r.key||'');
+  if(/^jointScrew_ss/.test(k))return 'jss';
+  if(/^jointScrew/.test(k))return 'jsml';
+  if(/^capScrew/.test(k))return 'cap';
+  if(k)return '';
+  var g=String(r&&r.seGk||'');if(g.indexOf('S|')!==0)return '';
+  g=g.slice(2);
+  if(g==='cap')return 'cap';
+  if(g==='joint_ss')return 'jss';
+  if(g==='joint_sml')return 'jsml';
+  if(g==='joint'){
+    var ln=((order&&order.lines)||[]).find(function(l){return !l.isFreeInput&&!l.isPartOnly;})||{};
+    if(ln.line==='sa')return 'jsml';
+    return (ln.size&&typeof sizeObj==='function'&&sizeObj(ln.size).grp==='ss')?'jss':'jsml';
+  }
+  return '';
+}
+function shipScrewPrinted(order){
+  var t={jsml:0,jss:0,cap:0};
+  var splits;try{splits=shipDocSplits(order);}catch(e){splits=[{wh:'',line:''}];}
+  splits.forEach(function(sc){
+    if(sc.spare)return;
+    var sr;try{sr=buildShipRows(order,null,{wh:sc.wh||'',line:sc.line||''});}catch(e){sr=null;}
+    if(!sr)return;
+    sr.groups.forEach(function(g){g.rows.forEach(function(r){var kd=shipScrewKind(r,order);if(kd)t[kd]+=parseInt(r.qty)||0;});});
+  });
+  return t;
+}
+function shipEditScrewAdds(order){
+  if(!order||!(order.shipEdit||order.shipEdits))return [];
+  if(!SHIP_TEMPLATES[shipTemplateKey(order)])return [];
+  var a=shipScrewPrinted(order),b=shipScrewPrinted(Object.assign({},order,{shipEdit:null,shipEdits:null}));
+  var agg;try{agg=aggregateOrderBOM(order);}catch(e){agg={};}
+  var ln=((order.lines)||[]).find(function(l){return !l.isFreeInput&&!l.isPartOnly;})||((order.lines)||[]).find(function(l){return !l.isFreeInput;})||{};
+  var line=ln.line||'jp2';
+  function keyOf(kd){
+    var re=kd==='jss'?/^jointScrew_ss/:(kd==='jsml'?/^jointScrew_sml/:/^capScrew/);
+    var hit=Object.keys(agg).map(function(k){return k.split('|')[0];}).find(function(k){return re.test(k);});
+    if(hit)return hit;
+    return kd==='jss'?'jointScrew_ss_bk':(kd==='jsml'?'jointScrew_sml_bk':(line==='sa'?'capScrew_gy':'capScrew_bk'));
+  }
+  var out=[];
+  ['jsml','jss','cap'].forEach(function(kd){
+    var d=(a[kd]||0)-(b[kd]||0);if(!(d>0))return;
+    var key=keyOf(kd);
+    out.push({key:key,line:line,qty:d,label:(partLabelJP(key)||key)});
+  });
+  return out;
+}
+/* 出荷指示（在庫の引き落とし）の後に手修正で増やしたネジ＝在庫から引かれていない数 */
+function shipAddNotConsumed(order){
+  var live;try{live=shipEditScrewAdds(order);}catch(e){live=[];}
+  var rec=(order&&order._shipAdd&&order._shipAdd.items)||[];
+  var out=[];
+  live.forEach(function(a){var r=rec.find(function(x){return x.key===a.key;});var d=a.qty-(r?r.qty:0);if(d>0)out.push({key:a.key,label:a.label,qty:d});});
+  return out;
+}
 function shipEditGroupKey(m){
   if(!m)return '';
   if(m.isDoor)return 'D|'+m.key+'|'+(m.sub||'')+'|'+(m.color||'');
@@ -4965,7 +5033,7 @@ function shipEditRest(pool){
   Object.keys(pool||{}).forEach(function(k){
     var e=pool[k];
     if(e.taken)return;
-    if(e.qty!=null&&e.qty>0)out.push({label:e.label||e.srcName||'',qty:e.qty});
+    if(e.qty!=null&&e.qty>0)out.push({label:e.label||e.srcName||'',qty:e.qty,gk:k});/* v20.07: gk＝突合キー（ネジの在庫の引き落としに使う） */
   });
   return out;
 }
@@ -9453,7 +9521,7 @@ function buildShipRows(order,legIndex,scope){
   /* 明細に同じ部材が無かった予備パーツ／様式手修正で足した部材は、独立した行として足す */
   var extra=[];
   spareRest(spPool).forEach(function(s){extra.push(mkRow(s.label||s.key||'',s.qty,s.key,s.sub,'予備パーツ',false,s.color,(s.key==='door'||s.key==='doorH')));});
-  shipEditRest(sePool).forEach(function(s){extra.push(mkRow(s.label,s.qty,s.key,s.sub,'',true));});
+  shipEditRest(sePool).forEach(function(s){var er=mkRow(s.label,s.qty,s.key,s.sub,'',true);if(s.gk)er.seGk=s.gk;extra.push(er);});
   if(extra.length)groups.push({title:'追加分',rows:extra,line:''});
   /* v19.12 修正29③: 予備パーツだけの紙は、本体の部材を載せず予備パーツだけを並べる */
   if(spOnly)groups=spareOnlyRows.length?[{title:SHIP_SPARE_LABEL,rows:spareOnlyRows,line:''}]:[];
@@ -10615,9 +10683,9 @@ var HELP_QA=[
   {id:'docs-edit',cat:'docs',tab:'orders',ver:'v19.57',q:'帳票の宛先・日付・品名・備考などを手で直したい',kw:['手修正','宛先','日付','品名','直す','書き換え','備考','請求書の備考'],
     steps:['「📄帳票」で帳票を選ぶ','「✎ 記載内容の手修正」を押す（空欄＝自動の内容）','直して「保存して印刷」'],
     tip:'元に戻すときは「自動値に戻す」。納品書は請求書の手修正を引き継ぎます（備考は帳票ごと）。v19.75〜 請求書・納品書・物品受領書の備考もこの画面で直せます（空欄＝見積書の備考。「この帳票には備考を載せない」もあります）。v19.76〜 明細の行ごとの備考も直せます（その帳票だけ。↺で元に戻す）。',rel:['docs-print']},
-  {id:'ship-screw',cat:'docs',tab:'orders',ver:'v20.06',q:'見積書に載せずに、出荷指示書にだけジョイントネジ・目隠しネジを足したい',kw:['ネジ','ねじ','ジョイントネジ','目隠しネジ','出荷指示書','追加','足す','見積に載せない'],
+  {id:'ship-screw',cat:'docs',tab:'orders',ver:'v20.07',q:'見積書に載せずに、出荷指示書にだけジョイントネジ・目隠しネジを足したい',kw:['ネジ','ねじ','ジョイントネジ','目隠しネジ','出荷指示書','追加','足す','見積に載せない'],
     steps:['「📄帳票」で出荷指示書を選び「✎ 記載内容の手修正」を押す','下の「部材行」の「ジョイントネジ」「目隠しネジ」の行の「手修正数量」に数を入れる','下のプレビューで載ったことを確かめて保存する'],
-    tip:'見積にネジがあればその数を置き換え、無ければ出荷指示書の「追加分」に載ります。見積書・請求書には出ません。★この手修正は出荷指示書の記載だけで、在庫の数は動きません（在庫も減らすときは案件の「予備パーツ」で持ち出す）。',rel:['docs-edit']},
+    tip:'見積にネジがあればその数を置き換え、無ければ出荷指示書の「追加分」に載ります。見積書・請求書には出ません。v20.07〜 増やしたネジは案件の「📦 部材内訳」に出て、「出荷指示」にしたときほかの部材と一緒に在庫から引き落とされます。★出荷指示の後で増やした分は在庫から引かれないので、そのときは案件の「予備パーツ」で持ち出しを入力してください（減らした場合は見積どおり引き落とします）。',rel:['docs-edit']},
   {id:'orders-cost',cat:'ship',tab:'orders',ver:'v20.06',q:'案件の原価が入っているか（粗利）を一覧で確かめたい',kw:['原価','粗利','粗利率','未入力','仕入','一覧','確認'],
     steps:['「案件管理」の一覧の「原価」の列を見る','「✅ 原価OK」なら原価がすべて入っている。「⚠ 未入力あり」は 原価が空欄の自由入力の行・単価マスタに原価の無い部材 の数が出る','直すときは案件修正（見積書作成画面）の明細の緑の欄（原価）に入れる'],
     tip:'原価・粗利は案件修正の「📊 粗利計算表」と同じ計算です（送料は含めません）。',rel:['quote-free']},
@@ -12835,7 +12903,14 @@ function InvPage(p){
     if(pd.isDoor&&(partLine[0]||ln[0])==='jp2'&&partSub[0]==='XL'){p.toast('日本製Ver.2にXLサイズの扉の取扱はありません。製品ラインを「台湾製」に切り替えてXL扉をご選択ください');return;}
     if(pd.expand){/* v16: レールセット等を構成部材へ分解して複数明細追加 */
       var pLnX=partLine[0]||ln[0];var lnmX=(LINES.find(function(l){return l.id===pLnX;})||{name:''}).name;var bqX=parseInt(partQty[0])||1;
-      var exLines=pd.expand.map(function(e,ei){return {id:Date.now()+ei,line:pLnX,isPartOnly:true,partKey:e.key,partSub:undefined,partColor:null,isDoor:false,qty:bqX*e.qty,unitPrice:0,partLabel:e.label+'（'+pd.l+'）【'+lnmX+'】',size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'};});
+      var exLines=pd.expand.map(function(e,ei){
+        var o={id:Date.now()+ei,line:pLnX,isPartOnly:true,partKey:e.key,partSub:undefined,partColor:null,isDoor:false,qty:bqX*e.qty,unitPrice:0,partLabel:e.label+'（'+pd.l+'）【'+lnmX+'】',size:'',color:'',islands:0,tiers:0,lock:'none',type:'standard'};
+        /* v20.07: Sαレールセット — サイドレールは組（在庫は 組×2本）・単価は単価マスタから */
+        if(e.stockMul>1)o.stockMul=e.stockMul;
+        if(e.unit)o.unit=e.unit;
+        if(e.price)o.unitPrice=withAgent(agentOfCust(cust),function(){return priceByEntry(partCodeOf(e.key,undefined,pLnX),'sell');})||0;
+        return o;
+      });
       var nlX=lines[0].concat(exLines);lines[1](nlX);doCheck(nlX);return;
     }
     var realKey=pd.isDoor?pd.doorKey:(pd.stockKey||pd.k);
@@ -15639,7 +15714,14 @@ function OrdersPage(p){
       var _sc=order._stockConsumed;
       if(!confirm('この案件はすでに在庫を引き落としています'+(_sc&&_sc.at?'（'+_sc.at+'）':'（過去の出荷指示）')+'。\nこのまま進めると同じ数量がもう一度在庫から引かれます。\n\n在庫を引き直したい場合は、いったん「受注確定」へ差し戻してから「出荷指示書送付済」へ進めてください。\n\nそれでも続けますか？'))return false;
     }
-    if(orderWhs(order).length>1){shipOrderMulti(order);}else{shipOrder(order);}/* v18.68 修正15⑤ */
+    /* v20.07: 出荷指示書の✎手修正で増やしたネジも、仮の明細（パーツ単品）としてほかの部材と一緒に引き落とす。
+       仮の明細は案件には残さない（_hadActualHeld＝押さえの解放をしない＝他の案件の押さえを巻き込まない）。引いた数は _stockConsumed.items に入るので差し戻しで戻る */
+    var _seAdds=shipEditScrewAdds(order),_lines0=order.lines;
+    if(_seAdds.length)order.lines=_lines0.concat(_seAdds.map(function(a,i){return {id:'SHIPADD'+i,line:a.line,isPartOnly:true,partKey:a.key,qty:a.qty,partLabel:a.label+'（出荷指示書の手修正で追加）',_hadActualHeld:true,_actualHeld:[],_shipAdd:true};}));
+    try{
+      if(orderWhs(order).length>1){shipOrderMulti(order);}else{shipOrder(order);}/* v18.68 修正15⑤ */
+    }finally{order.lines=_lines0;}
+    if(_seAdds.length)order._shipAdd={at:new Date().toLocaleString('ja-JP'),items:_seAdds};else delete order._shipAdd;
     order.status='出荷指示';
     /* v14.5 E1: 在庫消費の永続化・同期を確実に実行する（以前は印刷ウィンドウより先に行っていた） */
     saveAll();
@@ -16732,6 +16814,19 @@ function OrdersPage(p){
                 )
               );
             }),
+            /* v20.07: 出荷指示書の✎手修正で増やしたネジ（出荷指示で在庫から引き落とす／引き落とし済み） */
+            (function(){
+              var od=detail[0],done=!!(od._shipAdd&&od._stockConsumed);
+              var live;try{live=shipEditScrewAdds(od);}catch(e){live=[];}
+              var items=done?(od._shipAdd.items||[]):live;
+              var later=od._stockConsumed?shipAddNotConsumed(od):[];
+              if(!items.length&&!later.length)return null;
+              return h('div',{style:{marginBottom:8}},
+                h('div',{style:{fontSize:9,fontWeight:700,background:'#DBEAFE',color:'#1e3a5f',padding:'2px 6px',borderRadius:3}},'✎ 出荷指示書の手修正で追加したネジ'+(done?'（出荷指示で在庫から引き落とし済み）':(od._stockConsumed?'':'（出荷指示のときに在庫から引き落とします）'))),
+                items.length&&(done||!od._stockConsumed)?h('table',{style:{borderCollapse:'collapse',width:'100%',background:'#fff'}},
+                  h('tbody',null,items.map(function(a,ai){return h('tr',{key:'a'+ai},h('td',{style:tdB},a.label),h('td',{style:tdN},fm(a.qty)));}))):null,
+                later.length?h('div',{style:{fontSize:9,color:'#c53030',marginTop:2}},'⚠ 出荷指示（在庫の引き落とし）の後に手修正で増やしたネジは在庫から引かれていません: '+later.map(function(a){return a.label+' '+fm(a.qty);}).join('・')+'。在庫も減らすときは予備パーツで持ち出しを入力してください。'):null);
+            })(),
             /* v18.67 修正14③: 「部材ごとの合計（案件全体）」は削除（ユーザー指示）。
                明細が1件の案件では明細ごとの内訳と同じ表が2つ並んで見えていたため。 */
             /* 予備パーツ（見積外の持ち出し）は数量の性質が違うため合算せず別枠で示す */
@@ -17701,7 +17796,9 @@ function OrdersPage(p){
           var o2=applyShipEdit(m0);
           saveAll();
           freeEditBroadcast(p.userName||'',o2.no+' 出荷指示書を手修正',o2.no);
-          p.toast((o2.shipEdit||o2.shipEdits)?'手修正を保存しました（出荷指示書の出力に反映されます）':'手修正なし（自動値のまま）');
+          var nc=(stockConsumedState(o2)!=='none')?shipAddNotConsumed(o2):[];/* v20.07 */
+          if(nc.length)alert('手修正を保存しました。\n\n⚠ この案件はもう在庫を引き落としています（出荷指示の後）。\n今回増やしたネジ（'+nc.map(function(a){return a.label+' '+a.qty;}).join('・')+'）は在庫から引かれません。\n在庫も減らすときは「予備パーツ」で持ち出しを入力してください。');
+          else p.toast((o2.shipEdit||o2.shipEdits)?'手修正を保存しました（出荷指示書の出力に反映されます）':'手修正なし（自動値のまま）');
           shipEditModal[1](null);p.bump&&p.bump();
         }},'保存'))},
       (function(){
