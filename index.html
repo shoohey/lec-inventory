@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.06（出荷済み一覧は新しい順・出荷指示書の手修正でネジを追加・案件一覧に原価・貸与品のベースは台湾＋ECOの合計）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.07（見積画面の貸与品データも全ブロックを表示・武蔵野大学中高のブロックに【中学】【高校】）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1763,7 +1763,10 @@ var RENTAL_SEED_FIX={
   /* 岡山理科大学附属: 中学校は高校（D00968）と見積を分けるため、新しい顧客「岡山理科大学附属中学校」へ */
   W51:{name:'岡山理科大学附属高等学校 GSコース'},
   W52:{name:'岡山理科大学附属中学校',links:[],linkNames:['岡山理科大学附属中学校']},
-  W53:{name:'岡山理科大学附属高等学校 IBコース'}
+  W53:{name:'岡山理科大学附属高等学校 IBコース'},
+  /* v20.07: 武蔵野大学中学・高等学校はシートの上が中学（E1「中学校」）・下が高校（E22「高校」）。ブロック名が同じで見分けられなかった。
+     顧客「武蔵野大学高等学校」は高校のブロック、「学校法人武蔵野大学」は今までどおり（既定＝中学） */
+  E18:{links:['D01098#1','D00595'],titles:{0:'【中学】Lサイズ・ダイヤル錠(H111)・棚板有',1:'【高校】Lサイズ・ダイヤル錠(H111)・棚板有'}}
 };
 (function(){
   if(typeof RENTAL_SEED==='undefined'||!RENTAL_SEED.schools)return;
@@ -1773,6 +1776,7 @@ var RENTAL_SEED_FIX={
     if(f.dealer)s.dealer=f.dealer;
     if(f.links){s.linksOrig=s.links||[];s.links=f.links.slice();}
     if(f.linkNames)s.linkNames=f.linkNames.slice();
+    if(f.titles)Object.keys(f.titles).forEach(function(i){var b=s.blocks[i];if(b&&b.title!==f.titles[i]){b.titleOrig=b.title;b.title=f.titles[i];}});
   });
 })();
 var RP_KEYS=[
@@ -2152,6 +2156,7 @@ function RentalViewer(p){
   var editKey=us(''),draft=us(null),memoEdit=us(null);
   var titleDraft=us('');/* v19.42: 手修正中のブロックのタイトル */
   ue(function(){if(p.show){sel[1](p.initSid||((p.onlyIds&&p.onlyIds.length)?p.onlyIds[0]:''));selB[1](p.initBi==null?null:p.initBi);q[1]('');showAll[1](false);editKey[1]('');draft[1](null);memoEdit[1](null);}},[p.show,p.initSid,p.initBi,(p.onlyIds||[]).join(',')]);
+  ue(function(){if(!p.show||p.markBi==null)return;var t=setTimeout(function(){var el=document.querySelector('[data-rblock="inuse"]');if(el&&el.scrollIntoView)el.scrollIntoView({block:'start'});},50);return function(){clearTimeout(t);};},[p.show,p.markSid,p.markBi]);
   if(!p.show)return null;
   var all=rentalSchools();
   var qq=rentalNameNorm(q[0]);
@@ -2292,7 +2297,10 @@ function RentalViewer(p){
     function inp(L,i,get,set,w,txt){
       return h('input',{className:'inp',value:get(L)==null?'':get(L),style:Object.assign({},inS,{width:w||74,textAlign:txt?'left':'right'}),onChange:function(e){var v=e.target.value;setD(i,function(x){set(x,v);});}});
     }
-    return h('div',{key:bi,className:'card',style:{marginBottom:10,padding:10,outline:editing?'2px solid #F59E0B':'none'}},
+    /* v20.07: 在庫確認・見積の過不足欄で使っているブロック（全ブロックを出したうえで印を付ける） */
+    var inUse=p.markBi!=null&&p.markSid===s.id&&p.markBi===bi;
+    return h('div',{key:bi,className:'card','data-rblock':inUse?'inuse':null,style:{marginBottom:10,padding:10,outline:editing?'2px solid #F59E0B':(inUse?'2px solid #2563EB':'none')}},
+      inUse?h('div',{style:{fontSize:11,fontWeight:700,color:'#fff',background:'#2563EB',borderRadius:4,padding:'2px 8px',marginBottom:6,display:'inline-block'}},'◀ 過不足欄で使用中のブロック'):null,
       h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}},
         /* v19.42: タイトル（サイズ・錠前・棚板）も手修正できる。在庫確認・見積へ遷移したときの商品選択はこのタイトルで決まる */
         editing?h('input',{className:'inp',value:titleDraft[0],placeholder:'例: Lサイズ・南京錠・棚板有',style:{fontSize:13,fontWeight:700,minWidth:260,flex:'1 1 260px',background:'#FFFBEB'},
@@ -10568,8 +10576,9 @@ var HELP_QA=[
   {id:'personal-mid',cat:'personal',tab:'inv',ver:'v19.57',q:'転入生などで、期中に数台だけ追加したい',kw:['転入生','期中','途中','追加','数台'],
     steps:['学校を選んで「在庫確認・見積」を開く','「レンタル品の過不足」欄の「期中の追加（転入生など）」にチェック','何年生に足すかを選ぶ（その学年の扉色の目安も出ます）','台数を入れて「＋ 在庫確認・明細追加」'],
     rel:['personal-continue']},
-  {id:'personal-data-view',cat:'personal',tab:'cust',ver:'v19.57',q:'パーソナル貸与品データ（学校に置いてある数）を見たい',kw:['貸与品データ','一覧','学校','確認'],
-    steps:['全校の一覧は「顧客選択」の「📋 パーソナル貸与品」','その顧客の分は、顧客の行の「📋 貸与品」','見積の途中なら「レンタル品の過不足」欄の「📋 貸与品データ」'],
+  {id:'personal-data-view',cat:'personal',tab:'cust',ver:'v20.07',q:'パーソナル貸与品データ（学校に置いてある数）を見たい',kw:['貸与品データ','一覧','学校','確認'],
+    steps:['全校の一覧は「顧客選択」の「📋 パーソナル貸与品」','その顧客の分は、顧客の行の「📋 貸与品」','見積の途中なら「レンタル品の過不足」欄の「📋 貸与品データ」（顧客選択と同じく学校の全ブロックが出て、過不足欄で使っているブロックに「◀ 過不足欄で使用中」の印）'],
+    tip:'中学・高校など1つの学校に複数のブロックがあるときは、過不足欄の学校名の下の選択欄で【中学】【高校】を切り替えます。',
     rel:['personal-data-edit']},
   {id:'personal-data-edit',cat:'personal',tab:'cust',ver:'v19.57',q:'貸与品データの数やタイトルが違う（直したい・メモを残したい）',kw:['貸与品','手修正','直す','間違い','メモ','備考','タイトル'],
     steps:['貸与品データの画面を開く（「📋 貸与品」など）','「✎ 手修正」を押すと数やタイトルが入力欄になる','直して保存する（手修正した所は黄色になります）','備考はメモ欄に書けます（見積の過不足欄にも 📝 で出ます）'],
@@ -13899,7 +13908,7 @@ function InvPage(p){
               used:rentalUsed,need:rentalNeed,prefillNote:rentalPrefillNote[0],
               onOpen:function(sid,bi){rentalView[1](sid?{sid:sid,bi:bi}:{only:rentalSchoolIdsOfCust(cust.id)});}}):null,
             /* 閲覧画面はここに1つだけ置く（過不足欄・「見積書のみ作成」の下のボタンの両方から開く） */
-            h(RentalViewer,{show:!!rentalView[0],initSid:rentalView[0]&&rentalView[0].sid,initBi:rentalView[0]&&rentalView[0].bi,
+            h(RentalViewer,{show:!!rentalView[0],initSid:rentalView[0]&&rentalView[0].sid,markSid:rentalView[0]&&rentalView[0].sid,markBi:rentalView[0]&&rentalView[0].bi,/* v20.07: 顧客選択画面と同じく全ブロックを出し、使っているブロックに印 */
               onlyIds:rentalView[0]&&rentalView[0].only,onlyLabel:cust&&cust.name,userName:p.userName,isReadOnly:p.isReadOnly,onClose:function(){rentalView[1](null);}}),
             h('button',{className:'btn btn-nv',style:{width:'100%'},onClick:addLine},'＋ 在庫確認・明細追加')
           )
