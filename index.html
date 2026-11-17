@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.11（サンプル出荷・倉庫間移動の出荷指示書・春先の片岡さんの権限を尼高・関西に）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.12（作業カレンダーにメモを表示・本社／関西の案件で絞り込み）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -10796,9 +10796,9 @@ var HELP_QA=[
   {id:'spring-perm',cat:'spring',tab:'orders',ver:'v20.11',q:'春先モードで編集できない（🔒 閲覧のみになる）',kw:['春先','編集できない','閲覧のみ','権限','尼高','関西','ロック'],
     steps:['ヘッダーの「✏ 編集できる倉庫」で、自分が編集できる倉庫を確かめる（尼高・関西＝片岡さん優先、それ以外＝岩上さん・高山さん優先）','「案件管理」の「🌸 倉庫」の切り替えを、自分が編集できる倉庫（「🏭 尼高・関西」または「それ以外（混在を含む）」。✏ が付いている方）にする','そのあと操作する'],
     warn:'尼高・関西の倉庫だけを使う案件・在庫は、片岡さんがログインしている間は片岡さんだけが編集できます（関西と他の倉庫が混ざった案件は「それ以外」）。倉庫の切り替えが「すべて」のままだと両方の権限が要るため、閲覧のみになることがあります。',rel:['trouble-readonly']},
-  {id:'spring-work',cat:'spring',tab:'orders',ver:'v20.09',q:'春先で設置作業の作業員（当社・外注の人工）を割り振りたい／作業カレンダーで見たい',kw:['作業員','作業','割り振り','カレンダー','設置','人工','外注','シフト','予定','ダブルブッキング','作業登録','誰が','いつ'],
-    steps:['春先の「案件管理」で、案件の行の「👷 作業登録」（案件詳細の「👷 作業登録」でも可）を押す','作業日と時間（1日／午前／午後／時刻指定）を選ぶ','当社の作業員（ユーザー管理のアカウントの人）を押して選ぶ','外注は「＋ 業者を追加」で人工の業者と人数を入れる。人工の発注書が出ていれば「発注書」の欄で選んでひも付ける（作業日が同じ発注書には ★ が付きます）','数日かかる設置は「＋ 別の日を追加」で日ごとに入れて「💾 保存」','一覧は失注タブの並びの右端「📅 作業カレンダー」で見る（月／週（人別）の切り替え・作業員や業者で絞り込み・🖨 印刷）'],
-    tip:'カレンダーの予定を押すと作業登録の画面が開いて直せます。下に業者別の延べ人数と、発注書のひも付けの有無が出ます。同じ人が同じ時間帯に2件入っていると ⚠ が付きます（保存の前にも確認が出ます）。',
+  {id:'spring-work',cat:'spring',tab:'orders',ver:'v20.12',q:'春先で設置作業の作業員（当社・外注の人工）を割り振りたい／作業カレンダーで見たい',kw:['作業員','作業','割り振り','カレンダー','設置','人工','外注','シフト','予定','ダブルブッキング','作業登録','誰が','いつ'],
+    steps:['春先の「案件管理」で、案件の行の「👷 作業登録」（案件詳細の「👷 作業登録」でも可）を押す','作業日と時間（1日／午前／午後／時刻指定）を選ぶ','当社の作業員（ユーザー管理のアカウントの人）を押して選ぶ','外注は「＋ 業者を追加」で人工の業者と人数を入れる。人工の発注書が出ていれば「発注書」の欄で選んでひも付ける（作業日が同じ発注書には ★ が付きます）','数日かかる設置は「＋ 別の日を追加」で日ごとに入れて「💾 保存」','一覧は失注タブの並びの右端「📅 作業カレンダー」で見る（全案件／本社／関西・月／週（人別）の切り替え・作業員や業者で絞り込み・🖨 印刷）'],
+    tip:'カレンダーの予定には作業登録のメモ（📝）も出ます。本社／関西は案件タブと同じ担当拠点で分けます（倉庫ではありません）。予定を押すと作業登録の画面が開いて直せます。下に業者別の延べ人数と、発注書のひも付けの有無が出ます。同じ人が同じ時間帯に2件入っていると ⚠ が付きます（保存の前にも確認が出ます）。',
     warn:'作業の登録・変更は、営業も含めて誰でもいつでもできます（倉庫別の編集権限は関係ありません）。春先の画面だけの機能です。',rel:['spring-perm','gp-po']},
   /* ----- 困ったとき ----- */
   {id:'trouble-readonly',cat:'trouble',tab:null,ver:'v19.57',q:'「読み取り専用モード」と出て編集できない',kw:['読み取り専用','編集できない','閲覧のみ','ロック','編集権限','保存できない'],
@@ -15592,15 +15592,20 @@ function WorkRegModal(p){
   );
 }
 
-/* ===== 作業カレンダー（案件管理の「📅 作業カレンダー」タブ） ===== */
+/* ===== 作業カレンダー（案件管理の「📅 作業カレンダー」タブ） =====
+   v20.12（2026-11-18 依頼①）: 予定にメモ（作業登録の note）を表示。絞り込みは春先の倉庫の権限（whGrp）ではなく、
+   案件タブと同じ担当拠点（本社／関西。orderBaseOf＝顧客の弊社営業担当→ユーザー管理の拠点）にした。色も 本社＝青・関西＝ピンク・拠点未判定＝灰。 */
+function workBaseOf(o){return orderBaseOf(o,CUSTS.find(function(x){return x.id===o.cid;}));}
+var WORK_BASE_COL={honsha:['#1D4ED8','#EFF6FF'],kansai:['#BE185D','#FDF2F8'],'':['#475569','#F1F5F9']};
 function WorkCalendar(p){
   var view=us('month');
   var base=us(function(){var t=td2();return t;});/* 表示の基準日（月表示はその月、週表示はその週） */
   var fStaff=us(''),fVend=us('');
   var prRef=ur(null);
-  var whG=p.whGrp||'all';
+  var bf=us(p.initBase==='honsha'||p.initBase==='kansai'?p.initBase:'all');
+  var bG=bf[0];
   var list=allWorks().filter(function(x){
-    if(SPRING&&whG!=='all'&&springGroupOf(x.o)!==whG)return false;
+    if(bG!=='all'&&workBaseOf(x.o)!==bG)return false;
     if(fStaff[0]&&(x.w.staff||[]).indexOf(fStaff[0])<0)return false;
     if(fVend[0]&&!(x.w.vendors||[]).some(function(v){return v.v===fVend[0];}))return false;
     return true;
@@ -15641,8 +15646,8 @@ function WorkCalendar(p){
   function clashOf(x){return workClashes(x.w,x.o.no,all0);}
   function chip(x,compact){
     var o=x.o,w=x.w,cl=clashOf(x),hasCl=Object.keys(cl).length>0;
-    var g=SPRING?springGroupOf(o):'main';
-    var col=g==='amago'?'#BE185D':'#1D4ED8',bg=g==='amago'?'#FDF2F8':'#EFF6FF';
+    var bc=WORK_BASE_COL[workBaseOf(o)]||WORK_BASE_COL[''];
+    var col=bc[0],bg=bc[1];
     var vs=(w.vendors||[]);
     return h('div',{key:o.no+'|'+w.id,onClick:function(e){e.stopPropagation();p.onOpen&&p.onOpen(o,w.id);},
       title:o.no+' '+workCustName(o)+(o.subject?'（'+o.subject+'）':'')+'\n'+workSlotLabel(w)+'\n当社: '+((w.staff||[]).join('・')||'なし')+'\n外注: '+(vs.map(function(v){return ninkuShort(v.v)+' '+v.n+'人'+(v.po?'（'+v.po+'）':'（発注書なし）');}).join('・')||'なし')+(w.note?'\nメモ: '+w.note:'')+(hasCl?'\n⚠ ダブルブッキング: '+Object.keys(cl).map(function(n){return n+'（'+cl[n].join('、')+'）';}).join(' '):''),
@@ -15651,7 +15656,8 @@ function WorkCalendar(p){
         h('span',{style:{fontSize:9,background:col,color:'#fff',borderRadius:3,padding:'0 3px',marginRight:3}},workSlotLabel(w)),
         workCustName(o)),
       (w.staff||[]).length?h('div',{style:{color:'#0F172A'}},'👷 ',(w.staff||[]).map(function(n,ii){return h('span',{key:n,style:{color:cl[n]?'#C53030':undefined,fontWeight:cl[n]?900:600}},(ii?'・':'')+n+(cl[n]?'⚠':''));})):null,
-      vs.length?h('div',{style:{color:'#7C2D12'}},'🤝 '+vs.map(function(v){return ninkuShort(v.v)+v.n+'人'+(v.po?'🔗':'');}).join('・')):null
+      vs.length?h('div',{style:{color:'#7C2D12'}},'🤝 '+vs.map(function(v){return ninkuShort(v.v)+v.n+'人'+(v.po?'🔗':'');}).join('・')):null,
+      w.note?h('div',{'data-worknote':1,style:{color:'#334155',background:'#FFFBEB',borderRadius:3,padding:'0 3px',marginTop:1,whiteSpace:'pre-wrap',wordBreak:'break-all'}},'📝 '+w.note):null
     );
   }
   function dayTotals(ds){
@@ -15667,10 +15673,16 @@ function WorkCalendar(p){
   }
   var staffOpts=salesPersonOptions();
   var hdBtn=function(on){return 'btn btn-xs '+(on?'btn-nv':'btn-ol');};
-  var noWorkOrders=ORDERS.filter(function(o){return o&&!isLostOrder(o)&&o.status!=='納品完了'&&!(o.works||[]).length&&(!SPRING||whG==='all'||springGroupOf(o)===whG);}).length;
+  var noWorkOrders=ORDERS.filter(function(o){return o&&!isLostOrder(o)&&o.status!=='納品完了'&&!(o.works||[]).length&&(bG==='all'||workBaseOf(o)===bG);}).length;
+  var baseCnt={all:0,honsha:0,kansai:0};
+  allWorks().forEach(function(x){baseCnt.all++;var b=workBaseOf(x.o);if(baseCnt[b]!=null)baseCnt[b]++;});
   return h('div',{className:'card',style:{padding:10}},
     h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:8}},
       h('h3',{style:{margin:0,fontSize:15,color:SPRING_PINK}},'📅 作業カレンダー'),
+      h('span',{style:{display:'inline-flex',gap:2,marginRight:6},title:'案件タブと同じ担当拠点（顧客登録の弊社営業担当→ユーザー管理の拠点）で絞り込みます'},
+        [['all','全案件'],['honsha','本社'],['kansai','関西']].map(function(t){
+          return h('button',{key:t[0],'data-calbase':t[0],className:hdBtn(bG===t[0]),onClick:function(){bf[1](t[0]);}},t[1]+'（'+fm(baseCnt[t[0]])+'）');
+        })),
       h('button',{className:hdBtn(view[0]==='month'),onClick:function(){view[1]('month');}},'月'),
       h('button',{className:hdBtn(view[0]==='week'),onClick:function(){view[1]('week');}},'週（人別）'),
       h('button',{className:'btn btn-xs btn-ol',onClick:function(){move(-1);}},view[0]==='month'?'◀ 前月':'◀ 前週'),
@@ -15688,12 +15700,13 @@ function WorkCalendar(p){
     ),
     h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:6}},
       '予定を押すと作業登録の画面が開きます。登録は案件一覧の各案件の「👷 作業」ボタンから。',
-      h('span',{style:{marginLeft:8,color:'#BE185D',fontWeight:700}},'■ 尼高'),h('span',{style:{marginLeft:6,color:'#1D4ED8',fontWeight:700}},'■ 尼高以外'),
+      h('span',{style:{marginLeft:8,color:'#1D4ED8',fontWeight:700}},'■ 本社'),h('span',{style:{marginLeft:6,color:'#BE185D',fontWeight:700}},'■ 関西'),h('span',{style:{marginLeft:6,color:'#475569',fontWeight:700}},'■ 拠点未判定'),
+      h('span',{style:{marginLeft:6}},'📝 メモ'),
       h('span',{style:{marginLeft:6,color:'#C53030',fontWeight:700}},'⚠ 同じ人が同じ時間帯に2件'),
       h('span',{style:{marginLeft:6}},'🔗 発注書ひも付け済み'),
       noWorkOrders?h('span',{style:{marginLeft:8,color:'#B45309'}},'（作業未登録の進行中の案件: '+fm(noWorkOrders)+'件）'):null),
     h('div',{ref:prRef},
-      h('div',{style:{fontWeight:800,fontSize:13,margin:'0 0 4px'}},'作業カレンダー '+periodTitle+(SPRING?'（春先'+SPRING_FY+'年度'+(whG!=='all'?'・'+SPRING_GROUP_L[whG]:'')+'）':'')+(fStaff[0]?'　作業員: '+fStaff[0]:'')+(fVend[0]?'　業者: '+ninkuShort(fVend[0]):'')),
+      h('div',{style:{fontWeight:800,fontSize:13,margin:'0 0 4px'}},'作業カレンダー '+periodTitle+(SPRING?'（春先'+SPRING_FY+'年度）':'')+(bG!=='all'?'　'+orderBaseLabel(bG)+'の案件':'')+(fStaff[0]?'　作業員: '+fStaff[0]:'')+(fVend[0]?'　業者: '+ninkuShort(fVend[0]):'')),
       view[0]==='month'
       ?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',border:'1px solid var(--g200)',borderRadius:6,overflow:'hidden'}},
           WORK_DOW.map(function(dw,i){return h('div',{key:'h'+i,style:{background:'#F1F5F9',textAlign:'center',fontSize:11,fontWeight:800,padding:'3px 0',color:i===0?'#C53030':i===6?'#2563EB':'var(--g600)',borderBottom:'1px solid var(--g200)'}},dw);}),
@@ -16127,6 +16140,7 @@ function OrdersPage(p){
   /* v19.44 春先: 倉庫の切替（すべて／尼高／尼高以外）。選んだ側を編集できる人だけが操作できる（「すべて」は両方を編集できる人だけ）。
      既定はその人が編集できる側。画面内の読み取り専用の判定（RO_）はこれで決まる */
   var whGrp=us(SPRING?(function(){var me=curUserName();if(springNameHas(me,SPRING_RIGHTS.all))return 'all';if(springNameHas(me,SPRING_RIGHTS.amago))return 'amago';return 'main';})():'all');
+  var calInit=ur('all');/* v20.12: 作業カレンダーを開く前の案件タブ（本社／関西）を絞り込みの初期値にする */
   var RO_=p.isReadOnly||(SPRING&&(whGrp[0]==='all'?!(springCanEdit('amago')&&springCanEdit('main')):!springCanEdit(whGrp[0])));
   /* v19.100: 在庫に関係しない項目（ORDER_FREE_KEYS）は、編集権限（先勝ち・春先の倉庫別）が無くても直せる。営業だけは従来どおり不可 */
   var FREE_RO_=(roleOf(p.userName)==='sales')&&!TRAINING;
@@ -16746,14 +16760,14 @@ function OrdersPage(p){
       h('button',{key:'xfer',className:'btn btn-xs',title:'倉庫から倉庫へ在庫を移します。移動元あての出荷指示書を出せます',onClick:function(){xferM[1](true);},
         style:{marginLeft:'auto',marginBottom:4,background:'#EFF6FF',color:'#1D4ED8',border:'1px solid #93C5FD',fontWeight:700}},'🔄 倉庫間移動の登録'),
       /* v20.08 春先: 失注タブの並びの右端に作業カレンダー */
-      SPRING?h('button',{key:'cal',title:'当社の作業員・外注（人工）の割り振りをカレンダーで見ます',onClick:function(){baseTab[1]('cal');},style:{
+      SPRING?h('button',{key:'cal',title:'当社の作業員・外注（人工）の割り振りをカレンダーで見ます',onClick:function(){if(baseTab[0]!=='cal')calInit.current=baseTab[0];baseTab[1]('cal');},style:{
           marginLeft:6,padding:'6px 16px',fontSize:11,fontWeight:baseTab[0]==='cal'?900:700,cursor:'pointer',
           border:'1px solid '+SPRING_PINK,borderBottom:baseTab[0]==='cal'?'3px solid '+SPRING_PINK:'1px solid '+SPRING_PINK,
           background:baseTab[0]==='cal'?'#fff':'#FDF2F8',color:SPRING_PINK,borderRadius:'6px 6px 0 0',marginBottom:-2
         }},'📅 作業カレンダー'):null
     ),
     /* v19.44 春先: 倉庫の切替と、いま誰が編集できるか */
-    SPRING?h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',margin:'0 0 6px',padding:'5px 10px',background:'#FDF2F8',border:'1px solid #F9A8D4',borderRadius:8,fontSize:11}},
+    (SPRING&&baseTab[0]!=='cal')?h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',margin:'0 0 6px',padding:'5px 10px',background:'#FDF2F8',border:'1px solid #F9A8D4',borderRadius:8,fontSize:11}},
       h('b',{style:{color:SPRING_PINK}},'🌸 倉庫'),
       [['all','すべて'],['amago','🏭 尼高・関西'],['main','それ以外（混在を含む）']].map(function(t){
         var on=whGrp[0]===t[0];
@@ -16767,7 +16781,7 @@ function OrdersPage(p){
       RO_&&!p.isReadOnly?h('span',{style:{color:'#C53030',fontWeight:700,fontSize:10}},'🔒 この倉庫は閲覧のみです'):null
     ):null,
     /* v20.08 春先: 作業カレンダー（案件一覧の代わりに出す） */
-    (SPRING&&baseTab[0]==='cal')?h(WorkCalendar,{whGrp:whGrp[0],onOpen:function(o,wid){workReg[1]({order:o,focus:wid});}}):null,
+    (SPRING&&baseTab[0]==='cal')?h(WorkCalendar,{initBase:calInit.current,onOpen:function(o,wid){workReg[1]({order:o,focus:wid});}}):null,
     h('div',{className:'card',style:baseTab[0]==='cal'?{display:'none'}:undefined},
       h('div',{className:'chd'},h('h3',null,(baseTab[0]==='done'?'納品完了':baseTab[0]==='lost'?'失注':baseTab[0]==='all'?'案件管理':('案件管理 — '+orderBaseLabel(baseTab[0])))+'（'+fl.length+'/'+(baseTab[0]==='done'?tabCount.done:baseTab[0]==='lost'?tabCount.lost:tabCount.all)+'件）'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
