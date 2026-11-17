@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.08（春先: 作業員・外注の割り振りカレンダーと作業登録）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.09（春先の作業登録は誰でもいつでも登録・変更できる）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -10770,10 +10770,10 @@ var HELP_QA=[
   {id:'spring-perm',cat:'spring',tab:'orders',ver:'v19.57',q:'春先モードで編集できない（🔒 閲覧のみになる）',kw:['春先','編集できない','閲覧のみ','権限','尼高','ロック'],
     steps:['ヘッダーの「✏ 編集できる倉庫」で、自分が編集できる倉庫を確かめる（尼高＝片岡さん優先、尼高以外＝岩上さん・高山さん優先）','「案件管理」の「🌸 倉庫」の切り替えを、自分が編集できる倉庫（「🏭 尼高」または「尼高以外（混在を含む）」。✏ が付いている方）にする','そのあと操作する'],
     warn:'倉庫の切り替えが「すべて」のままだと、尼高と尼高以外の両方の権限が要るため、閲覧のみになることがあります。',rel:['trouble-readonly']},
-  {id:'spring-work',cat:'spring',tab:'orders',ver:'v20.08',q:'春先で設置作業の作業員（当社・外注の人工）を割り振りたい／作業カレンダーで見たい',kw:['作業員','作業','割り振り','カレンダー','設置','人工','外注','シフト','予定','ダブルブッキング','作業登録','誰が','いつ'],
+  {id:'spring-work',cat:'spring',tab:'orders',ver:'v20.09',q:'春先で設置作業の作業員（当社・外注の人工）を割り振りたい／作業カレンダーで見たい',kw:['作業員','作業','割り振り','カレンダー','設置','人工','外注','シフト','予定','ダブルブッキング','作業登録','誰が','いつ'],
     steps:['春先の「案件管理」で、案件の行の「👷 作業登録」（案件詳細の「👷 作業登録」でも可）を押す','作業日と時間（1日／午前／午後／時刻指定）を選ぶ','当社の作業員（ユーザー管理のアカウントの人）を押して選ぶ','外注は「＋ 業者を追加」で人工の業者と人数を入れる。人工の発注書が出ていれば「発注書」の欄で選んでひも付ける（作業日が同じ発注書には ★ が付きます）','数日かかる設置は「＋ 別の日を追加」で日ごとに入れて「💾 保存」','一覧は失注タブの並びの右端「📅 作業カレンダー」で見る（月／週（人別）の切り替え・作業員や業者で絞り込み・🖨 印刷）'],
     tip:'カレンダーの予定を押すと作業登録の画面が開いて直せます。下に業者別の延べ人数と、発注書のひも付けの有無が出ます。同じ人が同じ時間帯に2件入っていると ⚠ が付きます（保存の前にも確認が出ます）。',
-    warn:'登録できるのは、その案件の倉庫を編集できる人です（尼高＝片岡さん優先、尼高以外＝岩上さん・高山さん優先、中辻さんはすべて）。春先の画面だけの機能です。',rel:['spring-perm','gp-po']},
+    warn:'作業の登録・変更は、営業も含めて誰でもいつでもできます（倉庫別の編集権限は関係ありません）。春先の画面だけの機能です。',rel:['spring-perm','gp-po']},
   /* ----- 困ったとき ----- */
   {id:'trouble-readonly',cat:'trouble',tab:null,ver:'v19.57',q:'「読み取り専用モード」と出て編集できない',kw:['読み取り専用','編集できない','閲覧のみ','ロック','編集権限','保存できない'],
     steps:['同時に開いている人のうち、先にログインした人が編集権限を持ちます','編集中の人に、画面下の同時利用の欄の「渡す」で権限を渡してもらう','管理者は「👥 ユーザー管理」の「🔑 編集権限の指定」で付け替えられます'],
@@ -15326,7 +15326,9 @@ function QuotePreview(p){
    ・案件ごとに「誰が・いつ・どの案件の設置に行くか」と、外注（人工）の業者・人数を登録する（案件管理の「👷 作業」ボタン）。
    ・保存先は案件の order.works（ORDER_FREE_KEYS に入れた＝在庫に関係しない項目。同時編集でも項目ごとに重なる）。
      [{id, date:'YYYY-MM-DD', slot:'day'|'am'|'pm'|'time', from:'HH:MM', to:'HH:MM', staff:['岩上',…], vendors:[{v:'TF',n:3,po:'発注書No'}], note, by, at}]
-   ・時間は 1日／午前／午後／時刻指定 の3パターン（ユーザー回答①）。登録できる人は春先の倉庫別の権限どおり（回答②・springDeny）。
+   ・時間は 1日／午前／午後／時刻指定 の3パターン（ユーザー回答①）。
+   ・v20.09（2026-11-17 ユーザー指示「営業も含め誰でもいつでもカレンダー登録・編集はできるように」）: 登録・変更は権限に関係なく誰でもできる
+     （v20.08 は春先の倉庫別の権限どおりだった）。works は在庫に関係しない項目なので、同時に直しても他の項目を古い内容に戻さない。
    ・当社の作業員＝ユーザー管理の全員（回答③・salesPersonOptions＝アカウント名の氏名部分）。
    ・外注は手入力。人工の発注書（発注書一覧の「人工」＝GP_PO_LIST）が出ていれば、その発注書にひも付ける（回答④）。
    ・カレンダーは案件管理の失注タブの並びの右端「📅 作業カレンダー」（月表示・週表示・業者別の集計）。 */
@@ -15407,7 +15409,7 @@ function ymdDow(ymd){var p=String(ymd||'').split('-');return new Date(+p[0],(+p[
 function WorkRegModal(p){
   var o0=p.order;
   var o=(ORDERS.find(function(x){return x.no===o0.no;}))||o0;
-  var can=!SPRING||springCanEdit(springGroupOf(o));
+  var can=true;/* v20.09: 誰でも登録・変更できる（倉庫別の権限・営業の制限を見ない） */
   var rows=us(function(){
     var a=(o.works||[]).map(function(w){return JSON.parse(JSON.stringify(w));});
     a.sort(function(x,y){return workSortKey(x).localeCompare(workSortKey(y));});
@@ -15440,7 +15442,6 @@ function WorkRegModal(p){
     return hit.join('・');
   }
   function save(){
-    if(!can){springDeny(o,p.toast);return;}
     var clean=[];
     for(var i=0;i<R.length;i++){
       var w=R[i];
