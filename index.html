@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.07（見積画面の貸与品データも全ブロックを表示・武蔵野大学中高のブロックに【中学】【高校】・Sαレールセット・手修正で増やしたネジを在庫から引き落とし）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.08（春先: 作業員・外注の割り振りカレンダーと作業登録）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -638,7 +638,8 @@ function springMergeList(L,B,R,key,onClash){
    入金確認・請求書送付・帳票（請求書/納品書/物品受領書/出荷指示書/チャーター発注書）の記載内容の手修正・構成表記・
    請求書の分割・件名・備考・納品予定日。★出荷日（shipDate）・明細・倉庫・ステータス・値引きは入れない（ユーザー指示）。 */
 var ORDER_FREE_KEYS=['paid','paidAt','paidBy','paidBank','paidSheets','invSent','docEdit','shipEdit','shipEdits','shipper','shipDocMode',
-  'cfgNotes','charterPO','invSplit','subject','notes','deliveryDate'];
+  'cfgNotes','charterPO','invSplit','subject','notes','deliveryDate',
+  'works'];/* v20.08: 春先の作業登録（作業員・外注の割り振り）も在庫に関係しない項目 */
 function orderDiffKeys(x,y){
   x=x||{};y=y||{};var ks={};
   Object.keys(x).concat(Object.keys(y)).forEach(function(k){if(!_jsonEq(x[k],y[k]))ks[k]=1;});
@@ -10769,6 +10770,10 @@ var HELP_QA=[
   {id:'spring-perm',cat:'spring',tab:'orders',ver:'v19.57',q:'春先モードで編集できない（🔒 閲覧のみになる）',kw:['春先','編集できない','閲覧のみ','権限','尼高','ロック'],
     steps:['ヘッダーの「✏ 編集できる倉庫」で、自分が編集できる倉庫を確かめる（尼高＝片岡さん優先、尼高以外＝岩上さん・高山さん優先）','「案件管理」の「🌸 倉庫」の切り替えを、自分が編集できる倉庫（「🏭 尼高」または「尼高以外（混在を含む）」。✏ が付いている方）にする','そのあと操作する'],
     warn:'倉庫の切り替えが「すべて」のままだと、尼高と尼高以外の両方の権限が要るため、閲覧のみになることがあります。',rel:['trouble-readonly']},
+  {id:'spring-work',cat:'spring',tab:'orders',ver:'v20.08',q:'春先で設置作業の作業員（当社・外注の人工）を割り振りたい／作業カレンダーで見たい',kw:['作業員','作業','割り振り','カレンダー','設置','人工','外注','シフト','予定','ダブルブッキング','作業登録','誰が','いつ'],
+    steps:['春先の「案件管理」で、案件の行の「👷 作業登録」（案件詳細の「👷 作業登録」でも可）を押す','作業日と時間（1日／午前／午後／時刻指定）を選ぶ','当社の作業員（ユーザー管理のアカウントの人）を押して選ぶ','外注は「＋ 業者を追加」で人工の業者と人数を入れる。人工の発注書が出ていれば「発注書」の欄で選んでひも付ける（作業日が同じ発注書には ★ が付きます）','数日かかる設置は「＋ 別の日を追加」で日ごとに入れて「💾 保存」','一覧は失注タブの並びの右端「📅 作業カレンダー」で見る（月／週（人別）の切り替え・作業員や業者で絞り込み・🖨 印刷）'],
+    tip:'カレンダーの予定を押すと作業登録の画面が開いて直せます。下に業者別の延べ人数と、発注書のひも付けの有無が出ます。同じ人が同じ時間帯に2件入っていると ⚠ が付きます（保存の前にも確認が出ます）。',
+    warn:'登録できるのは、その案件の倉庫を編集できる人です（尼高＝片岡さん優先、尼高以外＝岩上さん・高山さん優先、中辻さんはすべて）。春先の画面だけの機能です。',rel:['spring-perm','gp-po']},
   /* ----- 困ったとき ----- */
   {id:'trouble-readonly',cat:'trouble',tab:null,ver:'v19.57',q:'「読み取り専用モード」と出て編集できない',kw:['読み取り専用','編集できない','閲覧のみ','ロック','編集権限','保存できない'],
     steps:['同時に開いている人のうち、先にログインした人が編集権限を持ちます','編集中の人に、画面下の同時利用の欄の「渡す」で権限を渡してもらう','管理者は「👥 ユーザー管理」の「🔑 編集権限の指定」で付け替えられます'],
@@ -15317,6 +15322,396 @@ function QuotePreview(p){
 }
 
 /* ========== ORDERS PAGE ========== */
+/* ===== v20.08（2026-11-17 チャット依頼「春先の案件管理に作業員の割り振りカレンダー」）★春先の画面だけ =====
+   ・案件ごとに「誰が・いつ・どの案件の設置に行くか」と、外注（人工）の業者・人数を登録する（案件管理の「👷 作業」ボタン）。
+   ・保存先は案件の order.works（ORDER_FREE_KEYS に入れた＝在庫に関係しない項目。同時編集でも項目ごとに重なる）。
+     [{id, date:'YYYY-MM-DD', slot:'day'|'am'|'pm'|'time', from:'HH:MM', to:'HH:MM', staff:['岩上',…], vendors:[{v:'TF',n:3,po:'発注書No'}], note, by, at}]
+   ・時間は 1日／午前／午後／時刻指定 の3パターン（ユーザー回答①）。登録できる人は春先の倉庫別の権限どおり（回答②・springDeny）。
+   ・当社の作業員＝ユーザー管理の全員（回答③・salesPersonOptions＝アカウント名の氏名部分）。
+   ・外注は手入力。人工の発注書（発注書一覧の「人工」＝GP_PO_LIST）が出ていれば、その発注書にひも付ける（回答④）。
+   ・カレンダーは案件管理の失注タブの並びの右端「📅 作業カレンダー」（月表示・週表示・業者別の集計）。 */
+var WORK_SLOTS=[{k:'day',l:'1日'},{k:'am',l:'午前'},{k:'pm',l:'午後'},{k:'time',l:'時刻指定'}];
+function workSlotLabel(w){
+  if(!w)return '';
+  if(w.slot==='time')return (w.from||'')+(w.to?'〜'+w.to:'〜');
+  var s=WORK_SLOTS.filter(function(x){return x.k===w.slot;})[0];
+  return s?s.l:'1日';
+}
+/* 重なりを見るための時間帯（分） */
+function workSpan(w){
+  function mm(t,d){var m=/^(\d{1,2}):(\d{2})/.exec(String(t||''));return m?(+m[1])*60+(+m[2]):d;}
+  if(!w||w.slot==='day'||!w.slot)return [0,1440];
+  if(w.slot==='am')return [0,720];
+  if(w.slot==='pm')return [720,1440];
+  var a=mm(w.from,0),b=mm(w.to,a+60);if(b<=a)b=a+1;return [a,b];
+}
+function workOverlap(a,b){var x=workSpan(a),y=workSpan(b);return x[0]<y[1]&&y[0]<x[1];}
+function workSortKey(w){return (w.date||'')+'|'+String(workSpan(w)[0]).padStart(4,'0');}
+function ninkuVendors(){return GP_VENDORS.filter(function(v){return v.cat==='ninku';});}
+function ninkuShort(id){var v=gpVendor(id);return v?(v.short||v.name):(id||'');}
+/* 文字列の中の日付 → 'YYYY-MM-DD'（発注書の作業日は「2027-03-24」「3/24(水) 9:00〜」などいろいろ） */
+function workYmdIn(str,fy){
+  str=String(str||'').normalize('NFKC');
+  var m=/(\d{4})[\/.\-年](\d{1,2})[\/.\-月](\d{1,2})/.exec(str);
+  if(m)return gpNkYmd(m[1],m[2],m[3]);
+  m=/(\d{1,2})[\/月](\d{1,2})/.exec(str);
+  if(m){var mo=+m[1],y=fy||new Date().getFullYear();if(SPRING&&fy&&mo>=7)y=fy-1;return gpNkYmd(y,mo,m[2]);}
+  return '';
+}
+/* 人工の発注書（発注書一覧の「人工」）。業者を指定すればその業者だけ */
+function ninkuPOs(vid){
+  var src=(typeof GP_PO_LIST!=='undefined'&&GP_PO_LIST)?GP_PO_LIST:{};
+  return Object.keys(src).map(function(k){return src[k];}).filter(function(r){
+    if(!r||r.del||!r.no)return false;
+    var v=gpVendor(r.vendor);if(!v||v.cat!=='ninku')return false;
+    return !vid||r.vendor===vid;
+  });
+}
+function ninkuPODate(r){var s=(r&&r.st)||{};return workYmdIn(s.workDate||s.due||'',typeof SPRING_FY!=='undefined'?SPRING_FY:0);}
+function ninkuPOLabel(r){
+  var s=(r&&r.st)||{};
+  var wd=ninkuPODate(r);
+  return r.no+(wd?'　作業日 '+wd.replace(/-/g,'/'):(s.due||s.workDate?'　'+(s.workDate||s.due):''))+((s.site||s.place||s.subject)?'　'+(s.site||s.place||s.subject):'');
+}
+/* 全案件の作業（失注は除く） → [{o, w}] */
+function allWorks(){
+  var out=[];
+  ORDERS.forEach(function(o){
+    if(!o||isLostOrder(o))return;
+    (o.works||[]).forEach(function(w){if(w&&w.date)out.push({o:o,w:w});});
+  });
+  return out;
+}
+/* その作業と重なる、同じ人の別の作業（ダブルブッキング） */
+function workClashes(w,ownNo,list){
+  var res={};
+  (list||allWorks()).forEach(function(x){
+    if(x.w===w||x.w.id===w.id)return;
+    if(x.w.date!==w.date||!workOverlap(x.w,w))return;
+    (w.staff||[]).forEach(function(n){if((x.w.staff||[]).indexOf(n)>=0){(res[n]=res[n]||[]).push(x.o.no+(x.o.no===ownNo?'（この案件の別の行）':''));}});
+  });
+  return res;
+}
+function workCustName(o){var c=CUSTS.find(function(x){return x.id===o.cid;});return (c&&c.name)||o.cname||o.cid||'';}
+function workNewId(){return 'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function workBlank(o){
+  var d=String(o&&o.deliveryDate||'');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))d=td2();
+  return {id:workNewId(),date:d,slot:'day',from:'',to:'',staff:[],vendors:[],note:''};
+}
+function ymdAdd(ymd,n){var p=String(ymd||'').split('-');var d=new Date(+p[0],(+p[1])-1,(+p[2])+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+var WORK_DOW=['日','月','火','水','木','金','土'];
+function ymdDow(ymd){var p=String(ymd||'').split('-');return new Date(+p[0],(+p[1])-1,+p[2]).getDay();}
+
+/* ===== 作業登録の画面（案件ごと） ===== */
+function WorkRegModal(p){
+  var o0=p.order;
+  var o=(ORDERS.find(function(x){return x.no===o0.no;}))||o0;
+  var can=!SPRING||springCanEdit(springGroupOf(o));
+  var rows=us(function(){
+    var a=(o.works||[]).map(function(w){return JSON.parse(JSON.stringify(w));});
+    a.sort(function(x,y){return workSortKey(x).localeCompare(workSortKey(y));});
+    return a.length?a:[workBlank(o)];
+  });
+  var R=rows[0];
+  var staffOpts=salesPersonOptions();
+  var vends=ninkuVendors();
+  var others=allWorks().filter(function(x){return x.o.no!==o.no;});
+  function upd(i,patch){rows[1](function(a){var b=a.slice();b[i]=Object.assign({},b[i],patch);return b;});}
+  function toggleStaff(i,n){var cur=R[i].staff||[];upd(i,{staff:cur.indexOf(n)>=0?cur.filter(function(x){return x!==n;}):cur.concat([n])});}
+  function setVend(i,j,patch){var vs=(R[i].vendors||[]).slice();vs[j]=Object.assign({},vs[j],patch);upd(i,{vendors:vs});}
+  function addVend(i){var vs=(R[i].vendors||[]).slice();vs.push({v:'',n:1,po:''});upd(i,{vendors:vs});}
+  function delVend(i,j){var vs=(R[i].vendors||[]).slice();vs.splice(j,1);upd(i,{vendors:vs});}
+  function addDay(){
+    rows[1](function(a){
+      var last=a[a.length-1];
+      var nw=last?Object.assign(JSON.parse(JSON.stringify(last)),{id:workNewId(),date:ymdAdd(last.date||td2(),1),note:''}):workBlank(o);
+      (nw.vendors||[]).forEach(function(v){v.po='';});/* 発注書は日ごとに違うので引き継がない */
+      return a.concat([nw]);
+    });
+  }
+  function delDay(i){rows[1](function(a){var b=a.slice();b.splice(i,1);return b;});}
+  /* その日の行で使っている発注書（同じ発注書を別の日にも付けたら知らせる） */
+  function poUsedElsewhere(no,ri){
+    if(!no)return '';
+    var hit=[];
+    R.forEach(function(w,k){if(k!==ri&&(w.vendors||[]).some(function(v){return v.po===no;}))hit.push('この案件の'+String(w.date||'').replace(/-/g,'/'));});
+    others.forEach(function(x){if((x.w.vendors||[]).some(function(v){return v.po===no;}))hit.push(x.o.no+' '+String(x.w.date||'').replace(/-/g,'/'));});
+    return hit.join('・');
+  }
+  function save(){
+    if(!can){springDeny(o,p.toast);return;}
+    var clean=[];
+    for(var i=0;i<R.length;i++){
+      var w=R[i];
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(String(w.date||''))){alert((i+1)+'行目: 作業日を入れてください');return;}
+      if(w.slot==='time'&&!/^\d{1,2}:\d{2}$/.test(String(w.from||''))){alert((i+1)+'行目: 時刻指定の開始時刻を入れてください');return;}
+      var vs=(w.vendors||[]).filter(function(v){return v.v;}).map(function(v){var n=parseInt(v.n,10);var x={v:v.v,n:(n>0?n:1)};if(v.po)x.po=v.po;return x;});
+      var st=(w.staff||[]).filter(Boolean);
+      if(!st.length&&!vs.length){alert((i+1)+'行目（'+w.date.replace(/-/g,'/')+'）: 当社の作業員か外注の業者を1つ以上入れてください（要らない行は「🗑 この日を削除」）');return;}
+      var x={id:w.id||workNewId(),date:w.date,slot:w.slot||'day',staff:st,vendors:vs,by:w.by||(p.userName||''),at:w.at||new Date().toISOString()};
+      if(x.slot==='time'){x.from=w.from;if(w.to)x.to=w.to;}
+      if(String(w.note||'').trim())x.note=String(w.note).trim();
+      var old=(o.works||[]).find(function(y){return y.id===x.id;});
+      if(old&&!_jsonEq(Object.assign({},old,{by:'',at:'',upBy:'',upAt:''}),Object.assign({},x,{by:'',at:'',upBy:'',upAt:''}))){x.upBy=p.userName||'';x.upAt=new Date().toISOString();}
+      else if(old){if(old.upBy)x.upBy=old.upBy;if(old.upAt)x.upAt=old.upAt;}
+      clean.push(x);
+    }
+    clean.sort(function(a,b){return workSortKey(a).localeCompare(workSortKey(b));});
+    /* ダブルブッキングは保存の前に確認（止めはしない） */
+    var warn=[];
+    clean.forEach(function(w){var c=workClashes(w,o.no,others.map(function(x){return x;}).concat(clean.filter(function(y){return y!==w;}).map(function(y){return {o:o,w:y};})));
+      Object.keys(c).forEach(function(n){warn.push('・'+n+'さん '+w.date.replace(/-/g,'/')+' '+workSlotLabel(w)+' → '+c[n].join('、'));});});
+    if(warn.length&&!confirm('同じ時間帯に別の作業が入っている人がいます。\n\n'+warn.join('\n')+'\n\nこのまま保存しますか？'))return;
+    var live=ORDERS.find(function(x){return x.no===o.no;});
+    if(!live){alert('案件 '+o.no+' が見つかりません（削除された可能性があります）');return;}
+    if(clean.length)live.works=clean;else delete live.works;
+    saveAll();
+    freeEditBroadcast(p.userName||'',live.no+' 作業登録',live.no);
+    p.toast&&p.toast('👷 作業を保存しました: '+live.no+'（'+clean.length+'日分）');
+    p.onSaved&&p.onSaved();
+    p.onClose();
+  }
+  var FL={fontSize:10,fontWeight:700,color:'var(--g600)',marginRight:4};
+  return h(Modal,{show:true,title:'👷 作業登録 — '+o.no+' '+workCustName(o),w:860,onClose:p.onClose,zi:p.zi,
+    footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end',alignItems:'center',width:'100%'}},
+      !can?h('span',{style:{color:'#C53030',fontSize:11,fontWeight:700,marginRight:'auto'}},'🔒 この案件（'+SPRING_GROUP_L[springGroupOf(o)]+'）は閲覧のみです（編集中: '+springWhoFor(springGroupOf(o))+'）'):null,
+      h('button',{className:'btn btn-ol',onClick:p.onClose},can?'キャンセル':'閉じる'),
+      can?h('button',{className:'btn btn-gn',style:{fontWeight:800},onClick:save},'💾 保存'):null)},
+    h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:6,lineHeight:1.7}},
+      (o.subject?'件名: '+o.subject+'　':'')+'納品予定: '+(deliveryPlanOf(o)||'−')+'　倉庫: '+(SPRING?SPRING_GROUP_L[springGroupOf(o)]:'')+
+      '　※ 数日かかる設置は「＋ 別の日を追加」で日ごとに入れます。外注は人数を手入力し、人工の発注書が出ていれば選んでひも付けます。'),
+    R.map(function(w,i){
+      var clash=workClashes(w,o.no,others.concat(R.filter(function(y,k){return k!==i;}).map(function(y){return {o:o,w:y};})));
+      var dow=w.date?ymdDow(w.date):-1;
+      return h('div',{key:w.id||i,style:{border:'1px solid var(--g200)',borderLeft:'4px solid '+SPRING_PINK,borderRadius:8,padding:'8px 10px',marginBottom:8,background:'#fff'}},
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:6}},
+          h('b',{style:{fontSize:12,color:SPRING_PINK}},(i+1)+'日目'),
+          h('span',{style:FL},'作業日'),
+          h('input',{className:'inp',type:'date',style:{width:150,fontSize:12},value:w.date||'',disabled:!can,onChange:function(e){upd(i,{date:e.target.value});}}),
+          dow>=0?h('span',{style:{fontSize:11,fontWeight:700,color:dow===0?'#C53030':dow===6?'#2563EB':'var(--g600)'}},'（'+WORK_DOW[dow]+'）'):null,
+          h('span',{style:Object.assign({},FL,{marginLeft:8})},'時間'),
+          WORK_SLOTS.map(function(s){
+            var on=(w.slot||'day')===s.k;
+            return h('button',{key:s.k,className:'btn btn-xs '+(on?'btn-nv':'btn-ol'),disabled:!can,onClick:function(){upd(i,{slot:s.k});}},s.l);
+          }),
+          w.slot==='time'?h('span',{style:{display:'inline-flex',gap:4,alignItems:'center'}},
+            h('input',{className:'inp',type:'time',style:{width:100,fontSize:12},value:w.from||'',disabled:!can,onChange:function(e){upd(i,{from:e.target.value});}}),'〜',
+            h('input',{className:'inp',type:'time',style:{width:100,fontSize:12},value:w.to||'',disabled:!can,onChange:function(e){upd(i,{to:e.target.value});}})):null,
+          (can&&R.length>1)?h('button',{className:'btn btn-xs btn-ol',style:{marginLeft:'auto',color:'#C53030'},onClick:function(){delDay(i);}},'🗑 この日を削除'):null
+        ),
+        h('div',{style:{marginBottom:6}},
+          h('div',{style:FL},'当社の作業員（ユーザー管理のアカウント）'),
+          h('div',{style:{display:'flex',flexWrap:'wrap',gap:4,marginTop:3}},
+            staffOpts.map(function(n){
+              var on=(w.staff||[]).indexOf(n)>=0;
+              var cl=clash[n];
+              var busy=!on&&w.date&&others.some(function(x){return x.w.date===w.date&&workOverlap(x.w,w)&&(x.w.staff||[]).indexOf(n)>=0;});
+              return h('button',{key:n,className:'btn btn-xs',disabled:!can,onClick:function(){toggleStaff(i,n);},
+                title:cl?('⚠ 同じ時間帯に別の作業: '+cl.join('、')):busy?'この時間帯は別の案件の作業が入っています':'',
+                style:{background:on?(cl?'#C53030':'#0E7490'):'#fff',color:on?'#fff':(busy?'#B45309':'var(--g600)'),border:'1px solid '+(on?(cl?'#C53030':'#0E7490'):busy?'#F59E0B':'var(--g200)'),fontWeight:on?800:500}},
+                (on?'✔ ':'')+n+(cl?' ⚠':busy?' (予定あり)':''));
+            })),
+          Object.keys(clash).length?h('div',{style:{fontSize:10,color:'#C53030',fontWeight:700,marginTop:3}},
+            '⚠ ダブルブッキング: '+Object.keys(clash).map(function(n){return n+'さん（'+clash[n].join('、')+'）';}).join(' ／ ')):null
+        ),
+        h('div',{style:{marginBottom:6}},
+          h('div',{style:FL},'外注（人工）'),
+          (w.vendors||[]).map(function(v,j){
+            var pos=v.v?ninkuPOs(v.v):[];
+            pos.sort(function(a,b){
+              var da=ninkuPODate(a)===w.date?0:1,db=ninkuPODate(b)===w.date?0:1;
+              if(da!==db)return da-db;
+              return String(b.created||b.at||'').localeCompare(String(a.created||a.at||''));
+            });
+            var sameDay=pos.filter(function(r){return ninkuPODate(r)===w.date;});
+            var used=poUsedElsewhere(v.po,i);
+            var poRec=v.po?(GP_PO_LIST||{})[v.po]:null;
+            return h('div',{key:j,style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginTop:3,padding:'4px 6px',background:'#F8FAFC',borderRadius:6}},
+              h('select',{className:'inp',style:{width:170,fontSize:12},value:v.v||'',disabled:!can,onChange:function(e){setVend(i,j,{v:e.target.value,po:''});}},
+                h('option',{value:''},'（業者を選ぶ）'),
+                vends.map(function(x){return h('option',{key:x.id,value:x.id},x.short||x.name);})),
+              h('input',{className:'inp',type:'number',min:1,style:{width:60,fontSize:12,textAlign:'right'},value:v.n==null?'':v.n,disabled:!can,onChange:function(e){setVend(i,j,{n:e.target.value});}}),
+              h('span',{style:{fontSize:11}},'人'),
+              h('span',{style:Object.assign({},FL,{marginLeft:6})},'発注書'),
+              h('select',{className:'inp',style:{minWidth:260,maxWidth:380,fontSize:11},value:v.po||'',disabled:!can||!v.v,onChange:function(e){setVend(i,j,{po:e.target.value});}},
+                h('option',{value:''},v.v?(pos.length?'（ひも付けない）':'（この業者の人工の発注書はまだありません）'):'（先に業者を選ぶ）'),
+                (v.po&&!poRec)?h('option',{value:v.po},v.po+'（発注書一覧に見当たりません）'):null,
+                pos.map(function(r){return h('option',{key:r.no,value:r.no},(ninkuPODate(r)===w.date?'★ ':'')+ninkuPOLabel(r));})),
+              (can&&v.v&&!v.po&&sameDay.length===1)?h('button',{className:'btn btn-xs btn-tl',title:'作業日が同じ発注書が1件あります',onClick:function(){setVend(i,j,{po:sameDay[0].no});}},'★ '+sameDay[0].no+' を付ける'):null,
+              poRec?h('span',{style:{fontSize:10,color:'#0E7490',fontWeight:700}},'🔗 ひも付け済み'):null,
+              used?h('span',{style:{fontSize:10,color:'#B45309'}},'※ この発注書は '+used+' にも付いています'):null,
+              can?h('button',{className:'btn btn-xs btn-ol',style:{color:'#C53030'},onClick:function(){delVend(i,j);}},'×'):null
+            );
+          }),
+          can?h('button',{className:'btn btn-xs btn-ol',style:{marginTop:4},onClick:function(){addVend(i);}},'＋ 業者を追加'):null,
+          (!(w.vendors||[]).length&&!can)?h('span',{style:{fontSize:10,color:'var(--g400)',marginLeft:4}},'なし'):null
+        ),
+        h('div',{style:{display:'flex',gap:6,alignItems:'center'}},
+          h('span',{style:FL},'メモ'),
+          h('input',{className:'inp',style:{flex:1,fontSize:12},value:w.note||'',disabled:!can,placeholder:'例: 搬入は裏門から／9時現地集合',onChange:function(e){upd(i,{note:e.target.value});}})),
+        (w.by||w.upBy)?h('div',{style:{fontSize:9,color:'var(--g400)',marginTop:3}},'登録: '+(w.by||'')+(w.upBy?'　最終変更: '+w.upBy+(w.upAt?' '+new Date(w.upAt).toLocaleString('ja-JP'):''):'')):null
+      );
+    }),
+    can?h('button',{className:'btn btn-sm btn-ol',style:{fontWeight:700},onClick:addDay},'＋ 別の日を追加'):null
+  );
+}
+
+/* ===== 作業カレンダー（案件管理の「📅 作業カレンダー」タブ） ===== */
+function WorkCalendar(p){
+  var view=us('month');
+  var base=us(function(){var t=td2();return t;});/* 表示の基準日（月表示はその月、週表示はその週） */
+  var fStaff=us(''),fVend=us('');
+  var prRef=ur(null);
+  var whG=p.whGrp||'all';
+  var list=allWorks().filter(function(x){
+    if(SPRING&&whG!=='all'&&springGroupOf(x.o)!==whG)return false;
+    if(fStaff[0]&&(x.w.staff||[]).indexOf(fStaff[0])<0)return false;
+    if(fVend[0]&&!(x.w.vendors||[]).some(function(v){return v.v===fVend[0];}))return false;
+    return true;
+  });
+  list.sort(function(a,b){return workSortKey(a.w).localeCompare(workSortKey(b.w));});
+  var all0=allWorks();
+  var byDay={};list.forEach(function(x){(byDay[x.w.date]=byDay[x.w.date]||[]).push(x);});
+  var today=td2();
+  var bp=base[0].split('-'),by=+bp[0],bm=+bp[1];
+  function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  var days=[];
+  if(view[0]==='month'){
+    var first=new Date(by,bm-1,1),start=new Date(by,bm-1,1-first.getDay());
+    var last=new Date(by,bm,0),end=new Date(by,bm-1,last.getDate()+(6-last.getDay()));
+    for(var d=new Date(start);d<=end;d.setDate(d.getDate()+1))days.push(ymd(d));
+  }else{
+    var b0=new Date(by,bm-1,+bp[2]);b0.setDate(b0.getDate()-b0.getDay());
+    for(var k=0;k<7;k++){var dd=new Date(b0);dd.setDate(b0.getDate()+k);days.push(ymd(dd));}
+  }
+  function move(n){
+    if(view[0]==='month'){var d=new Date(by,bm-1+n,1);base[1](ymd(d));}
+    else base[1](ymdAdd(base[0],7*n));
+  }
+  var inMonth=function(s){return view[0]!=='month'||+s.split('-')[1]===bm;};
+  var periodDays=days.filter(inMonth);
+  var periodTitle=view[0]==='month'?(by+'年'+bm+'月'):(days[0].replace(/-/g,'/')+' 〜 '+days[6].replace(/-/g,'/'));
+  /* 業者別の集計（表示中の期間） */
+  var vsum={};
+  list.forEach(function(x){
+    if(periodDays.indexOf(x.w.date)<0)return;
+    (x.w.vendors||[]).forEach(function(v){
+      var s=vsum[v.v]=vsum[v.v]||{n:0,cnt:0,po:0,nopo:0,pos:{}};
+      s.n+=(+v.n||0);s.cnt++;if(v.po){s.po++;s.pos[v.po]=1;}else s.nopo++;
+    });
+  });
+  var staffSum={};
+  list.forEach(function(x){if(periodDays.indexOf(x.w.date)<0)return;(x.w.staff||[]).forEach(function(n){staffSum[n]=(staffSum[n]||0)+1;});});
+  function clashOf(x){return workClashes(x.w,x.o.no,all0);}
+  function chip(x,compact){
+    var o=x.o,w=x.w,cl=clashOf(x),hasCl=Object.keys(cl).length>0;
+    var g=SPRING?springGroupOf(o):'main';
+    var col=g==='amago'?'#BE185D':'#1D4ED8',bg=g==='amago'?'#FDF2F8':'#EFF6FF';
+    var vs=(w.vendors||[]);
+    return h('div',{key:o.no+'|'+w.id,onClick:function(e){e.stopPropagation();p.onOpen&&p.onOpen(o,w.id);},
+      title:o.no+' '+workCustName(o)+(o.subject?'（'+o.subject+'）':'')+'\n'+workSlotLabel(w)+'\n当社: '+((w.staff||[]).join('・')||'なし')+'\n外注: '+(vs.map(function(v){return ninkuShort(v.v)+' '+v.n+'人'+(v.po?'（'+v.po+'）':'（発注書なし）');}).join('・')||'なし')+(w.note?'\nメモ: '+w.note:'')+(hasCl?'\n⚠ ダブルブッキング: '+Object.keys(cl).map(function(n){return n+'（'+cl[n].join('、')+'）';}).join(' '):''),
+      style:{cursor:'pointer',background:bg,borderLeft:'3px solid '+(hasCl?'#C53030':col),borderRadius:4,padding:'2px 4px',marginBottom:3,fontSize:compact?10:11,lineHeight:1.35,overflow:'hidden'}},
+      h('div',{style:{fontWeight:800,color:col,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},
+        h('span',{style:{fontSize:9,background:col,color:'#fff',borderRadius:3,padding:'0 3px',marginRight:3}},workSlotLabel(w)),
+        workCustName(o)),
+      (w.staff||[]).length?h('div',{style:{color:'#0F172A'}},'👷 ',(w.staff||[]).map(function(n,ii){return h('span',{key:n,style:{color:cl[n]?'#C53030':undefined,fontWeight:cl[n]?900:600}},(ii?'・':'')+n+(cl[n]?'⚠':''));})):null,
+      vs.length?h('div',{style:{color:'#7C2D12'}},'🤝 '+vs.map(function(v){return ninkuShort(v.v)+v.n+'人'+(v.po?'🔗':'');}).join('・')):null
+    );
+  }
+  function dayTotals(ds){
+    var xs=byDay[ds]||[];var st={},vn=0;
+    xs.forEach(function(x){(x.w.staff||[]).forEach(function(n){st[n]=1;});(x.w.vendors||[]).forEach(function(v){vn+=(+v.n||0);});});
+    return {staff:Object.keys(st).length,vend:vn,cnt:xs.length};
+  }
+  function printIt(){
+    var el=prRef.current;if(!el)return;
+    var w=window.open('','_blank');if(!w){alert('ポップアップがブロックされました。許可してからもう一度押してください');return;}
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>作業カレンダー '+periodTitle+'</title><style>body{font-family:"Hiragino Sans","Meiryo",sans-serif;margin:8mm;}@page{size:A4 landscape;margin:6mm;}button{display:none!important}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body>'+el.outerHTML+'</body></html>');
+    w.document.close();setTimeout(function(){try{w.focus();w.print();}catch(e){}},300);
+  }
+  var staffOpts=salesPersonOptions();
+  var hdBtn=function(on){return 'btn btn-xs '+(on?'btn-nv':'btn-ol');};
+  var noWorkOrders=ORDERS.filter(function(o){return o&&!isLostOrder(o)&&o.status!=='納品完了'&&!(o.works||[]).length&&(!SPRING||whG==='all'||springGroupOf(o)===whG);}).length;
+  return h('div',{className:'card',style:{padding:10}},
+    h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:8}},
+      h('h3',{style:{margin:0,fontSize:15,color:SPRING_PINK}},'📅 作業カレンダー'),
+      h('button',{className:hdBtn(view[0]==='month'),onClick:function(){view[1]('month');}},'月'),
+      h('button',{className:hdBtn(view[0]==='week'),onClick:function(){view[1]('week');}},'週（人別）'),
+      h('button',{className:'btn btn-xs btn-ol',onClick:function(){move(-1);}},view[0]==='month'?'◀ 前月':'◀ 前週'),
+      h('button',{className:'btn btn-xs btn-ol',onClick:function(){base[1](td2());}},'今日'),
+      h('button',{className:'btn btn-xs btn-ol',onClick:function(){move(1);}},view[0]==='month'?'次月 ▶':'次週 ▶'),
+      h('input',{className:'inp',type:'month',style:{width:130,fontSize:11},value:by+'-'+String(bm).padStart(2,'0'),onChange:function(e){if(e.target.value)base[1](e.target.value+'-01');}}),
+      h('b',{style:{fontSize:14,marginLeft:4}},periodTitle),
+      h('span',{style:{marginLeft:'auto',fontSize:10,color:'var(--g500)'}},'作業員'),
+      h('select',{className:'inp',style:{width:110,fontSize:11},value:fStaff[0],onChange:function(e){fStaff[1](e.target.value);}},
+        h('option',{value:''},'全員'),staffOpts.map(function(n){return h('option',{key:n,value:n},n);})),
+      h('span',{style:{fontSize:10,color:'var(--g500)'}},'業者'),
+      h('select',{className:'inp',style:{width:130,fontSize:11},value:fVend[0],onChange:function(e){fVend[1](e.target.value);}},
+        h('option',{value:''},'すべて'),ninkuVendors().map(function(v){return h('option',{key:v.id,value:v.id},v.short||v.name);})),
+      h('button',{className:'btn btn-xs btn-ol',onClick:printIt,title:'表示中のカレンダーを印刷します（A4横）'},'🖨 印刷')
+    ),
+    h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:6}},
+      '予定を押すと作業登録の画面が開きます。登録は案件一覧の各案件の「👷 作業」ボタンから。',
+      h('span',{style:{marginLeft:8,color:'#BE185D',fontWeight:700}},'■ 尼高'),h('span',{style:{marginLeft:6,color:'#1D4ED8',fontWeight:700}},'■ 尼高以外'),
+      h('span',{style:{marginLeft:6,color:'#C53030',fontWeight:700}},'⚠ 同じ人が同じ時間帯に2件'),
+      h('span',{style:{marginLeft:6}},'🔗 発注書ひも付け済み'),
+      noWorkOrders?h('span',{style:{marginLeft:8,color:'#B45309'}},'（作業未登録の進行中の案件: '+fm(noWorkOrders)+'件）'):null),
+    h('div',{ref:prRef},
+      h('div',{style:{fontWeight:800,fontSize:13,margin:'0 0 4px'}},'作業カレンダー '+periodTitle+(SPRING?'（春先'+SPRING_FY+'年度'+(whG!=='all'?'・'+SPRING_GROUP_L[whG]:'')+'）':'')+(fStaff[0]?'　作業員: '+fStaff[0]:'')+(fVend[0]?'　業者: '+ninkuShort(fVend[0]):'')),
+      view[0]==='month'
+      ?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',border:'1px solid var(--g200)',borderRadius:6,overflow:'hidden'}},
+          WORK_DOW.map(function(dw,i){return h('div',{key:'h'+i,style:{background:'#F1F5F9',textAlign:'center',fontSize:11,fontWeight:800,padding:'3px 0',color:i===0?'#C53030':i===6?'#2563EB':'var(--g600)',borderBottom:'1px solid var(--g200)'}},dw);}),
+          days.map(function(ds){
+            var dw=ymdDow(ds),inM=inMonth(ds),t=dayTotals(ds),isT=ds===today;
+            return h('div',{key:ds,style:{minHeight:'calc((100vh - 330px)/'+(days.length/7)+')',minWidth:0,borderRight:dw<6?'1px solid var(--g100)':'none',borderBottom:'1px solid var(--g100)',padding:3,background:isT?'#FEFCE8':inM?'#fff':'#F8FAFC',opacity:inM?1:.55,display:'flex',flexDirection:'column'}},
+              h('div',{style:{display:'flex',alignItems:'center',gap:4,marginBottom:2}},
+                h('span',{style:{fontSize:12,fontWeight:800,color:dw===0?'#C53030':dw===6?'#2563EB':'#0F172A',background:isT?'#FACC15':'transparent',borderRadius:10,padding:'0 5px'}},+ds.split('-')[2]),
+                t.cnt?h('span',{style:{marginLeft:'auto',fontSize:9,color:'var(--g500)',whiteSpace:'nowrap'}},'当社'+t.staff+'・外注'+t.vend+'人'):null),
+              h('div',{style:{flex:1}},(byDay[ds]||[]).map(function(x){return chip(x,true);})));
+          }))
+      :h('div',{style:{overflowX:'auto'}},h('table',{className:'tbl',style:{tableLayout:'fixed',width:'100%',minWidth:900}},
+          h('thead',null,h('tr',null,
+            h('th',{style:{width:110}},'作業員／業者'),
+            days.map(function(ds){var dw=ymdDow(ds);return h('th',{key:ds,style:{color:dw===0?'#C53030':dw===6?'#2563EB':undefined,background:ds===today?'#FEF9C3':undefined}},ds.slice(5).replace('-','/')+'（'+WORK_DOW[dw]+'）');}))),
+          h('tbody',null,
+            (fStaff[0]?[fStaff[0]]:staffOpts).filter(function(){return !fVend[0];}).map(function(n){
+              return h('tr',{key:'s'+n},
+                h('td',{style:{fontWeight:800}},'👷 '+n),
+                days.map(function(ds){
+                  var xs=(byDay[ds]||[]).filter(function(x){return (x.w.staff||[]).indexOf(n)>=0;});
+                  return h('td',{key:ds,style:{verticalAlign:'top',padding:3,background:ds===today?'#FEFCE8':undefined}},xs.length?xs.map(function(x){return chip(x,true);}):h('span',{style:{color:'var(--g300)',fontSize:10}},'空き'));
+                }));
+            }),
+            ninkuVendors().filter(function(v){return (!fVend[0]||fVend[0]===v.id)&&!fStaff[0]&&days.some(function(ds){return (byDay[ds]||[]).some(function(x){return (x.w.vendors||[]).some(function(y){return y.v===v.id;});});});}).map(function(v){
+              return h('tr',{key:'v'+v.id,style:{background:'#FFF7ED'}},
+                h('td',{style:{fontWeight:800,color:'#7C2D12'}},'🤝 '+(v.short||v.name)),
+                days.map(function(ds){
+                  var xs=(byDay[ds]||[]).filter(function(x){return (x.w.vendors||[]).some(function(y){return y.v===v.id;});});
+                  var n=0;xs.forEach(function(x){(x.w.vendors||[]).forEach(function(y){if(y.v===v.id)n+=(+y.n||0);});});
+                  return h('td',{key:ds,style:{verticalAlign:'top',padding:3}},xs.length?[h('div',{key:'n',style:{fontSize:11,fontWeight:800,color:'#7C2D12'}},'計 '+n+'人')].concat(xs.map(function(x){return chip(x,true);})):null);
+                }));
+            })
+          ))),
+      h('div',{style:{display:'flex',gap:16,flexWrap:'wrap',marginTop:10,alignItems:'flex-start'}},
+        h('div',null,
+          h('div',{style:{fontWeight:800,fontSize:12,marginBottom:3}},'🤝 外注（人工）の業者別 — '+periodTitle),
+          Object.keys(vsum).length?h('table',{className:'tbl',style:{fontSize:11,width:'auto'}},
+            h('thead',null,h('tr',null,h('th',null,'業者'),h('th',{style:{textAlign:'right'}},'延べ人数'),h('th',{style:{textAlign:'right'}},'日数（行）'),h('th',null,'発注書'))),
+            h('tbody',null,Object.keys(vsum).map(function(id){var s=vsum[id];
+              return h('tr',{key:id},h('td',{style:{fontWeight:700}},ninkuShort(id)),h('td',{style:{textAlign:'right',fontWeight:800}},fm(s.n)+'人'),h('td',{style:{textAlign:'right'}},fm(s.cnt)),
+                h('td',{style:{fontSize:10}},s.po?'🔗 '+Object.keys(s.pos).join('・'):null,s.nopo?h('span',{style:{color:'#B45309',marginLeft:4}},'未ひも付け '+s.nopo+'件'):null));}))):
+          h('div',{style:{fontSize:11,color:'var(--g400)'}},'この期間の外注の登録はありません')),
+        h('div',null,
+          h('div',{style:{fontWeight:800,fontSize:12,marginBottom:3}},'👷 当社の作業員（作業の件数） — '+periodTitle),
+          Object.keys(staffSum).length?h('div',{style:{display:'flex',flexWrap:'wrap',gap:4,maxWidth:520}},Object.keys(staffSum).sort(function(a,b){return staffSum[b]-staffSum[a];}).map(function(n){
+            return h('span',{key:n,style:{fontSize:11,background:'#ECFEFF',border:'1px solid #A5F3FC',borderRadius:10,padding:'1px 8px'}},n+' '+staffSum[n]+'件');})):
+          h('div',{style:{fontSize:11,color:'var(--g400)'}},'この期間の当社の作業の登録はありません'))
+      )
+    )
+  );
+}
+
 function OrdersPage(p){
   /* v18.46 修正４④: ステータス絞り込みを複数選択に変更（空配列＝「全て」）。
      従来は単一選択で「仮押さえ＋受注確定だけ見る」といった絞り込みができなかった。 */
@@ -15337,6 +15732,7 @@ function OrdersPage(p){
   var sortKey=us('delivery');
   /* v18.79 修正20②: 案件管理の操作欄「📄帳票」で開く帳票選択モーダル */
   var docPick=us(null);
+  var workReg=us(null);/* v20.08 春先: 作業登録の画面 {order, focus} */
   /* v19.17 修正30③: 構成表記（【Sサイズ1段積み：H380mm】等）の手修正モーダル。
      見積書作成画面は「見積作成・仮押さえ・受注確定」の案件でしか開けない（✏ 案件修正の対象がこの3つ）ため、
      出荷指示以降の案件（例 RS-2026-225）でも直せるよう📄帳票の見積書の下からも開けるようにした。
@@ -15934,9 +16330,15 @@ function OrdersPage(p){
             title:'入金期日の'+PAY_ALERT_BDAYS+'営業日前を過ぎても入金確認のチェックが無い案件'},'⚠ '+payAlertCount):null);
       }),
       /* 担当者が未登録／ユーザー管理に無い案件は拠点を判定できないため、「全案件」タブにだけ出す旨を明示する */
-      (baseTab[0]!=='done'&&tabCount.nobase>0)?h('span',{style:{fontSize:9,color:'#975a16',marginLeft:8,marginBottom:4},
+      (baseTab[0]!=='done'&&baseTab[0]!=='cal'&&tabCount.nobase>0)?h('span',{style:{fontSize:9,color:'#975a16',marginLeft:8,marginBottom:4},
         title:'顧客登録の「弊社営業担当」が未設定、またはユーザー管理にその担当者の拠点が登録されていない案件です。顧客登録で担当者を設定すると拠点タブに振り分けられます'},
-        '※ 拠点未判定 '+fm(tabCount.nobase)+'件は「全案件」タブにのみ表示されます'):null
+        '※ 拠点未判定 '+fm(tabCount.nobase)+'件は「全案件」タブにのみ表示されます'):null,
+      /* v20.08 春先: 失注タブの並びの右端に作業カレンダー */
+      SPRING?h('button',{key:'cal',title:'当社の作業員・外注（人工）の割り振りをカレンダーで見ます',onClick:function(){baseTab[1]('cal');},style:{
+          marginLeft:'auto',padding:'6px 16px',fontSize:11,fontWeight:baseTab[0]==='cal'?900:700,cursor:'pointer',
+          border:'1px solid '+SPRING_PINK,borderBottom:baseTab[0]==='cal'?'3px solid '+SPRING_PINK:'1px solid '+SPRING_PINK,
+          background:baseTab[0]==='cal'?'#fff':'#FDF2F8',color:SPRING_PINK,borderRadius:'6px 6px 0 0',marginBottom:-2
+        }},'📅 作業カレンダー'):null
     ),
     /* v19.44 春先: 倉庫の切替と、いま誰が編集できるか */
     SPRING?h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',margin:'0 0 6px',padding:'5px 10px',background:'#FDF2F8',border:'1px solid #F9A8D4',borderRadius:8,fontSize:11}},
@@ -15952,7 +16354,9 @@ function OrdersPage(p){
       h('span',{style:{color:'var(--g500)',fontSize:10}},'編集できる人: 尼高＝'+(springWhoFor('amago')||'−')+' ／ 尼高以外＝'+(springWhoFor('main')||'−')+'（管理者/中辻はすべて）'),
       RO_&&!p.isReadOnly?h('span',{style:{color:'#C53030',fontWeight:700,fontSize:10}},'🔒 この倉庫は閲覧のみです'):null
     ):null,
-    h('div',{className:'card'},
+    /* v20.08 春先: 作業カレンダー（案件一覧の代わりに出す） */
+    (SPRING&&baseTab[0]==='cal')?h(WorkCalendar,{whGrp:whGrp[0],onOpen:function(o,wid){workReg[1]({order:o,focus:wid});}}):null,
+    h('div',{className:'card',style:baseTab[0]==='cal'?{display:'none'}:undefined},
       h('div',{className:'chd'},h('h3',null,(baseTab[0]==='done'?'納品完了':baseTab[0]==='lost'?'失注':baseTab[0]==='all'?'案件管理':('案件管理 — '+orderBaseLabel(baseTab[0])))+'（'+fl.length+'/'+(baseTab[0]==='done'?tabCount.done:baseTab[0]==='lost'?tabCount.lost:tabCount.all)+'件）'),
         h('div',{style:{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}},
           /* v18.48 修正６②: 検索対象からアイテムを外し担当者を追加したため、プレースホルダの文言も差し替える */
@@ -16248,6 +16652,10 @@ function OrdersPage(p){
                   title:'この案件の帳票（'+dts.map(function(t){return DOC_TYPE_LABELS[t];}).join('・')+'）を出力します',
                   onClick:function(){docPick[1](o);}},'📄帳票');
               })(),
+              /* v20.08 春先: 作業登録（作業員・外注の割り振り） */
+              (SPRING&&!isLostOrder(o))?h('button',{className:'btn btn-xs',style:{marginLeft:2,fontWeight:700,background:(o.works||[]).length?SPRING_PINK:'#fff',color:(o.works||[]).length?'#fff':SPRING_PINK,border:'1px solid '+SPRING_PINK},
+                title:(o.works||[]).length?('作業: '+(o.works||[]).map(function(w){return String(w.date).slice(5).replace('-','/')+' '+workSlotLabel(w)+' '+((w.staff||[]).join('・'));}).join(' ／ ')):'この案件の設置作業（当社の作業員・外注の人工）を登録します',
+                onClick:function(){workReg[1]({order:o});}},'👷 作業'+((o.works||[]).length?'（'+(o.works||[]).length+'日）':'登録')):null,
               /* v18.46 修正５⑤: 登録済み案件の修正。仮押さえ在庫を一度解除してから在庫確認・見積画面へ内容を読み込み、
                  修正後に改めて仮押さえすると同じ案件番号へ上書きされる（作成日・起票者は引き継ぐ）。
                  出荷指示以降はSTKを消費済みで、戻すには差し戻し操作が必要なため対象外にしている。 */
@@ -16733,7 +17141,9 @@ function OrdersPage(p){
           h('b',{style:{fontSize:10}},'明細:'),
           h('button',{className:'btn btn-xs '+(showBom[0]?'btn-nv':'btn-tl'),style:{fontWeight:700},
             title:'この案件の部材一覧（明細ごとの内訳と、部材ごとの合計）を表示します',
-            onClick:function(){showBom[1](!showBom[0]);}},(showBom[0]?'▲ ':'📦 ')+'部材内訳')
+            onClick:function(){showBom[1](!showBom[0]);}},(showBom[0]?'▲ ':'📦 ')+'部材内訳'),
+          (SPRING&&!isLostOrder(detail[0]))?h('button',{className:'btn btn-xs',style:{fontWeight:700,background:'#fff',color:SPRING_PINK,border:'1px solid '+SPRING_PINK},
+            title:'この案件の設置作業（当社の作業員・外注の人工）を登録します',onClick:function(){workReg[1]({order:detail[0]});}},'👷 作業登録'+((liveOrder(detail[0]).works||[]).length?'（'+(liveOrder(detail[0]).works||[]).length+'日）':'')):null
         ),
         h('table',{className:'tbl',style:{marginTop:4}},
           h('thead',null,h('tr',null,h('th',null,'製品'),h('th',null,'サイズ'),h('th',null,'カラー'),h('th',null,'タイプ'),h('th',null,'構成'),h('th',null,'数量'))),
@@ -17274,6 +17684,8 @@ function OrdersPage(p){
           }):h('div',{style:{fontSize:10,color:'var(--g500)'}},'構成表記を出す本体の明細がありません'))
       );
     })():null,
+    workReg[0]?h(WorkRegModal,{key:workReg[0].order.no,order:workReg[0].order,focus:workReg[0].focus,userName:p.userName,toast:p.toast,zi:1100,
+      onSaved:function(){p.bump&&p.bump();},onClose:function(){workReg[1](null);}}):null,
     docPick[0]?h(Modal,{show:true,title:'📄 帳票の出力 — '+docPick[0].no,w:460,onClose:function(){docPick[1](null);},
       footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
         h('button',{className:'btn btn-ol',onClick:function(){docPick[1](null);}},'閉じる'))},
