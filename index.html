@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.10（案件のネジの調整＝見積を変えずにジョイントネジ・目隠しネジを増減・仮押さえと在庫に反映）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.11（サンプル出荷・倉庫間移動の出荷指示書・春先の片岡さんの権限を尼高・関西に）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -171,7 +171,7 @@ function springDefaultFY(){var d=new Date();return d.getMonth()>=6?d.getFullYear
    「優先」＝その人がログインしている間はその人（たち）が編集でき、いなければ従来どおり先勝ち（最初にログインした人）。
    名前はアカウント名（役割/氏名）の氏名部分に含まれるかで見る。 */
 var SPRING_RIGHTS={amago:['片岡'],main:['岩上','高山'],all:['中辻']};
-var SPRING_GROUP_L={amago:'尼高',main:'尼高以外'};
+var SPRING_GROUP_L={amago:'尼高・関西',main:'尼高・関西以外'};/* v20.11 */
 var SPRING_PRESENCE={names:[],primary:'',ready:false};/* App が同時利用の一覧から更新する */
 function springNameHas(name,list){
   var n=String(name||'').split('/').pop().replace(/[\s　]/g,'');
@@ -192,7 +192,10 @@ function springOrderWhs(o){
   return Object.keys(ws);
 }
 /* 倉庫の一覧 → 'amago'（すべて尼高）／'main'（それ以外。混在も） */
-function springGroupOfWhs(ws){ws=(ws||[]).filter(Boolean);return (ws.length&&ws.every(function(w){return w==='amago';}))?'amago':'main';}
+/* v20.11（2026-11-17 ユーザー指示「片岡がログインしている間の第一優先を尼高と関西に。その間は岩上・高山は編集できない」）:
+   尼高・関西の倉庫だけを使う案件・在庫は 'amago'（片岡さんの区分）。関西と他の倉庫が混ざったものは今までどおり 'main'。 */
+var SPRING_AMAGO_WHS=['amago','kansai'];
+function springGroupOfWhs(ws){ws=(ws||[]).filter(Boolean);return (ws.length&&ws.every(function(w){return SPRING_AMAGO_WHS.indexOf(w)>=0;}))?'amago':'main';}
 function springGroupOf(t){
   if(!t)return 'main';
   if(typeof t==='string')return (t==='amago'||t==='main')?t:springGroupOfWhs([t]);
@@ -3092,6 +3095,9 @@ var DOCS_BY_STATUS={
   '失注':['quote']
 };
 function docsForStatus(status,order){
+  /* v20.11: サンプルは帳票なし／倉庫間移動は出荷指示書だけ */
+  if(order&&order.kind==='sample')return [];
+  if(order&&order.kind==='transfer')return (['受注確定','出荷指示','出荷完了','納品完了'].indexOf(status)>=0)?['shipping']:[];
   var a=DOCS_BY_STATUS[status];
   a=a?a.slice():['quote'];
   /* v19.48: チャーター発注書は★送付方法がチャーターの案件だけ。出せる時期は出荷指示書と同じ（受注確定から） */
@@ -4528,6 +4534,7 @@ function rollbackInventory(order,fromStatus,toStatus){
     restoreShippedStock(order);
     clearStockConsumed(order);/* v18.76 修正18③: 在庫を戻したので消費の記録も消す */
     delete order._shipAdd;/* v20.07: 手修正で増やしたネジの引き落としの記録（数は _stockConsumed.items で戻した） */
+    if(order._xferIn)xferRevertIn(order);/* v20.11: 倉庫間移動で移動先に入れた分を戻す */
     if(toHeld){reHoldFromSnapshot(order);if(order.screwAdj)screwAdjReconcile(order);/* v20.10 */return {ok:true,mode:'unship_rehold'};}
     order.lines.forEach(function(ln){if(ln.isFreeInput)return;delete ln._shippedActualHeld;ln._actualHeld=[];ln._hadActualHeld=false;});
     return {ok:true,mode:'unship_to_quote'};
@@ -8019,7 +8026,8 @@ function orderSalesFigures(order){
 }
 /* v19.43: 売上集計の対象（通常／春先／合算）。通常の画面では OTHER_SIDE が春先、春先の画面では OTHER_SIDE が通常 */
 function salesScopeOrders(scope){
-  var own=ORDERS||[],other=(OTHER_SIDE&&OTHER_SIDE.orders)||[];
+  /* v20.11: サンプル・倉庫間移動は売上に入れない */
+  var own=(ORDERS||[]).filter(function(o){return !isSpecialOrder(o);}),other=((OTHER_SIDE&&OTHER_SIDE.orders)||[]).filter(function(o){return !isSpecialOrder(o);});
   var normal=SPRING?other:own,spring=SPRING?own:other;
   if(scope==='normal')return normal;
   if(scope==='spring')return spring;
@@ -8780,7 +8788,7 @@ function bizDaysUntil(today,due){
 /* 戻り値 {items:[{idx,text,due,left,over}], over:件数}。アラートが無ければ items は空。 */
 function payAlertOf(order,today){
   var res={items:[],over:0};
-  if(!order||order.status!=='納品完了'||isLostOrder(order))return res;
+  if(!order||order.status!=='納品完了'||isLostOrder(order)||isSpecialOrder(order))return res;/* v20.11 */
   today=today||new Date();
   var t0=new Date(today.getFullYear(),today.getMonth(),today.getDate());
   var pm=paidSheetsOf(order);
@@ -10317,7 +10325,7 @@ var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes'
   'showRepName','repName','rowCost',
   'shipper','shipNo','shipTo','shippingNotes','docEdit',
   'beforeEdit',/* v19.88: 案件修正を始める前の控え（「↩ 修正前に戻す」用） */
-  'works','screwAdj','screwAdjLog'];/* v20.10: 春先の作業登録（v20.08 で入れ忘れ）・ネジの調整 */
+  'works','screwAdj','screwAdjLog','kind'];/* v20.11: kind＝サンプル *//* v20.10: 春先の作業登録（v20.08 で入れ忘れ）・ネジの調整 */
 /* ===== v19.88（2026-11-06 依頼「案件修正で間違って修正してしまった場合に、一つ前の状態に戻すボタン」）=====
    ✏ 案件修正を押した時点の案件をまるごと order.beforeEdit={at,by,data} に控える（1つ前の1世代だけ。次の案件修正で上書き）。
    v19.90（2026-11-09 ユーザー「戻すのは案件修正ボタンを押した直後までで。案件修正モードのまま続ける運用で」「案件一覧の修正前に戻すは不要」）:
@@ -10728,6 +10736,12 @@ var HELP_QA=[
   {id:'stock-terms',cat:'stock',tab:'parts',ver:'v19.57',q:'「実在庫」「仮押さえ」「使える数」の違いが知りたい',kw:['実在庫','仮押さえ','使える数','空き','意味','違い'],
     steps:['実在庫 … 倉庫に実際にある数（仮押さえ分を含む）','仮押さえ … 案件のために押さえている数','使える数（空き）… 実在庫 − 仮押さえ。新しい見積で押さえられる数'],
     rel:['stock-edit']},
+  {id:'stock-move-ship',cat:'stock',tab:'orders',ver:'v20.11',q:'倉庫間移動で出荷指示書を出したい（例 新柏から尼高へ在庫を移す）',kw:['倉庫間移動','移動','出荷指示書','取り寄せ','移す','新柏','尼高','第一','本社'],
+    steps:['「案件管理」のタブの右の「🔄 倉庫間移動の登録」を押す','移動元・移動先・製品ラインを選び、移動する部材と数を入れる（「＋ 部材を追加」で増やす）','移動先の住所・電話、納品予定日を確かめて「🔄 登録」（移動元で在庫を押さえます。番号は MV-）','案件の「📄帳票」で移動元あての出荷指示書を出し、倉庫へ送る','送ったら「'+'出荷指示書送付済'+'」へ進める → 移動元から引き落とし、移動先の在庫に入ります'],
+    tip:'見積書・請求書は出ず、売上にも入りません。差し戻すと移動元・移動先の在庫が両方戻ります。移動先の住所・電話は倉庫ごとに記録され、次回から自動で入ります。',rel:['stock-move']},
+  {id:'sample-ship',cat:'quote',tab:'inv',ver:'v20.11',q:'新品の製品をサンプルとして出したい（帳票なし）',kw:['サンプル','見本','無償','無料','貸し出し','帳票なし'],
+    steps:['いつもの見積と同じく、顧客を選んで「在庫確認・見積」で製品を選び、出荷する倉庫を選ぶ','「🎁 サンプル出荷（帳票なし）」を押す（番号は SP-。在庫を仮押さえします）','出荷したら「案件管理」でステータスを「'+'出荷指示書送付済'+'」へ進める → 在庫から引き落とします'],
+    tip:'見積書・出荷指示書・請求書などの帳票は出さず、売上集計・入金アラートにも入りません。案件管理では「🎁 サンプル」の印が付きます。',warn:'サンプルが戻ってきても在庫には戻しません。',rel:[]},
   {id:'stock-move',cat:'stock',tab:'parts',ver:'v19.57',q:'倉庫から倉庫へ在庫を移したい（取り寄せ）',kw:['倉庫間移動','移動','取り寄せ','移す'],
     steps:['「部材在庫一覧」の「🔄 倉庫間移動（取り寄せ）」を押す','移動元・移動先・部材・数を選ぶ','「移動」を押す'],
     rel:[]},
@@ -10779,9 +10793,9 @@ var HELP_QA=[
   {id:'spring-enter',cat:'spring',tab:'cust',ver:'v19.57',q:'春先モード（入学シーズンのパーソナル案件）に切り替えたい',kw:['春先','春','入学','シーズン','切り替え'],
     steps:['「顧客選択」の「🌸 春先（2027年度）」を押す','画面がピンクになっている間は春先の案件・在庫です（通常とは別管理）','通常に戻るときは「🌸 春先を出る」'],
     tip:'顧客・マスタ・貸与品データは通常と共通です。',rel:['spring-perm']},
-  {id:'spring-perm',cat:'spring',tab:'orders',ver:'v19.57',q:'春先モードで編集できない（🔒 閲覧のみになる）',kw:['春先','編集できない','閲覧のみ','権限','尼高','ロック'],
-    steps:['ヘッダーの「✏ 編集できる倉庫」で、自分が編集できる倉庫を確かめる（尼高＝片岡さん優先、尼高以外＝岩上さん・高山さん優先）','「案件管理」の「🌸 倉庫」の切り替えを、自分が編集できる倉庫（「🏭 尼高」または「尼高以外（混在を含む）」。✏ が付いている方）にする','そのあと操作する'],
-    warn:'倉庫の切り替えが「すべて」のままだと、尼高と尼高以外の両方の権限が要るため、閲覧のみになることがあります。',rel:['trouble-readonly']},
+  {id:'spring-perm',cat:'spring',tab:'orders',ver:'v20.11',q:'春先モードで編集できない（🔒 閲覧のみになる）',kw:['春先','編集できない','閲覧のみ','権限','尼高','関西','ロック'],
+    steps:['ヘッダーの「✏ 編集できる倉庫」で、自分が編集できる倉庫を確かめる（尼高・関西＝片岡さん優先、それ以外＝岩上さん・高山さん優先）','「案件管理」の「🌸 倉庫」の切り替えを、自分が編集できる倉庫（「🏭 尼高・関西」または「それ以外（混在を含む）」。✏ が付いている方）にする','そのあと操作する'],
+    warn:'尼高・関西の倉庫だけを使う案件・在庫は、片岡さんがログインしている間は片岡さんだけが編集できます（関西と他の倉庫が混ざった案件は「それ以外」）。倉庫の切り替えが「すべて」のままだと両方の権限が要るため、閲覧のみになることがあります。',rel:['trouble-readonly']},
   {id:'spring-work',cat:'spring',tab:'orders',ver:'v20.09',q:'春先で設置作業の作業員（当社・外注の人工）を割り振りたい／作業カレンダーで見たい',kw:['作業員','作業','割り振り','カレンダー','設置','人工','外注','シフト','予定','ダブルブッキング','作業登録','誰が','いつ'],
     steps:['春先の「案件管理」で、案件の行の「👷 作業登録」（案件詳細の「👷 作業登録」でも可）を押す','作業日と時間（1日／午前／午後／時刻指定）を選ぶ','当社の作業員（ユーザー管理のアカウントの人）を押して選ぶ','外注は「＋ 業者を追加」で人工の業者と人数を入れる。人工の発注書が出ていれば「発注書」の欄で選んでひも付ける（作業日が同じ発注書には ★ が付きます）','数日かかる設置は「＋ 別の日を追加」で日ごとに入れて「💾 保存」','一覧は失注タブの並びの右端「📅 作業カレンダー」で見る（月／週（人別）の切り替え・作業員や業者で絞り込み・🖨 印刷）'],
     tip:'カレンダーの予定を押すと作業登録の画面が開いて直せます。下に業者別の延べ人数と、発注書のひも付けの有無が出ます。同じ人が同じ時間帯に2件入っていると ⚠ が付きます（保存の前にも確認が出ます）。',
@@ -13613,7 +13627,8 @@ function InvPage(p){
   }
 
   /* 仮押さえのみ（見積書作成なし）: 在庫だけ押さえて案件登録、見積プレビューは開かない */
-  function doReserveOnly(){
+  function doReserveOnly(kind){
+    kind=(kind==='sample')?'sample':'';/* v20.11: 🎁 サンプル出荷 */
     if(!lines[0].length||!selWH[0])return;
     /* v14 Codex P2対応: 読み取り専用モードでは禁止 */
     if(p.isReadOnly){p.toast('読み取り専用モード中は仮押さえできません');return;}
@@ -13652,9 +13667,10 @@ function InvPage(p){
       ln._actualHeld=actual;ln._heldWh=wh;ln._hadActualHeld=true;
     });
     var shipInfo=cust?calcShipping(clonedLines,wh,shipPref()):null;
-    var no=takeOrderNo('RS');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き */
+    var no=takeOrderNo(kind==='sample'?'SP':'RS');/* v18.46 修正５⑤: 修正モード中は元の案件番号へ上書き（v20.11: サンプルは SP-） */
     var ptR=payTermsFor(cust);
     var order={no:no,cid:cust.id,wh:wh,status:'仮押さえ',date:td2(),lines:clonedLines,shipping:shippingByMethod(clonedLines,wh,shipCust(),shipInfo?shipInfo.shipping:0,shipMethod[0],chTariff[0]),discount:discountSum(discountRows[0]),discounts:normDiscountRows(discountRows[0]),createdBy:p.userName||'',shipMethod:shipMethod[0],charterTariff:(shipMethod[0]==='charter'?chTariff[0]:'')||'',shipLabel:shipLabelSt[0]||'',shipKeep:shipKeepR.current||undefined,shipDest:shipDest[0]||'cust',subject:quoteSubject[0]||'',paymentTerms:ptR,notes:quoteNotes[0]||'',salesPersonOverride:quoteSalesPerson[0]||'',endUser:(endUser[0]&&(endUser[0].name||endUser[0].address))?Object.assign({},endUser[0]):null,reserveOnly:true,unsecuredParts:unsecuredParts,deliveryDate:dlvIn};
+    if(kind)order.kind=kind;
     upsertOrder(order);/* v18.46 修正５⑤ */
     quoteOrder[1](order);
     p.toast(ovwTag()+'仮押さえのみ登録: '+no+'（見積書は未作成）'+(unsecuredParts.length?'（未確保'+unsecuredParts.length+'件）':''));
@@ -14327,7 +14343,11 @@ function InvPage(p){
           h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
             /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため文言を統一 */
             h('button',{className:'btn btn-nv',onClick:doQuoteOnly},'見積書のみ作成'),
-            p.salesView?null:h('button',{className:'btn btn-or',style:{fontSize:12,padding:'8px 14px'},onClick:doReserveOnly,disabled:!selWH[0]},'仮押さえのみ（見積無）'),
+            p.salesView?null:h('button',{className:'btn btn-or',style:{fontSize:12,padding:'8px 14px'},onClick:function(){doReserveOnly();},disabled:!selWH[0]},'仮押さえのみ（見積無）'),
+              /* v20.11: 新品製品をサンプルとして出す（帳票なし・売上に入れない） */
+              p.salesView?null:h('button',{className:'btn',style:{fontSize:12,padding:'8px 14px',background:'#FFF7ED',color:'#9A3412',border:'1px solid #FDBA74',fontWeight:700},disabled:!selWH[0],
+                title:'サンプル（無償）として登録します。帳票は出さず、売上にも入りません。在庫は仮押さえし「'+stLabel('出荷指示')+'」にしたとき引き落とします',
+                onClick:function(){if(confirm('🎁 サンプル（無償）として登録します。\n\n・見積書・出荷指示書・請求書などの帳票は出しません（売上にも入りません）\n・在庫は仮押さえし、案件管理で「'+stLabel('出荷指示')+'」にしたとき引き落とします\n・戻ってきても在庫には戻しません\n\nよろしいですか？'))doReserveOnly('sample');}},'🎁 サンプル出荷（帳票なし）'),
             p.salesView?null:h('button',{className:'btn btn-gn',style:{fontSize:12,padding:'8px 20px'},onClick:doHoldAndQuote,disabled:!selWH[0]},'仮押さえ＆見積書作成'),
             /* v18.30 要望③: 部材ごとに倉庫を選んで仮押さえ（単一倉庫で足りる場合でも意図的に分割できる） */
             p.salesView?null:h('button',{className:'btn btn-tl',style:{fontSize:12,padding:'8px 14px'},onClick:openPartWh,disabled:!lines[0].length,title:'例: 本体は新柏倉庫、鍵は本社で仮押さえ。同じ部材を数量で分けて複数倉庫からかき集めることもできます。扉は扉色ごとに倉庫を指定できます（倉庫数の制限はありません）'},'🔀 部材別倉庫で仮押さえ'),
@@ -15953,6 +15973,149 @@ function ScrewAdjModal(p){
   );
 }
 
+/* ===== v20.11（2026-11-17 依頼）案件の区分: 🎁 サンプル／🔄 倉庫間移動 =====
+   ① サンプル（order.kind='sample'。番号 SP-）: 見積画面の「🎁 サンプル出荷（帳票なし）」で登録（仮押さえのみと同じ流れ）。
+      帳票は出さない（出荷指示書も出さない＝ユーザー回答）。売上集計・入金アラートに入れない。在庫は「出荷指示書送付済」で引き落とす。
+      戻ってきても在庫には戻さない（ユーザー回答）。
+   ② 倉庫間移動（order.kind='transfer'。番号 MV-。顧客なし）: 案件管理の「🔄 倉庫間移動の登録」で、移動元・移動先・部材と数を入れる。
+      移動元で押さえ、出せる帳票は移動元あての出荷指示書だけ（納品先＝移動先の倉庫。住所はチャーターの積込場所の記録 CHARTER_LOADS と共有）。
+      「出荷指示書送付済」にした時点で移動元から引き落とし、同じ数を移動先の在庫に入れる（ユーザー回答）。差し戻すと両方戻す。
+      どの倉庫の組み合わせでもよい（新柏→第一、尼高→本社 など）。売上集計・入金アラートに入れない。 */
+var ORDER_KIND_L={sample:'🎁 サンプル',transfer:'🔄 倉庫間移動'};
+function isSpecialOrder(o){return !!(o&&(o.kind==='sample'||o.kind==='transfer'));}
+function whShort(w){return (WH_MAP[w]||{}).s||w||'';}
+function xferLabel(o){return whShort(o&&o.wh)+' → '+whShort(o&&o.xferTo);}
+/* 移動先へ入れる（引き落とした数＝_stockConsumed.items と同じ数） */
+function xferApplyIn(order){
+  if(!order||order.kind!=='transfer'||!order.xferTo)return;
+  var to=order.xferTo,items=(order._stockConsumed&&order._stockConsumed.items)||[],done=[];
+  var ts=new Date().toLocaleString('ja-JP');
+  items.forEach(function(it){
+    if(!(it.qty>0))return;
+    var isD=!!it.color;
+    var r=_rbAddStock(it.lineId,to,it.key,it.sub,it.color||null,it.qty);
+    EDIT_LOG.push({by:curUserName(),timestamp:ts,lineId:it.lineId,key:it.key,sub:it.sub,color:it.color||null,wh:to,oldVal:r.oldV,newVal:r.newV,
+      label:partLabelJP(it.key,it.sub,it.color,isD)+'（倉庫間移動 入庫←'+((WH_MAP[order.wh]||{}).n||order.wh)+' '+order.no+'）',editor:'倉庫間移動'});
+    done.push({lineId:it.lineId,key:it.key,sub:it.sub,color:it.color||null,qty:it.qty});
+  });
+  order._xferIn={at:ts,to:to,items:done};
+}
+/* 差し戻し: 移動先へ入れた分を戻す */
+function xferRevertIn(order){
+  var x=order&&order._xferIn;if(!x)return;
+  var ts=new Date().toLocaleString('ja-JP');
+  (x.items||[]).forEach(function(it){
+    var r=_rbAddStock(it.lineId,x.to,it.key,it.sub,it.color||null,-it.qty);
+    EDIT_LOG.push({by:curUserName(),timestamp:ts,lineId:it.lineId,key:it.key,sub:it.sub,color:it.color||null,wh:x.to,oldVal:r.oldV,newVal:r.newV,
+      label:partLabelJP(it.key,it.sub,it.color,!!it.color)+'（倉庫間移動の差し戻し '+order.no+'）',editor:'倉庫間移動'});
+  });
+  delete order._xferIn;
+}
+/* 倉庫の在庫から選べる部材の一覧（製品ライン L・倉庫 W） */
+function xferItemsOf(L,W){
+  var out=[],o=(STK[L]&&STK[L][W])||{};
+  Object.keys(o).forEach(function(k){
+    var v=o[k];
+    if(typeof v==='number'){out.push({id:k,key:k,free:avail(normalizeStockLine(L,k),W,k)});return;}
+    if(!v||typeof v!=='object')return;
+    if(k==='door'||k==='doorH'){
+      Object.keys(v).forEach(function(c){var vv=v[c];if(!vv||typeof vv!=='object')return;Object.keys(vv).forEach(function(sz){out.push({id:k+'|'+c+'|'+sz,key:k,color:c,size:sz,isDoor:true,free:availD(L,W,c,sz,k)});});});
+      return;
+    }
+    Object.keys(v).forEach(function(sb){out.push({id:k+'||'+sb,key:k,sub:sb,free:avail(normalizeStockLine(L,k),W,k,sb)});});
+  });
+  out.forEach(function(x){x.label=partLabelJP(x.key,x.isDoor?x.size:x.sub,x.color,x.isDoor);});
+  out.sort(function(a,b){return (b.free>0)-(a.free>0)||a.label.localeCompare(b.label,'ja');});
+  return out;
+}
+var XFER_SEQ_PREFIX=function(){return SPRING?('MV-'+SPRING_FY+'-S'):'MV-2026-';};
+function XferModal(p){
+  var whs=WH_IDS.slice();
+  var f=us({from:'',to:'',line:((LINES.find(function(l){return l.id==='jp2';})||LINES[0]||{}).id)||'jp2',dlv:'',memo:'',addr:'',addrTouched:false});
+  var rows=us([{L:'',id:'',qty:''}]);
+  var F=f[0];
+  function set(k,v){var n=Object.assign({},F);n[k]=v;if(k==='to'&&!F.addrTouched)n.addr=CHARTER_LOADS[(WH_MAP[v]||{}).n]||'';f[1](n);}
+  function setRow(i,patch){var a=rows[0].slice();a[i]=Object.assign({},a[i],patch);rows[1](a);}
+  var lineOf=function(r){return r.L||F.line;};
+  var cache={};function items(L){var k=L+'@'+F.from;if(!cache[k])cache[k]=F.from?xferItemsOf(L,F.from):[];return cache[k];}
+  function save(){
+    if(p.readOnly){p.toast&&p.toast('読み取り専用モード中は操作できません');return;}
+    if(!F.from||!F.to||F.from===F.to){alert('移動元と移動先を別々に選んでください');return;}
+    if(SPRING&&springDeny([F.from,F.to],p.toast))return;
+    var lines=[],bad=[];
+    rows[0].forEach(function(r,i){
+      if(!r.id&&!r.qty)return;
+      var L=lineOf(r),it=items(L).find(function(x){return x.id===r.id;}),q=parseInt(r.qty,10);
+      if(!it||!(q>0)){bad.push((i+1)+'行目');return;}
+      var ln={id:'MV'+Date.now().toString(36)+i,line:L,isPartOnly:true,partKey:it.key,qty:q,partLabel:it.label};
+      if(it.isDoor){ln.isDoor=true;ln.color=it.color;ln.partSub=it.size;ln.size=it.size;}
+      else if(it.sub!==undefined)ln.partSub=it.sub;
+      lines.push(ln);
+    });
+    if(bad.length){alert(bad.join('・')+': 部材と数（1以上）を入れてください');return;}
+    if(!lines.length){alert('移動する部材を1つ以上入れてください');return;}
+    var uns=[];
+    lines.forEach(function(ln){
+      ln._actualHeld=holdBOMPartial(ln.line,F.from,orderLineBOM(ln),ln.color,ln.isDoor?ln.partSub:ln.size,null,uns);
+      ln._heldWh=F.from;ln._hadActualHeld=true;
+    });
+    if(uns.length&&!confirm('移動元（'+whShort(F.from)+'）の空き在庫が足りない部材があります（発注待ちになります）:\n'+uns.slice(0,6).map(function(u){return '・'+(u.label||u.key)+' 不足 '+u.qty;}).join('\n')+'\n\nこのまま登録しますか？')){
+      lines.forEach(function(ln){releaseLine(ln,F.from);});return;
+    }
+    var no=XFER_SEQ_PREFIX()+String(nextON++).padStart(3,'0');
+    var dn=(WH_MAP[F.to]||{}).n||F.to;
+    var addr=String(F.addr||'').trim();
+    if(addr&&CHARTER_LOADS[dn]!==addr){CHARTER_LOADS[dn]=addr;saveCharterLoads();}
+    var order={no:no,kind:'transfer',cid:'',wh:F.from,xferTo:F.to,status:'受注確定',date:td2(),lines:lines,unsecuredParts:uns,
+      shipping:0,discount:0,createdBy:p.userName||'',subject:'倉庫間移動 '+whShort(F.from)+'→'+whShort(F.to),
+      shipTo:{name:dn,address:addr},deliveryDate:F.dlv||'',shippingNotes:F.memo||''};
+    ORDERS.push(order);
+    saveAll();
+    broadcastOrderUpdate(p.userName||'','倉庫間移動の登録: '+no+'（'+xferLabel(order)+'）');
+    p.toast&&p.toast('🔄 倉庫間移動を登録しました: '+no+'（'+xferLabel(order)+'）。「📄帳票」から'+whShort(F.from)+'あての出荷指示書を出せます');
+    p.onSaved&&p.onSaved(order);
+    p.onClose();
+  }
+  var FL={fontSize:11,fontWeight:700,color:'var(--g600)'};
+  return h(Modal,{show:true,title:'🔄 倉庫間移動の登録（出荷指示書つき）',w:760,zi:p.zi,onClose:p.onClose,
+    footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end',width:'100%'}},
+      h('button',{className:'btn btn-ol',onClick:p.onClose},'キャンセル'),
+      h('button',{className:'btn btn-gn',style:{fontWeight:800},onClick:save,disabled:!!p.readOnly},'🔄 登録（移動元で押さえる）'))},
+    h('div',{style:{fontSize:11,color:'var(--g600)',lineHeight:1.8,marginBottom:8,background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6,padding:'6px 10px'}},
+      '移動元の倉庫で在庫を押さえ、「📄帳票」から',h('b',null,'移動元あての出荷指示書'),'を出せます。',h('br'),
+      '「出荷指示書送付済」にした時点で、移動元から引き落として',h('b',null,'移動先の在庫に入れます'),'（差し戻すと両方戻ります）。見積書・請求書は出ず、売上にも入りません。'),
+    h('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:8}},
+      h('span',{style:FL},'移動元'),
+      h('select',{className:'inp',style:{width:140},value:F.from,onChange:function(e){set('from',e.target.value);}},h('option',{value:''},'（選ぶ）'),whs.map(function(w){return h('option',{key:w,value:w},(WH_MAP[w]||{}).n||w);})),
+      h('b',null,'→'),
+      h('span',{style:FL},'移動先'),
+      h('select',{className:'inp',style:{width:140},value:F.to,onChange:function(e){set('to',e.target.value);}},h('option',{value:''},'（選ぶ）'),whs.filter(function(w){return w!==F.from;}).map(function(w){return h('option',{key:w,value:w},(WH_MAP[w]||{}).n||w);})),
+      h('span',{style:Object.assign({},FL,{marginLeft:8})},'製品ライン'),
+      h('select',{className:'inp',style:{width:150},value:F.line,onChange:function(e){set('line',e.target.value);}},LINES.map(function(l){return h('option',{key:l.id,value:l.id},l.name);}))),
+    h('div',{style:FL},'移動する部材（移動元の在庫から選ぶ。「空き」は押さえを除いた数）'),
+    !F.from?h('div',{style:{fontSize:11,color:'var(--g400)',margin:'4px 0'}},'先に移動元を選んでください'):
+    h('div',null,rows[0].map(function(r,i){
+      var L=lineOf(r),its=items(L),it=its.find(function(x){return x.id===r.id;});
+      var q=parseInt(r.qty,10)||0;
+      return h('div',{key:i,style:{display:'flex',gap:6,alignItems:'center',marginTop:4}},
+        h('span',{style:{fontSize:10,color:'var(--g500)',width:70}},(LINES.find(function(l){return l.id===L;})||{}).name||L),
+        h('select',{className:'inp',style:{flex:1,fontSize:12},value:r.id,onChange:function(e){setRow(i,{id:e.target.value,L:L});}},
+          h('option',{value:''},'（部材を選ぶ）'),
+          its.map(function(x){return h('option',{key:x.id,value:x.id},x.label+'　空き '+fm(x.free));})),
+        h(NumIn,{className:'inp',style:{width:80,textAlign:'right',fontSize:13,fontWeight:700},value:r.qty,placeholder:'数',onChange:function(e){setRow(i,{qty:e.target.value,L:L});}}),
+        (it&&q>it.free)?h('span',{style:{fontSize:10,color:'#C53030',fontWeight:700}},'空き不足'):null,
+        h('button',{className:'btn btn-xs btn-ol',style:{color:'#C53030'},onClick:function(){var a=rows[0].slice();a.splice(i,1);rows[1](a.length?a:[{L:'',id:'',qty:''}]);}},'×'));
+    }),
+    h('button',{className:'btn btn-xs btn-ol',style:{marginTop:6},onClick:function(){rows[1](rows[0].concat([{L:F.line,id:'',qty:''}]));}},'＋ 部材を追加'),
+    h('span',{style:{fontSize:10,color:'var(--g500)',marginLeft:8}},'別の製品ラインの部材は、上の「製品ライン」を切り替えてから追加します')),
+    h('div',{style:{display:'grid',gridTemplateColumns:'110px 1fr',gap:'6px 8px',alignItems:'center',marginTop:12}},
+      h('span',{style:FL},'納品先（移動先）'),h('div',{style:{fontSize:12,fontWeight:700}},F.to?((WH_MAP[F.to]||{}).n||F.to):'（移動先を選ぶ）'),
+      h('span',{style:FL},'住所・電話'),h('input',{className:'inp',value:F.addr,placeholder:'例: 兵庫県尼崎市… TEL 06-…（倉庫ごとに記録し、次回から自動で入ります）',onChange:function(e){var n=Object.assign({},F,{addr:e.target.value,addrTouched:true});f[1](n);}}),
+      h('span',{style:FL},'納品予定日'),h('input',{className:'inp',type:'date',style:{width:160},value:F.dlv,onChange:function(e){set('dlv',e.target.value);}}),
+      h('span',{style:FL},'連絡事項'),h('input',{className:'inp',value:F.memo,placeholder:'出荷指示書の連絡事項に載ります',onChange:function(e){set('memo',e.target.value);}}))
+  );
+}
+
 function OrdersPage(p){
   /* v18.46 修正４④: ステータス絞り込みを複数選択に変更（空配列＝「全て」）。
      従来は単一選択で「仮押さえ＋受注確定だけ見る」といった絞り込みができなかった。 */
@@ -15975,6 +16138,7 @@ function OrdersPage(p){
   var docPick=us(null);
   var workReg=us(null);/* v20.08 春先: 作業登録の画面 {order, focus} */
   var screwAdjM=us(null);/* v20.10: ネジの調整の画面（案件） */
+  var xferM=us(false);/* v20.11: 倉庫間移動の登録 */
   /* v19.17 修正30③: 構成表記（【Sサイズ1段積み：H380mm】等）の手修正モーダル。
      見積書作成画面は「見積作成・仮押さえ・受注確定」の案件でしか開けない（✏ 案件修正の対象がこの3つ）ため、
      出荷指示以降の案件（例 RS-2026-225）でも直せるよう📄帳票の見積書の下からも開けるようにした。
@@ -16362,6 +16526,7 @@ function OrdersPage(p){
       if(orderWhs(order).length>1){shipOrderMulti(order);}else{shipOrder(order);}/* v18.68 修正15⑤ */
     }finally{if(_sadj)screwAdjShipDone(order,_sadj);order.lines=_lines0;}
     if(_seAdds.length)order._shipAdd={at:new Date().toLocaleString('ja-JP'),items:_seAdds};else delete order._shipAdd;
+    if(order.kind==='transfer')xferApplyIn(order);/* v20.11: 倉庫間移動は移動先の在庫に入れる */
     order.status='出荷指示';
     /* v14.5 E1: 在庫消費の永続化・同期を確実に実行する（以前は印刷ウィンドウより先に行っていた） */
     saveAll();
@@ -16577,9 +16742,12 @@ function OrdersPage(p){
       (baseTab[0]!=='done'&&baseTab[0]!=='cal'&&tabCount.nobase>0)?h('span',{style:{fontSize:9,color:'#975a16',marginLeft:8,marginBottom:4},
         title:'顧客登録の「弊社営業担当」が未設定、またはユーザー管理にその担当者の拠点が登録されていない案件です。顧客登録で担当者を設定すると拠点タブに振り分けられます'},
         '※ 拠点未判定 '+fm(tabCount.nobase)+'件は「全案件」タブにのみ表示されます'):null,
+      /* v20.11: 倉庫間移動の登録（出荷指示書つき） */
+      h('button',{key:'xfer',className:'btn btn-xs',title:'倉庫から倉庫へ在庫を移します。移動元あての出荷指示書を出せます',onClick:function(){xferM[1](true);},
+        style:{marginLeft:'auto',marginBottom:4,background:'#EFF6FF',color:'#1D4ED8',border:'1px solid #93C5FD',fontWeight:700}},'🔄 倉庫間移動の登録'),
       /* v20.08 春先: 失注タブの並びの右端に作業カレンダー */
       SPRING?h('button',{key:'cal',title:'当社の作業員・外注（人工）の割り振りをカレンダーで見ます',onClick:function(){baseTab[1]('cal');},style:{
-          marginLeft:'auto',padding:'6px 16px',fontSize:11,fontWeight:baseTab[0]==='cal'?900:700,cursor:'pointer',
+          marginLeft:6,padding:'6px 16px',fontSize:11,fontWeight:baseTab[0]==='cal'?900:700,cursor:'pointer',
           border:'1px solid '+SPRING_PINK,borderBottom:baseTab[0]==='cal'?'3px solid '+SPRING_PINK:'1px solid '+SPRING_PINK,
           background:baseTab[0]==='cal'?'#fff':'#FDF2F8',color:SPRING_PINK,borderRadius:'6px 6px 0 0',marginBottom:-2
         }},'📅 作業カレンダー'):null
@@ -16587,7 +16755,7 @@ function OrdersPage(p){
     /* v19.44 春先: 倉庫の切替と、いま誰が編集できるか */
     SPRING?h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',margin:'0 0 6px',padding:'5px 10px',background:'#FDF2F8',border:'1px solid #F9A8D4',borderRadius:8,fontSize:11}},
       h('b',{style:{color:SPRING_PINK}},'🌸 倉庫'),
-      [['all','すべて'],['amago','🏭 尼高'],['main','尼高以外（混在を含む）']].map(function(t){
+      [['all','すべて'],['amago','🏭 尼高・関西'],['main','それ以外（混在を含む）']].map(function(t){
         var on=whGrp[0]===t[0];
         var cnt=ORDERS.filter(function(o){return t[0]==='all'||springGroupOf(o)===t[0];}).filter(function(o){return o.status!=='納品完了'&&!isLostOrder(o);}).length;
         var can=t[0]==='all'?(springCanEdit('amago')&&springCanEdit('main')):springCanEdit(t[0]);
@@ -16595,7 +16763,7 @@ function OrdersPage(p){
           style:{background:on?SPRING_PINK:'#fff',color:on?'#fff':SPRING_PINK,border:'1px solid '+SPRING_PINK,fontWeight:on?800:600},
           title:can?'編集できます':'閲覧のみ（編集中: '+(t[0]==='all'?'':springWhoFor(t[0]))+'）'},t[1]+'（'+fm(cnt)+'）'+(can?' ✏':' 🔒'));
       }),
-      h('span',{style:{color:'var(--g500)',fontSize:10}},'編集できる人: 尼高＝'+(springWhoFor('amago')||'−')+' ／ 尼高以外＝'+(springWhoFor('main')||'−')+'（管理者/中辻はすべて）'),
+      h('span',{style:{color:'var(--g500)',fontSize:10}},'編集できる人: 尼高・関西＝'+(springWhoFor('amago')||'−')+' ／ それ以外＝'+(springWhoFor('main')||'−')+'（管理者/中辻はすべて）'),
       RO_&&!p.isReadOnly?h('span',{style:{color:'#C53030',fontWeight:700,fontSize:10}},'🔒 この倉庫は閲覧のみです'):null
     ):null,
     /* v20.08 春先: 作業カレンダー（案件一覧の代わりに出す） */
@@ -16695,6 +16863,7 @@ function OrdersPage(p){
             /* v18.38 修正箇所3②: 起票者（営業/事務）を案件番号の下に表示
                v18.48 修正６②: その下に担当者（顧客DBの「弊社営業担当」）も表示する */
             h('td',null,h('b',null,o.no),
+              o.kind?h('div',{style:{fontSize:9,fontWeight:800,color:o.kind==='sample'?'#9A3412':'#1D4ED8'}},ORDER_KIND_L[o.kind]||o.kind):null,/* v20.11 */
               o.createdBy?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},'起票: '+o.createdBy):null,
               (function(){var st=orderStaffOf(o,c);return st?h('div',{style:{fontSize:9,color:'var(--g600)',fontWeight:700},title:'担当者（顧客DBの弊社営業担当）'},'担当: '+st):null;})()
             ),
@@ -16737,7 +16906,7 @@ function OrdersPage(p){
               h('div',{style:{fontSize:8,color:'var(--g400)',marginTop:2},title:'案件作成日'},'作成: '+o.date)
             ),
             /* v18.40 修正１③: 代理店経由でエンド納品先が設定されている場合、顧客名に（エンド納品先名）を併記 */
-            h('td',null,(c?c.name:'')+(o.endUser&&o.endUser.name?'（'+o.endUser.name+'）':'')),
+            h('td',null,(c?c.name:(o.kind==='transfer'?'🔄 倉庫間移動 '+xferLabel(o):''))+(o.endUser&&o.endUser.name?'（'+o.endUser.name+'）':'')),
             h('td',null,o.lines.length+'件'),
             h('td',{style:{fontWeight:700}},totalQty>0?fm(totalQty)+'台':(partOnlyCount>0?'−':''),hasFree?' +他':'',
               /* v18.52 修正７④: 台数に含めなかったパーツ単品の明細数は別行で示す */
@@ -16874,7 +17043,7 @@ function OrdersPage(p){
             h('td',null,
               h('button',{className:'btn btn-xs btn-ol',onClick:function(){showBom[1](false);detail[1](o);}},'詳細'),
               /* v17.2 要望26: 前回コピーでリピート発注 */
-              h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2,fontWeight:700},title:'この案件の内容をコピーして新規見積（リピート発注）',onClick:function(){
+              h('button',{className:'btn btn-xs btn-nv',style:{marginLeft:2,fontWeight:700},title:'この案件の内容をコピーして新規見積（リピート発注）',disabled:o.kind==='transfer',onClick:function(){
                 /* v19.99（2026-11-10 ユーザー「営業でもコピー再発注出来るようにして」）: コピー再発注は在庫を動かさず、
                    在庫確認・見積画面へ読み込むだけ（営業は見積の作成・保存ができる）なので、営業アカウントでも使える */
                 if(RO_&&!canRepeatAsSales(p.userName)){p.toast('読み取り専用モード中はコピーできません');return;}
@@ -16903,7 +17072,7 @@ function OrdersPage(p){
               /* v18.46 修正５⑤: 登録済み案件の修正。仮押さえ在庫を一度解除してから在庫確認・見積画面へ内容を読み込み、
                  修正後に改めて仮押さえすると同じ案件番号へ上書きされる（作成日・起票者は引き継ぐ）。
                  出荷指示以降はSTKを消費済みで、戻すには差し戻し操作が必要なため対象外にしている。 */
-              (['見積作成','仮押さえ','受注確定'].indexOf(o.status)>=0)?h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2,fontWeight:700},title:'この案件の台数・詳細を修正します（仮押さえ在庫は一度解除されます）',onClick:function(){
+              (['見積作成','仮押さえ','受注確定'].indexOf(o.status)>=0&&o.kind!=='transfer')?h('button',{className:'btn btn-xs btn-tl',style:{marginLeft:2,fontWeight:700},title:'この案件の台数・詳細を修正します（仮押さえ在庫は一度解除されます）',onClick:function(){
                 /* v18.60 修正10の再修正②: ステータスが「見積作成」の案件は在庫（HELD/STK）を一切動かさないため、
                    編集権限（先勝ちロック）を持っていなくても修正できるようにした。修正10②で見積作成そのものを
                    全員に開放したのに、作った見積を直せないままだったため。
@@ -17931,6 +18100,7 @@ function OrdersPage(p){
           }):h('div',{style:{fontSize:10,color:'var(--g500)'}},'構成表記を出す本体の明細がありません'))
       );
     })():null,
+    xferM[0]?h(XferModal,{readOnly:SPRING?false:RO_,userName:p.userName,toast:p.toast,zi:1100,onSaved:function(){p.bump&&p.bump();},onClose:function(){xferM[1](false);}}):null,
     screwAdjM[0]?h(ScrewAdjModal,{key:'sadj'+screwAdjM[0].no,order:screwAdjM[0],readOnly:SPRING?false:RO_,userName:p.userName,toast:p.toast,zi:1100,
       onSaved:function(){p.bump&&p.bump();},onClose:function(){screwAdjM[1](null);}}):null,
     workReg[0]?h(WorkRegModal,{key:workReg[0].order.no,order:workReg[0].order,focus:workReg[0].focus,userName:p.userName,toast:p.toast,zi:1100,
