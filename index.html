@@ -8023,7 +8023,7 @@ function orderSalesFigures(order){
   var sell=gp.total.sell+(order.shipping||0);
   var sc=orderShipCost(order);/* v19.60: 売上高に送料が入っているので、原価にも送料の原価を足す */
   /* v20.13: 4社の案件は代理店帳票の金額（代理店値引きなし・本体×1.1）を売上にする */
-  if(agentFmtOf(order)){var af=agentFigures(order);
+  if(agentSalesApplies(order)){var af=agentFigures(order);
     return {sell:af.sell,goods:af.goods,ship:af.ship,disc:af.disc,shipCost:sc.cost,shipCostNG:!sc.ok,
       buyCost:gp.total.cost+sc.cost,stockCost:(gp.stockCost||0)+sc.cost,missing:gp.total.missing,hasCost:gp.hasCost,agent:true};}
   return {sell:sell,goods:gp.total.sell,ship:order.shipping||0,disc:disc,shipCost:sc.cost,shipCostNG:!sc.ok,
@@ -8149,7 +8149,7 @@ function orderCostInfo(o){
   var gp;try{gp=calcGrossProfit(o);}catch(e){return null;}
   if(!gp||!gp.total)return null;
   var t=gp.total,sell=Math.round(t.sell||0),cost=Math.round(t.cost||0);
-  if(agentFmtOf(o)){try{sell=agentFigures(o).goods;}catch(e){}}/* v20.13: 4社の案件は代理店帳票の金額（送料を除く） */
+  if(agentSalesApplies(o)){try{sell=agentFigures(o).goods;}catch(e){}}/* v20.13: 4社の案件は代理店帳票の金額（送料を除く） */
   return {has:!!gp.hasCost,sell:sell,cost:cost,gp:sell-cost,rate:sell>0?Math.round((sell-cost)/sell*1000)/10:null,
     freeNoCost:gp.freeNoCost||0,missing:t.missing||0,ok:!!gp.hasCost&&!(gp.freeNoCost>0)&&!(t.missing>0)};
 }
@@ -8165,7 +8165,7 @@ function orderCostCell(o){
     ci.ok?null:h('div',{style:{fontSize:8,color:'#975a16'}},warn.join('・')),
     h('div',null,'原価 ¥'+fm(ci.cost)),
     h('div',{style:{color:ci.gp<0?'#c53030':'#1e3a5f'}},'粗利 ¥'+fm(ci.gp)+(ci.rate!=null?'（'+ci.rate+'%）':'')),
-    agentFmtOf(o)?h('div',{style:{fontSize:8,color:'#9A3412'},title:'売価は代理店帳票の金額（代理店値引きなし・本体×1.1・送料を除く）'},'🏷 代理店帳票の金額'):null);
+    agentSalesApplies(o)?h('div',{style:{fontSize:8,color:'#9A3412'},title:'売価は代理店帳票の金額（代理店値引きなし・本体×1.1・送料を除く）'},'🏷 代理店帳票の金額'):null);
 }
 function calcGrossProfit0(order){
   var cat={body:{sell:0,cost:0,missing:0},lock:{sell:0,cost:0,missing:0},base:{sell:0,cost:0,missing:0},shelf:{sell:0,cost:0,missing:0}};
@@ -10196,6 +10196,18 @@ function agentFigures(order){
   var disc=0;q.rows.forEach(function(r){if(/^DISC/.test(r.rkey||''))disc+=-(parseInt(r.amount)||0);});
   return {sell:q.subtotal,ship:ship,goods:q.subtotal-ship,disc:disc,tax:q.tax,total:q.total};
 }
+/* v20.13（2026-11-18 ユーザー回答「過去の案件の金額は変えない」）: 売上集計・原価欄を代理店帳票の金額にするのは
+   ★案件の作成日（order.date）が AGENT_SALES_FROM 以降の案件だけ。それより前の案件は今までどおり今の帳票の金額。
+   区切りを変えるときはこの日付だけを直す。代理店帳票の出力・粗利計算表の「代理店帳票」の行は日付に関係なく出る。 */
+var AGENT_SALES_FROM='2026-11-18';
+function agentSalesApplies(order){
+  if(!agentFmtOf(order))return false;
+  var d=String((order&&order.date)||'').replace(/\//g,'-');
+  var m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m)return false;
+  var ymd=m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2);
+  return ymd>=AGENT_SALES_FROM;
+}
 /* 前払い（4社の案件だけ）: 入金確認のチェックが入るまで出荷できない */
 function agentPrepay(order){return !!agentFmtOf(order)&&/前払|前入金/.test(String((order&&order.paymentTerms)||''));}
 function agentPrepayUnpaid(order){
@@ -10501,7 +10513,7 @@ function agentGpRow(order,gp,tdS){
   var af;try{af=agentFigures(order);}catch(e){return null;}
   var cost=gp&&gp.hasCost?Math.round(gp.total.cost||0):null,sell=af.goods;
   return h('tr',{key:'agent',style:{background:'#FFF7ED',fontWeight:700}},
-    h('td',{style:Object.assign({},tdS,{textAlign:'left'}),title:'案件管理の原価欄・売上集計はこの金額で計算します'},'代理店帳票（'+AGENT_FMTS[agentFmtOf(order)].short+'）'),
+    h('td',{style:Object.assign({},tdS,{textAlign:'left'}),title:agentSalesApplies(order)?'案件管理の原価欄・売上集計はこの金額で計算します':'この案件は '+AGENT_SALES_FROM+' より前に作った案件のため、原価欄・売上集計は今の帳票の金額のままです'},'代理店帳票（'+AGENT_FMTS[agentFmtOf(order)].short+'）'),
     h('td',{style:tdS},'¥'+fm(sell)),
     h('td',{style:tdS},cost==null?'未設定':'¥'+fm(cost)),
     h('td',{style:tdS},cost==null?'—':'¥'+fm(sell-cost)),
@@ -11056,7 +11068,7 @@ var HELP_QA=[
     rel:['quote-discount']},
   {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.13',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
     steps:['案件管理で、その案件の「🏷代理店帳票」を押す（顧客が4社の案件だけに出ます）','出したい帳票（見積書・請求書・納品書・物品受領書）を押すと、その代理店の様式で印刷用の画面が開きます','宛名・件名・備考や明細の品名・単価を直すときは「✎ 記載内容・明細の手修正」（今の帳票の手修正は引き継ぎ、ここで直した所は代理店帳票だけに効きます）'],
-    tip:'金額は代理店値引きを除き、ロッカー本体の単価だけ×1.1（100円未満切り上げ）。製品名称はプラロッカー＝ECOプラロッカー／プラロッカー／ルミ○○色、プラスチックロッカー＝プラエコロッカー／プラスチックロッカー／ホタプラ○○色。案件管理の原価欄の粗利と売上集計もこの金額で計算します。',
+    tip:'金額は代理店値引きを除き、ロッカー本体の単価だけ×1.1（100円未満切り上げ）。製品名称はプラロッカー＝ECOプラロッカー／プラロッカー／ルミ○○色、プラスチックロッカー＝プラエコロッカー／プラスチックロッカー／ホタプラ○○色。案件管理の原価欄の粗利と売上集計もこの金額で計算します（2026-11-18 以降に作った案件。それより前の案件は今の帳票の金額のまま）。',
     warn:'支払条件が「前払い」「新規前入金」の案件は、ステータス欄の「入金確認」にチェックが入るまで出荷指示書を出せず、出荷指示書送付済にもできません（納品完了タブの入金確認と同じチェックです）。',rel:['quote-discount']},
   {id:'quote-discount',cat:'quote',tab:'inv',ver:'v19.72',q:'見積に値引きを入れたい',kw:['値引き','割引','出精値引き','継続購入割引','販促','代理店値引き','10%'],
     steps:['「見積書のみ作成」などで見積書作成の画面を開く','「＋ 値引きの行を追加」を押す','項目（出精値引き／３年間継続購入割引／販促活動協力費／自由入力）と金額を入れる'],
@@ -18795,7 +18807,7 @@ function OrdersPage(p){
             h('div',{style:{marginTop:10,padding:'6px 8px',background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6,fontSize:10}},
               h('b',{style:{color:'#276749'}},'📊 粗利（代理店帳票の金額・送料を除く）'),h('br'),
               '売価 ¥'+fm(sell)+'　原価 '+(cost==null?'未設定':'¥'+fm(cost))+(cost==null?'':'　粗利 ¥'+fm(sell-cost)+(sell>0?'（'+Math.round((sell-cost)/sell*1000)/10+'%）':'')),
-              h('div',{style:{color:'var(--g500)',fontSize:9}},'税抜合計 ¥'+fm(prev.subtotal||0)+'（送料 ¥'+fm(ship)+' を含む）／税込 ¥'+fm(prev.total||0)+'。案件管理の原価欄・売上集計もこの金額で計算します。'))
+              h('div',{style:{color:'var(--g500)',fontSize:9}},'税抜合計 ¥'+fm(prev.subtotal||0)+'（送料 ¥'+fm(ship)+' を含む）／税込 ¥'+fm(prev.total||0)+'。'+(agentSalesApplies(o)?'案件管理の原価欄・売上集計もこの金額で計算します。':'（'+AGENT_SALES_FROM+' より前の案件のため、原価欄・売上集計は今の帳票の金額のままです）')))
           ),
           h('div',{style:{flex:1,minWidth:0}},
             h('div',{style:{fontSize:10,fontWeight:700,marginBottom:4}},'📄 プレビュー（'+agentDocTitle(fk,t)+'・入力内容がそのまま反映されます）'),
