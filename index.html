@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.17（納品完了タブの総金額は今の請求書の金額）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.18（代理店4社の新しい作り方＝LECの帳票は代理店帳票−代理店値引き10%。2026-11-19 以降の案件）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -8022,6 +8022,17 @@ function ymdToMs(s,endOfDay){
    年間売上集計・原価欄は従来どおり（4社の 2026-11-18 以降の案件は代理店帳票の金額）。 */
 function orderSalesFigures(order,opt){
   var gp=calcGrossProfit(order);
+  /* v20.18: 新しい作り方の4社の案件。売上＝LECの帳票（代理店値引き10%後）、入金確認欄（opt.lec）＝代理店帳票の金額 */
+  if(agentNewStruct(order)){
+    var sc0=orderShipCost(order),g2=agentCostGp(order,gp)||gp;
+    if(opt&&opt.lec){var af0=agentFigures(order);
+      return {sell:af0.sell,goods:af0.goods,ship:af0.ship,disc:af0.disc,shipCost:sc0.cost,shipCostNG:!sc0.ok,
+        buyCost:g2.total.cost+sc0.cost,stockCost:(g2.stockCost||0)+sc0.cost,missing:g2.total.missing,hasCost:g2.hasCost,agent:true,paidAgent:true};}
+    var lq=buildQuoteRows(order),lship=0,ldisc=0;
+    lq.rows.forEach(function(r){if(r.rkey==='SHIP')lship+=parseInt(r.amount)||0;if(/^DISC/.test(r.rkey||''))ldisc+=-(parseInt(r.amount)||0);});
+    return {sell:lq.subtotal,goods:lq.subtotal-lship,ship:lship,disc:ldisc,shipCost:sc0.cost,shipCostNG:!sc0.ok,
+      buyCost:g2.total.cost+sc0.cost,stockCost:(g2.stockCost||0)+sc0.cost,missing:g2.total.missing,hasCost:g2.hasCost,agentNew:true};
+  }
   var disc=discountSum(discountRowsOf(order));
   var sell=gp.total.sell+(order.shipping||0);
   var sc=orderShipCost(order);/* v19.60: 売上高に送料が入っているので、原価にも送料の原価を足す */
@@ -8150,6 +8161,7 @@ function calcGrossProfit(order){return withPriceDate(order,function(){return cal
 /* v20.06: 案件一覧の「原価」欄（✅原価OK／⚠未入力あり＋原価・粗利・粗利率） */
 function orderCostInfo(o){
   var gp;try{gp=calcGrossProfit(o);}catch(e){return null;}
+  if(agentNewStruct(o)){try{gp=agentCostGp(o,gp)||gp;}catch(e){}}/* v20.18 */
   if(!gp||!gp.total)return null;
   var t=gp.total,sell=Math.round(t.sell||0),cost=Math.round(t.cost||0);
   if(agentSalesApplies(o)){try{sell=agentFigures(o).goods;var g2=agentCostGp(o,gp);if(g2&&g2.total)cost=Math.round(g2.total.cost||0);}catch(e){}}/* v20.13: 4社の案件は代理店帳票の金額（送料を除く）。v20.15: 原価も代理店帳票で足した行を含む */
@@ -8508,7 +8520,49 @@ function rowUnitEditable(r){
 }
 /* v18.73 修正17の追加: 商品名称に付ける「パーソナル／常設」の表記 */
 function lineTypeLabel(ln){return (ln&&ln.type==='personal')?'パーソナル':'常設';}
+/* ===== v20.18（2026-11-18 ユーザー「代理店4社の構造を変えたい」） =====
+   ★2026-11-19 以降に作った4社の案件（agentNewStruct）は、LEC→代理店の帳票（見積書・請求書・納品書・物品受領書・粗利・売上）を
+   ★代理店帳票から作る: 明細・単価は代理店帳票と同じ（品名・備考は LEC の名称）＋最後に「代理店値引き」＝代理店帳票の小計×10%（円未満切り捨て）。
+   ・金額（単価・行の追加・値引き）は代理店帳票の見積書作成画面で直す。在庫確認・見積の見積書作成画面では単価・代理店値引きは直せない（表示だけ）。
+   ・売上集計・原価欄＝この値引き後の金額。納品完了タブの総金額（入金確認欄）＝代理店帳票の金額（ユーザー回答）。
+   ・2026-11-18 以前の案件は今まで（v20.13〜v20.17）のまま。区切りは AGENT_NEW_FROM だけを直す。 */
+var AGENT_NEW_FROM='2026-11-19';
+function agentOrderYmd(order){
+  var d=String((order&&order.date)||'').replace(/\//g,'-');
+  var m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m?(m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2)):'';
+}
+function agentNewStruct(order){
+  if(!order||order._agentRaw)return false;
+  if(!agentFmtOf(order))return false;
+  var ymd=agentOrderYmd(order);
+  return !!ymd&&ymd>=AGENT_NEW_FROM;
+}
 function buildQuoteRows(order){
+  if(agentNewStruct(order))return agentLecRows(order);
+  return buildQuoteRows0(order);
+}
+function agentLecRows(order){
+  var ag=agentQuoteRows(order);
+  var raw=buildQuoteRows0(agentBaseOrder(order));
+  var byK={};(raw.rows||[]).forEach(function(r){if(r&&r.rkey)byK[r.rkey]=r;});
+  var rows=ag.rows.map(function(a){
+    var r=byK[a.rkey];
+    var x=Object.assign({},r||a);
+    x.qty=a.qty;x.price=a.price;x.amount=a.amount;
+    if(a.unitEdited||a.edited)x.unitEdited=true;
+    return x;
+  });
+  var ds=discountRowsOf(order),ai=-1;
+  ds.forEach(function(r,i){if(ai<0&&(r.auto==='agent'||r.name===AGENT_DISC_NAME))ai=i;});
+  var dk=ai>=0?discountRowKey(ai):'DISC_AG';
+  var d=Math.floor(Math.max(0,parseInt(ag.subtotal)||0)*AGENT_DISC_RATE);
+  if(d>0)rows.push({rkey:dk,code:'F00064',name:AGENT_DISC_NAME,qty:1,unit:'式',price:'',amount:-d,tax:'',remark:rowRemark(agentOverlay(order),dk,''),discAuto:true,agentNew:true});
+  var sub=0;
+  rows.forEach(function(r,i){r.no=i+1;sub+=(parseInt(r.amount)||0);});
+  return {rows:rows,subtotal:sub,agentSub:ag.subtotal,agentDisc:d};
+}
+function buildQuoteRows0(order){
   var rows=[],partRows=[];
   var sel=rentalSelOf(order);
   (order.lines||[]).forEach(function(ln){
@@ -10178,7 +10232,7 @@ function agentBaseOrder(order,ad){
     if(r.auto==='agent'||r.name===AGENT_DISC_NAME)return {name:'',amount:0,qty:0,unit:'',unitPrice:0};
     return r;
   });
-  return Object.assign({},order,{discounts:ds,discount:discountSum(ds)});
+  return Object.assign({},order,{discounts:ds,discount:discountSum(ds),_agentRaw:true});
 }
 function agentRowPriceEditable(r){return !!r&&typeof r.price==='number'&&!r.rentalPair&&!/_R$/.test(r.rkey||'')&&!/^DISC/.test(r.rkey||'');}
 /* 代理店帳票の明細。ad＝手修正（省略時は order.agentDoc。プレビューでは入力中の値） */
@@ -10226,7 +10280,7 @@ function agentSalesApplies(order){
   var m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if(!m)return false;
   var ymd=m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2);
-  return ymd>=AGENT_SALES_FROM;
+  return ymd>=AGENT_SALES_FROM&&ymd<AGENT_NEW_FROM;/* v20.18: 2026-11-19 以降は新しい作り方（agentNewStruct） */
 }
 /* 前払い（4社の案件だけ）: 入金確認のチェックが入るまで出荷できない */
 /* v20.15（2026-11-18 ユーザー「元の見積ではなく、代理店帳票で支払い条件を前払い・新規前入金に変えた場合に出現するように」）:
@@ -13175,7 +13229,7 @@ function QuoteEditPanel(p){
                   var ex=(qo.extraRows||[]).find(function(x){return x.rkey===rk;});
                   var di=discIndexOf(rk);
                   var dr=di>=0?(discountRowsOf(qo)[di]||null):null;
-                  var uEditable=rowUnitEditable(r)&&!ex;
+                  var uEditable=rowUnitEditable(r)&&!ex&&!p.lockPrice;/* v20.18: 代理店4社（新しい作り方）は代理店帳票で直す */
                   var uOv=rowUnitOv(qo,rk);
                   /* v19.41: 構成表記が上に付いている行（cfgTop＝その本体の行キー）に下から重ねたら、構成表記のすぐ下へ入れる */
                   var cfgTop=r.cfgFrom||((r.configNoteAuto!==undefined&&!r.cfgLiftedTo)?rk:null);
@@ -13252,7 +13306,7 @@ function QuoteEditPanel(p){
                     onKeyDown:function(ev){if(ev.key==='Enter')ev.target.blur();}}));
                   else cells.push(h('span',{key:'p',style:{fontSize:8,color:'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.price===''?'':('¥'+fm(r.price))));
                   /* 金額 */
-                  if(dr)cells.push(h(NumIn,{key:'a',className:'inp',style:{width:74,flexShrink:0,fontSize:9,background:dr.auto==='agent'?'#EFF6FF':'#fff'},disabled:!!(dr.qty>0&&dr.unitPrice>0),'data-discauto':dr.auto==='agent'?'1':null,
+                  if(dr)cells.push(h(NumIn,{key:'a',className:'inp',style:{width:74,flexShrink:0,fontSize:9,background:dr.auto==='agent'?'#EFF6FF':'#fff'},disabled:!!(dr.qty>0&&dr.unitPrice>0)||!!(p.lockPrice&&dr.auto==='agent'),'data-discauto':dr.auto==='agent'?'1':null,
                     title:dr.auto==='agent'?'代理店値引き（自動）: 送料・工事費なども含めた明細の合計の10%です。金額を直すと自動計算は外れます':'',
                     value:dr.auto==='agent'?String(Math.max(0,-(parseInt(r.amount)||0))):(dr.amount?dr.amount:''),placeholder:'値引き額',onChange:function(e){setDiscRow(di,{amount:parseInt(e.target.value)||0});}}));
                   else cells.push(h('span',{key:'a',style:{fontSize:8,fontWeight:700,color:r.amount<0?'#B91C1C':'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.amount===''?'':('¥'+fm(r.amount))));
@@ -15553,7 +15607,10 @@ function InvPage(p){
         })(),
         /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有）
            v20.14: 中身は QuoteEditPanel（代理店帳票の見積書作成画面と共通） */
-        h(QuoteEditPanel,{qo:quoteOrder[0],updQ:quoteUpdQ,toast:p.toast,userName:p.userName,
+        agentNewStruct(quoteOrder[0])?h('div',{className:'no-print','data-agentnewnote':'1',style:{marginBottom:8,padding:'6px 10px',borderRadius:6,fontSize:10,background:'#FFF7ED',border:'1.5px solid #FDBA74',color:'#9A3412'}},
+          h('b',null,'🏷 代理店4社の案件（2026-11-19 以降の作り方）'),
+          h('div',{style:{fontSize:9,marginTop:2}},'この見積書の明細・単価は★代理店帳票と同じで、最後に「代理店値引き」（代理店帳票の小計の10%）が入ります。単価・代理店値引きはここでは直せません。金額は 案件管理 →「🏷代理店帳票」→「✎ 見積書作成画面」で直してください。')):null,
+        h(QuoteEditPanel,{qo:quoteOrder[0],updQ:quoteUpdQ,toast:p.toast,userName:p.userName,lockPrice:agentNewStruct(quoteOrder[0]),
           st:{optFree:optFree,discFree:discFree,dragRk:dragRk,dropRk:dropRk,unitDraft:unitDraft,notesTplKey:notesTplKey,notesTplPick:notesTplPick,optTick:optTick}}),
         /* v18.33 要望⑱: 粗利計算表（本体/鍵類/ベース/棚板/トータル・この欄は印刷されません）
            v19.02: 原価表アップロードは削除し、単価マスタ取込だけにした */
@@ -17701,11 +17758,11 @@ function OrdersPage(p){
                 return h('div',{style:{marginBottom:2}},list,alertEls.length?h('div',null,alertEls):null);
               })(),
               (function(){
-                var f;try{f=orderSalesFigures(o,{lec:true});}catch(err){f=null;}/* v20.17: 入金確認と同じく今の請求書の金額 */
+                var f;try{f=orderSalesFigures(o,{lec:true});}catch(err){f=null;}/* v20.17: 入金確認と同じく今の請求書の金額。v20.18: 2026-11-19 以降の4社の案件は代理店帳票の金額 */
                 if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
                 var tax=Math.floor(f.sell*0.1);
                 return h('div',{style:{fontSize:12,fontWeight:900,color:'#1e3a5f',lineHeight:1.3},
-                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+'　※今の請求書の金額です（代理店帳票の案件も今の請求書の金額）'},
+                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+(f.paidAgent?'　※代理店帳票の金額です（2026-11-19 以降の代理店4社の案件）':'　※今の請求書の金額です')},
                   '¥'+fm(f.sell+tax));
               })(),
               /* ===== v19.07 口頭依頼: 請求書を分けた案件は★紙ごとにチェックボックスを出す =====
