@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.18（代理店4社の新しい作り方＝LECの帳票は代理店帳票−代理店値引き10%。2026-11-19 以降の案件）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.19（代理店4社の新しい作り方を今から作る案件に適用）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -8526,7 +8526,10 @@ function lineTypeLabel(ln){return (ln&&ln.type==='personal')?'パーソナル':'
    ・金額（単価・行の追加・値引き）は代理店帳票の見積書作成画面で直す。在庫確認・見積の見積書作成画面では単価・代理店値引きは直せない（表示だけ）。
    ・売上集計・原価欄＝この値引き後の金額。納品完了タブの総金額（入金確認欄）＝代理店帳票の金額（ユーザー回答）。
    ・2026-11-18 以前の案件は今まで（v20.13〜v20.17）のまま。区切りは AGENT_NEW_FROM だけを直す。 */
-var AGENT_NEW_FROM='2026-11-19';
+var AGENT_NEW_FROM='2026-11-18';
+/* v20.19（2026-11-18 ユーザー「明日まで実装確認出来ないのは困るので今から反映して」）: 区切りを 11/18 に前倒し。
+   ★v20.18 公開時点で 11/18 に作成済みだった4社の案件（本番データで確認＝QT-2026-360 だけ。納品完了・請求書 8,478円で出し済み）は従来のまま */
+var AGENT_NEW_EXCLUDE=['QT-2026-360'];
 function agentOrderYmd(order){
   var d=String((order&&order.date)||'').replace(/\//g,'-');
   var m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -8535,6 +8538,7 @@ function agentOrderYmd(order){
 function agentNewStruct(order){
   if(!order||order._agentRaw)return false;
   if(!agentFmtOf(order))return false;
+  if(AGENT_NEW_EXCLUDE.indexOf(order.no)>=0)return false;
   var ymd=agentOrderYmd(order);
   return !!ymd&&ymd>=AGENT_NEW_FROM;
 }
@@ -10280,7 +10284,7 @@ function agentSalesApplies(order){
   var m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if(!m)return false;
   var ymd=m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2);
-  return ymd>=AGENT_SALES_FROM&&ymd<AGENT_NEW_FROM;/* v20.18: 2026-11-19 以降は新しい作り方（agentNewStruct） */
+  return ymd>=AGENT_SALES_FROM&&!agentNewStruct(order);/* v20.18: 新しい作り方（agentNewStruct）の案件は除く */
 }
 /* 前払い（4社の案件だけ）: 入金確認のチェックが入るまで出荷できない */
 /* v20.15（2026-11-18 ユーザー「元の見積ではなく、代理店帳票で支払い条件を前払い・新規前入金に変えた場合に出現するように」）:
@@ -15608,7 +15612,7 @@ function InvPage(p){
         /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有）
            v20.14: 中身は QuoteEditPanel（代理店帳票の見積書作成画面と共通） */
         agentNewStruct(quoteOrder[0])?h('div',{className:'no-print','data-agentnewnote':'1',style:{marginBottom:8,padding:'6px 10px',borderRadius:6,fontSize:10,background:'#FFF7ED',border:'1.5px solid #FDBA74',color:'#9A3412'}},
-          h('b',null,'🏷 代理店4社の案件（2026-11-19 以降の作り方）'),
+          h('b',null,'🏷 代理店4社の案件（新しい作り方）'),
           h('div',{style:{fontSize:9,marginTop:2}},'この見積書の明細・単価は★代理店帳票と同じで、最後に「代理店値引き」（代理店帳票の小計の10%）が入ります。単価・代理店値引きはここでは直せません。金額は 案件管理 →「🏷代理店帳票」→「✎ 見積書作成画面」で直してください。')):null,
         h(QuoteEditPanel,{qo:quoteOrder[0],updQ:quoteUpdQ,toast:p.toast,userName:p.userName,lockPrice:agentNewStruct(quoteOrder[0]),
           st:{optFree:optFree,discFree:discFree,dragRk:dragRk,dropRk:dropRk,unitDraft:unitDraft,notesTplKey:notesTplKey,notesTplPick:notesTplPick,optTick:optTick}}),
@@ -17762,7 +17766,7 @@ function OrdersPage(p){
                 if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
                 var tax=Math.floor(f.sell*0.1);
                 return h('div',{style:{fontSize:12,fontWeight:900,color:'#1e3a5f',lineHeight:1.3},
-                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+(f.paidAgent?'　※代理店帳票の金額です（2026-11-19 以降の代理店4社の案件）':'　※今の請求書の金額です')},
+                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+(f.paidAgent?'　※代理店帳票の金額です（代理店4社の新しい作り方の案件）':'　※今の請求書の金額です')},
                   '¥'+fm(f.sell+tax));
               })(),
               /* ===== v19.07 口頭依頼: 請求書を分けた案件は★紙ごとにチェックボックスを出す =====
