@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.14（代理店帳票の画面を通常の帳票と同じに＝見積書作成画面・記載内容の手修正・請求書→納品書の反映）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.15（代理店帳票の見積書作成画面を今の見積書作成画面と同じ部品に・前払いは代理店帳票の支払条件で判定・入金確認の引き継ぎ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -8149,7 +8149,7 @@ function orderCostInfo(o){
   var gp;try{gp=calcGrossProfit(o);}catch(e){return null;}
   if(!gp||!gp.total)return null;
   var t=gp.total,sell=Math.round(t.sell||0),cost=Math.round(t.cost||0);
-  if(agentSalesApplies(o)){try{sell=agentFigures(o).goods;}catch(e){}}/* v20.13: 4社の案件は代理店帳票の金額（送料を除く） */
+  if(agentSalesApplies(o)){try{sell=agentFigures(o).goods;var g2=agentCostGp(o,gp);if(g2&&g2.total)cost=Math.round(g2.total.cost||0);}catch(e){}}/* v20.13: 4社の案件は代理店帳票の金額（送料を除く）。v20.15: 原価も代理店帳票で足した行を含む */
   return {has:!!gp.hasCost,sell:sell,cost:cost,gp:sell-cost,rate:sell>0?Math.round((sell-cost)/sell*1000)/10:null,
     freeNoCost:gp.freeNoCost||0,missing:t.missing||0,ok:!!gp.hasCost&&!(gp.freeNoCost>0)&&!(t.missing>0)};
 }
@@ -10154,8 +10154,20 @@ function agentRen(fmt,s){
 }
 /* 本体の単価×1.1。100円未満は切り上げ（整数で計算して小数の誤差を出さない: p×11÷1000 を切り上げて×100） */
 function agentUp(p){p=parseInt(p)||0;if(p<=0)return p;return Math.ceil(p*11/1000)*100;}
+/* v20.15（2026-11-18 ユーザー「見積書作成について、通常の見積作成画面と同一に。明細の追加や値引きの追加などすべて同一仕様に」）:
+   代理店帳票の見積書作成画面（QuoteEditPanel・今の見積書作成画面と同じ部品）で直した内容は★order.agentDoc.q に
+   「案件の項目名のまま」持つ（extraRows・discounts・rowOrder・rowRemarks・cfgNotes・shipping・subject・paymentTerms・notes など）。
+   代理店帳票はこれを案件に重ねて（agentOverlay）作る。直していない項目は今の案件の値がそのまま使われる（今の帳票の修正も反映）。
+   ★単価の手入力だけは order.agentDoc.rows[行キー].price（×1.1 の後の代理店帳票の単価）に入れる（agentQuoteRows で最後に当てる）。 */
+function agentOverlay(order,ad){
+  ad=ad||(order&&order.agentDoc)||{};
+  var q=ad.q||{};
+  if(!Object.keys(q).length)return order;
+  return Object.assign({},order,q);
+}
 /* 代理店値引きの行だけを金額0にした案件（行キー DISC/DISC1… の並びは変えない＝手修正の対応がずれない） */
-function agentBaseOrder(order){
+function agentBaseOrder(order,ad){
+  order=agentOverlay(order,ad);
   var ds=discountRowsOf(order).map(function(r){
     if(r.auto==='agent'||r.name===AGENT_DISC_NAME)return {name:'',amount:0,qty:0,unit:'',unitPrice:0};
     return r;
@@ -10167,7 +10179,7 @@ function agentRowPriceEditable(r){return !!r&&typeof r.price==='number'&&!r.rent
 function agentQuoteRows(order,ad){
   var fmt=agentFmtOf(order)||'global';
   ad=ad||(order&&order.agentDoc)||{};
-  var q=buildQuoteRows(agentBaseOrder(order));
+  var q=buildQuoteRows(agentBaseOrder(order,ad));
   var ro=ad.rows||{};
   var rows=(q.rows||[]).map(function(r){
     var x=Object.assign({},r);
@@ -10175,6 +10187,7 @@ function agentQuoteRows(order,ad){
     if(x.isBody&&typeof x.price==='number'&&x.price>0){x.lecPrice=x.price;x.price=agentUp(x.price);x.amount=x.price*qn;}
     x.name=agentRen(fmt,x.name);
     if(x.configNote)x.configNote=agentRen(fmt,x.configNote);
+    if(x.configNoteAuto)x.configNoteAuto=agentRen(fmt,x.configNoteAuto);
     if(x.colorNote)x.colorNote=agentRen(fmt,x.colorNote);
     x.remark=agentRen(fmt,x.remark||'');
     x.auto={name:x.name,price:x.price,remark:x.remark,cfg:x.configNote||''};
@@ -10210,7 +10223,15 @@ function agentSalesApplies(order){
   return ymd>=AGENT_SALES_FROM;
 }
 /* 前払い（4社の案件だけ）: 入金確認のチェックが入るまで出荷できない */
-function agentPrepay(order){return !!agentFmtOf(order)&&/前払|前入金/.test(String((order&&order.paymentTerms)||''));}
+/* v20.15（2026-11-18 ユーザー「元の見積ではなく、代理店帳票で支払い条件を前払い・新規前入金に変えた場合に出現するように」）:
+   前払いの判定は★代理店帳票で直した支払条件だけを見る（請求書の記載内容の手修正 → 見積書作成画面 → 旧 v20.13 の見積書の手修正 の順）。
+   今の見積（order.paymentTerms）が前払いでも、代理店帳票で直していなければ入金確認のチェックは出ない。 */
+function agentPayTermsOf(order){
+  var ad=(order&&order.agentDoc)||{},hs=ad.h||{};
+  var t=(hs.invoice&&hs.invoice.payTerms)||(ad.q&&ad.q.paymentTerms)||(hs.quote&&hs.quote.payTerms)||'';
+  return String(t||'');
+}
+function agentPrepay(order){return !!agentFmtOf(order)&&/前払|前入金/.test(agentPayTermsOf(order));}
 function agentPrepayUnpaid(order){
   if(!agentPrepay(order))return false;
   var pm=paidSheetsOf(order),n=invSplitCount(order);
@@ -10283,14 +10304,15 @@ function agentHeader(order,docType,ad,sheetIdx){
   var cust=(typeof CUSTS!=='undefined'?CUSTS:[]).find(function(c){return c.id===order.cid;});
   var eu=order.endUser||{};
   var isBill=docType!=='quote';
-  var on=order.notes;
+  var oq=agentOverlay(order,ad);/* v20.15: 代理店帳票の見積書作成画面で直した件名・支払条件・納期・有効期限・備考 */
+  var on=oq.notes;
   /* 見積書の値（自動＋代理店の見積書の手修正） */
   var qAuto={
     toName:eu.name||'',toPostal:eu.postal||'',toAddress:eu.address||'',toPhone:eu.phone||'',toFax:'',
-    subject:agentRen(fmt,quoteSubjectOf(order)),
+    subject:agentRen(fmt,quoteSubjectOf(oq)),
     date:docDateOf(order,'quote'),slip:order.no||'',
-    payTerms:(order.paymentTerms)||'前払い（銀行振り込み）',payDue:'',
-    validity:validUntilOf(order),dterm:deliveryTermOf(order),delivery:'',
+    payTerms:(oq.paymentTerms)||'前払い（銀行振り込み）',payDue:'',
+    validity:validUntilOf(oq),dterm:deliveryTermOf(oq),delivery:'',
     notes:agentRen(fmt,Array.isArray(on)?on.join('\n'):String(on||''))
   };
   var qm=agentLayer(ad,'quote'),qv=Object.assign({},qAuto),qEd={};
@@ -10338,7 +10360,7 @@ function hasAgentDocType(order,docType){
   });}
   if(any(hm))return true;
   if(hm.sheets&&Object.keys(hm.sheets).some(function(k){return any(hm.sheets[k]);}))return true;
-  return docType==='quote'&&!!(ad.rows&&Object.keys(ad.rows).length);
+  return docType==='quote'&&(!!(ad.rows&&Object.keys(ad.rows).length)||!!(ad.q&&Object.keys(ad.q).length));
 }
 function hasAgentDoc(order){return AGENT_DOC_TYPES.some(function(t){return hasAgentDocType(order,t);});}
 function agentDocTitle(fmt,docType){
@@ -10564,7 +10586,7 @@ function agentCleanLayer(x){
   }
   return o;
 }
-function agentDocClean(hs,rs,invSplit){
+function agentDocClean(hs,rs,invSplit,q){
   var h2={},r2={};
   Object.keys(hs||{}).forEach(function(t){var x=agentCleanLayer(hs[t]);if(Object.keys(x).length)h2[t]=x;});
   Object.keys(rs||{}).forEach(function(k){
@@ -10577,6 +10599,7 @@ function agentDocClean(hs,rs,invSplit){
   });
   var out={};if(Object.keys(h2).length)out.h=h2;if(Object.keys(r2).length)out.rows=r2;
   if(invSplit)out.invSplit=invSplit;/* 請求書の分け方は分ける画面でだけ変える */
+  if(q&&Object.keys(q).length)out.q=q;/* v20.15: 代理店帳票の見積書作成画面の内容 */
   return Object.keys(out).length?out:null;
 }
 /* v20.14: 今の手修正の一部（帳票1つ分 or 明細）だけを差し替えた agentDoc */
@@ -10584,12 +10607,18 @@ function agentDocWith(order,t,layer,rows){
   var ad=(order&&order.agentDoc)||{};
   var hs=JSON.parse(JSON.stringify(ad.h||{}));
   if(t){if(layer)hs[t]=layer;else delete hs[t];}
-  return agentDocClean(hs,rows!==undefined?rows:(ad.rows||{}),ad.invSplit);
+  return agentDocClean(hs,rows!==undefined?rows:(ad.rows||{}),ad.invSplit,ad.q);
 }
 /* 見積書作成画面の粗利計算表に足す行（4社の案件だけ。売価＝代理店帳票の金額・送料を除く） */
+function agentCostGp(order,gp){
+  /* v20.15: 代理店帳票の見積書作成画面で行（工事費など）を足した案件は、その原価も入れた粗利計算 */
+  if(order&&order.agentDoc&&order.agentDoc.q&&Object.keys(order.agentDoc.q).length){try{return calcGrossProfit(agentOverlay(order));}catch(e){}}
+  return gp;
+}
 function agentGpRow(order,gp,tdS){
   if(!order||!agentFmtOf(order))return null;
   var af;try{af=agentFigures(order);}catch(e){return null;}
+  gp=agentCostGp(order,gp);
   var cost=gp&&gp.hasCost?Math.round(gp.total.cost||0):null,sell=af.goods;
   return h('tr',{key:'agent',style:{background:'#FFF7ED',fontWeight:700}},
     h('td',{style:Object.assign({},tdS,{textAlign:'left'}),title:agentSalesApplies(order)?'案件管理の原価欄・売上集計はこの金額で計算します':'この案件は '+AGENT_SALES_FROM+' より前に作った案件のため、原価欄・売上集計は今の帳票の金額のままです'},'代理店帳票（'+AGENT_FMTS[agentFmtOf(order)].short+'）'),
@@ -10830,7 +10859,8 @@ var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes'
   'showRepName','repName','rowCost',
   'shipper','shipNo','shipTo','shippingNotes','docEdit',
   'beforeEdit',/* v19.88: 案件修正を始める前の控え（「↩ 修正前に戻す」用） */
-  'works','screwAdj','screwAdjLog','kind','agentDoc'];/* v20.13: agentDoc＝代理店帳票の手修正 *//* v20.11: kind＝サンプル *//* v20.10: 春先の作業登録（v20.08 で入れ忘れ）・ネジの調整 */
+  'works','screwAdj','screwAdjLog','kind','agentDoc',
+  'paid','paidAt','paidBy','paidBank','paidSheets'];/* v20.15: 入金確認（前払いの案件は出荷前にチェックするので、案件修正で作り直しても消さない＝納品完了タブへそのまま引き継ぐ） *//* v20.13: agentDoc＝代理店帳票の手修正 *//* v20.11: kind＝サンプル *//* v20.10: 春先の作業登録（v20.08 で入れ忘れ）・ネジの調整 */
 /* ===== v19.88（2026-11-06 依頼「案件修正で間違って修正してしまった場合に、一つ前の状態に戻すボタン」）=====
    ✏ 案件修正を押した時点の案件をまるごと order.beforeEdit={at,by,data} に控える（1つ前の1世代だけ。次の案件修正で上書き）。
    v19.90（2026-11-09 ユーザー「戻すのは案件修正ボタンを押した直後までで。案件修正モードのまま続ける運用で」「案件一覧の修正前に戻すは不要」）:
@@ -11145,10 +11175,10 @@ var HELP_QA=[
     steps:['「自由入力（在庫外商品）」欄に商品名称・数量・単位・単価を入れて「＋ 自由入力行を追加」','見積書作成の画面でも「＋ 自由入力の行を追加」や「＋ 定型文を追加」（搬入・設置工事費など）で足せます'],
     tip:'工事費などの原価は、見積書作成画面の明細の行で金額の右の緑の欄（原価）に入れると粗利計算表の原価に入ります（帳票には出ません）。粗利計算表に送料は含めません。',
     rel:['quote-discount']},
-  {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.14',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
-    steps:['案件管理で、その案件の「🏷代理店帳票」を押す（顧客が4社の案件だけに出ます）','出したい帳票（見積書・請求書・納品書・物品受領書）を押すと、その代理店の様式で印刷用の画面が開きます','見積書の件名・宛先・支払条件・明細（品名・単価・備考）・備考は見積書の下の「✎ 見積書作成画面」で直す（請求書・納品書・物品受領書にも反映されます）','請求書・納品書・物品受領書だけを直すときは、その帳票の下の「✎ 記載内容の手修正」（今の帳票と同じ画面。請求書で直した所は納品書にも反映・請求書が優先）'],
+  {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.15',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
+    steps:['案件管理で、その案件の「🏷代理店帳票」を押す（顧客が4社の案件だけに出ます）','出したい帳票（見積書・請求書・納品書・物品受領書）を押すと、その代理店の様式で印刷用の画面が開きます','見積書は見積書の下の「✎ 見積書作成画面」で直す（在庫確認・見積の見積書作成画面と同じ。明細の追加・値引き・並べ替え・単価・送料も。請求書・納品書・物品受領書にも反映されます）','請求書・納品書・物品受領書だけを直すときは、その帳票の下の「✎ 記載内容の手修正」（今の帳票と同じ画面。請求書で直した所は納品書にも反映・請求書が優先）'],
     tip:'金額は代理店値引きを除き、ロッカー本体の単価だけ×1.1（100円未満切り上げ）。製品名称はプラロッカー＝ECOプラロッカー／プラロッカー／ルミ○○色、プラスチックロッカー＝プラエコロッカー／プラスチックロッカー／ホタプラ○○色。案件管理の原価欄の粗利と売上集計もこの金額で計算します（2026-11-18 以降に作った案件。それより前の案件は今の帳票の金額のまま）。',
-    warn:'支払条件が「前払い」「新規前入金」の案件は、ステータス欄の「入金確認」にチェックが入るまで出荷指示書を出せず、出荷指示書送付済にもできません（納品完了タブの入金確認と同じチェックです）。',rel:['quote-discount']},
+    warn:'代理店帳票（見積書作成画面か請求書の記載内容の手修正）で支払条件を「前払い」「新規前入金」にした案件は、ステータス欄の「入金確認」にチェックが入るまで出荷指示書を出せず、出荷指示書送付済にもできません。チェックは納品完了タブの入金確認と同じもので、納品完了になってもそのまま残ります（案件修正で作り直しても消えません）。',rel:['quote-discount']},
   {id:'quote-discount',cat:'quote',tab:'inv',ver:'v19.72',q:'見積に値引きを入れたい',kw:['値引き','割引','出精値引き','継続購入割引','販促','代理店値引き','10%'],
     steps:['「見積書のみ作成」などで見積書作成の画面を開く','「＋ 値引きの行を追加」を押す','項目（出精値引き／３年間継続購入割引／販促活動協力費／自由入力）と金額を入れる'],
     tip:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の新しい見積には「代理店値引き」（送料・工事費も含めた明細の合計の10%・自動計算）が最初から入ります。金額を手で直すと自動計算は外れます。',
@@ -12864,6 +12894,500 @@ function CustPage(p){
 }
 
 /* ========== MAIN PAGE: INVENTORY CHECK & QUOTE ========== */
+/* ===== v20.14（2026-11-18 ユーザー「見積書作成について、通常の見積作成画面と同一に。明細の追加や値引きの追加などすべて同一仕様に」）=====
+   見積書作成画面の「✎ 見積書の直接編集」を部品にした。在庫確認・見積の見積書作成画面と、🏷代理店帳票の見積書作成画面で★同じものを使う
+   （直すときはここ1か所。片方だけ直すとずれるので画面ごとに複製しないこと）。
+   p.qo＝表示する案件、p.updQ(patch)＝変更の保存（今の帳票は案件そのもの、代理店帳票は order.agentDoc.q へ）、
+   p.rowsOf(qo)＝明細の行（代理店帳票は代理店帳票の明細）、p.agent＝代理店帳票（様式に出ない LEC担当者・代表者名・受渡地は出さない）、
+   p.st＝入力中の状態（在庫確認・見積は今までどおり InvPage の状態を渡す。渡さなければこの部品の中に持つ）。 */
+function QuoteEditPanel(p){
+  var L={optFree:us({}),discFree:us({}),dragRk:us(null),dropRk:us(null),unitDraft:us({}),notesTplKey:us(''),notesTplPick:us({}),optTick:us(0)};
+  var st=p.st||L;
+  var optFree=st.optFree,discFree=st.discFree,dragRk=st.dragRk,dropRk=st.dropRk,unitDraft=st.unitDraft,notesTplKey=st.notesTplKey,notesTplPick=st.notesTplPick,optTick=st.optTick;
+  var qo=p.qo,updQ=p.updQ,AG=!!p.agent;
+          var PAY_TERMS_LIST=PAY_TERMS_OPTS.concat(['自由入力']);/* v18.62 修正12③: 「その他」→「自由入力」へ名称変更（下の欄に直接入力する運用は従来どおり） */
+          var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
+          var ptKnown=PAY_TERMS_LIST.indexOf(qo.paymentTerms||'')>=0;
+          /* v18.37 修正箇所2③: 納期・受渡地・有効期限は選択肢マスタ＋自由入力。
+             マスタは全端末共有のため、追加・削除の都度 localStorage とクラウドへ保存する。 */
+          function bumpOpts(){saveQuoteOpts();cloudSave(p.userName);optTick[1](optTick[0]+1);}
+          function addOpt(kind,val){
+            val=(val||'').trim();
+            if(!val||(QUOTE_OPTS[kind]||[]).indexOf(val)>=0)return;
+            QUOTE_OPTS[kind]=(QUOTE_OPTS[kind]||[]).concat([val]);bumpOpts();
+            p.toast('選択肢に追加しました: '+val);
+          }
+          function delOpt(kind,val){
+            /* v18.46 修正５④: 規定文言（「お打ち合わせの上」等）は削除させない */
+            if(isDefaultQuoteOpt(kind,val)){p.toast('「'+val+'」は規定の文言のため削除できません');return;}
+            QUOTE_OPTS[kind]=(QUOTE_OPTS[kind]||[]).filter(function(x){return x!==val;});bumpOpts();
+            p.toast('選択肢から削除しました: '+val);
+          }
+          /* プルダウン＋自由入力欄＋選択肢の追加/削除ボタンを1組で描画する
+             v18.46 修正５④: 「（自由入力）」は optFree で明示的に保持する。
+             以前は「値が選択肢に無い＝自由入力」と判定していたため、自由入力を選んで値を空にした瞬間に
+             既定値(effVal)へ戻って選択肢に含まれてしまい、入力欄が現れず自由入力できなかった。 */
+          /* v18.62 修正12④: 選択肢が1件も無いフィールド（受渡地）は「（自由入力）」しか選べないプルダウンに
+             なってしまうため、その場合はプルダウン自体を出さず入力欄だけにする。
+             選択肢が登録されれば従来どおりプルダウンが出る（＝それ以外の運用はそのまま）。 */
+          function optField(label,kind,field,effVal,placeholder){
+            var list=QUOTE_OPTS[kind]||[];
+            var noSelect=list.length===0;
+            var isFree=noSelect||!!optFree[0][field];
+            var cur=isFree?(qo[field]||''):(qo[field]||effVal||'');
+            var known=!isFree&&list.indexOf(cur)>=0;
+            function setV(v){var pt={};pt[field]=v;updQ(pt);}
+            function setFree(on){var nf=Object.assign({},optFree[0]);if(on)nf[field]=true;else delete nf[field];optFree[1](nf);}
+            return h('div',null,
+              h('label',{style:EL},label),
+              noSelect?null:h('select',{className:'inp',value:known?cur:'__free',onChange:function(e){
+                if(e.target.value==='__free'){setFree(true);setV('');}
+                else{setFree(false);setV(e.target.value);}
+              }},
+                list.map(function(x){return h('option',{key:x,value:x},x);}),
+                h('option',{value:'__free'},'（自由入力）')
+              ),
+              !known?h('input',{className:'inp',value:qo[field]||'',onChange:function(e){setV(e.target.value);},placeholder:placeholder||'直接入力',style:{marginTop:noSelect?0:3},autoFocus:!noSelect&&isFree&&!qo[field]}):null,
+              h('div',{style:{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}},
+                (cur&&!known)?h('button',{className:'btn btn-xs btn-ol',onClick:function(){addOpt(kind,cur);setFree(false);}},'＋ 選択肢に追加'):null,
+                (cur&&known&&!isDefaultQuoteOpt(kind,cur))?h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626'},onClick:function(){delOpt(kind,cur);}},'－ 選択肢から削除'):null,
+                (cur&&known&&isDefaultQuoteOpt(kind,cur))?h('span',{style:{fontSize:8,color:'var(--g400)',lineHeight:'20px'}},'※規定文言（削除不可）'):null
+              )
+            );
+          }
+          /* v18.37 修正箇所2④: 明細の備考欄は行ごとに入力。行の並び・行キーは帳票生成と同一ロジックから取得する */
+          var qRows=[];
+          try{qRows=p.rowsOf?p.rowsOf(qo):((generateQuoteHTML(qo,'quote')||{}).rows||[]);}catch(e){qRows=[];}
+          /* v18.73 修正17の追加⑬: 値引きは金額が未入力だと見積書に出ない＝qRows にも入らないので、
+             追加した直後に編集できるよう、この編集パネルにだけ「金額未入力の値引き行」を足して表示する。 */
+          (function(){
+            var have={};qRows.forEach(function(r){have[r.rkey]=true;});
+            discountRowsOf(qo).forEach(function(dr,di){
+              var dk=discountRowKey(di);
+              if(have[dk]||dr.amount>0)return;
+              qRows=qRows.concat([{rkey:dk,no:qRows.length+1,code:'F00064',name:dr.name||'（値引き・金額未入力）',
+                qty:'',unit:'',price:'',amount:'',tax:'',remark:rowRemark(qo,dk,''),pendingDisc:true}]);
+            });
+            /* v19.86（2026-11-06 ユーザー「見積作成の画面で明細行の移動が出来ない。QT-2026-279」）:
+               金額未入力の値引き行は帳票の行に入らないため、いつも一番下に付け足していた。
+               並べ替えた順（rowOrder）は保存されるのに表示が一番下のまま＝動かせないように見えた。
+               → 保存された並び順どおりの位置に出す（金額を入れた後も同じ位置に出る）。 */
+            if(qRows.some(function(r){return r.pendingDisc;}))qRows=applyRowOrder(qo,qRows);
+          })();
+          /* v18.63 修正12の再修正②: 外寸は v18.62 で明細の備考へ自動反映するようになったため、
+             「外寸を挿入…」プルダウン用の dimMap は不要になった（備考欄の直接編集のみに統一）。 */
+          function updRemark(rkey,val){
+            var rr3=Object.assign({},qo.rowRemarks||{});
+            rr3[rkey]=val;updQ({rowRemarks:rr3});
+          }
+          /* v19.17 修正30③: 構成表記（【Sサイズ1段積み：H380mm】等）の手修正。reset=true で自動の表記へ戻す */
+          function updCfgNote(rkey,val,reset){
+            var cn3=Object.assign({},qo.cfgNotes||{});
+            if(reset)delete cn3[rkey];else cn3[rkey]=val;
+            updQ({cfgNotes:cn3});
+          }
+          /* ===== v18.72 修正17⑨⑩: 明細の並べ替えと自由入力行 =====
+             並び順は order.rowOrder（現在の表示順の行キー配列）として保存する。
+             ドラッグした行を落とした行の位置へ差し込み、その時点の並び順を丸ごと保存する。 */
+          function moveRow(fromRk,toRk){
+            if(!fromRk||!toRk||fromRk===toRk)return;
+            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
+            var fi=keys.indexOf(fromRk),ti=keys.indexOf(toRk);
+            if(fi<0||ti<0)return;
+            keys.splice(ti,0,keys.splice(fi,1)[0]);
+            var cl=Object.assign({},qo.cfgLift||{}),clCh=false;
+            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk){delete cl[k];clCh=true;}});
+            updQ(clCh?{rowOrder:keys,cfgLift:cl}:{rowOrder:keys});
+          }
+          /* v19.40（修正35の追加）→ v19.41 で落とし方を変更:
+             ・構成表記のすぐ下の行（商品名の行／すでに構成表記の下に入れた先頭の行）に★下から重ねる
+             　＝挿入線が構成表記の欄のすぐ下に出る → 構成表記のすぐ下（商品名の上）へ入れる（moveRowUnderCfg）。
+             　（v19.40 では線は構成表記の下に出るのに、落とすと構成表記の上へ入っていた）
+             ・構成表記の欄に重ねる＝線が構成表記の上に出る → 構成表記の上へ入れる（moveRowAboveCfg）。
+             入れた行を cfgLift[本体の行キー] に記録し、buildQuoteRows が構成表記をその行の上へ付け替える */
+          function moveRowAboveCfg(fromRk,anchorRk){
+            if(!fromRk||!anchorRk||fromRk===anchorRk)return;
+            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
+            var cl=Object.assign({},qo.cfgLift||{});
+            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk)delete cl[k];});
+            var fi=keys.indexOf(fromRk);if(fi<0)return;
+            keys.splice(fi,1);
+            var ai=keys.indexOf(anchorRk);if(ai<0)return;
+            keys.splice(ai,0,fromRk);
+            updQ({rowOrder:keys,cfgLift:cl});
+          }
+          function moveRowUnderCfg(fromRk,lk){
+            if(!fromRk||!lk||fromRk===lk)return;
+            var fr=qRows.find(function(r){return (r.rkey||('N'+r.no))===fromRk;});
+            if(fr&&fr.configNoteAuto!==undefined){moveRow(fromRk,lk);return;}/* 本体行どうしは通常の並べ替え */
+            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
+            var cl=Object.assign({},qo.cfgLift||{});
+            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk)delete cl[k];});
+            var fi=keys.indexOf(fromRk);if(fi<0)return;
+            keys.splice(fi,1);
+            var li=keys.indexOf(lk);if(li<0)return;
+            var ci=cl[lk]?keys.indexOf(cl[lk]):-1;
+            var at=(ci>=0&&ci<li)?ci:li;/* すでに構成表記の下に行があれば、その上（＝構成表記のすぐ下）へ */
+            keys.splice(at,0,fromRk);
+            cl[lk]=fromRk;
+            updQ({rowOrder:keys,cfgLift:cl});
+          }
+          function addExtra(){
+            var list=(qo.extraRows||[]).map(function(x){return Object.assign({},x);});
+            var rk='X'+Date.now();
+            /* v18.73 修正17の追加⑨: 数量・単位・単価は★空欄スタート。空欄のままなら見積書にも何も出さない */
+            list.push({rkey:rk,name:'',qty:'',unit:'',price:'',code:''});
+            /* 追加した行は明細の末尾（送料・値引きの後ろ）に出るので、必要ならドラッグで移動してもらう */
+            updQ({extraRows:list});
+            p.toast('自由入力の行を追加しました（数量・単位・単価は空欄のままなら見積書に表示されません）');
+          }
+          /* v19.39 修正35④: 定型文の行を追加（「生徒様ご負担分」「学校様ご負担分」）。
+             中身は自由入力の行（名称だけ入った行＝見積書には文字だけが出る）なので、あとから書き換え・並べ替え・削除ができる */
+          function addTplRow(txt){
+            if(!txt)return;
+            var list=(qo.extraRows||[]).map(function(x){return Object.assign({},x);});
+            list.push({rkey:'X'+Date.now(),name:txt,qty:'',unit:'',price:'',code:''});
+            updQ({extraRows:list});
+            p.toast('定型文「'+txt+'」の行を追加しました（明細の末尾に出ます。ドラッグで移動できます）'+(/工事費/.test(txt)?'。工事の原価は金額の右の緑の欄に入れると粗利計算表に入ります':''));
+          }
+          /* ===== v18.73 修正17の追加⑬: 値引きの行を「明細の行」の中で編集する ===== */
+          function discIndexOf(rk){
+            var m=String(rk||'').match(/^DISC(\d*)$/);
+            if(!m)return -1;
+            var i=m[1]===''?0:parseInt(m[1],10);
+            return (i>=0&&i<discountRowsOf(qo).length)?i:-1;
+          }
+          function commitDisc(next){var nx=normDiscountRows(next);updQ({discounts:nx,discount:discountSum(nx)});}
+          function setDiscRow(i,patch){
+            if('amount' in patch||'qty' in patch||'unitPrice' in patch)patch=Object.assign({},patch,{auto:''});/* v19.72 依頼⑥: 手で直したら自動計算を外す */
+            commitDisc(discountRowsOf(qo).map(function(r,j){return j===i?Object.assign({},r,patch):Object.assign({},r);}));
+          }
+          function addDiscRow(){
+            var dl=QUOTE_OPTS.discount||[];
+            commitDisc(discountRowsOf(qo).map(function(r){return Object.assign({},r);}).concat([{name:dl[0]||'出精値引き',amount:0}]));
+            p.toast('値引きの行を追加しました（明細の行の中で編集・並べ替えできます）');
+          }
+          function delDiscRow(i){
+            commitDisc(discountRowsOf(qo).filter(function(r,j){return j!==i;}));
+          }
+          /* ===== v18.73 修正17の追加⑳: 明細の行で単価を手入力する（order.rowUnit） ===== */
+          function setRowUnit(rk,val){
+            var m=Object.assign({},qo.rowUnit||{});
+            if(val===''||val==null)delete m[rk];
+            else m[rk]=Math.max(0,parseInt(val)||0);
+            updQ({rowUnit:m});
+          }
+          function updExtra(rk,patch){
+            updQ({extraRows:(qo.extraRows||[]).map(function(x){return x.rkey===rk?Object.assign({},x,patch):Object.assign({},x);})});
+          }
+          function delExtra(rk){
+            updQ({extraRows:(qo.extraRows||[]).filter(function(x){return x.rkey!==rk;}),
+                  rowOrder:(qo.rowOrder||[]).filter(function(k){return k!==rk;})});
+          }
+          return h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
+            h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます）'),
+            /* v18.63 修正12の再修正①: 編集欄の並びを見積書の上から順（件名・担当者→納期・有効期限・受渡地→
+               支払条件→明細の備考→送料→値引き→全体備考）に揃える。 */
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:6,marginBottom:4}},
+              h('div',null,h('label',{style:EL},'件名（空欄で自動生成: 商品名・サイズ・台数）'),h('input',{className:'inp',value:qo.subject||'',onChange:function(e){updQ({subject:e.target.value});}})),
+              AG?null:h('div',null,h('label',{style:EL},'LEC担当者（空欄=エンド納品先の弊社担当→顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
+            ),
+            /* v18.72 修正17⑱: 会社名の下に代表者名を入れる（必要に応じてなのでチェックボックスで切替） */
+            AG?null:h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+              h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:9,fontWeight:600,cursor:'pointer'}},
+                h('input',{type:'checkbox',checked:!!qo.showRepName,onChange:function(e){updQ({showRepName:e.target.checked});}}),
+                '会社名（株式会社LEC）の下に代表者名を表記する'
+              ),
+              qo.showRepName?h('input',{className:'inp',style:{marginTop:3},value:qo.repName||REP_NAME_DEFAULT,onChange:function(e){updQ({repName:e.target.value});},placeholder:REP_NAME_DEFAULT}):null
+            ),
+            /* v18.37 修正箇所2③: 納期・有効期限・受渡地（プルダウン＋自由入力・選択肢は追加/削除可）
+               v18.63 修正12の再修正①: 見積書ヘッダーと同じ 納期→有効期限→受渡地 の並びにする */
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}},
+              optField('納期','delivery','deliveryTerm',deliveryTermOf(qo),'納期を入力'),
+              optField('有効期限','expiry','validUntil',validUntilOf(qo),'有効期限を入力'),
+              /* v18.48 修正６④: 送付先=エンドユーザー宛の案件は、空欄時の既定がエンド納品先住所の市区町村までになる */
+              AG?h('div',null):optField('受渡地（空欄='+(qo&&qo.shipDest==='end'?'エンド納品先':'顧客住所')+'の市区町村まで）','place','deliveryPlace','',deliveryPlaceOf(qo,CUSTS.find(function(c){return c.id===qo.cid;}))||'受渡地を入力')
+            ),
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}},
+              h('div',null,h('label',{style:EL},'支払条件'),
+                h('select',{className:'inp',value:ptKnown?qo.paymentTerms:'自由入力',onChange:function(e){updQ({paymentTerms:e.target.value==='自由入力'?'':e.target.value});}},
+                  PAY_TERMS_LIST.map(function(pt){return h('option',{key:pt,value:pt},pt);})),
+                !ptKnown?h('input',{className:'inp',value:qo.paymentTerms||'',onChange:function(e){updQ({paymentTerms:e.target.value});},placeholder:'支払条件を入力',style:{marginTop:3}}):null
+              ),
+              h('div',null)
+            ),
+            /* v18.37 修正箇所2⑤ → ★v18.73 ＜修正17の追加修正・回答＞5 で方針変更。
+               「サイドジョイント含む3種のレンタル品はレンタルの場合と販売の場合がある（パーソナルも常設も）。
+                 選択によってどちらにも対応出来るようにして」（ユーザー回答 2026-09-03）
+               → パーソナル限定をやめ、3品目それぞれ 記載しない／販売／レンタル を選べるようにした。
+               ⑪の回答どおり、商品選択で必要部材として選ばれていない品目（数量0）は行自体を出さない。 */
+            (function(){
+              var rsel=rentalSelOf(qo);
+              var vjQ=rentalVjQty(qo);
+              var sjQ=rentalSjRows(qo).reduce(function(s,x){return s+x.qty;},0);
+              var baseQ=(qo.lines||[]).filter(function(l){return !l.isPartOnly&&l.hasBase!==false;})
+                          .reduce(function(s,l){return s+lineBaseCount(l);},0);
+              var qtyOf={base:baseQ,vj:vjQ,sj:sjQ};
+              return h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+                h('label',{style:EL},'ベースボード・上下ジョイント・サイドジョイントの記載（レンタル＝プラス行とマイナス行を並べて差引0円／販売＝金額を計上）'),
+                h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},
+                  RENTAL_PARTS.map(function(rp){
+                    var q=qtyOf[rp.k]||0;
+                    return h('div',{key:rp.k,style:{minWidth:190}},
+                      h('div',{style:{fontSize:9,fontWeight:600}},rp.l+(q>0?('（'+fm(q)+(rp.k==='base'?'枚':'個')+'）'):'（商品選択に無し）')),
+                      h('select',{className:'inp',disabled:!(q>0),value:rsel[rp.k],onChange:function(e){
+                        var n2=Object.assign({},rentalSelOf(qo));n2[rp.k]=e.target.value;
+                        updQ({rentalSel:n2,rentalOffset:(n2.base==='rental'||n2.vj==='rental'||n2.sj==='rental')});
+                      }},RENTAL_MODES.map(function(m){return h('option',{key:m.v,value:m.v},m.l);}))
+                    );
+                  })
+                ),
+                /* v18.74 修正17の再修正（確認2）: 既定は3品目とも「記載しない」。
+                   数量があるのに記載しないままの品目は見積書に出ないので、気づけるよう注意を出す。 */
+                (function(){
+                  var miss=RENTAL_PARTS.filter(function(rp){return (qtyOf[rp.k]||0)>0&&rsel[rp.k]==='none';});
+                  return miss.length?h('div',{style:{fontSize:8,fontWeight:700,color:'#975a16',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'2px 5px',marginTop:3}},
+                    '⚠ '+miss.map(function(m){return m.l;}).join('・')+' は数量がありますが「記載しない」のため見積書に出ません（既定は記載しないです）'):null;
+                })(),
+                h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'※ 上下ジョイント単価 ¥'+fm(VJ_PRICE)+' ／ サイドジョイントは単価マスタ（未取込時 SMLXL ¥'+fm(SJ_PRICE.sml)+'・SS/3S ¥'+fm(SJ_PRICE.ss)+'）。単価は下の「明細の行」で手修正できます')
+              );
+            })(),
+            /* v18.37 修正箇所2④: 明細各行の備考（税欄の右）。
+               v18.63 修正12の再修正②: 外寸は v18.62 で自動反映するようになったため「外寸を挿入…」の
+               プルダウンは削除。外寸を消して自由に書き換えたい場合はこの入力欄を直接編集する。 */
+            /* v18.72 修正17⑨⑩ ／ v18.73 追加修正⑬⑳: 明細の行の編集パネル。
+               ・⇅ をドラッグして並べ替え（order.rowOrder）
+               ・自由入力行の追加（order.extraRows）。数量・単位・単価は既定で空欄
+               ・★値引きの入力欄もこの行の中に組み込んだ（⑬）ので、値引きも同じように並べ替えできる
+               ・★本体・ベースなどの単価もここで手入力できる（⑳。order.rowUnit）→ 粗利表の売価に反映される */
+            h('div',{style:{marginBottom:4}},
+              h('label',{style:EL},'明細の行（⇅ をつまんで上下にドラッグすると並び順を変えられます／単価は直接手入力できます／備考は税欄の右に表示・外寸は自動で入ります）'),
+              h('div',{style:{maxHeight:260,overflowY:'auto',background:'#fff',border:'1px solid var(--g200)',borderRadius:4,padding:4}},
+                qRows.length?qRows.map(function(r,ri){
+                  var rk=r.rkey||('N'+r.no);
+                  var ex=(qo.extraRows||[]).find(function(x){return x.rkey===rk;});
+                  var di=discIndexOf(rk);
+                  var dr=di>=0?(discountRowsOf(qo)[di]||null):null;
+                  var uEditable=rowUnitEditable(r)&&!ex;
+                  var uOv=rowUnitOv(qo,rk);
+                  /* v19.41: 構成表記が上に付いている行（cfgTop＝その本体の行キー）に下から重ねたら、構成表記のすぐ下へ入れる */
+                  var cfgTop=r.cfgFrom||((r.configNoteAuto!==undefined&&!r.cfgLiftedTo)?rk:null);
+                  var drop=function(e){
+                    e.preventDefault();
+                    var from=dragRk[0];
+                    var fi2=qRows.findIndex(function(x){return (x.rkey||('N'+x.no))===from;});
+                    var fr2=fi2>=0?qRows[fi2]:null;
+                    if(cfgTop&&fi2>ri&&fr2&&fr2.configNoteAuto===undefined)moveRowUnderCfg(from,cfgTop);
+                    else moveRow(from,rk);
+                    dragRk[1](null);dropRk[1](null);
+                  };
+                  /* v18.74: 挿入位置の線。つかんでいる行より上の行に重ねたら「その行の上」、下なら「その行の下」 */
+                  var showLine=!!dragRk[0]&&dropRk[0]===rk&&dragRk[0]!==rk;
+                  var lineAbove=showLine&&(qRows.findIndex(function(x){return (x.rkey||('N'+x.no))===dragRk[0];})>ri);
+                  var cells=[
+                    h('span',{key:'g',title:'ドラッグして並べ替え',style:{cursor:'grab',fontSize:11,color:'var(--g400)',flexShrink:0}},'⇅'),
+                    h('span',{key:'n',style:{fontSize:8,color:'var(--g500)',width:12,flexShrink:0,textAlign:'right'}},String(ri+1))
+                  ];
+                  /* 品名 */
+                  if(ex)cells.push(h('input',{key:'nm',className:'inp',style:{width:132,flexShrink:0,fontSize:9},value:ex.name||'',placeholder:'品名（自由入力）',onChange:function(e){updExtra(rk,{name:e.target.value});}}));
+                  else if(dr)cells.push((function(){
+                    /* v18.74 修正17の再修正⑬: 値引きの項目名は★プルダウン（選択肢マスタ）＋自由入力に戻す。
+                       自由入力した名称は「＋ 選択肢に追加」で全端末共有の選択肢へ足せる（規定文言は削除不可）。 */
+                    var dlist=QUOTE_OPTS.discount||[];
+                    var dFree=!!discFree[0][di];
+                    var dKnown=!dFree&&dlist.indexOf(dr.name)>=0;
+                    return h('div',{key:'nm',style:{width:132,flexShrink:0}},
+                      h('select',{className:'inp',style:{fontSize:9},value:dKnown?dr.name:'__free',onChange:function(e){
+                        var nf=Object.assign({},discFree[0]);
+                        if(e.target.value==='__free'){nf[di]=true;discFree[1](nf);setDiscRow(di,{name:''});}
+                        else{delete nf[di];discFree[1](nf);setDiscRow(di,{name:e.target.value});}
+                      }},
+                        dlist.map(function(x){return h('option',{key:x,value:x},x);}),
+                        h('option',{value:'__free'},'（自由入力）')
+                      ),
+                      !dKnown?h('input',{className:'inp',style:{marginTop:2,fontSize:9},value:dr.name||'',placeholder:'値引きの項目名を入力',onChange:function(e){setDiscRow(di,{name:e.target.value});}}):null,
+                      h('div',{style:{display:'flex',gap:3,marginTop:2,flexWrap:'wrap'}},
+                        (dr.name&&!dKnown)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){
+                          addOpt('discount',dr.name);var nf2=Object.assign({},discFree[0]);delete nf2[di];discFree[1](nf2);
+                        }},'＋ 選択肢に追加'):null,
+                        dr.auto==='agent'?h('span',{style:{fontSize:8,color:'var(--nv)',fontWeight:700}},'自動（合計の10%）'):null,
+                        (dr.name&&dKnown&&!isDefaultQuoteOpt('discount',dr.name))?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,color:'#DC2626'},onClick:function(){delOpt('discount',dr.name);}},'－ 選択肢から削除'):null
+                      )
+                    );
+                  })());
+                  else cells.push(h('span',{key:'nm',style:{fontSize:8,color:'var(--g500)',width:132,flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:r.name},r.name));
+                  /* 数量・単位 */
+                  if(ex){
+                    cells.push(h(NumIn,{key:'q',className:'inp',style:{width:50,flexShrink:0,fontSize:9},value:(ex.qty===''||ex.qty==null)?'':ex.qty,placeholder:'数量',onChange:function(e){updExtra(rk,{qty:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
+                    cells.push(h('input',{key:'u',className:'inp',style:{width:38,flexShrink:0,fontSize:9},value:ex.unit||'',placeholder:'単位',onChange:function(e){updExtra(rk,{unit:e.target.value});}}));
+                  }else if(dr){
+                    cells.push(h(NumIn,{key:'q',className:'inp',style:{width:50,flexShrink:0,fontSize:9},value:dr.qty?dr.qty:'',placeholder:'数量',title:'単価と数量の両方を入れると「単価×数量」で表記します',onChange:function(e){setDiscRow(di,{qty:parseInt(e.target.value)||0});}}));
+                    cells.push(h('input',{key:'u',className:'inp',style:{width:38,flexShrink:0,fontSize:9},value:dr.unit||'',placeholder:'台',onChange:function(e){setDiscRow(di,{unit:e.target.value});}}));
+                  }else{
+                    cells.push(h('span',{key:'q',style:{fontSize:8,color:'var(--g500)',width:50,flexShrink:0,textAlign:'right'}},r.qty===''?'':fm(r.qty)));
+                    cells.push(h('span',{key:'u',style:{fontSize:8,color:'var(--g500)',width:38,flexShrink:0}},r.unit||''));
+                  }
+                  /* 単価 */
+                  if(ex)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9},value:(ex.price===''||ex.price==null)?'':ex.price,placeholder:'単価',onChange:function(e){updExtra(rk,{price:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
+                  else if(dr)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9},value:dr.unitPrice?dr.unitPrice:'',placeholder:'値引単価',onChange:function(e){setDiscRow(di,{unitPrice:parseInt(e.target.value)||0});}}));
+                  /* v18.74 修正17の再修正: 数字を全部消すと元の金額に戻ってしまう事象を解消する。
+                     入力中の文字列は unitDraft に持ち、空欄のまま打ち直せるようにする。
+                     欄から離れた（blur）時点で確定し、空欄なら手入力を取り消して単価マスタの金額に戻す。 */
+                  else if(uEditable)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9,background:(unitDraft[0][rk]!==undefined||uOv!==null)?'#FEF3C7':'#fff'},
+                    value:unitDraft[0][rk]!==undefined?unitDraft[0][rk]:(uOv!==null?String(uOv):(r.price===''?'':String(r.price))),
+                    placeholder:'単価',
+                    title:'単価を手入力すると 金額＝単価×数量 になり、粗利計算表の売価にも反映されます（空欄にして欄から離れると単価マスタの金額に戻ります）',
+                    onChange:function(e){var d=Object.assign({},unitDraft[0]);d[rk]=e.target.value;unitDraft[1](d);},
+                    onBlur:function(e){
+                      var d=Object.assign({},unitDraft[0]);delete d[rk];unitDraft[1](d);
+                      setRowUnit(rk,e.target.value);
+                    },
+                    onKeyDown:function(ev){if(ev.key==='Enter')ev.target.blur();}}));
+                  else cells.push(h('span',{key:'p',style:{fontSize:8,color:'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.price===''?'':('¥'+fm(r.price))));
+                  /* 金額 */
+                  if(dr)cells.push(h(NumIn,{key:'a',className:'inp',style:{width:74,flexShrink:0,fontSize:9,background:dr.auto==='agent'?'#EFF6FF':'#fff'},disabled:!!(dr.qty>0&&dr.unitPrice>0),'data-discauto':dr.auto==='agent'?'1':null,
+                    title:dr.auto==='agent'?'代理店値引き（自動）: 送料・工事費なども含めた明細の合計の10%です。金額を直すと自動計算は外れます':'',
+                    value:dr.auto==='agent'?String(Math.max(0,-(parseInt(r.amount)||0))):(dr.amount?dr.amount:''),placeholder:'値引き額',onChange:function(e){setDiscRow(di,{amount:parseInt(e.target.value)||0});}}));
+                  else cells.push(h('span',{key:'a',style:{fontSize:8,fontWeight:700,color:r.amount<0?'#B91C1C':'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.amount===''?'':('¥'+fm(r.amount))));
+                  /* v19.60: 自由入力の行（設置工事費など）の原価単価。社内用（帳票には出ない）。原価×数量が粗利計算表の原価に入る */
+                  var frL=(!ex&&/^L/.test(rk))?(qo.lines||[]).find(function(l){return l.isFreeInput&&('L'+l.id)===rk;}):null;
+                  var costTitle='原価単価（社内用・帳票には出ません）。原価単価×数量（数量が空欄なら1）が粗利計算表の原価に入ります';
+                  if(ex)cells.push(h(NumIn,{key:'c',className:'inp',style:{width:64,flexShrink:0,fontSize:9,background:'#F0FDF4'},title:costTitle,
+                    value:(ex.cost===''||ex.cost==null)?'':ex.cost,placeholder:'原価',onChange:function(e){updExtra(rk,{cost:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
+                  else if(frL)cells.push(h(NumIn,{key:'c',className:'inp',style:{width:64,flexShrink:0,fontSize:9,background:'#F0FDF4'},title:costTitle,
+                    value:(function(){var u=freeLineUnitCost(qo,frL);return u==null?'':String(u);})(),placeholder:'原価',
+                    onChange:function(e){var m=Object.assign({},qo.rowCost||{});m[rk]=e.target.value===''?'':(parseInt(e.target.value)||0);updQ({rowCost:m});}}));
+                  else cells.push(h('span',{key:'c',style:{width:64,flexShrink:0}}));
+                  /* 備考 */
+                  cells.push(h('input',{key:'r',className:'inp',style:{flex:1,minWidth:70,fontSize:9},value:(qo.rowRemarks||{})[rk]!==undefined?(qo.rowRemarks||{})[rk]:(r.remark||''),onChange:function(e){updRemark(rk,e.target.value);},placeholder:'備考を入力'}));
+                  /* 行削除（自由入力行・値引き行のみ） */
+                  if(ex)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{color:'#DC2626',flexShrink:0,fontSize:8},title:'この行を削除',onClick:function(){delExtra(rk);}},'－'));
+                  else if(dr)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{color:'#DC2626',flexShrink:0,fontSize:8},title:'この値引きを削除',onClick:function(){delDiscRow(di);}},'－'));
+                  else if(uOv!==null)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手入力した単価を取り消して単価マスタの金額に戻す',onClick:function(){setRowUnit(rk,'');}},'↺'));
+                  else cells.push(h('span',{key:'x',style:{width:18,flexShrink:0}}));
+                  /* v19.17 修正30③: 本体の明細行（L…）は、帳票で商品名称の上に出る構成表記
+                     （【Sサイズ1段積み：H380mm】【2列3段：W…×D…×H…】）を行の上の欄で書き換えられる。
+                     手修正した欄は黄色。↺ で自動の表記に戻す。空欄にすると表記を出さない。 */
+                  /* v19.40（修正35の追加）: 構成表記の欄にも行を落とせる（＝構成表記のすぐ下・商品名の上へ入る）。
+                     構成表記の下に行を入れた本体行は、構成表記の欄をその行の上に出す（帳票と同じ並び） */
+                  function cfgElOf(Lr,anchorRk){
+                    var lk=Lr.rkey;
+                    var cnMap=qo.cfgNotes||{},cnHas=Object.prototype.hasOwnProperty.call(cnMap,lk);
+                    var cfgDrop=!!dragRk[0]&&dropRk[0]==='CFG:'+lk&&dragRk[0]!==lk;
+                    return h('div',{key:lk+'-cfg',style:{display:'flex',gap:3,alignItems:'center',margin:'2px 0 1px 30px',
+                        borderTop:cfgDrop?'2px solid #1e3a5f':'2px solid transparent'},
+                        onDragOver:function(e){e.preventDefault();if(dropRk[0]!=='CFG:'+lk)dropRk[1]('CFG:'+lk);},
+                        onDragLeave:function(){if(dropRk[0]==='CFG:'+lk)dropRk[1](null);},
+                        onDrop:function(e){e.preventDefault();moveRowAboveCfg(dragRk[0],anchorRk);dragRk[1](null);dropRk[1](null);}},
+                      h('span',{style:{fontSize:8,color:'var(--g500)',flexShrink:0},title:'行をこの欄に重ねると構成表記の上に、すぐ下の行に下から重ねると構成表記の下（商品名の上）に入ります'},'構成表記'),
+                      h('input',{className:'inp',style:{flex:1,minWidth:120,fontSize:9,background:cnHas?'#FEF3C7':'#fff'},
+                        value:cnHas?(cnMap[lk]||''):(Lr.configNoteAuto||''),placeholder:'（表記なし）',
+                        title:'見積書・請求書などで商品名称の上に出る表記です。書き換えるとこの案件の帳票すべてに反映されます（空欄にすると表記を出しません）',
+                        onChange:function(e){updCfgNote(lk,e.target.value);}}),
+                      cnHas?h('button',{className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手修正を取り消して自動の表記に戻す',onClick:function(){updCfgNote(lk,'',true);}},'↺'):h('span',{style:{width:18,flexShrink:0}}));
+                  }
+                  var cfgEl=null;
+                  if(r.cfgFrom){var Lr0=qRows.find(function(x){return x.rkey===r.cfgFrom;});if(Lr0)cfgEl=cfgElOf(Lr0,rk);}
+                  else if(r.configNoteAuto!==undefined&&!r.cfgLiftedTo)cfgEl=cfgElOf(r,rk);
+                  var rowEl=h('div',{key:rk,draggable:true,
+                    onDragStart:function(){dragRk[1](rk);dropRk[1](null);},
+                    onDragEnd:function(){dragRk[1](null);dropRk[1](null);},
+                    /* v18.74 修正17の再修正: ドラッグ中はどこへ入るかが分かるよう、
+                       挿入位置に線（青いボーダー）を出す。上へ運ぶときは行の上、下へ運ぶときは行の下に出す。 */
+                    onDragOver:function(e){e.preventDefault();if(dropRk[0]!==rk)dropRk[1](rk);},
+                    onDragLeave:function(){if(dropRk[0]===rk)dropRk[1](null);},
+                    onDrop:drop,
+                    style:{display:'flex',gap:3,alignItems:dr?'flex-start':'center',marginBottom:3,padding:'1px 2px',borderRadius:3,
+                      borderTop:(showLine&&lineAbove)?'2px solid #1e3a5f':'2px solid transparent',
+                      borderBottom:(showLine&&!lineAbove)?'2px solid #1e3a5f':'2px solid transparent',
+                      opacity:dragRk[0]===rk?0.45:1,
+                      background:dragRk[0]===rk?'#EFF6FF':(dr?'#FFF7ED':(ex?'#F0FDF4':'transparent'))}},cells);
+                  return cfgEl?h(React.Fragment,{key:rk},cfgEl,rowEl):rowEl;
+                }):h('div',{style:{fontSize:8,color:'var(--g500)',padding:'2px 0'}},'明細がありません'),
+                h('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:4,flexWrap:'wrap'}},
+                  h('button',{className:'btn btn-xs btn-ol',onClick:addExtra},'＋ 自由入力の行を追加'),
+                  h('button',{className:'btn btn-xs btn-ol',onClick:addDiscRow},'＋ 値引きの行を追加'),
+                  h('select',{className:'btn btn-xs btn-ol',value:'',title:'選んだ文章を明細に1行追加します',style:{width:'auto',cursor:'pointer'},onChange:function(e){addTplRow(e.target.value);}},
+                    h('option',{value:''},'＋ 定型文を追加 ▾'),
+                    QUOTE_TPL_ROWS.map(function(t){return h('option',{key:t,value:t},t);})),
+                  (qo.rowOrder&&qo.rowOrder.length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowOrder:[],cfgLift:{}});p.toast('明細の並び順を既定に戻しました');}},'並び順を既定に戻す'):null,
+                  (qo.rowUnit&&Object.keys(qo.rowUnit).length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowUnit:{}});p.toast('手入力した単価をすべて取り消しました');}},'単価の手入力をすべて取消'):null
+                ),
+                h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'🟩=自由入力の行／🟧=値引きの行。単価を手入力した行は単価欄が黄色になります（↺ で元に戻せます）。自由入力の行（設置工事費など）は金額の右の緑の欄に原価単価を入れると粗利計算表に入ります（帳票には出ません）')
+              )
+            ),
+            /* v18.63 修正12の再修正①: 送料と値引きは見積書の明細末尾に出る項目なので、
+               明細の備考の下・全体備考の上へ移動する（見積書と同じ上からの並び）。 */
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 2fr',gap:6,marginBottom:4}},
+              h('div',null,h('label',{style:EL},'送料（円）'),h(NumIn,{className:'inp',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0,shipKeep:true,shipManual:true});}}),
+                /* v19.59: 手入力の送料は作り直しても変わらない。自動計算の金額に戻すボタン */
+                isShipManual(qo)?h('div',{style:{fontSize:9,color:'#975a16',marginTop:2}},'✍ 手入力の金額（明細を直して作り直してもこの金額のまま）',
+                  (qo.shipAuto!=null&&qo.shipAuto!==(parseInt(qo.shipping)||0))?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,marginLeft:4},onClick:function(){
+                    updQ({shipping:qo.shipAuto,shipManual:false});p.toast('送料を自動計算の ¥'+fm(qo.shipAuto)+' に戻しました');}},'自動計算の ¥'+fm(qo.shipAuto)+' に戻す'):null):null,
+                /* v19.39 修正35③: 送料サービス等で0円にしても行を残す（送料欄を触ると自動でチェックが入る） */
+                h('label',{style:{fontSize:9,display:'flex',alignItems:'center',gap:3,marginTop:2,cursor:'pointer'}},
+                  h('input',{type:'checkbox',checked:!!qo.shipKeep,onChange:function(e){updQ({shipKeep:e.target.checked});}}),'0円でも送料の行を出す')),
+              /* v18.62 修正12⑥／v18.63 修正12の再修正④: 送料行の名称。既定文言を最初から入力欄に入れておき、
+                 その文章をそのまま書き換えられるようにする（空欄にすると既定文言に戻る）。 */
+              h('div',null,h('label',{style:EL},'送料の表記（そのまま編集できます／空欄にすると既定文言に戻ります）'),
+                h('input',{className:'inp',value:qo.shipLabel||shipRowNameDefault(qo),onChange:function(e){updQ({shipLabel:e.target.value});},placeholder:shipRowNameDefault(qo)}))
+            ),
+            /* v18.62 修正12①② → v18.73 修正17の追加⑬: 値引きの入力欄は上の「明細の行」に組み込んだ
+               （そこで並び順も変えられる）。ここには置かない。 */
+            /* v18.72 修正17④ → ★v18.73 追加修正④: 定型文の選び方を変更。
+               【パーソナル】【常設】を選ぶとその区分の文章が一覧で出て、★チェックを入れた文章だけを挿入する。
+               挿入したあとは今までどおり自由に書き換えられる（自由入力は従来のまま）。 */
+            (function(){
+              var tpl=NOTES_TEMPLATES.find(function(x){return x.k===notesTplKey[0];})||null;
+              var lines=tpl?tpl.t.split('\n'):[];
+              var picked=notesTplPick[0]||{};
+              function togglePick(i,on){var m=Object.assign({},picked);if(on)m[i]=true;else delete m[i];notesTplPick[1](m);}
+              function pickedText(){return lines.filter(function(t,i){return picked[i];}).join('\n');}
+              function insertPicked(mode){
+                var t=pickedText();
+                if(!t){p.toast('挿入する文章にチェックを入れてください');return;}
+                var cur=(qo.notes||'');
+                updQ({notes:(mode==='append'&&cur.trim())?(cur.replace(/\s+$/,'')+'\n'+t):t});
+                p.toast(mode==='append'?'チェックした文章を全体備考に追記しました':'チェックした文章を全体備考に入れました');
+              }
+              return h('div',null,
+                h('label',{style:EL},'全体備考（見積書末尾に表示・改行するとそのまま改行されます）'),
+                h('div',{style:{marginBottom:3,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+                  h('div',{style:{display:'flex',gap:4,alignItems:'center',flexWrap:'wrap'}},
+                    h('span',{style:{fontSize:8,color:'var(--g500)'}},'定型文:'),
+                    h('select',{className:'inp',style:{width:'auto',minWidth:150,fontSize:9},value:notesTplKey[0],onChange:function(e){
+                      notesTplKey[1](e.target.value);
+                      /* v18.75: 区分を選んだ時点では★チェックを全て外しておく（ユーザー指示）。
+                         使う文章だけをチェックして挿入する運用。全部使うときは「全選択」を押す。 */
+                      notesTplPick[1]({});
+                    }},
+                      h('option',{value:''},'（区分を選ぶ）'),
+                      NOTES_TEMPLATES.map(function(t){return h('option',{key:t.k,value:t.k},t.l);})
+                    ),
+                    tpl?h('button',{className:'btn btn-xs btn-nv',onClick:function(){insertPicked('replace');}},'チェックした文章を入れる'):null,
+                    tpl?h('button',{className:'btn btn-xs btn-ol',onClick:function(){insertPicked('append');}},'末尾に追記'):null,
+                    tpl?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){
+                      var m={};lines.forEach(function(_,i){m[i]=true;});notesTplPick[1](m);
+                    }},'全選択'):null,
+                    tpl?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){notesTplPick[1]({});}},'全解除'):null,
+                    (qo.notes||'')?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,color:'#DC2626'},onClick:function(){
+                      if(!confirm('全体備考を空欄にします。よろしいですか？'))return;updQ({notes:''});
+                    }},'備考をクリア'):null
+                  ),
+                  tpl?h('div',{style:{maxHeight:150,overflowY:'auto',marginTop:3}},
+                    lines.map(function(t,i){
+                      return h('label',{key:i,style:{display:'flex',alignItems:'flex-start',gap:5,fontSize:9,lineHeight:1.5,cursor:'pointer',padding:'1px 0'}},
+                        h('input',{type:'checkbox',style:{marginTop:2,flexShrink:0},checked:!!picked[i],onChange:function(e){togglePick(i,e.target.checked);}}),
+                        h('span',null,t)
+                      );
+                    })
+                  ):h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'【パーソナル】【常設】を選ぶと、その区分の文章が一覧で出ます。使う文章にチェックを入れて挿入してください（既定ではすべて未チェックです）')
+                ),
+                h('textarea',{className:'inp',rows:6,value:qo.notes||'',onChange:function(e){updQ({notes:e.target.value});},placeholder:'例:\n・○○まで継続購入お願いします。\n・ご契約終了時にはレンタル品は全てご返却をお願いします。',style:{resize:'vertical'}})
+              );
+            })()
+          );
+}
 function InvPage(p){
   var cust=p.selCust;
   /* v18.14 P6(要望5): スマホ判定。営業の見積動線をスマホで使えるよう左右2カラムを縦積みに切替える */
@@ -14190,6 +14714,28 @@ function InvPage(p){
     broadcastOrderUpdate(p.userName||'',no+' 仮押さえ作成（見積無）');
   }
 
+  /* v20.14: 見積書作成画面の変更の保存（QuoteEditPanel の updQ。中身は v20.13 までの updQ と同じ） */
+  function quoteUpdQ(patch){
+    var qo=quoteOrder[0];
+            /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため、直接編集も営業に開放
+               v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも編集を許可する
+               v18.58 修正10②: 見積作成を全員に開放したのに合わせ、作成した見積の直接編集も編集権限を問わず可能にする */
+            var no2=Object.assign({},qo,patch);
+            syncAgentDisc(no2);/* v19.72 依頼⑥: 明細・単価・送料を変えたら代理店値引き（自動）を計算し直す */
+            quoteOrder[1](no2);
+            /* v19.59: 左側（在庫確認・見積）の状態にも同じ値を入れる。これらは案件を読み込んだときにしか入らないため、
+               案件修正中に「仮押さえ＆見積書作成」等で作り直すと、ここで直した件名・備考・支払条件・値引き等が
+               読み込んだ時点の値に戻っていた（空欄にした値も元に戻っていた）。 */
+            if('subject' in patch)quoteSubject[1](patch.subject||'');
+            if('notes' in patch)quoteNotes[1](patch.notes||'');
+            if('salesPersonOverride' in patch)quoteSalesPerson[1](patch.salesPersonOverride||'');
+            if('paymentTerms' in patch){paymentTerms[1](patch.paymentTerms||'');ptFromOrder.current=true;}
+            if('discounts' in patch)discountRows[1]((patch.discounts||[]).slice());
+            if('shipLabel' in patch)shipLabelSt[1](patch.shipLabel||'');
+            if('shipKeep' in patch)shipKeepR.current=!!patch.shipKeep;
+            var idx=ORDERS.findIndex(function(x){return x.no===qo.no;});
+            if(idx>=0){Object.assign(ORDERS[idx],patch);syncAgentDisc(ORDERS[idx]);saveOrders();cloudSave(p.userName);}
+          }
   function printQuote(order,docType){
     var q=generateQuoteHTML(order,docType||'quote');
     if(!openPrintWindow(q.html))p.toast('ポップアップがブロックされました。ブラウザのポップアップを許可してください');
@@ -14998,512 +15544,10 @@ function InvPage(p){
             miss.length?h('div',{style:{marginTop:2,fontWeight:700}},'⚠ 代理店価格が設定されていない商品になります（標準の販売単価で入っています）: '+miss.join('・')):null,
             miss.length?h('div',{style:{marginTop:2,fontSize:9}},'金額を変えるときは下の「明細の行」で単価を手入力してください。'):null);
         })(),
-        /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有） */
-        (function(){
-          var qo=quoteOrder[0];
-          var PAY_TERMS_LIST=PAY_TERMS_OPTS.concat(['自由入力']);/* v18.62 修正12③: 「その他」→「自由入力」へ名称変更（下の欄に直接入力する運用は従来どおり） */
-          function updQ(patch){
-            /* v18.38 修正箇所3②: 営業も見積を保存できるようになったため、直接編集も営業に開放
-               v18.39: 営業は在庫を動かさないため、後発ログインのロック中でも編集を許可する
-               v18.58 修正10②: 見積作成を全員に開放したのに合わせ、作成した見積の直接編集も編集権限を問わず可能にする */
-            var no2=Object.assign({},qo,patch);
-            syncAgentDisc(no2);/* v19.72 依頼⑥: 明細・単価・送料を変えたら代理店値引き（自動）を計算し直す */
-            quoteOrder[1](no2);
-            /* v19.59: 左側（在庫確認・見積）の状態にも同じ値を入れる。これらは案件を読み込んだときにしか入らないため、
-               案件修正中に「仮押さえ＆見積書作成」等で作り直すと、ここで直した件名・備考・支払条件・値引き等が
-               読み込んだ時点の値に戻っていた（空欄にした値も元に戻っていた）。 */
-            if('subject' in patch)quoteSubject[1](patch.subject||'');
-            if('notes' in patch)quoteNotes[1](patch.notes||'');
-            if('salesPersonOverride' in patch)quoteSalesPerson[1](patch.salesPersonOverride||'');
-            if('paymentTerms' in patch){paymentTerms[1](patch.paymentTerms||'');ptFromOrder.current=true;}
-            if('discounts' in patch)discountRows[1]((patch.discounts||[]).slice());
-            if('shipLabel' in patch)shipLabelSt[1](patch.shipLabel||'');
-            if('shipKeep' in patch)shipKeepR.current=!!patch.shipKeep;
-            var idx=ORDERS.findIndex(function(x){return x.no===qo.no;});
-            if(idx>=0){Object.assign(ORDERS[idx],patch);syncAgentDisc(ORDERS[idx]);saveOrders();cloudSave(p.userName);}
-          }
-          var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
-          var ptKnown=PAY_TERMS_LIST.indexOf(qo.paymentTerms||'')>=0;
-          /* v18.37 修正箇所2③: 納期・受渡地・有効期限は選択肢マスタ＋自由入力。
-             マスタは全端末共有のため、追加・削除の都度 localStorage とクラウドへ保存する。 */
-          function bumpOpts(){saveQuoteOpts();cloudSave(p.userName);optTick[1](optTick[0]+1);}
-          function addOpt(kind,val){
-            val=(val||'').trim();
-            if(!val||(QUOTE_OPTS[kind]||[]).indexOf(val)>=0)return;
-            QUOTE_OPTS[kind]=(QUOTE_OPTS[kind]||[]).concat([val]);bumpOpts();
-            p.toast('選択肢に追加しました: '+val);
-          }
-          function delOpt(kind,val){
-            /* v18.46 修正５④: 規定文言（「お打ち合わせの上」等）は削除させない */
-            if(isDefaultQuoteOpt(kind,val)){p.toast('「'+val+'」は規定の文言のため削除できません');return;}
-            QUOTE_OPTS[kind]=(QUOTE_OPTS[kind]||[]).filter(function(x){return x!==val;});bumpOpts();
-            p.toast('選択肢から削除しました: '+val);
-          }
-          /* プルダウン＋自由入力欄＋選択肢の追加/削除ボタンを1組で描画する
-             v18.46 修正５④: 「（自由入力）」は optFree で明示的に保持する。
-             以前は「値が選択肢に無い＝自由入力」と判定していたため、自由入力を選んで値を空にした瞬間に
-             既定値(effVal)へ戻って選択肢に含まれてしまい、入力欄が現れず自由入力できなかった。 */
-          /* v18.62 修正12④: 選択肢が1件も無いフィールド（受渡地）は「（自由入力）」しか選べないプルダウンに
-             なってしまうため、その場合はプルダウン自体を出さず入力欄だけにする。
-             選択肢が登録されれば従来どおりプルダウンが出る（＝それ以外の運用はそのまま）。 */
-          function optField(label,kind,field,effVal,placeholder){
-            var list=QUOTE_OPTS[kind]||[];
-            var noSelect=list.length===0;
-            var isFree=noSelect||!!optFree[0][field];
-            var cur=isFree?(qo[field]||''):(qo[field]||effVal||'');
-            var known=!isFree&&list.indexOf(cur)>=0;
-            function setV(v){var pt={};pt[field]=v;updQ(pt);}
-            function setFree(on){var nf=Object.assign({},optFree[0]);if(on)nf[field]=true;else delete nf[field];optFree[1](nf);}
-            return h('div',null,
-              h('label',{style:EL},label),
-              noSelect?null:h('select',{className:'inp',value:known?cur:'__free',onChange:function(e){
-                if(e.target.value==='__free'){setFree(true);setV('');}
-                else{setFree(false);setV(e.target.value);}
-              }},
-                list.map(function(x){return h('option',{key:x,value:x},x);}),
-                h('option',{value:'__free'},'（自由入力）')
-              ),
-              !known?h('input',{className:'inp',value:qo[field]||'',onChange:function(e){setV(e.target.value);},placeholder:placeholder||'直接入力',style:{marginTop:noSelect?0:3},autoFocus:!noSelect&&isFree&&!qo[field]}):null,
-              h('div',{style:{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}},
-                (cur&&!known)?h('button',{className:'btn btn-xs btn-ol',onClick:function(){addOpt(kind,cur);setFree(false);}},'＋ 選択肢に追加'):null,
-                (cur&&known&&!isDefaultQuoteOpt(kind,cur))?h('button',{className:'btn btn-xs btn-ol',style:{color:'#DC2626'},onClick:function(){delOpt(kind,cur);}},'－ 選択肢から削除'):null,
-                (cur&&known&&isDefaultQuoteOpt(kind,cur))?h('span',{style:{fontSize:8,color:'var(--g400)',lineHeight:'20px'}},'※規定文言（削除不可）'):null
-              )
-            );
-          }
-          /* v18.37 修正箇所2④: 明細の備考欄は行ごとに入力。行の並び・行キーは帳票生成と同一ロジックから取得する */
-          var qRows=[];
-          try{qRows=(generateQuoteHTML(qo,'quote')||{}).rows||[];}catch(e){qRows=[];}
-          /* v18.73 修正17の追加⑬: 値引きは金額が未入力だと見積書に出ない＝qRows にも入らないので、
-             追加した直後に編集できるよう、この編集パネルにだけ「金額未入力の値引き行」を足して表示する。 */
-          (function(){
-            var have={};qRows.forEach(function(r){have[r.rkey]=true;});
-            discountRowsOf(qo).forEach(function(dr,di){
-              var dk=discountRowKey(di);
-              if(have[dk]||dr.amount>0)return;
-              qRows=qRows.concat([{rkey:dk,no:qRows.length+1,code:'F00064',name:dr.name||'（値引き・金額未入力）',
-                qty:'',unit:'',price:'',amount:'',tax:'',remark:rowRemark(qo,dk,''),pendingDisc:true}]);
-            });
-            /* v19.86（2026-11-06 ユーザー「見積作成の画面で明細行の移動が出来ない。QT-2026-279」）:
-               金額未入力の値引き行は帳票の行に入らないため、いつも一番下に付け足していた。
-               並べ替えた順（rowOrder）は保存されるのに表示が一番下のまま＝動かせないように見えた。
-               → 保存された並び順どおりの位置に出す（金額を入れた後も同じ位置に出る）。 */
-            if(qRows.some(function(r){return r.pendingDisc;}))qRows=applyRowOrder(qo,qRows);
-          })();
-          /* v18.63 修正12の再修正②: 外寸は v18.62 で明細の備考へ自動反映するようになったため、
-             「外寸を挿入…」プルダウン用の dimMap は不要になった（備考欄の直接編集のみに統一）。 */
-          function updRemark(rkey,val){
-            var rr3=Object.assign({},qo.rowRemarks||{});
-            rr3[rkey]=val;updQ({rowRemarks:rr3});
-          }
-          /* v19.17 修正30③: 構成表記（【Sサイズ1段積み：H380mm】等）の手修正。reset=true で自動の表記へ戻す */
-          function updCfgNote(rkey,val,reset){
-            var cn3=Object.assign({},qo.cfgNotes||{});
-            if(reset)delete cn3[rkey];else cn3[rkey]=val;
-            updQ({cfgNotes:cn3});
-          }
-          /* ===== v18.72 修正17⑨⑩: 明細の並べ替えと自由入力行 =====
-             並び順は order.rowOrder（現在の表示順の行キー配列）として保存する。
-             ドラッグした行を落とした行の位置へ差し込み、その時点の並び順を丸ごと保存する。 */
-          function moveRow(fromRk,toRk){
-            if(!fromRk||!toRk||fromRk===toRk)return;
-            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
-            var fi=keys.indexOf(fromRk),ti=keys.indexOf(toRk);
-            if(fi<0||ti<0)return;
-            keys.splice(ti,0,keys.splice(fi,1)[0]);
-            var cl=Object.assign({},qo.cfgLift||{}),clCh=false;
-            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk){delete cl[k];clCh=true;}});
-            updQ(clCh?{rowOrder:keys,cfgLift:cl}:{rowOrder:keys});
-          }
-          /* v19.40（修正35の追加）→ v19.41 で落とし方を変更:
-             ・構成表記のすぐ下の行（商品名の行／すでに構成表記の下に入れた先頭の行）に★下から重ねる
-             　＝挿入線が構成表記の欄のすぐ下に出る → 構成表記のすぐ下（商品名の上）へ入れる（moveRowUnderCfg）。
-             　（v19.40 では線は構成表記の下に出るのに、落とすと構成表記の上へ入っていた）
-             ・構成表記の欄に重ねる＝線が構成表記の上に出る → 構成表記の上へ入れる（moveRowAboveCfg）。
-             入れた行を cfgLift[本体の行キー] に記録し、buildQuoteRows が構成表記をその行の上へ付け替える */
-          function moveRowAboveCfg(fromRk,anchorRk){
-            if(!fromRk||!anchorRk||fromRk===anchorRk)return;
-            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
-            var cl=Object.assign({},qo.cfgLift||{});
-            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk)delete cl[k];});
-            var fi=keys.indexOf(fromRk);if(fi<0)return;
-            keys.splice(fi,1);
-            var ai=keys.indexOf(anchorRk);if(ai<0)return;
-            keys.splice(ai,0,fromRk);
-            updQ({rowOrder:keys,cfgLift:cl});
-          }
-          function moveRowUnderCfg(fromRk,lk){
-            if(!fromRk||!lk||fromRk===lk)return;
-            var fr=qRows.find(function(r){return (r.rkey||('N'+r.no))===fromRk;});
-            if(fr&&fr.configNoteAuto!==undefined){moveRow(fromRk,lk);return;}/* 本体行どうしは通常の並べ替え */
-            var keys=qRows.map(function(r){return r.rkey||('N'+r.no);});
-            var cl=Object.assign({},qo.cfgLift||{});
-            Object.keys(cl).forEach(function(k){if(cl[k]===fromRk)delete cl[k];});
-            var fi=keys.indexOf(fromRk);if(fi<0)return;
-            keys.splice(fi,1);
-            var li=keys.indexOf(lk);if(li<0)return;
-            var ci=cl[lk]?keys.indexOf(cl[lk]):-1;
-            var at=(ci>=0&&ci<li)?ci:li;/* すでに構成表記の下に行があれば、その上（＝構成表記のすぐ下）へ */
-            keys.splice(at,0,fromRk);
-            cl[lk]=fromRk;
-            updQ({rowOrder:keys,cfgLift:cl});
-          }
-          function addExtra(){
-            var list=(qo.extraRows||[]).map(function(x){return Object.assign({},x);});
-            var rk='X'+Date.now();
-            /* v18.73 修正17の追加⑨: 数量・単位・単価は★空欄スタート。空欄のままなら見積書にも何も出さない */
-            list.push({rkey:rk,name:'',qty:'',unit:'',price:'',code:''});
-            /* 追加した行は明細の末尾（送料・値引きの後ろ）に出るので、必要ならドラッグで移動してもらう */
-            updQ({extraRows:list});
-            p.toast('自由入力の行を追加しました（数量・単位・単価は空欄のままなら見積書に表示されません）');
-          }
-          /* v19.39 修正35④: 定型文の行を追加（「生徒様ご負担分」「学校様ご負担分」）。
-             中身は自由入力の行（名称だけ入った行＝見積書には文字だけが出る）なので、あとから書き換え・並べ替え・削除ができる */
-          function addTplRow(txt){
-            if(!txt)return;
-            var list=(qo.extraRows||[]).map(function(x){return Object.assign({},x);});
-            list.push({rkey:'X'+Date.now(),name:txt,qty:'',unit:'',price:'',code:''});
-            updQ({extraRows:list});
-            p.toast('定型文「'+txt+'」の行を追加しました（明細の末尾に出ます。ドラッグで移動できます）'+(/工事費/.test(txt)?'。工事の原価は金額の右の緑の欄に入れると粗利計算表に入ります':''));
-          }
-          /* ===== v18.73 修正17の追加⑬: 値引きの行を「明細の行」の中で編集する ===== */
-          function discIndexOf(rk){
-            var m=String(rk||'').match(/^DISC(\d*)$/);
-            if(!m)return -1;
-            var i=m[1]===''?0:parseInt(m[1],10);
-            return (i>=0&&i<discountRowsOf(qo).length)?i:-1;
-          }
-          function commitDisc(next){var nx=normDiscountRows(next);updQ({discounts:nx,discount:discountSum(nx)});}
-          function setDiscRow(i,patch){
-            if('amount' in patch||'qty' in patch||'unitPrice' in patch)patch=Object.assign({},patch,{auto:''});/* v19.72 依頼⑥: 手で直したら自動計算を外す */
-            commitDisc(discountRowsOf(qo).map(function(r,j){return j===i?Object.assign({},r,patch):Object.assign({},r);}));
-          }
-          function addDiscRow(){
-            var dl=QUOTE_OPTS.discount||[];
-            commitDisc(discountRowsOf(qo).map(function(r){return Object.assign({},r);}).concat([{name:dl[0]||'出精値引き',amount:0}]));
-            p.toast('値引きの行を追加しました（明細の行の中で編集・並べ替えできます）');
-          }
-          function delDiscRow(i){
-            commitDisc(discountRowsOf(qo).filter(function(r,j){return j!==i;}));
-          }
-          /* ===== v18.73 修正17の追加⑳: 明細の行で単価を手入力する（order.rowUnit） ===== */
-          function setRowUnit(rk,val){
-            var m=Object.assign({},qo.rowUnit||{});
-            if(val===''||val==null)delete m[rk];
-            else m[rk]=Math.max(0,parseInt(val)||0);
-            updQ({rowUnit:m});
-          }
-          function updExtra(rk,patch){
-            updQ({extraRows:(qo.extraRows||[]).map(function(x){return x.rkey===rk?Object.assign({},x,patch):Object.assign({},x);})});
-          }
-          function delExtra(rk){
-            updQ({extraRows:(qo.extraRows||[]).filter(function(x){return x.rkey!==rk;}),
-                  rowOrder:(qo.rowOrder||[]).filter(function(k){return k!==rk;})});
-          }
-          return h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
-            h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます）'),
-            /* v18.63 修正12の再修正①: 編集欄の並びを見積書の上から順（件名・担当者→納期・有効期限・受渡地→
-               支払条件→明細の備考→送料→値引き→全体備考）に揃える。 */
-            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:6,marginBottom:4}},
-              h('div',null,h('label',{style:EL},'件名（空欄で自動生成: 商品名・サイズ・台数）'),h('input',{className:'inp',value:qo.subject||'',onChange:function(e){updQ({subject:e.target.value});}})),
-              h('div',null,h('label',{style:EL},'LEC担当者（空欄=エンド納品先の弊社担当→顧客の弊社担当）'),h('input',{className:'inp',value:qo.salesPersonOverride||'',onChange:function(e){updQ({salesPersonOverride:e.target.value});}}))
-            ),
-            /* v18.72 修正17⑱: 会社名の下に代表者名を入れる（必要に応じてなのでチェックボックスで切替） */
-            h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
-              h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:9,fontWeight:600,cursor:'pointer'}},
-                h('input',{type:'checkbox',checked:!!qo.showRepName,onChange:function(e){updQ({showRepName:e.target.checked});}}),
-                '会社名（株式会社LEC）の下に代表者名を表記する'
-              ),
-              qo.showRepName?h('input',{className:'inp',style:{marginTop:3},value:qo.repName||REP_NAME_DEFAULT,onChange:function(e){updQ({repName:e.target.value});},placeholder:REP_NAME_DEFAULT}):null
-            ),
-            /* v18.37 修正箇所2③: 納期・有効期限・受渡地（プルダウン＋自由入力・選択肢は追加/削除可）
-               v18.63 修正12の再修正①: 見積書ヘッダーと同じ 納期→有効期限→受渡地 の並びにする */
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}},
-              optField('納期','delivery','deliveryTerm',deliveryTermOf(qo),'納期を入力'),
-              optField('有効期限','expiry','validUntil',validUntilOf(qo),'有効期限を入力'),
-              /* v18.48 修正６④: 送付先=エンドユーザー宛の案件は、空欄時の既定がエンド納品先住所の市区町村までになる */
-              optField('受渡地（空欄='+(qo&&qo.shipDest==='end'?'エンド納品先':'顧客住所')+'の市区町村まで）','place','deliveryPlace','',deliveryPlaceOf(qo,CUSTS.find(function(c){return c.id===qo.cid;}))||'受渡地を入力')
-            ),
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}},
-              h('div',null,h('label',{style:EL},'支払条件'),
-                h('select',{className:'inp',value:ptKnown?qo.paymentTerms:'自由入力',onChange:function(e){updQ({paymentTerms:e.target.value==='自由入力'?'':e.target.value});}},
-                  PAY_TERMS_LIST.map(function(pt){return h('option',{key:pt,value:pt},pt);})),
-                !ptKnown?h('input',{className:'inp',value:qo.paymentTerms||'',onChange:function(e){updQ({paymentTerms:e.target.value});},placeholder:'支払条件を入力',style:{marginTop:3}}):null
-              ),
-              h('div',null)
-            ),
-            /* v18.37 修正箇所2⑤ → ★v18.73 ＜修正17の追加修正・回答＞5 で方針変更。
-               「サイドジョイント含む3種のレンタル品はレンタルの場合と販売の場合がある（パーソナルも常設も）。
-                 選択によってどちらにも対応出来るようにして」（ユーザー回答 2026-09-03）
-               → パーソナル限定をやめ、3品目それぞれ 記載しない／販売／レンタル を選べるようにした。
-               ⑪の回答どおり、商品選択で必要部材として選ばれていない品目（数量0）は行自体を出さない。 */
-            (function(){
-              var rsel=rentalSelOf(qo);
-              var vjQ=rentalVjQty(qo);
-              var sjQ=rentalSjRows(qo).reduce(function(s,x){return s+x.qty;},0);
-              var baseQ=(qo.lines||[]).filter(function(l){return !l.isPartOnly&&l.hasBase!==false;})
-                          .reduce(function(s,l){return s+lineBaseCount(l);},0);
-              var qtyOf={base:baseQ,vj:vjQ,sj:sjQ};
-              return h('div',{style:{marginBottom:4,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
-                h('label',{style:EL},'ベースボード・上下ジョイント・サイドジョイントの記載（レンタル＝プラス行とマイナス行を並べて差引0円／販売＝金額を計上）'),
-                h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},
-                  RENTAL_PARTS.map(function(rp){
-                    var q=qtyOf[rp.k]||0;
-                    return h('div',{key:rp.k,style:{minWidth:190}},
-                      h('div',{style:{fontSize:9,fontWeight:600}},rp.l+(q>0?('（'+fm(q)+(rp.k==='base'?'枚':'個')+'）'):'（商品選択に無し）')),
-                      h('select',{className:'inp',disabled:!(q>0),value:rsel[rp.k],onChange:function(e){
-                        var n2=Object.assign({},rentalSelOf(qo));n2[rp.k]=e.target.value;
-                        updQ({rentalSel:n2,rentalOffset:(n2.base==='rental'||n2.vj==='rental'||n2.sj==='rental')});
-                      }},RENTAL_MODES.map(function(m){return h('option',{key:m.v,value:m.v},m.l);}))
-                    );
-                  })
-                ),
-                /* v18.74 修正17の再修正（確認2）: 既定は3品目とも「記載しない」。
-                   数量があるのに記載しないままの品目は見積書に出ないので、気づけるよう注意を出す。 */
-                (function(){
-                  var miss=RENTAL_PARTS.filter(function(rp){return (qtyOf[rp.k]||0)>0&&rsel[rp.k]==='none';});
-                  return miss.length?h('div',{style:{fontSize:8,fontWeight:700,color:'#975a16',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'2px 5px',marginTop:3}},
-                    '⚠ '+miss.map(function(m){return m.l;}).join('・')+' は数量がありますが「記載しない」のため見積書に出ません（既定は記載しないです）'):null;
-                })(),
-                h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'※ 上下ジョイント単価 ¥'+fm(VJ_PRICE)+' ／ サイドジョイントは単価マスタ（未取込時 SMLXL ¥'+fm(SJ_PRICE.sml)+'・SS/3S ¥'+fm(SJ_PRICE.ss)+'）。単価は下の「明細の行」で手修正できます')
-              );
-            })(),
-            /* v18.37 修正箇所2④: 明細各行の備考（税欄の右）。
-               v18.63 修正12の再修正②: 外寸は v18.62 で自動反映するようになったため「外寸を挿入…」の
-               プルダウンは削除。外寸を消して自由に書き換えたい場合はこの入力欄を直接編集する。 */
-            /* v18.72 修正17⑨⑩ ／ v18.73 追加修正⑬⑳: 明細の行の編集パネル。
-               ・⇅ をドラッグして並べ替え（order.rowOrder）
-               ・自由入力行の追加（order.extraRows）。数量・単位・単価は既定で空欄
-               ・★値引きの入力欄もこの行の中に組み込んだ（⑬）ので、値引きも同じように並べ替えできる
-               ・★本体・ベースなどの単価もここで手入力できる（⑳。order.rowUnit）→ 粗利表の売価に反映される */
-            h('div',{style:{marginBottom:4}},
-              h('label',{style:EL},'明細の行（⇅ をつまんで上下にドラッグすると並び順を変えられます／単価は直接手入力できます／備考は税欄の右に表示・外寸は自動で入ります）'),
-              h('div',{style:{maxHeight:260,overflowY:'auto',background:'#fff',border:'1px solid var(--g200)',borderRadius:4,padding:4}},
-                qRows.length?qRows.map(function(r,ri){
-                  var rk=r.rkey||('N'+r.no);
-                  var ex=(qo.extraRows||[]).find(function(x){return x.rkey===rk;});
-                  var di=discIndexOf(rk);
-                  var dr=di>=0?(discountRowsOf(qo)[di]||null):null;
-                  var uEditable=rowUnitEditable(r)&&!ex;
-                  var uOv=rowUnitOv(qo,rk);
-                  /* v19.41: 構成表記が上に付いている行（cfgTop＝その本体の行キー）に下から重ねたら、構成表記のすぐ下へ入れる */
-                  var cfgTop=r.cfgFrom||((r.configNoteAuto!==undefined&&!r.cfgLiftedTo)?rk:null);
-                  var drop=function(e){
-                    e.preventDefault();
-                    var from=dragRk[0];
-                    var fi2=qRows.findIndex(function(x){return (x.rkey||('N'+x.no))===from;});
-                    var fr2=fi2>=0?qRows[fi2]:null;
-                    if(cfgTop&&fi2>ri&&fr2&&fr2.configNoteAuto===undefined)moveRowUnderCfg(from,cfgTop);
-                    else moveRow(from,rk);
-                    dragRk[1](null);dropRk[1](null);
-                  };
-                  /* v18.74: 挿入位置の線。つかんでいる行より上の行に重ねたら「その行の上」、下なら「その行の下」 */
-                  var showLine=!!dragRk[0]&&dropRk[0]===rk&&dragRk[0]!==rk;
-                  var lineAbove=showLine&&(qRows.findIndex(function(x){return (x.rkey||('N'+x.no))===dragRk[0];})>ri);
-                  var cells=[
-                    h('span',{key:'g',title:'ドラッグして並べ替え',style:{cursor:'grab',fontSize:11,color:'var(--g400)',flexShrink:0}},'⇅'),
-                    h('span',{key:'n',style:{fontSize:8,color:'var(--g500)',width:12,flexShrink:0,textAlign:'right'}},String(ri+1))
-                  ];
-                  /* 品名 */
-                  if(ex)cells.push(h('input',{key:'nm',className:'inp',style:{width:132,flexShrink:0,fontSize:9},value:ex.name||'',placeholder:'品名（自由入力）',onChange:function(e){updExtra(rk,{name:e.target.value});}}));
-                  else if(dr)cells.push((function(){
-                    /* v18.74 修正17の再修正⑬: 値引きの項目名は★プルダウン（選択肢マスタ）＋自由入力に戻す。
-                       自由入力した名称は「＋ 選択肢に追加」で全端末共有の選択肢へ足せる（規定文言は削除不可）。 */
-                    var dlist=QUOTE_OPTS.discount||[];
-                    var dFree=!!discFree[0][di];
-                    var dKnown=!dFree&&dlist.indexOf(dr.name)>=0;
-                    return h('div',{key:'nm',style:{width:132,flexShrink:0}},
-                      h('select',{className:'inp',style:{fontSize:9},value:dKnown?dr.name:'__free',onChange:function(e){
-                        var nf=Object.assign({},discFree[0]);
-                        if(e.target.value==='__free'){nf[di]=true;discFree[1](nf);setDiscRow(di,{name:''});}
-                        else{delete nf[di];discFree[1](nf);setDiscRow(di,{name:e.target.value});}
-                      }},
-                        dlist.map(function(x){return h('option',{key:x,value:x},x);}),
-                        h('option',{value:'__free'},'（自由入力）')
-                      ),
-                      !dKnown?h('input',{className:'inp',style:{marginTop:2,fontSize:9},value:dr.name||'',placeholder:'値引きの項目名を入力',onChange:function(e){setDiscRow(di,{name:e.target.value});}}):null,
-                      h('div',{style:{display:'flex',gap:3,marginTop:2,flexWrap:'wrap'}},
-                        (dr.name&&!dKnown)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){
-                          addOpt('discount',dr.name);var nf2=Object.assign({},discFree[0]);delete nf2[di];discFree[1](nf2);
-                        }},'＋ 選択肢に追加'):null,
-                        dr.auto==='agent'?h('span',{style:{fontSize:8,color:'var(--nv)',fontWeight:700}},'自動（合計の10%）'):null,
-                        (dr.name&&dKnown&&!isDefaultQuoteOpt('discount',dr.name))?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,color:'#DC2626'},onClick:function(){delOpt('discount',dr.name);}},'－ 選択肢から削除'):null
-                      )
-                    );
-                  })());
-                  else cells.push(h('span',{key:'nm',style:{fontSize:8,color:'var(--g500)',width:132,flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:r.name},r.name));
-                  /* 数量・単位 */
-                  if(ex){
-                    cells.push(h(NumIn,{key:'q',className:'inp',style:{width:50,flexShrink:0,fontSize:9},value:(ex.qty===''||ex.qty==null)?'':ex.qty,placeholder:'数量',onChange:function(e){updExtra(rk,{qty:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
-                    cells.push(h('input',{key:'u',className:'inp',style:{width:38,flexShrink:0,fontSize:9},value:ex.unit||'',placeholder:'単位',onChange:function(e){updExtra(rk,{unit:e.target.value});}}));
-                  }else if(dr){
-                    cells.push(h(NumIn,{key:'q',className:'inp',style:{width:50,flexShrink:0,fontSize:9},value:dr.qty?dr.qty:'',placeholder:'数量',title:'単価と数量の両方を入れると「単価×数量」で表記します',onChange:function(e){setDiscRow(di,{qty:parseInt(e.target.value)||0});}}));
-                    cells.push(h('input',{key:'u',className:'inp',style:{width:38,flexShrink:0,fontSize:9},value:dr.unit||'',placeholder:'台',onChange:function(e){setDiscRow(di,{unit:e.target.value});}}));
-                  }else{
-                    cells.push(h('span',{key:'q',style:{fontSize:8,color:'var(--g500)',width:50,flexShrink:0,textAlign:'right'}},r.qty===''?'':fm(r.qty)));
-                    cells.push(h('span',{key:'u',style:{fontSize:8,color:'var(--g500)',width:38,flexShrink:0}},r.unit||''));
-                  }
-                  /* 単価 */
-                  if(ex)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9},value:(ex.price===''||ex.price==null)?'':ex.price,placeholder:'単価',onChange:function(e){updExtra(rk,{price:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
-                  else if(dr)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9},value:dr.unitPrice?dr.unitPrice:'',placeholder:'値引単価',onChange:function(e){setDiscRow(di,{unitPrice:parseInt(e.target.value)||0});}}));
-                  /* v18.74 修正17の再修正: 数字を全部消すと元の金額に戻ってしまう事象を解消する。
-                     入力中の文字列は unitDraft に持ち、空欄のまま打ち直せるようにする。
-                     欄から離れた（blur）時点で確定し、空欄なら手入力を取り消して単価マスタの金額に戻す。 */
-                  else if(uEditable)cells.push(h(NumIn,{key:'p',className:'inp',style:{width:74,flexShrink:0,fontSize:9,background:(unitDraft[0][rk]!==undefined||uOv!==null)?'#FEF3C7':'#fff'},
-                    value:unitDraft[0][rk]!==undefined?unitDraft[0][rk]:(uOv!==null?String(uOv):(r.price===''?'':String(r.price))),
-                    placeholder:'単価',
-                    title:'単価を手入力すると 金額＝単価×数量 になり、粗利計算表の売価にも反映されます（空欄にして欄から離れると単価マスタの金額に戻ります）',
-                    onChange:function(e){var d=Object.assign({},unitDraft[0]);d[rk]=e.target.value;unitDraft[1](d);},
-                    onBlur:function(e){
-                      var d=Object.assign({},unitDraft[0]);delete d[rk];unitDraft[1](d);
-                      setRowUnit(rk,e.target.value);
-                    },
-                    onKeyDown:function(ev){if(ev.key==='Enter')ev.target.blur();}}));
-                  else cells.push(h('span',{key:'p',style:{fontSize:8,color:'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.price===''?'':('¥'+fm(r.price))));
-                  /* 金額 */
-                  if(dr)cells.push(h(NumIn,{key:'a',className:'inp',style:{width:74,flexShrink:0,fontSize:9,background:dr.auto==='agent'?'#EFF6FF':'#fff'},disabled:!!(dr.qty>0&&dr.unitPrice>0),'data-discauto':dr.auto==='agent'?'1':null,
-                    title:dr.auto==='agent'?'代理店値引き（自動）: 送料・工事費なども含めた明細の合計の10%です。金額を直すと自動計算は外れます':'',
-                    value:dr.auto==='agent'?String(Math.max(0,-(parseInt(r.amount)||0))):(dr.amount?dr.amount:''),placeholder:'値引き額',onChange:function(e){setDiscRow(di,{amount:parseInt(e.target.value)||0});}}));
-                  else cells.push(h('span',{key:'a',style:{fontSize:8,fontWeight:700,color:r.amount<0?'#B91C1C':'var(--g500)',width:74,flexShrink:0,textAlign:'right'}},r.amount===''?'':('¥'+fm(r.amount))));
-                  /* v19.60: 自由入力の行（設置工事費など）の原価単価。社内用（帳票には出ない）。原価×数量が粗利計算表の原価に入る */
-                  var frL=(!ex&&/^L/.test(rk))?(qo.lines||[]).find(function(l){return l.isFreeInput&&('L'+l.id)===rk;}):null;
-                  var costTitle='原価単価（社内用・帳票には出ません）。原価単価×数量（数量が空欄なら1）が粗利計算表の原価に入ります';
-                  if(ex)cells.push(h(NumIn,{key:'c',className:'inp',style:{width:64,flexShrink:0,fontSize:9,background:'#F0FDF4'},title:costTitle,
-                    value:(ex.cost===''||ex.cost==null)?'':ex.cost,placeholder:'原価',onChange:function(e){updExtra(rk,{cost:e.target.value===''?'':(parseInt(e.target.value)||0)});}}));
-                  else if(frL)cells.push(h(NumIn,{key:'c',className:'inp',style:{width:64,flexShrink:0,fontSize:9,background:'#F0FDF4'},title:costTitle,
-                    value:(function(){var u=freeLineUnitCost(qo,frL);return u==null?'':String(u);})(),placeholder:'原価',
-                    onChange:function(e){var m=Object.assign({},qo.rowCost||{});m[rk]=e.target.value===''?'':(parseInt(e.target.value)||0);updQ({rowCost:m});}}));
-                  else cells.push(h('span',{key:'c',style:{width:64,flexShrink:0}}));
-                  /* 備考 */
-                  cells.push(h('input',{key:'r',className:'inp',style:{flex:1,minWidth:70,fontSize:9},value:(qo.rowRemarks||{})[rk]!==undefined?(qo.rowRemarks||{})[rk]:(r.remark||''),onChange:function(e){updRemark(rk,e.target.value);},placeholder:'備考を入力'}));
-                  /* 行削除（自由入力行・値引き行のみ） */
-                  if(ex)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{color:'#DC2626',flexShrink:0,fontSize:8},title:'この行を削除',onClick:function(){delExtra(rk);}},'－'));
-                  else if(dr)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{color:'#DC2626',flexShrink:0,fontSize:8},title:'この値引きを削除',onClick:function(){delDiscRow(di);}},'－'));
-                  else if(uOv!==null)cells.push(h('button',{key:'x',className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手入力した単価を取り消して単価マスタの金額に戻す',onClick:function(){setRowUnit(rk,'');}},'↺'));
-                  else cells.push(h('span',{key:'x',style:{width:18,flexShrink:0}}));
-                  /* v19.17 修正30③: 本体の明細行（L…）は、帳票で商品名称の上に出る構成表記
-                     （【Sサイズ1段積み：H380mm】【2列3段：W…×D…×H…】）を行の上の欄で書き換えられる。
-                     手修正した欄は黄色。↺ で自動の表記に戻す。空欄にすると表記を出さない。 */
-                  /* v19.40（修正35の追加）: 構成表記の欄にも行を落とせる（＝構成表記のすぐ下・商品名の上へ入る）。
-                     構成表記の下に行を入れた本体行は、構成表記の欄をその行の上に出す（帳票と同じ並び） */
-                  function cfgElOf(Lr,anchorRk){
-                    var lk=Lr.rkey;
-                    var cnMap=qo.cfgNotes||{},cnHas=Object.prototype.hasOwnProperty.call(cnMap,lk);
-                    var cfgDrop=!!dragRk[0]&&dropRk[0]==='CFG:'+lk&&dragRk[0]!==lk;
-                    return h('div',{key:lk+'-cfg',style:{display:'flex',gap:3,alignItems:'center',margin:'2px 0 1px 30px',
-                        borderTop:cfgDrop?'2px solid #1e3a5f':'2px solid transparent'},
-                        onDragOver:function(e){e.preventDefault();if(dropRk[0]!=='CFG:'+lk)dropRk[1]('CFG:'+lk);},
-                        onDragLeave:function(){if(dropRk[0]==='CFG:'+lk)dropRk[1](null);},
-                        onDrop:function(e){e.preventDefault();moveRowAboveCfg(dragRk[0],anchorRk);dragRk[1](null);dropRk[1](null);}},
-                      h('span',{style:{fontSize:8,color:'var(--g500)',flexShrink:0},title:'行をこの欄に重ねると構成表記の上に、すぐ下の行に下から重ねると構成表記の下（商品名の上）に入ります'},'構成表記'),
-                      h('input',{className:'inp',style:{flex:1,minWidth:120,fontSize:9,background:cnHas?'#FEF3C7':'#fff'},
-                        value:cnHas?(cnMap[lk]||''):(Lr.configNoteAuto||''),placeholder:'（表記なし）',
-                        title:'見積書・請求書などで商品名称の上に出る表記です。書き換えるとこの案件の帳票すべてに反映されます（空欄にすると表記を出しません）',
-                        onChange:function(e){updCfgNote(lk,e.target.value);}}),
-                      cnHas?h('button',{className:'btn btn-xs btn-ol',style:{flexShrink:0,fontSize:8},title:'手修正を取り消して自動の表記に戻す',onClick:function(){updCfgNote(lk,'',true);}},'↺'):h('span',{style:{width:18,flexShrink:0}}));
-                  }
-                  var cfgEl=null;
-                  if(r.cfgFrom){var Lr0=qRows.find(function(x){return x.rkey===r.cfgFrom;});if(Lr0)cfgEl=cfgElOf(Lr0,rk);}
-                  else if(r.configNoteAuto!==undefined&&!r.cfgLiftedTo)cfgEl=cfgElOf(r,rk);
-                  var rowEl=h('div',{key:rk,draggable:true,
-                    onDragStart:function(){dragRk[1](rk);dropRk[1](null);},
-                    onDragEnd:function(){dragRk[1](null);dropRk[1](null);},
-                    /* v18.74 修正17の再修正: ドラッグ中はどこへ入るかが分かるよう、
-                       挿入位置に線（青いボーダー）を出す。上へ運ぶときは行の上、下へ運ぶときは行の下に出す。 */
-                    onDragOver:function(e){e.preventDefault();if(dropRk[0]!==rk)dropRk[1](rk);},
-                    onDragLeave:function(){if(dropRk[0]===rk)dropRk[1](null);},
-                    onDrop:drop,
-                    style:{display:'flex',gap:3,alignItems:dr?'flex-start':'center',marginBottom:3,padding:'1px 2px',borderRadius:3,
-                      borderTop:(showLine&&lineAbove)?'2px solid #1e3a5f':'2px solid transparent',
-                      borderBottom:(showLine&&!lineAbove)?'2px solid #1e3a5f':'2px solid transparent',
-                      opacity:dragRk[0]===rk?0.45:1,
-                      background:dragRk[0]===rk?'#EFF6FF':(dr?'#FFF7ED':(ex?'#F0FDF4':'transparent'))}},cells);
-                  return cfgEl?h(React.Fragment,{key:rk},cfgEl,rowEl):rowEl;
-                }):h('div',{style:{fontSize:8,color:'var(--g500)',padding:'2px 0'}},'明細がありません'),
-                h('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:4,flexWrap:'wrap'}},
-                  h('button',{className:'btn btn-xs btn-ol',onClick:addExtra},'＋ 自由入力の行を追加'),
-                  h('button',{className:'btn btn-xs btn-ol',onClick:addDiscRow},'＋ 値引きの行を追加'),
-                  h('select',{className:'btn btn-xs btn-ol',value:'',title:'選んだ文章を明細に1行追加します',style:{width:'auto',cursor:'pointer'},onChange:function(e){addTplRow(e.target.value);}},
-                    h('option',{value:''},'＋ 定型文を追加 ▾'),
-                    QUOTE_TPL_ROWS.map(function(t){return h('option',{key:t,value:t},t);})),
-                  (qo.rowOrder&&qo.rowOrder.length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowOrder:[],cfgLift:{}});p.toast('明細の並び順を既定に戻しました');}},'並び順を既定に戻す'):null,
-                  (qo.rowUnit&&Object.keys(qo.rowUnit).length)?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){updQ({rowUnit:{}});p.toast('手入力した単価をすべて取り消しました');}},'単価の手入力をすべて取消'):null
-                ),
-                h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'🟩=自由入力の行／🟧=値引きの行。単価を手入力した行は単価欄が黄色になります（↺ で元に戻せます）。自由入力の行（設置工事費など）は金額の右の緑の欄に原価単価を入れると粗利計算表に入ります（帳票には出ません）')
-              )
-            ),
-            /* v18.63 修正12の再修正①: 送料と値引きは見積書の明細末尾に出る項目なので、
-               明細の備考の下・全体備考の上へ移動する（見積書と同じ上からの並び）。 */
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 2fr',gap:6,marginBottom:4}},
-              h('div',null,h('label',{style:EL},'送料（円）'),h(NumIn,{className:'inp',value:qo.shipping||0,onChange:function(e){updQ({shipping:parseInt(e.target.value)||0,shipKeep:true,shipManual:true});}}),
-                /* v19.59: 手入力の送料は作り直しても変わらない。自動計算の金額に戻すボタン */
-                isShipManual(qo)?h('div',{style:{fontSize:9,color:'#975a16',marginTop:2}},'✍ 手入力の金額（明細を直して作り直してもこの金額のまま）',
-                  (qo.shipAuto!=null&&qo.shipAuto!==(parseInt(qo.shipping)||0))?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,marginLeft:4},onClick:function(){
-                    updQ({shipping:qo.shipAuto,shipManual:false});p.toast('送料を自動計算の ¥'+fm(qo.shipAuto)+' に戻しました');}},'自動計算の ¥'+fm(qo.shipAuto)+' に戻す'):null):null,
-                /* v19.39 修正35③: 送料サービス等で0円にしても行を残す（送料欄を触ると自動でチェックが入る） */
-                h('label',{style:{fontSize:9,display:'flex',alignItems:'center',gap:3,marginTop:2,cursor:'pointer'}},
-                  h('input',{type:'checkbox',checked:!!qo.shipKeep,onChange:function(e){updQ({shipKeep:e.target.checked});}}),'0円でも送料の行を出す')),
-              /* v18.62 修正12⑥／v18.63 修正12の再修正④: 送料行の名称。既定文言を最初から入力欄に入れておき、
-                 その文章をそのまま書き換えられるようにする（空欄にすると既定文言に戻る）。 */
-              h('div',null,h('label',{style:EL},'送料の表記（そのまま編集できます／空欄にすると既定文言に戻ります）'),
-                h('input',{className:'inp',value:qo.shipLabel||shipRowNameDefault(qo),onChange:function(e){updQ({shipLabel:e.target.value});},placeholder:shipRowNameDefault(qo)}))
-            ),
-            /* v18.62 修正12①② → v18.73 修正17の追加⑬: 値引きの入力欄は上の「明細の行」に組み込んだ
-               （そこで並び順も変えられる）。ここには置かない。 */
-            /* v18.72 修正17④ → ★v18.73 追加修正④: 定型文の選び方を変更。
-               【パーソナル】【常設】を選ぶとその区分の文章が一覧で出て、★チェックを入れた文章だけを挿入する。
-               挿入したあとは今までどおり自由に書き換えられる（自由入力は従来のまま）。 */
-            (function(){
-              var tpl=NOTES_TEMPLATES.find(function(x){return x.k===notesTplKey[0];})||null;
-              var lines=tpl?tpl.t.split('\n'):[];
-              var picked=notesTplPick[0]||{};
-              function togglePick(i,on){var m=Object.assign({},picked);if(on)m[i]=true;else delete m[i];notesTplPick[1](m);}
-              function pickedText(){return lines.filter(function(t,i){return picked[i];}).join('\n');}
-              function insertPicked(mode){
-                var t=pickedText();
-                if(!t){p.toast('挿入する文章にチェックを入れてください');return;}
-                var cur=(qo.notes||'');
-                updQ({notes:(mode==='append'&&cur.trim())?(cur.replace(/\s+$/,'')+'\n'+t):t});
-                p.toast(mode==='append'?'チェックした文章を全体備考に追記しました':'チェックした文章を全体備考に入れました');
-              }
-              return h('div',null,
-                h('label',{style:EL},'全体備考（見積書末尾に表示・改行するとそのまま改行されます）'),
-                h('div',{style:{marginBottom:3,padding:'4px 6px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
-                  h('div',{style:{display:'flex',gap:4,alignItems:'center',flexWrap:'wrap'}},
-                    h('span',{style:{fontSize:8,color:'var(--g500)'}},'定型文:'),
-                    h('select',{className:'inp',style:{width:'auto',minWidth:150,fontSize:9},value:notesTplKey[0],onChange:function(e){
-                      notesTplKey[1](e.target.value);
-                      /* v18.75: 区分を選んだ時点では★チェックを全て外しておく（ユーザー指示）。
-                         使う文章だけをチェックして挿入する運用。全部使うときは「全選択」を押す。 */
-                      notesTplPick[1]({});
-                    }},
-                      h('option',{value:''},'（区分を選ぶ）'),
-                      NOTES_TEMPLATES.map(function(t){return h('option',{key:t.k,value:t.k},t.l);})
-                    ),
-                    tpl?h('button',{className:'btn btn-xs btn-nv',onClick:function(){insertPicked('replace');}},'チェックした文章を入れる'):null,
-                    tpl?h('button',{className:'btn btn-xs btn-ol',onClick:function(){insertPicked('append');}},'末尾に追記'):null,
-                    tpl?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){
-                      var m={};lines.forEach(function(_,i){m[i]=true;});notesTplPick[1](m);
-                    }},'全選択'):null,
-                    tpl?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8},onClick:function(){notesTplPick[1]({});}},'全解除'):null,
-                    (qo.notes||'')?h('button',{className:'btn btn-xs btn-ol',style:{fontSize:8,color:'#DC2626'},onClick:function(){
-                      if(!confirm('全体備考を空欄にします。よろしいですか？'))return;updQ({notes:''});
-                    }},'備考をクリア'):null
-                  ),
-                  tpl?h('div',{style:{maxHeight:150,overflowY:'auto',marginTop:3}},
-                    lines.map(function(t,i){
-                      return h('label',{key:i,style:{display:'flex',alignItems:'flex-start',gap:5,fontSize:9,lineHeight:1.5,cursor:'pointer',padding:'1px 0'}},
-                        h('input',{type:'checkbox',style:{marginTop:2,flexShrink:0},checked:!!picked[i],onChange:function(e){togglePick(i,e.target.checked);}}),
-                        h('span',null,t)
-                      );
-                    })
-                  ):h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:2}},'【パーソナル】【常設】を選ぶと、その区分の文章が一覧で出ます。使う文章にチェックを入れて挿入してください（既定ではすべて未チェックです）')
-                ),
-                h('textarea',{className:'inp',rows:6,value:qo.notes||'',onChange:function(e){updQ({notes:e.target.value});},placeholder:'例:\n・○○まで継続購入お願いします。\n・ご契約終了時にはレンタル品は全てご返却をお願いします。',style:{resize:'vertical'}})
-              );
-            })()
-          );
-        })(),
+        /* v18.33 要望⑪: 見積書作成画面 — プレビュー上部の編集パネルで各項目を直接手入力修正（即保存・全端末共有）
+           v20.14: 中身は QuoteEditPanel（代理店帳票の見積書作成画面と共通） */
+        h(QuoteEditPanel,{qo:quoteOrder[0],updQ:quoteUpdQ,toast:p.toast,userName:p.userName,
+          st:{optFree:optFree,discFree:discFree,dragRk:dragRk,dropRk:dropRk,unitDraft:unitDraft,notesTplKey:notesTplKey,notesTplPick:notesTplPick,optTick:optTick}}),
         /* v18.33 要望⑱: 粗利計算表（本体/鍵類/ベース/棚板/トータル・この欄は印刷されません）
            v19.02: 原価表アップロードは削除し、単価マスタ取込だけにした */
         (function(){
@@ -16666,21 +16710,50 @@ function OrdersPage(p){
   function openAgentQuote(o){
     var ad=(liveOrder(o)||o).agentDoc||{};
     agentPick[1](null);
-    agentQ[1]({no:o.no,h:JSON.parse(JSON.stringify((ad.h||{}).quote||{})),rows:JSON.parse(JSON.stringify(ad.rows||{})),free:{}});
+    var hq=(ad.h||{}).quote||{},hh={};['toName','toPostal','toAddress','toPhone','toFax','date','slip'].forEach(function(k){if(hq[k])hh[k]=hq[k];});
+    agentQ[1]({no:o.no,h:hh,n:0});
+  }
+  function agentQSave(no){
+    if(agentQTimer.current)clearTimeout(agentQTimer.current);
+    agentQTimer.current=setTimeout(function(){agentQTimer.current=null;saveAll();freeEditBroadcast(p.userName||'',no+' 代理店帳票の見積書を手修正',no);},700);
+  }
+  /* v20.15: 代理店帳票の見積書作成画面（QuoteEditPanel）の変更 → order.agentDoc.q（単価の手入力だけ agentDoc.rows[行キー].price） */
+  var AGENT_Q_LEGACY={subject:'subject',paymentTerms:'payTerms',validUntil:'validity',deliveryTerm:'dterm',notes:'notes'};
+  function agentQUpd(no,patch){
+    if(FREE_RO_){p.toast(FREE_RO_MSG);return;}
+    var o2=ORDERS.find(function(x){return x.no===no;});if(!o2)return;
+    var ad=o2.agentDoc||{};
+    var q=Object.assign({},ad.q||{}),rows=JSON.parse(JSON.stringify(ad.rows||{})),hs=JSON.parse(JSON.stringify(ad.h||{}));
+    Object.keys(patch).forEach(function(k){
+      if(k==='rowUnit'){
+        Object.keys(rows).forEach(function(rk){delete rows[rk].price;});
+        var ru=patch.rowUnit||{};
+        Object.keys(ru).forEach(function(rk){rows[rk]=Object.assign({},rows[rk]||{},{price:ru[rk]});});
+        return;
+      }
+      q[k]=patch[k];
+      /* v20.13 の画面で直した同じ項目は、ここで直した値に置き換える */
+      if(AGENT_Q_LEGACY[k]&&hs.quote)delete hs.quote[AGENT_Q_LEGACY[k]];
+    });
+    o2.agentDoc=Object.assign({},ad,{q:q});
+    var a2=agentDocWith(o2,'quote',hs.quote&&Object.keys(hs.quote).length?hs.quote:null,rows);
+    if(a2)o2.agentDoc=a2;else delete o2.agentDoc;
+    agentQSave(no);
+    var m=agentQ[0];if(m&&m.no===no)agentQ[1](Object.assign({},m,{n:(m.n||0)+1}));
   }
   function agentQFlush(no){
     if(!agentQTimer.current)return;
     clearTimeout(agentQTimer.current);agentQTimer.current=null;
     saveAll();freeEditBroadcast(p.userName||'',no+' 代理店帳票の見積書を手修正',no);
   }
+  /* 代理店帳票だけの項目（宛先・発行日・見積番号）。保存先は order.agentDoc.h.quote */
   function agentQSet(m){
     if(FREE_RO_){p.toast(FREE_RO_MSG);return;}
     agentQ[1](m);
     var o2=ORDERS.find(function(x){return x.no===m.no;});if(!o2)return;
-    var a2=agentDocWith(o2,'quote',agentCleanLayer(m.h),m.rows);
+    var a2=agentDocWith(o2,'quote',agentCleanLayer(Object.assign({},((o2.agentDoc||{}).h||{}).quote||{},m.h)));
     if(a2)o2.agentDoc=a2;else delete o2.agentDoc;
-    if(agentQTimer.current)clearTimeout(agentQTimer.current);
-    agentQTimer.current=setTimeout(function(){agentQTimer.current=null;saveAll();freeEditBroadcast(p.userName||'',m.no+' 代理店帳票の見積書を手修正',m.no);},700);
+    agentQSave(m.no);
   }
   /* v20.14: 代理店帳票の請求書・物品受領書・納品書の手修正は★今の帳票と同じ「✎ 記載内容の手修正」画面（docEditModal の agent モード）で行う */
   function openAgentDocEdit(order,docType){
@@ -18899,87 +18972,49 @@ function OrdersPage(p){
       if(!o)return null;
       var fk=agentFmtOf(o)||'global',F=AGENT_FMTS[fk];
       var a=agentHeader(o,'quote',{}).auto;
-      var baseRows=[],curRows=[];try{baseRows=agentQuoteRows(o,{}).rows;curRows=agentQuoteRows(o).rows;}catch(e){}
+      /* 見積書作成画面と同じ部品（QuoteEditPanel）に渡す案件: 今の案件＋代理店帳票で直した内容。単価の手入力は代理店帳票の単価 */
+      var ad=o.agentDoc||{},pm={};
+      Object.keys(ad.rows||{}).forEach(function(rk){var x=ad.rows[rk];if(x&&x.price!=null&&x.price!=='')pm[rk]=parseInt(x.price);});
+      var qo=Object.assign({},agentOverlay(o),{rowUnit:pm});
       var prev=null;try{prev=agentDocHTML(o,'quote');}catch(e){prev={html:'<p>プレビューを作れませんでした: '+String(e)+'</p>'};}
       var gp=null;try{gp=calcGrossProfit(o);}catch(e){}
       function close(){agentQFlush(m.no);agentQ[1](null);p.bump&&p.bump();}
       function setH(k,v){var hh=Object.assign({},m.h);hh[k]=v;agentQSet(Object.assign({},m,{h:hh}));}
-      function setFree(k,on){var f=Object.assign({},m.free||{});if(on)f[k]=true;else delete f[k];return f;}
-      function setR(rk,k,v){var rr=Object.assign({},m.rows);rr[rk]=Object.assign({},rr[rk]||{});rr[rk][k]=v;agentQSet(Object.assign({},m,{rows:rr}));}
-      function resetR(rk){var rr=Object.assign({},m.rows);delete rr[rk];agentQSet(Object.assign({},m,{rows:rr}));}
       var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
-      function fld(k,label,style){
-        return h('div',{style:style||null},h('label',{style:EL},label),
+      function fld(k,label){
+        return h('div',null,h('label',{style:EL},label),
           h('input',{className:'inp','data-agentq':k,value:m.h[k]||'',placeholder:String(a[k]||''),onChange:function(e){setH(k,e.target.value);}}));
       }
-      /* プルダウン（選択肢は見積書作成画面と同じ）＋自由入力。先頭の「自動」は今の見積書の値 */
-      function selF(label,k,list){
-        var cur=m.h[k]||'',free=!!(m.free||{})[k]||(cur!==''&&list.indexOf(cur)<0);
-        return h('div',null,h('label',{style:EL},label),
-          h('select',{className:'inp','data-agentqsel':k,value:free?'__free':cur,onChange:function(e){
-            var v=e.target.value,hh=Object.assign({},m.h);
-            if(v==='__free'){hh[k]='';agentQSet(Object.assign({},m,{h:hh,free:setFree(k,true)}));}
-            else{hh[k]=v;agentQSet(Object.assign({},m,{h:hh,free:setFree(k,false)}));}
-          }},
-            h('option',{value:''},'（自動: '+(a[k]||'なし')+'）'),
-            list.map(function(x){return h('option',{key:x,value:x},x);}),
-            h('option',{value:'__free'},'（自由入力）')),
-          free?h('input',{className:'inp','data-agentq':k,style:{marginTop:3},value:cur,placeholder:'直接入力',onChange:function(e){setH(k,e.target.value);}}):null);
-      }
-      var TH={fontSize:8,fontWeight:700,color:'var(--g500)',textAlign:'left',padding:'2px 4px',borderBottom:'1px solid var(--g200)',whiteSpace:'nowrap'};
-      var TD={fontSize:9,padding:'2px 4px',borderBottom:'1px solid var(--g100)',verticalAlign:'top'};
       var thS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,background:'#f5f7fa',fontWeight:700};
       var tdS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,textAlign:'right'};
-      var nEd=Object.keys(m.rows||{}).length;
       return h(Modal,{show:true,title:'見積書作成（🏷 代理店帳票・'+F.short+'） — '+o.no,w:900,onClose:close,
         footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},
           h('button',{className:'btn btn-ol',onClick:close},'閉じる'),
-          h('button',{className:'btn btn-ol',style:{color:'#c53030'},'data-agentqreset':'1',title:'代理店帳票の見積書の手修正（記載内容・明細）を消して自動の内容に戻します',
-            onClick:function(){if(!confirm('代理店帳票の見積書の手修正（記載内容・明細）を消して自動の内容に戻しますか？\n（請求書・納品書・物品受領書で直した内容は残ります）'))return;agentQSet(Object.assign({},m,{h:{},rows:{},free:{}}));}},'自動の内容に戻す'),
+          h('button',{className:'btn btn-ol',style:{color:'#c53030'},'data-agentqreset':'1',title:'代理店帳票の見積書作成画面で直した内容を消して、今の見積書の内容に戻します',
+            onClick:function(){
+              if(FREE_RO_){p.toast(FREE_RO_MSG);return;}
+              if(!confirm('代理店帳票の見積書作成画面で直した内容（明細・値引き・単価・件名・宛先など）を消して、今の見積書の内容に戻しますか？\n（請求書・納品書・物品受領書の記載内容の手修正は残ります）'))return;
+              var o2=ORDERS.find(function(x){return x.no===m.no;});if(!o2)return;
+              var ad2=Object.assign({},o2.agentDoc||{});delete ad2.q;delete ad2.rows;o2.agentDoc=ad2;
+              var a2=agentDocWith(o2,'quote',null,{});if(a2)o2.agentDoc=a2;else delete o2.agentDoc;
+              agentQSave(m.no);agentQ[1]({no:m.no,h:{},n:(m.n||0)+1});
+            }},'今の見積書の内容に戻す'),
           h('button',{className:'btn btn-gn',style:{marginLeft:'auto'},'data-agentqprint':'1',onClick:function(){agentQFlush(m.no);if(!openPrintWindow(agentDocHTML(o,'quote').html))p.toast('ポップアップを許可してください');}},'見積書印刷'))},
         h('div',{style:{padding:10}},
           h('div',{className:'no-print',style:{marginBottom:8,padding:'6px 10px',borderRadius:6,fontSize:10,background:'#FFF7ED',border:'1.5px solid #FDBA74',color:'#9A3412'}},
             h('div',{style:{fontWeight:700}},'🏷 代理店帳票（'+F.name+' の様式・エンドユーザー宛）の見積書です'),
-            h('div',{style:{marginTop:2,fontSize:9}},'ここで直した内容は代理店帳票だけに効きます（今の帳票は変わりません）。件名・宛先・支払条件・備考・明細は★代理店帳票の請求書・納品書・物品受領書にも自動で反映されます（その帳票で手修正した項目を除く）。'),
-            h('div',{style:{marginTop:2,fontSize:9}},'数量・行の追加や並べ替え・値引き・送料は今の見積書（在庫確認・見積の見積書作成画面）で直してください。代理店帳票にもそのまま反映されます。')),
-          h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
-            h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます。空欄＝自動）'),
-            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:4}},
-              fld('subject','件名（空欄で自動: 今の見積書の件名）'),fld('date','発行日'),fld('slip','見積番号')),
-            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:6,marginBottom:4}},
-              fld('toName','宛名（御中の前まで。空欄＝エンド納品先）'),fld('toPostal','〒')),
-            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:4}},
-              fld('toAddress','住所'),fld('toPhone','電話'),fld('toFax','FAX')),
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}},
-              selF('納期','dterm',QUOTE_OPTS.delivery||[]),selF('有効期限','validity',QUOTE_OPTS.expiry||[]),selF('支払条件','payTerms',PAY_TERMS_OPTS||[])),
-            h('div',{style:{marginBottom:4}},
-              h('label',{style:EL},'明細の行（品名・構成表記・単価・備考を直せます。空欄＝自動。本体の単価は今の帳票の単価×1.1（100円未満切り上げ）が自動）',
-                nEd?h('span',{style:{color:'#C2410C',fontWeight:700,marginLeft:6}},'✏ '+nEd+'行 手修正'):null),
-              h('div',{style:{maxHeight:300,overflowY:'auto',background:'#fff',border:'1px solid var(--g200)',borderRadius:4,padding:4}},
-                h('table',{style:{width:'100%',borderCollapse:'collapse'}},
-                  h('thead',null,h('tr',null,h('th',{style:TH},'#'),h('th',{style:TH},'品名'),h('th',{style:Object.assign({},TH,{textAlign:'right'})},'数量'),h('th',{style:TH},'単位'),
-                    h('th',{style:Object.assign({},TH,{textAlign:'right'})},'単価'),h('th',{style:Object.assign({},TH,{textAlign:'right'})},'金額'),h('th',{style:TH},'備考'),h('th',{style:TH},''))),
-                  h('tbody',null,baseRows.map(function(r,ri){
-                    var ov=m.rows[r.rkey]||{},cr=curRows.find(function(x){return x.rkey===r.rkey;})||r;
-                    var ed=Object.keys(ov).some(function(k){return String(ov[k]==null?'':ov[k])!=='';});
-                    var pe=agentRowPriceEditable(r);
-                    return h('tr',{key:r.rkey,'data-agentqrow':r.rkey,style:ed?{background:'#FFFBEB'}:null},
-                      h('td',{style:Object.assign({},TD,{color:'var(--g500)',width:16})},String(ri+1)),
-                      h('td',{style:TD},
-                        r.configNote?h('input',{className:'inp','data-agentrow':r.rkey+':cfg',style:{width:'100%',fontSize:8,marginBottom:2,color:'#475569'},value:ov.cfg||'',placeholder:r.configNote,title:'構成表記（品名の上の【…】）: '+r.configNote,onChange:function(e){setR(r.rkey,'cfg',e.target.value);}}):null,
-                        h('input',{className:'inp','data-agentrow':r.rkey+':name',style:{width:'100%',fontSize:9},value:ov.name||'',placeholder:r.name,title:r.name,onChange:function(e){setR(r.rkey,'name',e.target.value);}})),
-                      h('td',{style:Object.assign({},TD,{textAlign:'right',color:'var(--g500)',width:40})},r.qty===''||r.qty==null?'':fm(r.qty)),
-                      h('td',{style:Object.assign({},TD,{color:'var(--g500)',width:30})},r.unit||''),
-                      h('td',{style:Object.assign({},TD,{width:86})},pe
-                        ?h('input',{className:'inp','data-agentrow':r.rkey+':price',style:{width:82,fontSize:9,textAlign:'right',background:(ov.price!=null&&ov.price!=='')?'#FEF3C7':'#fff'},value:ov.price==null?'':ov.price,placeholder:fm(r.price),
-                            title:r.lecPrice!=null?('今の帳票の単価 ¥'+fm(r.lecPrice)+' ×1.1 → ¥'+fm(r.price)+'（空欄＝この金額）'):'空欄＝今の帳票の単価',onChange:function(e){setR(r.rkey,'price',e.target.value.replace(/[^\d\-]/g,''));}})
-                        :h('span',{style:{fontSize:8,color:'var(--g500)'}},r.price===''||r.price==null?'':'¥'+fm(r.price))),
-                      h('td',{style:Object.assign({},TD,{textAlign:'right',fontWeight:700,color:(parseInt(cr.amount)||0)<0?'#B91C1C':'var(--g600)',width:74})},cr.amount===''||cr.amount==null?'':'¥'+fm(cr.amount)),
-                      h('td',{style:Object.assign({},TD,{width:150})},h('input',{className:'inp','data-agentrow':r.rkey+':remark',style:{width:146,fontSize:9},value:ov.remark==null?'':ov.remark,placeholder:r.remark||'備考を入力',onChange:function(e){setR(r.rkey,'remark',e.target.value);}})),
-                      h('td',{style:Object.assign({},TD,{width:22})},ed?h('button',{className:'btn btn-xs btn-ol',style:{padding:'0 5px'},title:'この行を自動の内容に戻す',onClick:function(){resetR(r.rkey);}},'↺'):null));
-                  }))))),
-            h('div',null,h('label',{style:EL},'全体備考（空欄＝今の見積書の備考。改行できます）'),
-              h('textarea',{className:'inp','data-agentq':'notes',rows:3,style:{resize:'vertical',fontFamily:'inherit'},value:m.h.notes||'',placeholder:a.notes||'（備考なし）',onChange:function(e){setH('notes',e.target.value);}}))),
+            h('div',{style:{marginTop:2,fontSize:9}},'編集のしかたは在庫確認・見積の見積書作成画面と同じです（明細の行の追加・値引き・並べ替え・単価・送料・定型文など）。ここで直した内容は代理店帳票だけに効き、今の帳票は変わりません。'),
+            h('div',{style:{marginTop:2,fontSize:9}},'明細・件名・支払条件・備考・宛先は★代理店帳票の請求書・納品書・物品受領書にも自動で反映されます（その帳票で手修正した項目を除く）。直していない所は今の見積書の内容がそのまま使われます。単価は代理店帳票の単価（本体は×1.1 済み）で入れてください。')),
+          /* 代理店帳票だけの項目（今の見積書は宛先が顧客のため、見積書作成画面には無い） */
+          h('div',{style:{marginBottom:8,padding:8,background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:6}},
+            h('div',{style:{fontSize:10,fontWeight:700,color:'#92400E',marginBottom:4}},'🏷 代理店帳票だけの項目（宛先＝エンドユーザー・発行日・見積番号。空欄＝自動）'),
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:6,marginBottom:4}},
+              fld('toName','宛名（御中の前まで。空欄＝エンド納品先）'),fld('toPostal','〒'),fld('date','発行日'),fld('slip','見積番号')),
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6}},
+              fld('toAddress','住所'),fld('toPhone','電話'),fld('toFax','FAX'))),
+          h(QuoteEditPanel,{key:'agq-'+o.no,qo:qo,agent:true,toast:p.toast,userName:p.userName,
+            updQ:function(patch){agentQUpd(o.no,patch);},
+            rowsOf:function(){return agentQuoteRows(o).rows;}}),
           h('div',{style:{fontSize:10,fontWeight:700,marginBottom:4}},'📄 プレビュー（'+agentDocTitle(fk,'quote')+'・'+F.short+'）'),
           h('iframe',{'data-agentpreview':'quote',srcDoc:prev.html,style:{width:'100%',height:'60vh',border:'1px solid var(--g200)',background:'#e8e8e8',marginBottom:10}}),
           gp?h('div',{className:'no-print',style:{marginBottom:10,padding:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6}},
@@ -18993,7 +19028,7 @@ function OrdersPage(p){
                   h('td',{style:tdS},gp.hasCost?'¥'+fm(Math.round(gp.total.sell-gp.total.cost)):'—'),
                   h('td',{style:tdS},gp.hasCost&&gp.total.sell>0?(Math.round((gp.total.sell-gp.total.cost)/gp.total.sell*1000)/10+'%'):'—')),
                 agentGpRow(o,gp,tdS))),
-            h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:4}},'💡 売価は明細の金額合計（送料は含めない・値引きは差し引き済み）です。'
+            h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:4}},'💡 売価は明細の金額合計（送料は含めない・値引きは差し引き済み）です。原価には代理店帳票で足した行（工事費など）の原価も入ります。'
               +(agentSalesApplies(o)?'案件管理の原価欄・売上集計は「代理店帳票」の行の金額で計算します。':'この案件は '+AGENT_SALES_FROM+' より前に作った案件のため、原価欄・売上集計は今の帳票の金額のままです。'))):null
         ));
     })():null,
