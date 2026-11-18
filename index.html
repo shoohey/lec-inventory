@@ -8853,9 +8853,10 @@ function invRowQtySplittable(r){
   return invRowSplittable(r)&&(parseInt(r.qty)||0)>1&&r.price!==''&&r.price!=null&&!isNaN(parseInt(r.price));
 }
 /* 請求書の枚数ぶんの明細を作る。戻り値 {sheets:[{index,rows,subtotal,tax,total}], warns:[]} */
-function buildInvoiceSheets(order){
-  var q=buildQuoteRows(order);
-  var sp=invSplitOf(order),n=sp.n,warns=[];
+function buildInvoiceSheets(order,src){
+  /* v20.13: src={rows,split} を渡すと、その行・分け方で分ける（代理店帳票）。渡さなければ従来どおり */
+  var q=src?{rows:src.rows}:buildQuoteRows(order);
+  var sp=src?src.split:invSplitOf(order),n=sp.n,warns=[];
   var sheets=[];
   for(var i=0;i<n;i++)sheets.push({index:i,rows:[],subtotal:0,tax:0,total:0});
   (q.rows||[]).forEach(function(r){
@@ -8919,11 +8920,11 @@ function invSplitRemark(base,add){
    依頼「明細を分ける事によって合計金額の相違や、必要項目の記載漏れが発生しないようにチェック機能」。
    ★税抜合計は必ず一致する作りだが、検算して不一致なら error として出す（作りが壊れた時に気付けるように）。
    ★消費税は請求書ごとに計算するので、税込合計は1枚で出したときと数円ずれることがある。これは warn。 */
-function invSplitCheck(order){
-  var q=buildQuoteRows(order);
+function invSplitCheck(order,src){
+  var q=src?{rows:src.rows,subtotal:src.rows.reduce(function(t,r){return t+(parseInt(r.amount)||0);},0)}:buildQuoteRows(order);
   var whole={subtotal:q.subtotal,tax:Math.floor(q.subtotal*0.1)};
   whole.total=whole.subtotal+whole.tax;
-  var b=buildInvoiceSheets(order),sheets=b.sheets,n=sheets.length;
+  var b=buildInvoiceSheets(order,src),sheets=b.sheets,n=sheets.length;
   var errors=[],warns=b.warns.slice();
   var sumSub=sheets.reduce(function(t,s){return t+s.subtotal;},0);
   var sumTotal=sheets.reduce(function(t,s){return t+s.total;},0);
@@ -10203,6 +10204,27 @@ function agentPrepayUnpaid(order){
   for(var i=0;i<n;i++){if(!pm[String(i)])return true;}
   return false;
 }
+/* v20.13（2026-11-18 ユーザー「代理店帳票の請求書も分けて出せるように」）: 代理店帳票の請求書・納品書の分け方。
+   order.agentDoc.invSplit={n,alloc}（金額で分けるときは代理店帳票の金額で入れる）。未設定なら今の請求書の分け方（order.invSplit）を引き継ぐ。 */
+function agentInvSplitOf(order,ad){
+  ad=ad||(order&&order.agentDoc)||{};
+  var s=ad.invSplit||(order&&order.invSplit)||{};
+  return {n:Math.max(1,Math.min(INV_SPLIT_MAX,parseInt(s.n)||1)),alloc:s.alloc||{},own:!!ad.invSplit};
+}
+function agentInvSheets(order,ad){
+  return buildInvoiceSheets(order,{rows:agentQuoteRows(order,ad).rows,split:agentInvSplitOf(order,ad)});
+}
+function agentSplitCount(order,docType,ad){return (docType==='invoice'||docType==='delivery')?agentInvSplitOf(order,ad).n:1;}
+/* 全枚まとめて1つの印刷画面に（紙ごとに改ページ） */
+function agentDocAllHTML(order,docType,ad){
+  var n=agentSplitCount(order,docType,ad);
+  var first=agentDocHTML(order,docType,ad,n>1?0:null);
+  if(n<=1)return first.html;
+  var bodies=[];
+  for(var i=1;i<n;i++){var hh=agentDocHTML(order,docType,ad,i).html;var a=hh.indexOf('<div class="sheet"'),b=hh.lastIndexOf('</body>');bodies.push(hh.slice(a,b));}
+  var x=first.html.replace('</style>','.sheet+.sheet{margin-top:12px}@media print{.sheet+.sheet{margin-top:0;break-before:page;page-break-before:always}}</style>');
+  return x.replace('</body>',bodies.join('')+'</body>');
+}
 var AGENT_PREPAY_MSG='前払いの案件です。ステータス欄の「入金確認」にチェックが入るまで出荷できません';
 var AGENT_H_KEYS=['toName','toPostal','toAddress','toPhone','toFax','subject','date','slip','payTerms','payDue','validity','dterm','delivery','notes'];
 var AGENT_H_LABELS={toName:'宛名（御中の前）',toPostal:'〒',toAddress:'住所',toPhone:'電話',toFax:'FAX',subject:'件名',date:'日付',slip:'番号',
@@ -10257,9 +10279,15 @@ function agentDocTitle(fmt,docType){
 }
 var AGENT_DOC_LABELS={quote:'見積書',invoice:'請求書',delivery:'納品書',receipt:'物品受領書'};
 /* ===== 代理店帳票の印刷用HTML ===== */
-function agentDocHTML(order,docType,ad){
+function agentDocHTML(order,docType,ad,sheetIdx){
   var fmt=agentFmtOf(order)||'global',F=AGENT_FMTS[fmt];
   var q=agentQuoteRows(order,ad),hv=agentHeader(order,docType,ad);
+  /* v20.13: 請求書・納品書を分けているときはその紙の行・金額。番号に枝番（-1,-2…。番号を手修正していればその後ろ） */
+  if(sheetIdx!=null&&agentSplitCount(order,docType,ad)>1){
+    var _sh=agentInvSheets(order,ad).sheets,_k=Math.max(0,Math.min(_sh.length-1,parseInt(sheetIdx)||0));
+    q={rows:_sh[_k].rows,subtotal:_sh[_k].subtotal,tax:_sh[_k].tax,total:_sh[_k].total,fmt:fmt};
+    hv=Object.assign({},hv,{slip:hv.slip+'-'+(_k+1)});
+  }
   var E=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
   var NL=function(s){return E(s).replace(/\n/g,'<br>');};
   var yen=function(n){return (n<0?'-':'')+'¥'+fm(Math.abs(n));};
@@ -10450,7 +10478,7 @@ function agentDocHTML(order,docType,ad){
   return {html:html,rows:q.rows,subtotal:q.subtotal,tax:q.tax,total:q.total,hv:hv,fmt:fmt};
 }
 /* 手修正の入力 → 保存形（空欄は入れない）。何も無ければ null */
-function agentDocClean(hs,rs){
+function agentDocClean(hs,rs,invSplit){
   var h2={},r2={};
   Object.keys(hs||{}).forEach(function(t){
     var x={};Object.keys(hs[t]||{}).forEach(function(k){var v=String(hs[t][k]==null?'':hs[t][k]);if(v.trim()!=='')x[k]=v;});
@@ -10464,6 +10492,7 @@ function agentDocClean(hs,rs){
     if(Object.keys(x).length)r2[k]=x;
   });
   var out={};if(Object.keys(h2).length)out.h=h2;if(Object.keys(r2).length)out.rows=r2;
+  if(invSplit)out.invSplit=invSplit;/* v20.13: 代理店帳票の請求書の分け方はこの画面では変えない */
   return Object.keys(out).length?out:null;
 }
 /* 見積書作成画面の粗利計算表に足す行（4社の案件だけ。売価＝代理店帳票の金額・送料を除く） */
@@ -16546,7 +16575,7 @@ function OrdersPage(p){
     agentPick[1](null);
     agentEdit[1]({no:o.no,tab:t||'quote',h:JSON.parse(JSON.stringify(ad.h||{})),rows:JSON.parse(JSON.stringify(ad.rows||{}))});
   }
-  function agentEditAd(m){return agentDocClean(m.h,m.rows)||{};}
+  function agentEditAd(m){var lo=ORDERS.find(function(x){return x.no===m.no;})||{};return agentDocClean(m.h,m.rows,(lo.agentDoc||{}).invSplit)||{};}
   /* v20.13: 入金確認のチェック（納品完了タブ・前払いの案件のステータス欄で共通。中身は v19.07〜v19.08 のまま） */
   function paidBox(o){
                 var nInv=invSplitCount(o),pm=paidSheetsOf(o);
@@ -18675,8 +18704,19 @@ function OrdersPage(p){
           dts.map(function(t){
             return h('div',{key:t,style:{marginBottom:8}},
               h('button',{className:'btn','data-agentprint':t,style:{display:'block',width:'100%',textAlign:'left',padding:'7px 10px',marginBottom:3},
-                onClick:function(){var r=agentDocHTML(liveOrder(o)||o,t);if(!openPrintWindow(r.html))p.toast('ポップアップを許可してください');}},
-                h('div',{style:{fontWeight:700,fontSize:12,color:'#9A3412'}},'🏷 '+agentDocTitle(fk,t)+'（'+F.short+'）')),
+                onClick:function(){if(!openPrintWindow(agentDocAllHTML(liveOrder(o)||o,t)))p.toast('ポップアップを許可してください');}},
+                h('div',{style:{fontWeight:700,fontSize:12,color:'#9A3412'}},'🏷 '+agentDocTitle(fk,t)+'（'+F.short+'）'+(agentSplitCount(o,t)>1?'（全'+agentSplitCount(o,t)+'枚）':''))),
+              /* v20.13: 代理店帳票の請求書・納品書も分けられる（設定は請求書の所の1か所。納品書は従う） */
+              (t==='invoice'||t==='delivery')?h('div',{style:{display:'flex',gap:4,alignItems:'center',flexWrap:'wrap',margin:'0 0 4px 10px'}},
+                t==='invoice'?h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},'data-agentsplit':'1',
+                  title:'エンドユーザーの予算などで請求を分けます（金額は代理店帳票の金額）。納品書も同じ分け方になります',
+                  onClick:function(){var sp=agentInvSplitOf(o);agentPick[1](null);invSplitModal[1]({no:o.no,agent:true,n:sp.n,alloc:JSON.parse(JSON.stringify(sp.alloc||{}))});}},
+                  '🧾 請求書を分ける'+(agentSplitCount(o,t)>1?'（現在 '+agentSplitCount(o,t)+'枚）':'')):
+                  h('span',{style:{fontSize:9,color:'var(--g500)'}},'※請求書の分け方に合わせて分かれます'),
+                (t==='invoice'&&!agentInvSplitOf(o).own&&o.invSplit&&invSplitCount(o)>1)?h('span',{style:{fontSize:9,color:'#0E7490'}},'今の請求書の分け方を引き継ぎ中'):null,
+                agentSplitCount(o,t)>1?[h('span',{key:'h',style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:')].concat(Array.apply(null,{length:agentSplitCount(o,t)}).map(function(_,ii){
+                  return h('button',{key:'s'+ii,className:'btn btn-xs','data-agentsheet':t+ii,onClick:function(){var r=agentDocHTML(liveOrder(o)||o,t,null,ii);if(!openPrintWindow(r.html))p.toast('ポップアップを許可してください');}},(ii+1)+'枚目');
+                })):null):null,
               h('div',{style:{display:'flex',gap:6,alignItems:'center',marginLeft:10}},
                 h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},'data-agentedit':t,
                   title:'宛先・件名・日付・番号・備考と、明細の品名・単価・備考を手修正します（今の帳票の手修正は引き継ぎ、ここで直した所だけ代理店帳票に効きます）',
@@ -18703,7 +18743,7 @@ function OrdersPage(p){
       function save(andPrint){
         if(FREE_RO_){p.toast(FREE_RO_MSG);return;}
         var o2=liveOrder(o)||o;
-        var a2=agentDocClean(m.h,m.rows);
+        var a2=agentDocClean(m.h,m.rows,(o2.agentDoc||{}).invSplit);
         if(a2)o2.agentDoc=a2;else delete o2.agentDoc;
         saveAll();
         freeEditBroadcast(p.userName||'',o2.no+' 代理店帳票を手修正',o2.no);
@@ -18770,8 +18810,10 @@ function OrdersPage(p){
       var m=invSplitModal[0];
       var o0=ORDERS.find(function(x){return x.no===m.no;})||{no:m.no,lines:[]};
       var prevOrder=Object.assign({},o0,{invSplit:{n:m.n,alloc:m.alloc}});
-      var qrows=(buildQuoteRows(o0).rows||[]).filter(invRowSplittable);
-      var chk=invSplitCheck(prevOrder);
+      /* v20.13: 代理店帳票の請求書を分けるとき（m.agent）は代理店帳票の明細・金額で分ける */
+      var agRows=m.agent?agentQuoteRows(o0).rows:null;
+      var qrows=((m.agent?agRows:buildQuoteRows(o0).rows)||[]).filter(invRowSplittable);
+      var chk=m.agent?invSplitCheck(o0,{rows:agRows,split:{n:m.n,alloc:m.alloc}}):invSplitCheck(prevOrder);
       var n=m.n;
       function setAlloc(rkey,patch){
         var a=Object.assign({},m.alloc);
@@ -18780,7 +18822,7 @@ function OrdersPage(p){
       }
       var TH={fontSize:9,fontWeight:700,color:'var(--g500)',textAlign:'left',padding:'3px 6px',borderBottom:'1px solid var(--g200)',whiteSpace:'nowrap'};
       var TD={fontSize:10,padding:'4px 6px',borderBottom:'1px solid var(--g100)',verticalAlign:'top'};
-      return h(Modal,{show:true,w:940,title:'🧾 請求書・納品書を分ける — '+m.no,
+      return h(Modal,{show:true,w:940,title:(m.agent?'🏷 代理店帳票の請求書・納品書を分ける — ':'🧾 請求書・納品書を分ける — ')+m.no,
         onClose:function(){invSplitModal[1](null);},
         footer:h('div',{style:{display:'flex',gap:6,alignItems:'center'}},
           h('button',{className:'btn btn-ol',onClick:function(){invSplitModal[1](null);}},'キャンセル'),
@@ -18789,6 +18831,15 @@ function OrdersPage(p){
             if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
             var o2=liveOrder({no:m.no});
             if(!o2||!o2.no){invSplitModal[1](null);return;}
+            if(m.agent){
+              /* v20.13: 代理店帳票の分け方は agentDoc.invSplit（1枚にしたときも「分けない」として持つ＝今の請求書の分け方を引き継がない） */
+              o2.agentDoc=Object.assign({},o2.agentDoc||{},{invSplit:{n:m.n,alloc:m.n<=1?{}:m.alloc}});
+              saveAll();
+              freeEditBroadcast(p.userName||'',o2.no+' 代理店帳票の請求書の分割を'+(m.n<=1?'解除':m.n+'枚に設定'),o2.no);
+              p.toast(m.n<=1?'代理店帳票の請求書・納品書を1枚にしました':'代理店帳票の請求書と納品書を'+m.n+'枚に分けました');
+              invSplitModal[1](null);p.bump&&p.bump();
+              return;
+            }
             if(m.n<=1)delete o2.invSplit;else o2.invSplit={n:m.n,alloc:m.alloc};
             saveAll();
             freeEditBroadcast(p.userName||'',o2.no+' 請求書の分割を'+(m.n<=1?'解除':m.n+'枚に設定'),o2.no);
