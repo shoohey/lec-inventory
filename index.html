@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.13（代理店帳票＝プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式・前払いの入金確認）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.14（代理店帳票の画面を通常の帳票と同じに＝見積書作成画面・記載内容の手修正・請求書→納品書の反映）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -10177,12 +10177,13 @@ function agentQuoteRows(order,ad){
     if(x.configNote)x.configNote=agentRen(fmt,x.configNote);
     if(x.colorNote)x.colorNote=agentRen(fmt,x.colorNote);
     x.remark=agentRen(fmt,x.remark||'');
-    x.auto={name:x.name,price:x.price,remark:x.remark};
+    x.auto={name:x.name,price:x.price,remark:x.remark,cfg:x.configNote||''};
     var o=ro[x.rkey];
     if(o){
       if(o.name!=null&&String(o.name)!==''){x.name=String(o.name);x.edited=true;}
       if(o.price!=null&&o.price!==''&&!isNaN(parseInt(o.price))&&agentRowPriceEditable(x)){x.price=parseInt(o.price);x.amount=x.price*qn;x.edited=true;}
       if(o.remark!=null){x.remark=String(o.remark);x.edited=true;}
+      if(o.cfg!=null&&String(o.cfg)!==''&&x.configNote){x.configNote=String(o.cfg);x.edited=true;}/* v20.14 */
     }
     return x;
   });
@@ -10249,40 +10250,97 @@ function agentDocKeys(docType){
   return k.concat(['notes']);
 }
 function agentYmdJa(s){var m=String(s||'').match(/(\d{4})[-\/年.](\d{1,2})[-\/月.](\d{1,2})/);return m?((+m[2])+'月'+(+m[3])+'日'):'';}
-function agentHeader(order,docType,ad){
+/* ===== v20.14（2026-11-18 ユーザー「代理店帳票の画面を通常の帳票と同一仕様に。修正内容が他の帳票に自動で反映されるルールも同一」） =====
+   手修正の決まりは今の帳票（docEditHeader）と同じにした:
+   ・見積書（見積書作成画面と同じ画面）で直した 件名・支払条件・備考・宛先・明細（品名・単価・備考・構成表記）は
+   　★請求書・納品書・物品受領書にも自動で反映される（その帳票で手修正した項目はその帳票の値）。
+   ・請求書の手修正は★納品書にも反映される。優先は請求書（納品書で直していても請求書の値。納品書で直せるのは請求書が空欄の項目だけ）。
+   　納品書の「日付」←請求書の「納品日」、番号は先頭の「請求」を「納品」に置き換える（今の帳票と同じ）。支払条件・支払期日は請求書だけ。
+   ・物品受領書の手修正は物品受領書だけ。
+   ・請求書・納品書・物品受領書は明細の備考を帳票ごとに直せる（rowRemarks）・備考を載せない（notesOff）。分けた請求書は紙ごと（sheets）。
+   ・今の帳票（LEC）の手修正は従来どおり引き継ぐ（その帳票の手修正が無い項目だけ代理店の見積書の値）。
+   保存先 order.agentDoc.h[quote|invoice|delivery|receipt]（請求書は sheets:{紙番号:{…}} も）、明細は order.agentDoc.rows（4帳票共通）。 */
+var AGENT_BILL_INHERIT_KEYS=['toName','toPostal','toAddress','toPhone','toFax','subject'];
+function agentLayer(ad,docType,sheetIdx){
+  var hm=((ad&&ad.h)||{})[docType]||{},out={};
+  Object.keys(hm).forEach(function(k){if(k!=='sheets')out[k]=hm[k];});
+  if(docType==='invoice'&&hm.sheets){
+    var s=hm.sheets[String(parseInt(sheetIdx)||0)];
+    if(s)Object.keys(s).forEach(function(k){out[k]=s[k];});
+  }
+  return out;
+}
+function agentDelivFromInvoice(ad,sheetIdx){
+  var inv=agentLayer(ad,'invoice',sheetIdx),out={};
+  AGENT_BILL_INHERIT_KEYS.forEach(function(k){if(inv[k]!=null&&String(inv[k])!=='')out[k]=String(inv[k]);});
+  if(inv.delivery)out.date=String(inv.delivery);
+  if(inv.slip)out.slip=String(inv.slip).replace(/^請求/,'納品');
+  return out;
+}
+function agentHeader(order,docType,ad,sheetIdx){
   var fmt=agentFmtOf(order)||'global';
   ad=ad||(order&&order.agentDoc)||{};
   var cust=(typeof CUSTS!=='undefined'?CUSTS:[]).find(function(c){return c.id===order.cid;});
   var eu=order.endUser||{};
   var isBill=docType!=='quote';
-  var dv=isBill?docEditHeader(order,cust,docType,null):null;
   var on=order.notes;
-  var notes0=isBill?(docType==='receipt'?'':(dv.notes||'')):(Array.isArray(on)?on.join('\n'):String(on||''));
-  if(docType==='delivery'&&agentPrepay(order)){
-    var ps=paidSheetsOf(order)['0'];
-    if(ps&&ps.at)notes0=agentYmdJa(ps.at)+'ご入金済み分として'+(notes0?'\n'+notes0:'');
-  }
-  var auto={
+  /* 見積書の値（自動＋代理店の見積書の手修正） */
+  var qAuto={
     toName:eu.name||'',toPostal:eu.postal||'',toAddress:eu.address||'',toPhone:eu.phone||'',toFax:'',
-    subject:agentRen(fmt,isBill?dv.subject:quoteSubjectOf(order)),
-    date:isBill?dv.date:docDateOf(order,'quote'),
-    slip:order.no||'',
-    payTerms:isBill?(dv.payTerms||''):((order.paymentTerms)||'前払い（銀行振り込み）'),
-    payDue:isBill?(dv.payDue||''):'',
-    validity:validUntilOf(order),dterm:deliveryTermOf(order),
-    delivery:isBill?(dv.delivery||''):'',
-    notes:agentRen(fmt,notes0)
+    subject:agentRen(fmt,quoteSubjectOf(order)),
+    date:docDateOf(order,'quote'),slip:order.no||'',
+    payTerms:(order.paymentTerms)||'前払い（銀行振り込み）',payDue:'',
+    validity:validUntilOf(order),dterm:deliveryTermOf(order),delivery:'',
+    notes:agentRen(fmt,Array.isArray(on)?on.join('\n'):String(on||''))
   };
-  var hm=(ad.h&&ad.h[docType])||{};
-  var out=Object.assign({},auto,{auto:auto,edited:{},fmt:fmt});
-  AGENT_H_KEYS.forEach(function(k){if(hm[k]!=null&&String(hm[k])!==''){out[k]=String(hm[k]);out.edited[k]=true;}});
+  var qm=agentLayer(ad,'quote'),qv=Object.assign({},qAuto),qEd={};
+  AGENT_H_KEYS.forEach(function(k){if(qm[k]!=null&&String(qm[k])!==''){qv[k]=String(qm[k]);qEd[k]=true;}});
+  var auto;
+  if(!isBill)auto=qAuto;
+  else{
+    /* 請求書・納品書・物品受領書の自動値: 今の帳票の値（LEC の手修正込み）。LEC で手修正していない項目は代理店の見積書の値 */
+    var dv=docEditHeader(order,cust,docType,null),le=Object.assign({},dv.edited||{},dv.fromInvoice||{});
+    var notes0=docType==='receipt'?'':(le.notes||le.notesOff?(dv.notes||''):qv.notes);
+    if(docType==='delivery'&&agentPrepay(order)){
+      var ps=paidSheetsOf(order)['0'];
+      if(ps&&ps.at)notes0=agentYmdJa(ps.at)+'ご入金済み分として'+(notes0?'\n'+notes0:'');
+    }
+    auto={
+      toName:qv.toName,toPostal:qv.toPostal,toAddress:qv.toAddress,toPhone:qv.toPhone,toFax:qv.toFax,
+      subject:le.subject?agentRen(fmt,dv.subject):qv.subject,
+      date:dv.date,slip:order.no||'',
+      payTerms:le.payTerms?(dv.payTerms||''):qv.payTerms,
+      payDue:le.payDue?(dv.payDue||''):'',
+      validity:qv.validity,dterm:qv.dterm,
+      delivery:dv.delivery||'',
+      notes:le.notes?agentRen(fmt,notes0):notes0
+    };
+  }
+  var bm=isBill?agentLayer(ad,docType,sheetIdx):qm;
+  var inh=(docType==='delivery')?agentDelivFromInvoice(ad,sheetIdx):{};
+  if(docType==='delivery')bm=Object.assign({},bm,inh);/* 請求書が優先 */
+  var out=Object.assign({},auto,{auto:auto,edited:{},fmt:fmt,quoteEdited:qEd});
+  AGENT_H_KEYS.forEach(function(k){if(bm[k]!=null&&String(bm[k])!==''){out[k]=String(bm[k]);out.edited[k]=true;}});
+  if(docType==='invoice'&&!out.edited.payDue&&!(isBill&&auto.payDue))out.payDue=payDueTextOf(out.date,out.payTerms);
+  if(isBill&&bm.notesOff){out.notes='';out.edited.notes=true;out.notesOff=true;}
+  out.rowRemarks=(isBill&&bm.rowRemarks&&typeof bm.rowRemarks==='object')?bm.rowRemarks:{};
+  out.fromInvoice={};Object.keys(inh).forEach(function(k){out.fromInvoice[k]=true;});
   return out;
 }
-function hasAgentDoc(order){
+/* その帳票に代理店帳票の手修正があるか（見積書は明細の手修正も含む） */
+function hasAgentDocType(order,docType){
   var ad=order&&order.agentDoc;if(!ad)return false;
-  var hs=ad.h||{};
-  return Object.keys(hs).some(function(k){return hs[k]&&Object.keys(hs[k]).length;})||!!(ad.rows&&Object.keys(ad.rows).length);
+  var hm=(ad.h||{})[docType]||{};
+  function any(x){return Object.keys(x||{}).some(function(k){
+    if(k==='sheets')return false;
+    if(k==='rowRemarks')return !!(x[k]&&Object.keys(x[k]).length);
+    return String(x[k]==null?'':x[k])!=='';
+  });}
+  if(any(hm))return true;
+  if(hm.sheets&&Object.keys(hm.sheets).some(function(k){return any(hm.sheets[k]);}))return true;
+  return docType==='quote'&&!!(ad.rows&&Object.keys(ad.rows).length);
 }
+function hasAgentDoc(order){return AGENT_DOC_TYPES.some(function(t){return hasAgentDocType(order,t);});}
 function agentDocTitle(fmt,docType){
   if(docType==='quote')return '御見積書';
   if(docType==='invoice')return fmt==='plastic'?'請求書':'御請求書';
@@ -10293,13 +10351,16 @@ var AGENT_DOC_LABELS={quote:'見積書',invoice:'請求書',delivery:'納品書'
 /* ===== 代理店帳票の印刷用HTML ===== */
 function agentDocHTML(order,docType,ad,sheetIdx){
   var fmt=agentFmtOf(order)||'global',F=AGENT_FMTS[fmt];
-  var q=agentQuoteRows(order,ad),hv=agentHeader(order,docType,ad);
-  /* v20.13: 請求書・納品書を分けているときはその紙の行・金額。番号に枝番（-1,-2…。番号を手修正していればその後ろ） */
-  if(sheetIdx!=null&&agentSplitCount(order,docType,ad)>1){
+  var _split=sheetIdx!=null&&agentSplitCount(order,docType,ad)>1;
+  var q=agentQuoteRows(order,ad),hv=agentHeader(order,docType,ad,_split?sheetIdx:null);
+  /* v20.13: 請求書・納品書を分けているときはその紙の行・金額。
+     v20.14: 番号の枝番（-1,-2…）は今の帳票と同じく★番号を手修正していないときだけ付ける */
+  if(_split){
     var _sh=agentInvSheets(order,ad).sheets,_k=Math.max(0,Math.min(_sh.length-1,parseInt(sheetIdx)||0));
     q={rows:_sh[_k].rows,subtotal:_sh[_k].subtotal,tax:_sh[_k].tax,total:_sh[_k].total,fmt:fmt};
-    hv=Object.assign({},hv,{slip:hv.slip+'-'+(_k+1)});
+    if(!hv.edited.slip)hv=Object.assign({},hv,{slip:hv.slip+'-'+(_k+1)});
   }
+  if(docType!=='quote')q=Object.assign({},q,{rows:docRowRemarkApply(q.rows,hv)});/* v20.14: 明細の備考をこの帳票だけ直す */
   var E=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
   var NL=function(s){return E(s).replace(/\n/g,'<br>');};
   var yen=function(n){return (n<0?'-':'')+'¥'+fm(Math.abs(n));};
@@ -10490,22 +10551,40 @@ function agentDocHTML(order,docType,ad,sheetIdx){
   return {html:html,rows:q.rows,subtotal:q.subtotal,tax:q.tax,total:q.total,hv:hv,fmt:fmt};
 }
 /* 手修正の入力 → 保存形（空欄は入れない）。何も無ければ null */
+function agentCleanLayer(x){
+  var o={};
+  Object.keys(x||{}).forEach(function(k){
+    if(k==='sheets'||k==='rowRemarks')return;
+    var v=String(x[k]==null?'':x[k]).trim();if(v!=='')o[k]=v;
+  });
+  if(x&&x.rowRemarks&&typeof x.rowRemarks==='object'&&Object.keys(x.rowRemarks).length)o.rowRemarks=Object.assign({},x.rowRemarks);
+  if(x&&x.sheets&&typeof x.sheets==='object'){
+    var sm={};Object.keys(x.sheets).forEach(function(k){var c=agentCleanLayer(x.sheets[k]);if(Object.keys(c).length)sm[k]=c;});
+    if(Object.keys(sm).length)o.sheets=sm;
+  }
+  return o;
+}
 function agentDocClean(hs,rs,invSplit){
   var h2={},r2={};
-  Object.keys(hs||{}).forEach(function(t){
-    var x={};Object.keys(hs[t]||{}).forEach(function(k){var v=String(hs[t][k]==null?'':hs[t][k]);if(v.trim()!=='')x[k]=v;});
-    if(Object.keys(x).length)h2[t]=x;
-  });
+  Object.keys(hs||{}).forEach(function(t){var x=agentCleanLayer(hs[t]);if(Object.keys(x).length)h2[t]=x;});
   Object.keys(rs||{}).forEach(function(k){
     var x={},o=rs[k]||{};
     if(String(o.name||'').trim())x.name=String(o.name).trim();
     if(o.price!=null&&String(o.price).trim()!==''&&!isNaN(parseInt(o.price)))x.price=parseInt(o.price);
-    if(String(o.remark||'').trim())x.remark=String(o.remark);
+    if(o.remark!=null&&String(o.remark)!=='')x.remark=String(o.remark);
+    if(o.cfg!=null&&String(o.cfg).trim()!=='')x.cfg=String(o.cfg);/* v20.14: 構成表記の手修正 */
     if(Object.keys(x).length)r2[k]=x;
   });
   var out={};if(Object.keys(h2).length)out.h=h2;if(Object.keys(r2).length)out.rows=r2;
-  if(invSplit)out.invSplit=invSplit;/* v20.13: 代理店帳票の請求書の分け方はこの画面では変えない */
+  if(invSplit)out.invSplit=invSplit;/* 請求書の分け方は分ける画面でだけ変える */
   return Object.keys(out).length?out:null;
+}
+/* v20.14: 今の手修正の一部（帳票1つ分 or 明細）だけを差し替えた agentDoc */
+function agentDocWith(order,t,layer,rows){
+  var ad=(order&&order.agentDoc)||{};
+  var hs=JSON.parse(JSON.stringify(ad.h||{}));
+  if(t){if(layer)hs[t]=layer;else delete hs[t];}
+  return agentDocClean(hs,rows!==undefined?rows:(ad.rows||{}),ad.invSplit);
 }
 /* 見積書作成画面の粗利計算表に足す行（4社の案件だけ。売価＝代理店帳票の金額・送料を除く） */
 function agentGpRow(order,gp,tdS){
@@ -11066,8 +11145,8 @@ var HELP_QA=[
     steps:['「自由入力（在庫外商品）」欄に商品名称・数量・単位・単価を入れて「＋ 自由入力行を追加」','見積書作成の画面でも「＋ 自由入力の行を追加」や「＋ 定型文を追加」（搬入・設置工事費など）で足せます'],
     tip:'工事費などの原価は、見積書作成画面の明細の行で金額の右の緑の欄（原価）に入れると粗利計算表の原価に入ります（帳票には出ません）。粗利計算表に送料は含めません。',
     rel:['quote-discount']},
-  {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.13',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
-    steps:['案件管理で、その案件の「🏷代理店帳票」を押す（顧客が4社の案件だけに出ます）','出したい帳票（見積書・請求書・納品書・物品受領書）を押すと、その代理店の様式で印刷用の画面が開きます','宛名・件名・備考や明細の品名・単価を直すときは「✎ 記載内容・明細の手修正」（今の帳票の手修正は引き継ぎ、ここで直した所は代理店帳票だけに効きます）'],
+  {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.14',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
+    steps:['案件管理で、その案件の「🏷代理店帳票」を押す（顧客が4社の案件だけに出ます）','出したい帳票（見積書・請求書・納品書・物品受領書）を押すと、その代理店の様式で印刷用の画面が開きます','見積書の件名・宛先・支払条件・明細（品名・単価・備考）・備考は見積書の下の「✎ 見積書作成画面」で直す（請求書・納品書・物品受領書にも反映されます）','請求書・納品書・物品受領書だけを直すときは、その帳票の下の「✎ 記載内容の手修正」（今の帳票と同じ画面。請求書で直した所は納品書にも反映・請求書が優先）'],
     tip:'金額は代理店値引きを除き、ロッカー本体の単価だけ×1.1（100円未満切り上げ）。製品名称はプラロッカー＝ECOプラロッカー／プラロッカー／ルミ○○色、プラスチックロッカー＝プラエコロッカー／プラスチックロッカー／ホタプラ○○色。案件管理の原価欄の粗利と売上集計もこの金額で計算します（2026-11-18 以降に作った案件。それより前の案件は今の帳票の金額のまま）。',
     warn:'支払条件が「前払い」「新規前入金」の案件は、ステータス欄の「入金確認」にチェックが入るまで出荷指示書を出せず、出荷指示書送付済にもできません（納品完了タブの入金確認と同じチェックです）。',rel:['quote-discount']},
   {id:'quote-discount',cat:'quote',tab:'inv',ver:'v19.72',q:'見積に値引きを入れたい',kw:['値引き','割引','出精値引き','継続購入割引','販促','代理店値引き','10%'],
@@ -16581,13 +16660,65 @@ function OrdersPage(p){
   /* v18.79 修正20②: 案件管理の操作欄「📄帳票」で開く帳票選択モーダル */
   var docPick=us(null);
   /* v20.13: 代理店帳票（出力の画面・手修正の画面） */
-  var agentPick=us(null),agentEdit=us(null);
-  function openAgentEdit(o,t){
+  var agentPick=us(null);
+  /* v20.14: 代理店帳票の見積書作成画面（見積書作成画面と同じく、直した内容は即プレビュー・保存。保存は打ち終わって少し後にまとめて） */
+  var agentQ=us(null),agentQTimer=ur(null);
+  function openAgentQuote(o){
     var ad=(liveOrder(o)||o).agentDoc||{};
     agentPick[1](null);
-    agentEdit[1]({no:o.no,tab:t||'quote',h:JSON.parse(JSON.stringify(ad.h||{})),rows:JSON.parse(JSON.stringify(ad.rows||{}))});
+    agentQ[1]({no:o.no,h:JSON.parse(JSON.stringify((ad.h||{}).quote||{})),rows:JSON.parse(JSON.stringify(ad.rows||{})),free:{}});
   }
-  function agentEditAd(m){var lo=ORDERS.find(function(x){return x.no===m.no;})||{};return agentDocClean(m.h,m.rows,(lo.agentDoc||{}).invSplit)||{};}
+  function agentQFlush(no){
+    if(!agentQTimer.current)return;
+    clearTimeout(agentQTimer.current);agentQTimer.current=null;
+    saveAll();freeEditBroadcast(p.userName||'',no+' 代理店帳票の見積書を手修正',no);
+  }
+  function agentQSet(m){
+    if(FREE_RO_){p.toast(FREE_RO_MSG);return;}
+    agentQ[1](m);
+    var o2=ORDERS.find(function(x){return x.no===m.no;});if(!o2)return;
+    var a2=agentDocWith(o2,'quote',agentCleanLayer(m.h),m.rows);
+    if(a2)o2.agentDoc=a2;else delete o2.agentDoc;
+    if(agentQTimer.current)clearTimeout(agentQTimer.current);
+    agentQTimer.current=setTimeout(function(){agentQTimer.current=null;saveAll();freeEditBroadcast(p.userName||'',m.no+' 代理店帳票の見積書を手修正',m.no);},700);
+  }
+  /* v20.14: 代理店帳票の請求書・物品受領書・納品書の手修正は★今の帳票と同じ「✎ 記載内容の手修正」画面（docEditModal の agent モード）で行う */
+  function openAgentDocEdit(order,docType){
+    var o=liveOrder(order)||order,ad=o.agentDoc||{};
+    var n=(docType==='invoice'&&agentSplitCount(o,'invoice')>1)?agentSplitCount(o,'invoice'):1;
+    var bare=JSON.parse(JSON.stringify(ad));if(bare.h)delete bare.h[docType];
+    var split=agentSplitCount(o,docType)>1;
+    var sheets=[],autos=[];
+    for(var k=0;k<n;k++){
+      var layer=agentLayer(ad,docType,k),v={};
+      AGENT_H_KEYS.forEach(function(key){v[key]=layer[key]||'';});
+      v.notesOff=layer.notesOff||'';
+      v.rowRemarks=Object.assign({},(layer.rowRemarks&&typeof layer.rowRemarks==='object')?layer.rowRemarks:{});
+      sheets.push({v:v});
+    }
+    var np=split?agentSplitCount(o,docType):1;
+    for(var j=0;j<np;j++){
+      var auto=agentHeader(o,docType,bare,split?j:null);
+      if(split&&!auto.edited.slip)auto.slip=auto.slip+'-'+(j+1);
+      autos.push(auto);
+    }
+    agentPick[1](null);
+    docEditModal[1]({agent:true,order:o,docType:docType,sheets:sheets,autos:autos,tab:0});
+  }
+  function agentDocEditEntry(m0){
+    function one(v){
+      var x={};
+      AGENT_H_KEYS.forEach(function(k){var t=String(v[k]==null?'':v[k]).trim();if(t)x[k]=t;});
+      if(v.notesOff)x.notesOff='1';
+      if(v.rowRemarks&&Object.keys(v.rowRemarks).length)x.rowRemarks=Object.assign({},v.rowRemarks);
+      return x;
+    }
+    var sh=m0.sheets||[];
+    if(sh.length<=1)return one((sh[0]||{}).v||{});
+    var map={};
+    sh.forEach(function(s2,k){var de=one(s2.v||{});if(Object.keys(de).length)map[String(k)]=de;});
+    return Object.keys(map).length?{sheets:map}:{};
+  }
   /* v20.13: 入金確認のチェック（納品完了タブ・前払いの案件のステータス欄で共通。中身は v19.07〜v19.08 のまま） */
   function paidBox(o){
                 var nInv=invSplitCount(o),pm=paidSheetsOf(o);
@@ -18695,123 +18826,175 @@ function OrdersPage(p){
         })
       )
     ):null,
-    /* ===== v20.13: 🏷 代理店帳票（4社の案件。見積書・請求書・納品書・物品受領書を代理店の様式で） ===== */
+    /* ===== v20.13: 🏷 代理店帳票（4社の案件。見積書・請求書・納品書・物品受領書を代理店の様式で） =====
+       v20.14（2026-11-18 ユーザー「代理店帳票ボタンを押した後の画面を通常の帳票と同一仕様に」）:
+       並び・ボタンは「📄帳票」と同じ（帳票ごとの印刷／請求書を分ける・1枚ずつ／✎ 記載内容の手修正。見積書は見積書作成画面） */
     agentPick[0]?(function(){
       var o=liveOrder(agentPick[0])||agentPick[0];
       var fk=agentFmtOf(o);if(!fk)return null;
       var F=AGENT_FMTS[fk];
-      var dts=docsForStatus(o.status,o).filter(function(t){return AGENT_DOC_TYPES.indexOf(t)>=0;});
+      var dts=['quote','invoice','receipt','delivery'].filter(function(t){return docsForStatus(o.status,o).indexOf(t)>=0;});
       var af=null,lec=null;try{af=agentQuoteRows(o);lec=buildQuoteRows(o);}catch(e){}
       var eu=o.endUser||{};
-      return h(Modal,{show:true,title:'🏷 代理店帳票の出力 — '+o.no,w:520,onClose:function(){agentPick[1](null);},
+      var c0=CUSTS.find(function(x){return x.id===o.cid;});
+      var DESC={quote:'この案件の内容で'+F.short+'の様式の御見積書を出します（エンドユーザー宛）',
+        invoice:'請求日は案件の納品予定日。'+F.short+'の振込先・支払案内付き',
+        receipt:'受領欄付き（'+F.short+'の様式）。内容をご確認いただく帳票です',
+        delivery:'納品日は案件の納品予定日'};
+      function pr(html){if(!openPrintWindow(html))p.toast('ポップアップを許可してください');}
+      var ROW={display:'flex',alignItems:'center',gap:4,flexWrap:'wrap',margin:'-2px 0 10px 10px'};
+      return h(Modal,{show:true,title:'🏷 代理店帳票の出力 — '+o.no,w:460,onClose:function(){agentPick[1](null);},
         footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},h('button',{className:'btn btn-ol',onClick:function(){agentPick[1](null);}},'閉じる'))},
         h('div',{style:{padding:4}},
-          h('div',{style:{fontSize:11,lineHeight:1.7,marginBottom:8,padding:'6px 10px',background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:6}},
+          h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8,lineHeight:1.7}},
+            c0?c0.name:'',h('br'),'出したい帳票を選ぶと印刷用のウィンドウが開きます。',
+            h('br'),h('span',{style:{color:'#975a16'}},'※ステータス「'+stLabel(o.status)+'」の案件で出せるのは '
+              +(dts.length?dts.map(function(t){return AGENT_DOC_LABELS[t];}).join('・'):'ありません')+(dts.length?' です。':'。'))),
+          h('div',{style:{fontSize:10,lineHeight:1.7,marginBottom:8,padding:'6px 10px',background:'#FFF7ED',border:'1px solid #FDBA74',borderRadius:6}},
             h('b',null,F.name),' の様式でエンドユーザー宛に出します。',h('br'),
-            '宛先: ',eu.name?h('b',null,eu.name+' 御中'):h('span',{style:{color:'#c53030',fontWeight:700}},'エンド納品先が未入力です（✎ 手修正で宛名を入れてください）'),h('br'),
+            '宛先: ',eu.name?h('b',null,eu.name+' 御中'):h('span',{style:{color:'#c53030',fontWeight:700}},'エンド納品先が未入力です（見積書作成画面か ✎ 記載内容の手修正で宛名を入れてください）'),h('br'),
             af?h('span',null,'金額（税込）: 代理店帳票 ',h('b',{'data-agenttotal':o.no},'¥'+fm(af.total)),
               lec?h('span',{style:{color:'var(--g500)'}},'　（今の帳票 ¥'+fm(lec.subtotal+Math.floor(lec.subtotal*0.1))+'）'):null):null,
-            h('div',{style:{fontSize:9,color:'var(--g500)'}},'代理店値引きを除き、ロッカー本体の単価は×1.1（100円未満切り上げ）。製品名称は'+F.short+'の名称です。')),
-          dts.length?null:h('div',{style:{fontSize:11,color:'var(--g500)'}},'このステータスで出せる代理店帳票はありません。'),
+            h('div',{style:{fontSize:9,color:'var(--g500)'}},'代理店値引きを除き、ロッカー本体の単価は×1.1（100円未満切り上げ）。製品名称は'+F.short+'の名称です。今の帳票の手修正は引き継ぎ、ここで直した所は代理店帳票だけに効きます。')),
           dts.map(function(t){
-            return h('div',{key:t,style:{marginBottom:8}},
-              h('button',{className:'btn','data-agentprint':t,style:{display:'block',width:'100%',textAlign:'left',padding:'7px 10px',marginBottom:3},
-                onClick:function(){if(!openPrintWindow(agentDocAllHTML(liveOrder(o)||o,t)))p.toast('ポップアップを許可してください');}},
-                h('div',{style:{fontWeight:700,fontSize:12,color:'#9A3412'}},'🏷 '+agentDocTitle(fk,t)+'（'+F.short+'）'+(agentSplitCount(o,t)>1?'（全'+agentSplitCount(o,t)+'枚）':''))),
-              /* v20.13: 代理店帳票の請求書・納品書も分けられる（設定は請求書の所の1か所。納品書は従う） */
-              (t==='invoice'||t==='delivery')?h('div',{style:{display:'flex',gap:4,alignItems:'center',flexWrap:'wrap',margin:'0 0 4px 10px'}},
+            var n=agentSplitCount(o,t),multi=n>1;
+            return h('div',{key:t},
+              h('button',{className:'btn','data-agentprint':t,style:{display:'block',width:'100%',textAlign:'left',marginBottom:5,padding:'7px 10px'},
+                onClick:function(){pr(agentDocAllHTML(liveOrder(o)||o,t));}},
+                h('div',{style:{fontWeight:700,fontSize:12,color:'#9A3412'}},'🏷 '+agentDocTitle(fk,t)+'（'+F.short+'）'+(multi?'（全'+n+'枚）':'')),
+                h('div',{style:{fontSize:9,color:'var(--g500)',fontWeight:400,whiteSpace:'normal',lineHeight:1.5}},
+                  multi?((t==='invoice'?'請求を ':'請求書に合わせて ')+n+' 枚に分けています。押すと全'+n+'枚をまとめて印刷します'):DESC[t])),
+              /* 請求書を分ける／1枚ずつ（今の帳票と同じ。設定は請求書の所の1か所で、納品書は従う） */
+              (t==='invoice'||t==='delivery')?h('div',{style:ROW},
                 t==='invoice'?h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},'data-agentsplit':'1',
                   title:'エンドユーザーの予算などで請求を分けます（金額は代理店帳票の金額）。納品書も同じ分け方になります',
                   onClick:function(){var sp=agentInvSplitOf(o);agentPick[1](null);invSplitModal[1]({no:o.no,agent:true,n:sp.n,alloc:JSON.parse(JSON.stringify(sp.alloc||{}))});}},
-                  '🧾 請求書を分ける'+(agentSplitCount(o,t)>1?'（現在 '+agentSplitCount(o,t)+'枚）':'')):
-                  h('span',{style:{fontSize:9,color:'var(--g500)'}},'※請求書の分け方に合わせて分かれます'),
+                  '🧾 請求書を分ける'+(multi?'（現在 '+n+'枚）':''))
+                :h('span',{style:{fontSize:9,color:'var(--g500)'}},multi?'※請求書の分け方に合わせて '+n+' 枚に分かれます（項目は請求書と同じ）':'※請求書を分けると、納品書も同じ分け方で分かれます'),
                 (t==='invoice'&&!agentInvSplitOf(o).own&&o.invSplit&&invSplitCount(o)>1)?h('span',{style:{fontSize:9,color:'#0E7490'}},'今の請求書の分け方を引き継ぎ中'):null,
-                agentSplitCount(o,t)>1?[h('span',{key:'h',style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:')].concat(Array.apply(null,{length:agentSplitCount(o,t)}).map(function(_,ii){
-                  return h('button',{key:'s'+ii,className:'btn btn-xs','data-agentsheet':t+ii,onClick:function(){var r=agentDocHTML(liveOrder(o)||o,t,null,ii);if(!openPrintWindow(r.html))p.toast('ポップアップを許可してください');}},(ii+1)+'枚目');
+                multi?[h('span',{key:'h',style:{fontSize:9,fontWeight:700,color:'var(--g500)'}},'1枚ずつ:')].concat(Array.apply(null,{length:n}).map(function(_,ii){
+                  return h('button',{key:'s'+ii,className:'btn btn-xs','data-agentsheet':t+ii,title:(ii+1)+'枚目だけを出します',onClick:function(){pr(agentDocHTML(liveOrder(o)||o,t,null,ii).html);}},(ii+1)+'枚目');
                 })):null):null,
-              h('div',{style:{display:'flex',gap:6,alignItems:'center',marginLeft:10}},
-                h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},'data-agentedit':t,
-                  title:'宛先・件名・日付・番号・備考と、明細の品名・単価・備考を手修正します（今の帳票の手修正は引き継ぎ、ここで直した所だけ代理店帳票に効きます）',
-                  onClick:function(){openAgentEdit(o,t);}},'✎ 記載内容・明細の手修正'),
-                (o.agentDoc&&o.agentDoc.h&&o.agentDoc.h[t]&&Object.keys(o.agentDoc.h[t]).length)?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null));
-          }),
-          (o.agentDoc&&o.agentDoc.rows&&Object.keys(o.agentDoc.rows).length)?h('div',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'明細の手修正あり（'+Object.keys(o.agentDoc.rows).length+'行・4帳票共通）'):null
+              /* 見積書＝見積書作成画面（在庫確認・見積の見積書作成画面と同じ形）。他の3つ＝✎ 記載内容の手修正（今の帳票と同じ画面） */
+              h('div',{style:ROW},
+                t==='quote'
+                ?h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},'data-agentedit':'quote',
+                    title:'件名・宛先・納期・有効期限・支払条件・明細（品名・構成表記・単価・備考）・備考を直します。直した内容は代理店帳票の請求書・納品書・物品受領書にも反映されます',
+                    onClick:function(){openAgentQuote(o);}},'✎ 見積書作成画面（明細・単価・件名・備考など）')
+                :h('button',{className:'btn btn-xs btn-ol',style:{fontWeight:700},'data-agentedit':t,
+                    title:AGENT_DOC_LABELS[t]+'の記載内容（宛先・件名・日付・番号・明細の備考・備考など）を手修正します',
+                    onClick:function(){openAgentDocEdit(o,t);}},'✎ 記載内容の手修正'),
+                hasAgentDocType(o,t)?h('span',{style:{fontSize:9,color:'#975a16',fontWeight:700}},'手修正あり'):null,
+                (t==='delivery'&&hasAgentDocType(o,'invoice'))?h('span',{style:{fontSize:9,color:'#0E7490',fontWeight:700}},'請求書の手修正を反映'):null,
+                (t!=='quote'&&hasAgentDocType(o,'quote'))?h('span',{style:{fontSize:9,color:'#0E7490'}},'見積書の手修正を反映'):null));
+          })
         ));
     })():null,
-    agentEdit[0]?(function(){
-      var m=agentEdit[0];
+    /* ===== v20.14: 代理店帳票の見積書作成画面（在庫確認・見積の「見積書作成」と同じ形: 上に直接編集・下にプレビューと粗利計算表） =====
+       ★直した内容は即プレビューに出て保存される（見積書作成画面と同じ）。保存先 order.agentDoc.h.quote と order.agentDoc.rows。
+       ★件名・宛先・支払条件・備考・明細は代理店帳票の請求書・納品書・物品受領書にも反映される（その帳票で手修正した項目を除く）。 */
+    agentQ[0]?(function(){
+      var m=agentQ[0];
       var o=ORDERS.find(function(x){return x.no===m.no;});
       if(!o)return null;
-      var fk=agentFmtOf(o)||'global',t=m.tab;
-      var ad=agentEditAd(m);
-      var auto=agentHeader(o,t,{}).auto;
-      var baseRows=[];try{baseRows=agentQuoteRows(o,{}).rows;}catch(e){}
-      var prev=null;try{prev=agentDocHTML(o,t,ad);}catch(e){prev={html:'<p>プレビューを作れませんでした: '+String(e)+'</p>',subtotal:0,rows:[]};}
+      var fk=agentFmtOf(o)||'global',F=AGENT_FMTS[fk];
+      var a=agentHeader(o,'quote',{}).auto;
+      var baseRows=[],curRows=[];try{baseRows=agentQuoteRows(o,{}).rows;curRows=agentQuoteRows(o).rows;}catch(e){}
+      var prev=null;try{prev=agentDocHTML(o,'quote');}catch(e){prev={html:'<p>プレビューを作れませんでした: '+String(e)+'</p>'};}
       var gp=null;try{gp=calcGrossProfit(o);}catch(e){}
-      var ship=0;(prev.rows||[]).forEach(function(r){if(r.rkey==='SHIP')ship+=parseInt(r.amount)||0;});
-      var sell=(prev.subtotal||0)-ship,cost=gp&&gp.hasCost?Math.round(gp.total.cost||0):null;
-      function setH(k,v){var hh=Object.assign({},m.h);hh[t]=Object.assign({},hh[t]||{});hh[t][k]=v;agentEdit[1](Object.assign({},m,{h:hh}));}
-      function setR(rk,k,v){var rr=Object.assign({},m.rows);rr[rk]=Object.assign({},rr[rk]||{});rr[rk][k]=v;agentEdit[1](Object.assign({},m,{rows:rr}));}
-      function save(andPrint){
-        if(FREE_RO_){p.toast(FREE_RO_MSG);return;}
-        var o2=liveOrder(o)||o;
-        var a2=agentDocClean(m.h,m.rows,(o2.agentDoc||{}).invSplit);
-        if(a2)o2.agentDoc=a2;else delete o2.agentDoc;
-        saveAll();
-        freeEditBroadcast(p.userName||'',o2.no+' 代理店帳票を手修正',o2.no);
-        p.toast(a2?'代理店帳票の手修正を保存しました':'手修正なし（自動の内容のまま）');
-        agentEdit[1](null);p.bump&&p.bump();
-        if(andPrint){var r=agentDocHTML(o2,t);if(!openPrintWindow(r.html))p.toast('ポップアップを許可してください');}
+      function close(){agentQFlush(m.no);agentQ[1](null);p.bump&&p.bump();}
+      function setH(k,v){var hh=Object.assign({},m.h);hh[k]=v;agentQSet(Object.assign({},m,{h:hh}));}
+      function setFree(k,on){var f=Object.assign({},m.free||{});if(on)f[k]=true;else delete f[k];return f;}
+      function setR(rk,k,v){var rr=Object.assign({},m.rows);rr[rk]=Object.assign({},rr[rk]||{});rr[rk][k]=v;agentQSet(Object.assign({},m,{rows:rr}));}
+      function resetR(rk){var rr=Object.assign({},m.rows);delete rr[rk];agentQSet(Object.assign({},m,{rows:rr}));}
+      var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
+      function fld(k,label,style){
+        return h('div',{style:style||null},h('label',{style:EL},label),
+          h('input',{className:'inp','data-agentq':k,value:m.h[k]||'',placeholder:String(a[k]||''),onChange:function(e){setH(k,e.target.value);}}));
       }
-      var TH={fontSize:9,fontWeight:700,color:'var(--g500)',textAlign:'left',padding:'2px 4px',borderBottom:'1px solid var(--g200)',whiteSpace:'nowrap'};
-      var TD={fontSize:10,padding:'2px 4px',borderBottom:'1px solid var(--g100)',verticalAlign:'top'};
-      return h(Modal,{show:true,w:1240,title:'✎ 代理店帳票の手修正 — '+o.no+'（'+AGENT_FMTS[fk].short+'）',onClose:function(){agentEdit[1](null);},
-        footer:h('div',{style:{display:'flex',gap:6,justifyContent:'flex-end'}},
-          h('button',{className:'btn btn-ol',onClick:function(){agentEdit[1](null);}},'閉じる'),
-          h('button',{className:'btn btn-ol',style:{color:'#c53030'},title:'代理店帳票の手修正（4帳票・明細）をすべて消して自動の内容に戻します（入力欄を空にするだけ。保存で確定）',
-            onClick:function(){agentEdit[1](Object.assign({},m,{h:{},rows:{}}));}},'すべて自動に戻す'),
-          h('button',{className:'btn btn-rd','data-agentsave':'1',onClick:function(){save(false);}},'保存'),
-          h('button',{className:'btn btn-nv',onClick:function(){save(true);}},'保存して印刷'))},
-        h('div',{style:{display:'flex',gap:12,alignItems:'flex-start'}},
-          h('div',{style:{flex:'0 0 430px',maxHeight:'72vh',overflowY:'auto'}},
-            h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:6,lineHeight:1.6}},
-              '空欄＝自動（今の帳票の内容・手修正を引き継いだ値）。ここで直した所は代理店帳票だけに効き、今の帳票は変わりません。'),
-            h('div',{style:{display:'flex',gap:2,marginBottom:6,borderBottom:'1px solid var(--g200)'}},
-              AGENT_DOC_TYPES.map(function(dt){
-                var on=dt===t;
-                return h('button',{key:dt,className:'btn btn-xs '+(on?'btn-nv':'btn-ol'),'data-agenttab':dt,onClick:function(){agentEdit[1](Object.assign({},m,{tab:dt}));}},
-                  AGENT_DOC_LABELS[dt]+((m.h[dt]&&Object.keys(m.h[dt]).some(function(k){return String(m.h[dt][k]||'')!=='';}))?' ✎':''));
-              })),
-            h('div',{style:{fontSize:11,fontWeight:700,margin:'4px 0'}},AGENT_DOC_LABELS[t]+'の記載内容'),
-            agentDocKeys(t).map(function(k){
-              var v=(m.h[t]&&m.h[t][k])||'';
-              var isTa=k==='notes';
-              return h('label',{key:k,style:{display:'flex',gap:6,alignItems:isTa?'flex-start':'center',marginBottom:3,fontSize:10}},
-                h('span',{style:{width:84,flex:'0 0 84px',color:'var(--g600)'}},AGENT_H_LABELS[k]),
-                h(isTa?'textarea':'input',{className:'inp','data-agenth':k,style:{flex:1,fontSize:11,minHeight:isTa?60:undefined},value:v,placeholder:String(auto[k]||''),
-                  onChange:function(e){setH(k,e.target.value);}}));
-            }),
-            h('div',{style:{fontSize:11,fontWeight:700,margin:'10px 0 4px'}},'明細（4帳票で共通）'),
-            h('table',{style:{width:'100%',borderCollapse:'collapse'}},
-              h('thead',null,h('tr',null,h('th',{style:TH},'品名'),h('th',{style:TH},'単価'),h('th',{style:TH},'備考'))),
-              h('tbody',null,baseRows.map(function(r){
-                var ov=m.rows[r.rkey]||{};
-                return h('tr',{key:r.rkey},
-                  h('td',{style:TD},h('input',{className:'inp','data-agentrow':r.rkey+':name',style:{width:'100%',fontSize:10},value:ov.name||'',placeholder:r.name,title:r.name,onChange:function(e){setR(r.rkey,'name',e.target.value);}})),
-                  h('td',{style:Object.assign({},TD,{width:86})},agentRowPriceEditable(r)
-                    ?h('input',{className:'inp','data-agentrow':r.rkey+':price',style:{width:82,fontSize:10,textAlign:'right'},value:ov.price==null?'':ov.price,placeholder:fm(r.price),
-                        title:r.lecPrice!=null?('今の帳票の単価 ¥'+fm(r.lecPrice)+' ×1.1 → ¥'+fm(r.price)):'',onChange:function(e){setR(r.rkey,'price',e.target.value.replace(/[^\d\-]/g,''));}})
-                    :h('span',{style:{fontSize:9,color:'var(--g400)'}},r.amount?('¥'+fm(r.amount)):'')),
-                  h('td',{style:Object.assign({},TD,{width:110})},h('input',{className:'inp',style:{width:106,fontSize:9},value:ov.remark==null?'':ov.remark,placeholder:r.remark||'',onChange:function(e){setR(r.rkey,'remark',e.target.value);}})));
-              }))),
-            h('div',{style:{marginTop:10,padding:'6px 8px',background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6,fontSize:10}},
-              h('b',{style:{color:'#276749'}},'📊 粗利（代理店帳票の金額・送料を除く）'),h('br'),
-              '売価 ¥'+fm(sell)+'　原価 '+(cost==null?'未設定':'¥'+fm(cost))+(cost==null?'':'　粗利 ¥'+fm(sell-cost)+(sell>0?'（'+Math.round((sell-cost)/sell*1000)/10+'%）':'')),
-              h('div',{style:{color:'var(--g500)',fontSize:9}},'税抜合計 ¥'+fm(prev.subtotal||0)+'（送料 ¥'+fm(ship)+' を含む）／税込 ¥'+fm(prev.total||0)+'。'+(agentSalesApplies(o)?'案件管理の原価欄・売上集計もこの金額で計算します。':'（'+AGENT_SALES_FROM+' より前の案件のため、原価欄・売上集計は今の帳票の金額のままです）')))
-          ),
-          h('div',{style:{flex:1,minWidth:0}},
-            h('div',{style:{fontSize:10,fontWeight:700,marginBottom:4}},'📄 プレビュー（'+agentDocTitle(fk,t)+'・入力内容がそのまま反映されます）'),
-            h('iframe',{'data-agentpreview':t,srcDoc:prev.html,style:{width:'100%',height:'72vh',border:'1px solid var(--g200)',background:'#e8e8e8'}}))
+      /* プルダウン（選択肢は見積書作成画面と同じ）＋自由入力。先頭の「自動」は今の見積書の値 */
+      function selF(label,k,list){
+        var cur=m.h[k]||'',free=!!(m.free||{})[k]||(cur!==''&&list.indexOf(cur)<0);
+        return h('div',null,h('label',{style:EL},label),
+          h('select',{className:'inp','data-agentqsel':k,value:free?'__free':cur,onChange:function(e){
+            var v=e.target.value,hh=Object.assign({},m.h);
+            if(v==='__free'){hh[k]='';agentQSet(Object.assign({},m,{h:hh,free:setFree(k,true)}));}
+            else{hh[k]=v;agentQSet(Object.assign({},m,{h:hh,free:setFree(k,false)}));}
+          }},
+            h('option',{value:''},'（自動: '+(a[k]||'なし')+'）'),
+            list.map(function(x){return h('option',{key:x,value:x},x);}),
+            h('option',{value:'__free'},'（自由入力）')),
+          free?h('input',{className:'inp','data-agentq':k,style:{marginTop:3},value:cur,placeholder:'直接入力',onChange:function(e){setH(k,e.target.value);}}):null);
+      }
+      var TH={fontSize:8,fontWeight:700,color:'var(--g500)',textAlign:'left',padding:'2px 4px',borderBottom:'1px solid var(--g200)',whiteSpace:'nowrap'};
+      var TD={fontSize:9,padding:'2px 4px',borderBottom:'1px solid var(--g100)',verticalAlign:'top'};
+      var thS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,background:'#f5f7fa',fontWeight:700};
+      var tdS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,textAlign:'right'};
+      var nEd=Object.keys(m.rows||{}).length;
+      return h(Modal,{show:true,title:'見積書作成（🏷 代理店帳票・'+F.short+'） — '+o.no,w:900,onClose:close,
+        footer:h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},
+          h('button',{className:'btn btn-ol',onClick:close},'閉じる'),
+          h('button',{className:'btn btn-ol',style:{color:'#c53030'},'data-agentqreset':'1',title:'代理店帳票の見積書の手修正（記載内容・明細）を消して自動の内容に戻します',
+            onClick:function(){if(!confirm('代理店帳票の見積書の手修正（記載内容・明細）を消して自動の内容に戻しますか？\n（請求書・納品書・物品受領書で直した内容は残ります）'))return;agentQSet(Object.assign({},m,{h:{},rows:{},free:{}}));}},'自動の内容に戻す'),
+          h('button',{className:'btn btn-gn',style:{marginLeft:'auto'},'data-agentqprint':'1',onClick:function(){agentQFlush(m.no);if(!openPrintWindow(agentDocHTML(o,'quote').html))p.toast('ポップアップを許可してください');}},'見積書印刷'))},
+        h('div',{style:{padding:10}},
+          h('div',{className:'no-print',style:{marginBottom:8,padding:'6px 10px',borderRadius:6,fontSize:10,background:'#FFF7ED',border:'1.5px solid #FDBA74',color:'#9A3412'}},
+            h('div',{style:{fontWeight:700}},'🏷 代理店帳票（'+F.name+' の様式・エンドユーザー宛）の見積書です'),
+            h('div',{style:{marginTop:2,fontSize:9}},'ここで直した内容は代理店帳票だけに効きます（今の帳票は変わりません）。件名・宛先・支払条件・備考・明細は★代理店帳票の請求書・納品書・物品受領書にも自動で反映されます（その帳票で手修正した項目を除く）。'),
+            h('div',{style:{marginTop:2,fontSize:9}},'数量・行の追加や並べ替え・値引き・送料は今の見積書（在庫確認・見積の見積書作成画面）で直してください。代理店帳票にもそのまま反映されます。')),
+          h('div',{style:{marginBottom:10,padding:8,background:'#EFF6FF',border:'1px solid #93C5FD',borderRadius:6}},
+            h('div',{style:{fontSize:10,fontWeight:700,color:'var(--nv)',marginBottom:4}},'✎ 見積書の直接編集（変更は即プレビューに反映・保存されます。空欄＝自動）'),
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:4}},
+              fld('subject','件名（空欄で自動: 今の見積書の件名）'),fld('date','発行日'),fld('slip','見積番号')),
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:6,marginBottom:4}},
+              fld('toName','宛名（御中の前まで。空欄＝エンド納品先）'),fld('toPostal','〒')),
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:4}},
+              fld('toAddress','住所'),fld('toPhone','電話'),fld('toFax','FAX')),
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}},
+              selF('納期','dterm',QUOTE_OPTS.delivery||[]),selF('有効期限','validity',QUOTE_OPTS.expiry||[]),selF('支払条件','payTerms',PAY_TERMS_OPTS||[])),
+            h('div',{style:{marginBottom:4}},
+              h('label',{style:EL},'明細の行（品名・構成表記・単価・備考を直せます。空欄＝自動。本体の単価は今の帳票の単価×1.1（100円未満切り上げ）が自動）',
+                nEd?h('span',{style:{color:'#C2410C',fontWeight:700,marginLeft:6}},'✏ '+nEd+'行 手修正'):null),
+              h('div',{style:{maxHeight:300,overflowY:'auto',background:'#fff',border:'1px solid var(--g200)',borderRadius:4,padding:4}},
+                h('table',{style:{width:'100%',borderCollapse:'collapse'}},
+                  h('thead',null,h('tr',null,h('th',{style:TH},'#'),h('th',{style:TH},'品名'),h('th',{style:Object.assign({},TH,{textAlign:'right'})},'数量'),h('th',{style:TH},'単位'),
+                    h('th',{style:Object.assign({},TH,{textAlign:'right'})},'単価'),h('th',{style:Object.assign({},TH,{textAlign:'right'})},'金額'),h('th',{style:TH},'備考'),h('th',{style:TH},''))),
+                  h('tbody',null,baseRows.map(function(r,ri){
+                    var ov=m.rows[r.rkey]||{},cr=curRows.find(function(x){return x.rkey===r.rkey;})||r;
+                    var ed=Object.keys(ov).some(function(k){return String(ov[k]==null?'':ov[k])!=='';});
+                    var pe=agentRowPriceEditable(r);
+                    return h('tr',{key:r.rkey,'data-agentqrow':r.rkey,style:ed?{background:'#FFFBEB'}:null},
+                      h('td',{style:Object.assign({},TD,{color:'var(--g500)',width:16})},String(ri+1)),
+                      h('td',{style:TD},
+                        r.configNote?h('input',{className:'inp','data-agentrow':r.rkey+':cfg',style:{width:'100%',fontSize:8,marginBottom:2,color:'#475569'},value:ov.cfg||'',placeholder:r.configNote,title:'構成表記（品名の上の【…】）: '+r.configNote,onChange:function(e){setR(r.rkey,'cfg',e.target.value);}}):null,
+                        h('input',{className:'inp','data-agentrow':r.rkey+':name',style:{width:'100%',fontSize:9},value:ov.name||'',placeholder:r.name,title:r.name,onChange:function(e){setR(r.rkey,'name',e.target.value);}})),
+                      h('td',{style:Object.assign({},TD,{textAlign:'right',color:'var(--g500)',width:40})},r.qty===''||r.qty==null?'':fm(r.qty)),
+                      h('td',{style:Object.assign({},TD,{color:'var(--g500)',width:30})},r.unit||''),
+                      h('td',{style:Object.assign({},TD,{width:86})},pe
+                        ?h('input',{className:'inp','data-agentrow':r.rkey+':price',style:{width:82,fontSize:9,textAlign:'right',background:(ov.price!=null&&ov.price!=='')?'#FEF3C7':'#fff'},value:ov.price==null?'':ov.price,placeholder:fm(r.price),
+                            title:r.lecPrice!=null?('今の帳票の単価 ¥'+fm(r.lecPrice)+' ×1.1 → ¥'+fm(r.price)+'（空欄＝この金額）'):'空欄＝今の帳票の単価',onChange:function(e){setR(r.rkey,'price',e.target.value.replace(/[^\d\-]/g,''));}})
+                        :h('span',{style:{fontSize:8,color:'var(--g500)'}},r.price===''||r.price==null?'':'¥'+fm(r.price))),
+                      h('td',{style:Object.assign({},TD,{textAlign:'right',fontWeight:700,color:(parseInt(cr.amount)||0)<0?'#B91C1C':'var(--g600)',width:74})},cr.amount===''||cr.amount==null?'':'¥'+fm(cr.amount)),
+                      h('td',{style:Object.assign({},TD,{width:150})},h('input',{className:'inp','data-agentrow':r.rkey+':remark',style:{width:146,fontSize:9},value:ov.remark==null?'':ov.remark,placeholder:r.remark||'備考を入力',onChange:function(e){setR(r.rkey,'remark',e.target.value);}})),
+                      h('td',{style:Object.assign({},TD,{width:22})},ed?h('button',{className:'btn btn-xs btn-ol',style:{padding:'0 5px'},title:'この行を自動の内容に戻す',onClick:function(){resetR(r.rkey);}},'↺'):null));
+                  }))))),
+            h('div',null,h('label',{style:EL},'全体備考（空欄＝今の見積書の備考。改行できます）'),
+              h('textarea',{className:'inp','data-agentq':'notes',rows:3,style:{resize:'vertical',fontFamily:'inherit'},value:m.h.notes||'',placeholder:a.notes||'（備考なし）',onChange:function(e){setH('notes',e.target.value);}}))),
+          h('div',{style:{fontSize:10,fontWeight:700,marginBottom:4}},'📄 プレビュー（'+agentDocTitle(fk,'quote')+'・'+F.short+'）'),
+          h('iframe',{'data-agentpreview':'quote',srcDoc:prev.html,style:{width:'100%',height:'60vh',border:'1px solid var(--g200)',background:'#e8e8e8',marginBottom:10}}),
+          gp?h('div',{className:'no-print',style:{marginBottom:10,padding:8,background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:6}},
+            h('div',{style:{fontSize:10,fontWeight:700,color:'#276749',marginBottom:4}},'📊 粗利計算表（社内用・印刷されません）'),
+            h('table',{style:{borderCollapse:'collapse',width:'100%'}},
+              h('thead',null,h('tr',null,h('th',{style:thS},'区分'),h('th',{style:thS},'売価'),h('th',{style:thS},'原価'),h('th',{style:thS},'粗利'),h('th',{style:thS},'粗利率'))),
+              h('tbody',null,
+                h('tr',{key:'t'},h('td',{style:Object.assign({},tdS,{textAlign:'left'})},'今の帳票'),
+                  h('td',{style:tdS},'¥'+fm(Math.round(gp.total.sell))),
+                  h('td',{style:tdS},gp.hasCost?'¥'+fm(Math.round(gp.total.cost)):'未設定'),
+                  h('td',{style:tdS},gp.hasCost?'¥'+fm(Math.round(gp.total.sell-gp.total.cost)):'—'),
+                  h('td',{style:tdS},gp.hasCost&&gp.total.sell>0?(Math.round((gp.total.sell-gp.total.cost)/gp.total.sell*1000)/10+'%'):'—')),
+                agentGpRow(o,gp,tdS))),
+            h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:4}},'💡 売価は明細の金額合計（送料は含めない・値引きは差し引き済み）です。'
+              +(agentSalesApplies(o)?'案件管理の原価欄・売上集計は「代理店帳票」の行の金額で計算します。':'この案件は '+AGENT_SALES_FROM+' より前に作った案件のため、原価欄・売上集計は今の帳票の金額のままです。'))):null
         ));
     })():null,
     /* ===== v18.95 修正26③: 請求書を複数枚に分ける設定モーダル =====
@@ -19053,6 +19236,8 @@ function OrdersPage(p){
     })():null,
     docEditModal[0]?(function(){
       var m=docEditModal[0],isInv=m.docType==='invoice',isDel=m.docType==='delivery';
+      /* v20.14: 代理店帳票（m.agent）。項目・決まり（請求書→納品書・明細の備考・備考）は今の帳票と同じ。代理店の様式に無い項目（顧客コード・担当者・納品先・代表者名）は出さない */
+      var ag=!!m.agent,agF=ag?AGENT_FMTS[agentFmtOf(m.order)||'global']:null;
       /* v18.97 修正27⑥: 紙（シート）のタブ。請求書は紙ごとに入力値を持つ。納品書はプレビューだけ紙を切り替える */
       var nTab=(m.autos||[]).length||1,tab=Math.min(m.tab||0,nTab-1);
       var si=(m.sheets.length>1)?Math.min(tab,m.sheets.length-1):0;
@@ -19081,13 +19266,20 @@ function OrdersPage(p){
             onChange:function(e){var o={};o[k]=e.target.value;setV(o);}}));
       }
       return h(Modal,{show:true,w:900,
-        title:'✎ '+(DOC_TYPE_LABELS[m.docType]||'帳票')+'の記載内容 — '+m.order.no,
+        title:'✎ '+(DOC_TYPE_LABELS[m.docType]||'帳票')+'の記載内容'+(ag?'（🏷 代理店帳票・'+agF.short+'）':'')+' — '+m.order.no,
         onClose:function(){docEditModal[1](null);},
         footer:h('div',{style:{display:'flex',gap:6}},
           h('button',{className:'btn btn-ol',onClick:function(){docEditModal[1](null);}},'キャンセル'),
           h('button',{className:'btn btn-ol',title:'この帳票の手修正を消して自動値に戻す',onClick:function(){
             if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
             var o3=liveOrder(m.order)||m.order;
+            if(ag){
+              if(!hasAgentDocType(o3,m.docType)){docEditModal[1](null);return;}
+              var a3=agentDocWith(o3,m.docType,null);if(a3)o3.agentDoc=a3;else delete o3.agentDoc;
+              saveAll();
+              freeEditBroadcast(p.userName||'',o3.no+' 代理店帳票の'+(DOC_TYPE_LABELS[m.docType]||'')+'の手修正をクリア',o3.no);
+              p.toast('手修正をクリアしました（自動値に戻ります）');docEditModal[1](null);p.bump&&p.bump();return;
+            }
             if(!hasDocEdit(o3,m.docType)){docEditModal[1](null);return;}
             var map=Object.assign({},o3.docEdit||{});delete map[m.docType];
             if(Object.keys(map).length)o3.docEdit=map;else delete o3.docEdit;
@@ -19097,6 +19289,14 @@ function OrdersPage(p){
           }},'自動値に戻す'),
           h('button',{className:'btn btn-rd',onClick:function(){
             if(FREE_RO_){p.toast(FREE_RO_MSG);return;}/* v19.100 */
+            if(ag){
+              var o4=liveOrder(m.order)||m.order,en=agentDocEditEntry(m);
+              var a4=agentDocWith(o4,m.docType,Object.keys(en).length?en:null);if(a4)o4.agentDoc=a4;else delete o4.agentDoc;
+              saveAll();
+              freeEditBroadcast(p.userName||'',o4.no+' 代理店帳票の'+(DOC_TYPE_LABELS[m.docType]||'')+'を手修正',o4.no);
+              p.toast(hasAgentDocType(o4,m.docType)?'手修正を保存しました（代理店帳票の'+(DOC_TYPE_LABELS[m.docType]||'')+'の出力に反映されます）':'手修正なし（自動値のまま）');
+              docEditModal[1](null);p.bump&&p.bump();return;
+            }
             var o2=applyDocEdit(m);
             saveAll();
             freeEditBroadcast(p.userName||'',o2.no+' '+(DOC_TYPE_LABELS[m.docType]||'')+'を手修正',o2.no);
@@ -19106,7 +19306,8 @@ function OrdersPage(p){
         )},
         h('div',null,
           h('div',{style:{fontSize:10,color:'var(--g500)',marginBottom:8}},
-            '空欄の項目は自動値（案件・顧客の情報）が使われます。入力した内容は案件に保存され、全端末で共有されます。',
+            ag?h('div',{style:{color:'#9A3412',fontWeight:700,marginBottom:2}},'🏷 代理店帳票（'+agF.name+' の様式）の手修正です。今の帳票は変わりません。空欄の項目は自動値（今の帳票の内容・手修正と、代理店帳票の見積書作成画面で直した内容）が使われます。'):null,
+            ag?'入力した内容は案件に保存され、全端末で共有されます。':'空欄の項目は自動値（案件・顧客の情報）が使われます。入力した内容は案件に保存され、全端末で共有されます。',
             /* v18.97 修正27⑤⑦: 請求書の手修正は納品書にも反映される */
             isInv?h('span',{style:{color:'#975a16'}},'※請求書の手修正は★納品書にも自動で反映されます（納品書側で手修正していても請求書が優先。支払条件は請求書だけ）。')
             :isDel?h('span',{style:{color:'#975a16'}},'※請求書で手修正した項目は★請求書が優先され、ここでは変更できません（水色の欄）。それ以外の項目だけ納品書で手修正できます。')
@@ -19120,8 +19321,8 @@ function OrdersPage(p){
           ),
           /* v18.97 修正27⑧: 宛先（空欄＝顧客DBの内容） */
           h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-            fldD('toName','宛名（敬称まで。例: ○○株式会社 御中）',{flex:3}),
-            fldD('toCode','顧客コード',{flex:1})
+            fldD('toName',ag?'宛名（御中の前まで。空欄＝エンド納品先）':'宛名（敬称まで。例: ○○株式会社 御中）',{flex:3}),
+            ag?null:fldD('toCode','顧客コード',{flex:1})
           ),
           h('div',{style:{display:'flex',gap:4,marginBottom:6}},
             fldD('toPostal','〒',{flex:1}),
@@ -19133,17 +19334,17 @@ function OrdersPage(p){
           ),
           h('div',{style:{display:'flex',gap:4,marginBottom:6}},
             fldD('subject','件名',{flex:3}),
-            fldD('staff','担当者',{flex:1})
+            ag?null:fldD('staff','担当者',{flex:1})
           ),
           h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-            fldD('date',isInv?'請求日':'納品日',{flex:1}),
-            fldD('slip','伝票コード',{flex:1}),
+            fldD('date',isInv?'請求日':(m.docType==='receipt'&&ag?'発行日':'納品日'),{flex:1}),
+            fldD('slip',ag?'番号':'伝票コード',{flex:1}),
             isInv?fldD('delivery','納品日（出荷指示書の納品日時と同じ値が既定）',{flex:2}):null
           ),
           h('div',{style:{display:'flex',gap:4,marginBottom:6}},
-            fldD('dest','納品先（空欄=案件のエンド納品先。登録が無ければ記載しません）',{flex:3}),
+            ag?null:fldD('dest','納品先（空欄=案件のエンド納品先。登録が無ければ記載しません）',{flex:3}),
             /* v19.05: 請求書の紙には直接出なくなったが、下の支払期日の計算に使うので欄は残す */
-            isInv?fldD('payTerms','支払条件（紙には出ません。下の支払期日の計算に使います）',{flex:2}):null
+            isInv?fldD('payTerms',ag?'支払条件（下の支払期日の計算に使います。期日が日付でないときは振込の案内に出ます）':'支払条件（紙には出ません。下の支払期日の計算に使います）',{flex:2}):null
           ),
           /* v19.03 口頭依頼: 支払期日（振込先の下に出る）。空欄なら支払条件と請求日から自動計算した日付
              v19.04: 紙の見出しは値によって「支払期日」／「支払条件」に変わる（payDueLabelOf） */
@@ -19152,10 +19353,15 @@ function OrdersPage(p){
           ):null,
           /* v19.76（2026-11-05 依頼「各明細行の備考を修正」）: 明細の行ごとの備考。入っている文＝今の備考（見積書の明細の備考）。直すとこの帳票だけに効く */
           (function(){
-            var o0=m.order,rowsA;
+            var o0=m.order,rowsA,nSp=1;
             try{
-              var nSp=(invSplitApplies(m.docType)&&invSplitCount(o0)>1)?invSplitCount(o0):1;
-              rowsA=nSp>1?buildInvoiceSheets(o0).sheets[Math.min(tab,nSp-1)].rows:buildQuoteRows(o0).rows;
+              if(ag){/* v20.14: 代理店帳票の明細（見積書作成画面で直した内容込み） */
+                nSp=agentSplitCount(o0,m.docType);
+                rowsA=nSp>1?agentInvSheets(o0).sheets[Math.min(tab,nSp-1)].rows:agentQuoteRows(o0).rows;
+              }else{
+                nSp=(invSplitApplies(m.docType)&&invSplitCount(o0)>1)?invSplitCount(o0):1;
+                rowsA=nSp>1?buildInvoiceSheets(o0).sheets[Math.min(tab,nSp-1)].rows:buildQuoteRows(o0).rows;
+              }
             }catch(e){rowsA=[];}
             rowsA=(rowsA||[]).filter(function(r){return r&&r.rkey;});
             if(!rowsA.length)return null;
@@ -19181,15 +19387,15 @@ function OrdersPage(p){
           h('div',{style:{marginBottom:6}},
             h('label',{style:DLBL},'備考（空欄＝見積書の備考のまま。ここで直すとこの帳票だけに効きます。改行できます）'),
             h('textarea',{className:'inp','data-docnotes':'1',rows:4,style:{resize:'vertical',fontFamily:'inherit',background:v.notesOff?'var(--g100)':null},value:v.notes||'',
-              placeholder:(m.order&&m.order.notes)?(Array.isArray(m.order.notes)?m.order.notes.join('\n'):String(m.order.notes)):'（見積書の備考はありません）',disabled:!!v.notesOff,
+              placeholder:ag?(a.notes||'（見積書の備考はありません）'):(m.order&&m.order.notes)?(Array.isArray(m.order.notes)?m.order.notes.join('\n'):String(m.order.notes)):'（見積書の備考はありません）',disabled:!!v.notesOff,
               onChange:function(e){setV({notes:e.target.value});}}),
             h('div',{style:{display:'flex',gap:10,alignItems:'center',marginTop:2}},
               h('label',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,cursor:'pointer'}},
                 h('input',{type:'checkbox','data-docnotesoff':'1',checked:!!v.notesOff,onChange:function(e){setV({notesOff:e.target.checked?'1':''});}}),'この帳票には備考を載せない'),
-              (!v.notes&&!v.notesOff&&m.order&&m.order.notes)?h('button',{className:'btn btn-xs btn-ol','data-docnotescopy':'1',title:'見積書の備考を欄に写して、そこから直します',
-                onClick:function(){var on=m.order.notes;setV({notes:Array.isArray(on)?on.join('\n'):String(on)});}},'見積書の備考を写して直す'):null)),
-          /* v18.93 修正26⑤: 会社名の下の代表者名。既定は見積書作成画面のチェックを引き継ぐ */
-          h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
+              (!v.notes&&!v.notesOff&&(ag?!!a.notes:(m.order&&m.order.notes)))?h('button',{className:'btn btn-xs btn-ol','data-docnotescopy':'1',title:'見積書の備考を欄に写して、そこから直します',
+                onClick:function(){if(ag){setV({notes:a.notes||''});return;}var on=m.order.notes;setV({notes:Array.isArray(on)?on.join('\n'):String(on)});}},'見積書の備考を写して直す'):null)),
+          /* v18.93 修正26⑤: 会社名の下の代表者名。既定は見積書作成画面のチェックを引き継ぐ（v20.14: 代理店帳票には無い項目なので出さない） */
+          ag?null:h('div',{style:{marginBottom:8,padding:'6px 8px',background:'#fff',border:'1px solid var(--g200)',borderRadius:4}},
             h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:600,cursor:'pointer'}},
               h('input',{type:'checkbox',checked:(fromInv.showRep?!!a.showRep:!!v.showRep),disabled:!!(fromInv.showRep||fromInv.repName),onChange:function(e){setV({showRep:e.target.checked});}}),
               '会社名（株式会社LEC）の下に代表者名を表記する'),
@@ -19200,7 +19406,12 @@ function OrdersPage(p){
               '既定は見積書作成画面の設定（'+(m.order.showRepName?'表記する':'表記しない')+'）です。ここで変えるとこの帳票だけに効きます'+(isInv?'（納品書にも反映）':'')+'。')
           ),
           h('div',{style:{fontSize:11,fontWeight:700,margin:'10px 0 6px',borderBottom:'1px solid var(--g200)',paddingBottom:4}},'プレビュー'),
-          h(QuotePreview,{order:docEditPreviewOrder(m),docType:m.docType,hideTabs:true,invSheet:tab})
+          ag?(function(){
+            var lo=liveOrder(m.order)||m.order,en=agentDocEditEntry(m);
+            var pad=agentDocWith(lo,m.docType,Object.keys(en).length?en:null)||{};
+            var ph;try{ph=agentDocHTML(lo,m.docType,pad,agentSplitCount(lo,m.docType,pad)>1?tab:null).html;}catch(e){ph='<p>プレビューを作れませんでした: '+String(e)+'</p>';}
+            return h('iframe',{'data-agentpreview':m.docType,srcDoc:ph,style:{width:'100%',height:'70vh',border:'1px solid var(--g200)',background:'#e8e8e8'}});
+          })():h(QuotePreview,{order:docEditPreviewOrder(m),docType:m.docType,hideTabs:true,invSheet:tab})
         )
       );
     })():null,
