@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.23（代理店4社の旧方式の自動値引き行をやめる・前払いの欄に総金額）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.24（春先でもネジ・サイドジョイントを自動計算）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -4161,6 +4161,21 @@ function calcScrewNeeds(blocks,type,hasSide,sizeGrp){
    ネジ自動計上のライン別ゲート。台湾製・日本製Ver.1はネジ/サイドJ/目隠しの在庫取扱が無く（マイグレーションで
    キー自体は0で全ラインに存在するため、キー有無ではなく在庫量で判定）、無条件に自動計上すると
    在庫確認が全倉庫NG化するため、在庫を持つラインのみ自動入力する */
+/* ===== v20.24（2026-11-19 ユーザー「通常の画面と春先でネジ・サイドジョイントの自動計算が違う（春先はネジが自動計算されない）」→「直して」） =====
+   ネジ自動計上のライン別ゲートは「どこかの倉庫に在庫が1個以上あるか」（lineStocksPart）で判定していたため、
+   ★在庫が0から始まる春先（別の行 spring2027）では jp2・Sα でも「ネジを扱わない」と判定され、自動入力されなかった
+   （通常でも全倉庫の在庫が0になると止まる）。→ ネジを扱う製品ライン×部材を表で決める。
+   表は 2026-11-19 の通常在庫でネジがある組み合わせと同じ（通常画面の結果は変わらない）。表に無い製品ラインは従来どおり在庫で判定。 */
+var SCREW_LINE_KEYS={
+  jp2:['jointScrew_sml_bk','jointScrew_ss_bk','sj','capScrew_gy'],
+  sa:['jointScrew_sml_bk','capScrew_gy'],
+  tw:[],jp01:[]
+};
+function lineHandlesScrew(line,key){
+  var t=SCREW_LINE_KEYS[line];
+  if(t)return t.indexOf(key)>=0;
+  return lineStocksPart(line,key);
+}
 function lineStocksPart(line,key){
   var s=STK[line];if(!s)return false;
   return WH_IDS.some(function(w){
@@ -13933,7 +13948,7 @@ function InvPage(p){
   /* v18.33 要望①: サイズ別のネジ計算表（SML/SS・3S/XL/SSα）に準拠。sz変更でも再計算（依存配列にsz[0]既存） */
   var screwCalc=inputMode[0]==='grid'?calcScrewNeeds(blocks[0],tp[0],tp[0]==='personal'&&hasSideJt[0]&&ln[0]!=='sa',screwSizeGrp(sz[0])):null;
   /* ライン別在庫ゲート＋ゲート適用後の自動入力値（tw/jp01はネジ在庫の取扱なし→自動入力しない） */
-  var screwGates=screwCalc?{joint:lineStocksPart(ln[0],'jointScrew_'+sizeObj(sz[0]).grp+'_bk'),sj:lineStocksPart(ln[0],'sj'),cap:lineStocksPart(ln[0],'capScrew_gy')}:null;
+  var screwGates=screwCalc?{joint:lineHandlesScrew(ln[0],'jointScrew_'+sizeObj(sz[0]).grp+'_bk'),sj:lineHandlesScrew(ln[0],'sj'),cap:lineHandlesScrew(ln[0],'capScrew_gy')}:null;/* v20.24: 在庫の有無ではなく表で判定（春先でも自動計算） */
   var screwAuto=screwCalc?{joint:screwGates.joint?screwCalc.total.joint:0,sj:(tp[0]==='personal'&&screwGates.sj&&hasSideJt[0]&&ln[0]!=='sa')?screwCalc.total.sj:0,cap:screwGates.cap?screwCalc.total.cap:0}:null;
   /* v18.55 修正９⑥／v18.56 確認項目①: 上下ジョイントの表示用。
      常設タイプは上下ジョイントがそもそも不要なので、要・不要のチェックボックス自体を出さない（vjApplies=false）。
