@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.21（トレーニングの発注書番号を本番と別にする）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.22（案件修正で明細に見積書の手入力単価を出す）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -15229,18 +15229,32 @@ function InvPage(p){
         ),
         lines[0].length>0?h('div',{className:'card',style:{marginBottom:8}},
           h('div',{className:'chd'},h('h3',null,'明細 ('+lines[0].length+'件)')),
-          h('div',{style:{padding:5}},lines[0].map(function(l){
+          h('div',{style:{padding:5}},(function(){
+            /* v20.22（2026-11-19 ユーザー「QT-2026-363 を案件修正で見積画面に飛んだら（明細の単価が）初期値に戻っている」）:
+               見積書作成画面で手入力した単価（order.rowUnit['L'+明細id]）は見積書には引き継がれていたが、ここの明細は
+               明細そのものの単価（単価マスタの値）を出していたため、元に戻ったように見えた。
+               → 案件修正中はその案件の、コピー再発注はコピー元の手入力単価があれば、それを出す（明細のデータは変えない）。 */
+            var ruOrd=(function(){
+              var no=editingNo[0];
+              if(no){var q0=quoteOrder[0];if(q0&&q0.no===no)return q0;return ORDERS.find(function(x){return x.no===no;})||null;}
+              var rs=repeatSrcR.current;
+              try{if(rs&&rs.src&&repeatSrcFits({cid:cust&&cust.id,lines:lines[0]},rs))return rs.src;}catch(e){}
+              return null;
+            })();
+            return lines[0].map(function(l){
             var co=lineColorObj(l);/* v19.18 修正31②: 扉だけ別ラインの色も出す */
             var lo=LINES.find(function(x){return x.id===l.line;});
             if(l.isPartOnly){
+              var ruV=ruOrd?rowUnitOv(ruOrd,'L'+l.id):null,upV=ruV!=null?ruV:l.unitPrice,ruDiff=ruV!=null&&ruV!==(+l.unitPrice||0);
               return h('div',{className:'olc',key:l.id},
                 h('div',{style:{width:14,height:14,borderRadius:3,background:'var(--op)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:900}},'P'),
                 h('div',{style:{flex:1,fontSize:10}},
                   h('b',null,l.partLabel),
-                  h('div',{style:{fontSize:8,color:'var(--g400)'}},(lo?lo.mark+' ':'')+l.qty+(l.isDoor?'枚':(l.unit||'個'))+' @¥'+fm(l.unitPrice)),
+                  h('div',{style:{fontSize:8,color:'var(--g400)'}},(lo?lo.mark+' ':'')+l.qty+(l.isDoor?'枚':(l.unit||'個'))+' @¥'+fm(upV),
+                    ruDiff?h('span',{'data-rowunit':'1',style:{marginLeft:4,color:'#975a16',fontWeight:700},title:'見積書作成画面で手入力した単価です（単価マスタの単価 ¥'+fm(l.unitPrice)+'）'},'（見積書で手入力・マスタ¥'+fm(l.unitPrice)+'）'):null),
                   lineWhAvail(l)
                 ),
-                h('b',{style:{fontSize:10}},l.unitPrice>0?'¥'+fm(l.qty*l.unitPrice):''),
+                h('b',{style:{fontSize:10}},upV>0?'¥'+fm(l.qty*upV):''),
                 h('button',{className:'btn btn-xs btn-rd',onClick:function(){remLine(l.id);}},'✕')
               );
             }
@@ -15261,7 +15275,7 @@ function InvPage(p){
               h('b',{style:{fontSize:12}},fm(l.qty)+'台'),
               h('button',{className:'btn btn-xs btn-rd',onClick:function(){remLine(l.id);}},'✕')
             );
-          }))
+          });})())
         ):null,
         (lines[0].length>0||noProd[0])?h('div',{className:'card'},
           h('div',{className:'chd'},h('h3',null,'見積オプション')),
