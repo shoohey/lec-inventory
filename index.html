@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.20（ネーム用厚紙の単価マスタ名称の変更に追随）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.21（トレーニングの発注書番号を本番と別にする）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -20204,8 +20204,9 @@ function ykPOHTML(st){
   return s;
 }
 var YK_PO_DRAFT_KEY='lec_ykpo_draft';
-function ykPOLoadDraft(){try{var v=JSON.parse(localStorage.getItem(YK_PO_DRAFT_KEY)||'null');return (v&&typeof v==='object')?v:null;}catch(e){return null;}}
-function ykPOSaveDraft(v){try{localStorage.setItem(YK_PO_DRAFT_KEY,JSON.stringify(v));}catch(e){}}
+/* v20.21: 下書きも lsGet/lsSet 経由（トレーニング中の下書き・番号を本番のブラウザに残さない） */
+function ykPOLoadDraft(){try{var v=JSON.parse(lsGet(YK_PO_DRAFT_KEY)||'null');return (v&&typeof v==='object')?v:null;}catch(e){return null;}}
+function ykPOSaveDraft(v){try{lsSet(YK_PO_DRAFT_KEY,JSON.stringify(v));}catch(e){}}
 /* v19.67: 納品場所の変更（2026-10-29 ユーザー指示: 新柏倉庫は野田船形事業所・西村様宛）。下書きに古い文が残っていたら新しい文にする */
 function ykPODestFix(d){
   var t=String(d||'');
@@ -20220,6 +20221,10 @@ function YkPOPanel(p){
   var init=ur(null);
   if(!init.current){
     var d=ykPOLoadDraft()||{};
+    /* v20.21: 付け替えた番号（movedTo）の下書きは新しい番号へ */
+    if(d.no&&YK_PO_LIST[d.no]&&YK_PO_LIST[d.no].movedTo){var mv=YK_PO_LIST[d.no].movedTo;d=Object.assign({},d,{no:mv,uid:(YK_PO_LIST[mv]&&YK_PO_LIST[mv].uid)||d.uid});}
+    /* v20.21: 一覧に登録されていない番号の下書き（以前のトレーニングで進んだ番号など）は、一覧から数えた次の番号に振り直す */
+    if(d.no&&!(YK_PO_LIST[d.no]&&!YK_PO_LIST[d.no].del)&&!d.pdfAt){var nx=ykPONextNo(d.no);if(nx!==d.no)d=Object.assign({},d,{no:nx,uid:ykPOUid()});}
     var nm=String(p.userName||'').split('/').pop().trim();
     /* v19.69: 発注書番号。下書きに無ければ次の番号。一覧から開いた発注書は、その発注日のまま */
     init.current={no:d.no||ykPONextNo(null),uid:d.uid||ykPOUid(),date:(d.no&&d.date)?d.date:ykPOYmd(),subject:d.subject||'',dest:ykPODestFix(d.dest)||YK_PO_DEST_DEFAULT,
@@ -20466,8 +20471,9 @@ function ykPOUid(){return Date.now().toString(36)+Math.random().toString(36).sli
 /* 次の発注書番号。v19.70: YK-年-通し番号3桁（例 YK-2026-001。年が変わったら001から。ユーザー指定）
    一覧に使われた番号（削除済みも含む）の次。except は数えない番号 */
 function ykPONextNo(except,list){
-  var pre='YK-'+new Date().getFullYear()+'-',mx=0;
-  Object.keys(list||YK_PO_LIST||{}).forEach(function(k){if(k===except||k.indexOf(pre)!==0)return;var t=k.slice(pre.length);if(!/^\d+$/.test(t))return;var n=+t;if(n>mx)mx=n;});
+  var pre='YK-'+new Date().getFullYear()+'-',mx=0,L=list||YK_PO_LIST||{};
+  /* v20.21: movedTo＝別の番号へ付け替えた記録（トレーニングで進んだ番号の訂正）。欠番として数えない */
+  Object.keys(L).forEach(function(k){if(k===except||k.indexOf(pre)!==0||(L[k]&&L[k].movedTo))return;var t=k.slice(pre.length);if(!/^\d+$/.test(t))return;var n=+t;if(n>mx)mx=n;});
   return pre+String(mx+1).padStart(3,'0');
 }
 /* 画面の内容のうち一覧に残す部分（比べるときにも使う） */
@@ -21063,8 +21069,8 @@ function gpPOHTML(st){
 }
 /* ===== 一覧（全端末で共有） ===== */
 var GP_PO_DRAFT_KEY='lec_gppo_drafts';
-function gpPOLoadDrafts(){try{var v=JSON.parse(localStorage.getItem(GP_PO_DRAFT_KEY)||'null');return (v&&typeof v==='object')?v:{};}catch(e){return {};}}
-function gpPOSaveDraft(vid,st){try{var d=gpPOLoadDrafts();d[vid]=st;localStorage.setItem(GP_PO_DRAFT_KEY,JSON.stringify(d));}catch(e){}}
+function gpPOLoadDrafts(){try{var v=JSON.parse(lsGet(GP_PO_DRAFT_KEY)||'null');return (v&&typeof v==='object')?v:{};}catch(e){return {};}}
+function gpPOSaveDraft(vid,st){try{var d=gpPOLoadDrafts();d[vid]=st;lsSet(GP_PO_DRAFT_KEY,JSON.stringify(d));}catch(e){}}
 /* 発注書タブで選んでいる業者（YK＝八木熊） */
 function gpPOGetVendor(){try{var v=localStorage.getItem('lec_po_vendor')||'YK';return (v==='YK'||gpVendor(v))?v:'YK';}catch(e){return 'YK';}}
 function gpPOSetVendor(v){try{localStorage.setItem('lec_po_vendor',v);}catch(e){}}
@@ -21160,6 +21166,8 @@ function GpPOPanel(p){
   var vid=p.vendor,ven=gpVendor(vid)||{},init=ur(null);
   if(!init.current){
     var d=gpPOLoadDrafts()[vid],base=gpPODefaults(vid,p.userName);
+    /* v20.21: 一覧に登録されていない番号の下書きは次の番号に振り直す（YkPOPanel と同じ） */
+    if(d&&d.no&&!(GP_PO_LIST[d.no]&&!GP_PO_LIST[d.no].del)&&!d.pdfAt){var nx=gpPONextNo(vid,d.no);if(nx!==d.no)d=Object.assign({},d,{no:nx,uid:ykPOUid()});}
     var o=Object.assign({},base,d&&typeof d==='object'?gpPOStPart(d):{});
     if(!Array.isArray(o.lines)||!o.lines.length)o.lines=base.lines;
     if(!o.no)o.no=gpPONextNo(vid);if(!o.uid)o.uid=ykPOUid();
@@ -22393,8 +22401,8 @@ var IR_DRAFT_KEY='lec_ir_draft';
 var IR_TRUCKS=['2t','4t','10t','その他'];
 var IR_LOADS=['バラ積み','パレット積み','その他'];
 var IR_TIMES=['午前着','午後着','時間指定なし'];
-function irLoadDraft(){try{var v=JSON.parse(localStorage.getItem(IR_DRAFT_KEY)||'null');return (v&&typeof v==='object')?v:null;}catch(e){return null;}}
-function irSaveDraft(st){try{localStorage.setItem(IR_DRAFT_KEY,JSON.stringify(st));}catch(e){}}
+function irLoadDraft(){try{var v=JSON.parse(lsGet(IR_DRAFT_KEY)||'null');return (v&&typeof v==='object')?v:null;}catch(e){return null;}}
+function irSaveDraft(st){try{lsSet(IR_DRAFT_KEY,JSON.stringify(st));}catch(e){}}
 /* 発注書一覧を開いたときに入庫依頼書（一覧／作成画面）を出す */
 function irOpenTab(view){try{localStorage.setItem('lec_polist_tab','ir');localStorage.setItem('lec_ir_view',view||'list');}catch(e){}}
 function irDefaults(userName){return {no:'',uid:ykPOUid(),date:ykPOYmd(),wh:'',inDate:'',inTime:'',staff:gpStaffName(userName),note:'',blocks:[]};}
