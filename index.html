@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.25（本体の明細が2つ以上ならベース・上下ジョイントを明細ごとに見積書へ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.26（顧客の検索でエンド納品先もヒット）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -12534,6 +12534,17 @@ function importCustsAoa(aoa){
   return {added:added,updated:updated,skipped:skipped,invalid:invalid};
 }
 /* ========== CUSTOMER PAGE ========== */
+/* ===== v20.26（2026-11-19 ユーザー「顧客選択画面の検索boxでの検索の際に、代理店で登録してるエンド納品先もヒットするようにしてほしい」） =====
+   顧客（代理店など）の endUsers[].name（ひらがな・カタカナの違いも kanaNorm で吸収）に検索語を含むものを返す。
+   一致したエンド納品先は法人名の下に「🏫 エンド納品先: ○○」と出す。 */
+function custEuHits(c,q){
+  q=String(q||'').trim();if(!q||!c)return [];
+  var qn=kanaNorm(q);
+  return (c.endUsers||[]).filter(function(eu){
+    var n=String(eu&&eu.name||'');if(!n)return false;
+    return n.indexOf(q)>=0||(!!qn&&kanaNorm(n).indexOf(qn)>=0);
+  });
+}
 function CustPage(p){
   var sr=us(''),pf=us('all'),af=us('all'),showAdd=us(false),bump=us(0);
   /* v18.48 修正６③: 「弊社担当者」での絞り込み（'all'=全担当者 / '__none__'=未設定） */
@@ -12591,6 +12602,7 @@ function CustPage(p){
       var q=sr[0];
       var hit=(c.name||'').indexOf(q)>=0||(c.id||'').indexOf(q)>=0||(c.city||'').indexOf(q)>=0;
       if(!hit){var qn=kanaNorm(q);if(qn&&kanaNorm(c.kana).indexOf(qn)>=0)hit=true;}
+      if(!hit&&custEuHits(c,q).length)hit=true;/* v20.26: 代理店などに登録したエンド納品先の名前でもヒット */
       if(!hit)return false;
     }
     return true;
@@ -12868,7 +12880,7 @@ function CustPage(p){
           noSalesCount>0?h('option',{value:'__none__'},'（担当者なし）'):null
         ),
         /* v18.52 修正７①-4: フリガナでも検索できる（ひらがな入力・半角カナも可） */
-        h('input',{className:'inp',placeholder:'名前・フリガナ・ID・地域で検索…',value:sr[0],onChange:function(e){sr[1](e.target.value);},style:{width:200},title:'法人名・法人名フリガナ・顧客ID・市区町村で検索します（フリガナはひらがな入力でも可）'})
+        h('input',{className:'inp',placeholder:'名前・フリガナ・ID・地域・エンド納品先で検索…',value:sr[0],onChange:function(e){sr[1](e.target.value);},style:{width:240},title:'法人名・法人名フリガナ・顧客ID・市区町村・登録済みのエンド納品先の名前で検索します（フリガナはひらがな入力でも可）'})
       )
     ),
     /* v18.52 修正７②: 顧客コード欄に別の列の値（フリガナ・電話番号など）が入っている行の警告。
@@ -12916,7 +12928,10 @@ function CustPage(p){
           !isValidCustId(c.id)?h('span',{className:'bg bg-r',style:{marginLeft:4,fontSize:8},title:'顧客IDが不正です（取込元CSVの行崩れで別の列がずれ込んでいます）。編集から正しいIDへ直してください'},'ID異常'):null
         ),
         /* v18.52 修正７①-3: 法人名の下にフリガナを表示（検索対象にもなっている） */
-        h('td',null,c.name,c.kana?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},c.kana):null),
+        h('td',null,c.name,c.kana?h('div',{style:{fontSize:8,color:'var(--g400)',fontWeight:400}},c.kana):null,
+          /* v20.26: エンド納品先の名前で当たったときは、どのエンド納品先かを出す */
+          (function(){var eh=sr[0]?custEuHits(c,sr[0]):[];if(!eh.length)return null;
+            return h('div',{'data-euhit':c.id,style:{fontSize:9,color:'#0E7490',fontWeight:700,marginTop:1}},'🏫 エンド納品先: '+eh.slice(0,3).map(function(e){return e.name;}).join('・')+(eh.length>3?' ほか'+(eh.length-3)+'件':''));})()),
         /* ===== v18.88 修正24①②: 顧客一覧の 属性／〒／TEL =====
            ① 「温浴施設」など4文字の属性が折り返して2行になっていた → nowrap で1行に固定。
            ② フォントが 9px で他の列（.tbl td = 15px）より小さかった → 指定を外して他の列と揃える。 */
