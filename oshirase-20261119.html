@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月19日の更新のお知らせ（v20.21〜v20.26）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>見積書のベース・上下ジョイントを明細ごとに<br>顧客検索でエンド納品先もヒット ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v20.26</span>
+      <span>2026年11月19日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました（11月19日の更新分 v20.21〜v20.26）。<b>本体の明細を2つ以上入れた案件は、見積書のベース・上下ジョイントが明細ごとに分かれて出るようになりました。</b></p>
+    <p>見積を作る方は<b>1番〜4番</b>、顧客を選ぶ・入金を確認する方は<b>5番・6番</b>、八木熊の発注書を作る方は<b>7番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v20.26</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>開いたままの画面も、必ず一度再読み込みしてください。</b><br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">本体の明細が2つ以上なら、ベース・上下ジョイントを明細ごとに記載</a><span class="tag">重要</span></li>
+      <li><a href="#s2">案件修正・コピー再発注で、明細に手入力の単価が出ます</a></li>
+      <li><a href="#s3">春先モードでもネジを自動計算します</a></li>
+      <li><a href="#s4">代理店4社の在庫確認・見積に「代理店値引き」の行が出なくなりました</a></li>
+      <li><a href="#s5">顧客選択画面の検索で、エンド納品先の名前でもヒットします</a><span class="tag">新機能</span></li>
+      <li><a href="#s6">前払いの案件の入金確認欄に、支払条件と総金額を表示</a></li>
+      <li><a href="#s7">八木熊の発注書番号はトレーニングと別になりました</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 見積 ============ -->
+  <h2 class="sec">見積</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>本体の明細が2つ以上なら、ベース・上下ジョイントを明細ごとに記載<span class="pill imp" style="margin-left:8px">重要</span></span></h3>
+    <p>高校・中学のように<b>本体の明細を分けて追加した案件</b>は、見積書のベースボード・上下ジョイントを<b>それぞれの本体のすぐ下に、その明細の数量で</b>出します。設定は不要で、本体の明細が2つ以上あれば自動でこうなります。</p>
+    <div class="ba">
+      <div>
+        <h4>これまで</h4>
+        <p class="step">本体（高校）／本体（中学）</p>
+        <p class="step">ベースボード <b>178枚</b>（合算）</p>
+        <p class="step">上下ジョイント <b>1,560個</b>（合算）</p>
+      </div>
+      <div class="now">
+        <h4>これから</h4>
+        <p class="step">本体（高校）<br><span class="arw">└</span> ベースボード <b>159枚</b>　<span class="arw">└</span> 上下ジョイント <b>1,395個</b></p>
+        <p class="step">本体（中学）<br><span class="arw">└</span> ベースボード <b>19枚</b>　<span class="arw">└</span> 上下ジョイント <b>165個</b></p>
+      </div>
+    </div>
+    <ul>
+      <li><b>合計金額は変わりません。</b>見積書・請求書・納品書・代理店帳票とも同じです。</li>
+      <li>本体の明細が1つの案件は、今までどおり1行です。サイドジョイントは今までどおり合算の1行です。</li>
+      <li>合算の行で手入力していた単価は、分けた行にそのまま引き継ぎます。分けた行ごとに単価を直すこともできます。</li>
+      <li>学校保管のレンタル品も、明細ごとにプラス・マイナスの行が出ます。</li>
+    </ul>
+    <div class="warnbox">
+      合算の行の<b>備考に手書きしていた内訳</b>（例：「高校：159枚、中学：19枚」）は表示されなくなります。分けた行で数量が見えるので通常は不要ですが、必要なら見積書作成画面で書き直してください。
+    </div>
+  </section>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>案件修正・コピー再発注で、明細に手入力の単価が出ます<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>見積書作成画面で単価を手入力した案件を「案件修正」「コピー再発注」で開くと、在庫確認・見積の明細の単価が<b>マスタの単価に戻ったように見えていました</b>。明細にも<b>手入力した単価</b>を出すようにしました。</p>
+    <p class="sub">見積書の金額はこれまでも手入力の単価で正しく出ていました（表示だけの修正です）。</p>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>春先モードでもネジを自動計算します<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>春先モードでは、ジョイントネジ・キャップネジなどの<b>ネジが自動計算されていませんでした</b>（春先の在庫が0のため、扱っていない部材と判断されていました）。通常の画面と同じように、ネジ・サイドジョイントを自動計算します。</p>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>代理店4社の在庫確認・見積に「代理店値引き」の行が出なくなりました<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p>代理店4社（プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売）の案件で、在庫確認・見積の見積書に<b>以前の方式の「代理店値引き」の行</b>が出ていたのをやめました。</p>
+    <p>代理店値引きは、11月18日のお知らせのとおり<b>🏷代理店帳票で作った内容から自動で反映</b>されます（LECの帳票＝代理店帳票の小計 −10%）。</p>
+  </section>
+
+  <!-- ============ 顧客・案件管理 ============ -->
+  <h2 class="sec">顧客・案件管理</h2>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>顧客選択画面の検索で、エンド納品先の名前でもヒットします<span class="pill imp" style="margin-left:8px">新機能</span></span></h3>
+    <p>顧客選択画面の検索欄に学校名などを入れると、<b>代理店などの顧客に登録してあるエンド納品先</b>の名前でも、その顧客が出てきます。</p>
+    <div class="ex">
+      <span class="lbl">例：「○○学園」で検索</span>
+      <strong>株式会社プラロッカー</strong><br>
+      🏫 エンド納品先: ○○学園高等学校
+    </div>
+    <ul>
+      <li>どのエンド納品先で当たったかを、法人名の下に 🏫 で表示します（3件まで。それ以上は「ほか○件」）。</li>
+      <li>ひらがな・カタカナの違いは気にせず検索できます。</li>
+      <li>法人名・フリガナ・ID・地域での検索は今までどおりです。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>前払いの案件の入金確認欄に、支払条件と総金額を表示<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p>前払い・新規前入金の案件で案件管理のステータス欄に出る <b>💴 入金確認</b> の欄に、<b>納品完了タブと同じように</b>支払条件と総金額を出します。金額を見ながら入金のチェックを入れられます。</p>
+  </section>
+
+  <!-- ============ 発注書 ============ -->
+  <h2 class="sec">発注書</h2>
+
+  <section class="item" id="s7">
+    <h3><span class="n">7</span><span>八木熊の発注書番号はトレーニングと別になりました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>トレーニングモードで作った発注書の下書きの番号が本番に混ざり、八木熊の発注書が <b>YK-2026-012</b> から始まっていました。トレーニングの番号は本番に影響しないようにしました。</p>
+    <ul>
+      <li>本番の YK-2026-012 は <b>YK-2026-001</b> に付け替えました。次は <b>YK-2026-002</b> です。</li>
+      <li>入庫依頼書・八木熊以外の発注書の下書きも同じく、トレーニングと本番で分かれます。</li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>案件番号と、画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v20.21〜v20.26】
+・★本体の明細を2つ以上入れた案件は、見積書のベースボード・上下ジョイントを各本体のすぐ下に明細ごとの数量で出します（合計金額は同じ。備考に手書きした内訳は出なくなるので、必要なら書き直してください）
+・案件修正・コピー再発注で開いた明細に、見積書で手入力した単価が出ます
+・春先モードでもネジを自動計算します
+・代理店4社の在庫確認・見積に旧方式の「代理店値引き」の行が出なくなりました（代理店帳票から自動反映）
+・顧客選択画面の検索で、代理店などに登録したエンド納品先（学校名など）でもヒットします
+・前払いの案件の入金確認欄に、支払条件と総金額を表示
+・八木熊の発注書番号はトレーニングと別に。本番は YK-2026-001 に付け替え・次は 002
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261119.html
+画面右上が v20.26 になっていなければ再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
