@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.22（案件修正で明細に見積書の手入力単価を出す）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.23（代理店4社の旧方式の自動値引き行をやめる・前払いの欄に総金額）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1677,6 +1677,10 @@ function agentDiscCust(cid){
 /* 新しい案件に自動の代理店値引きの行を足す（すでに代理店値引きの行があれば何もしない） */
 function addAgentDiscRow(order){
   if(!order||!agentDiscCust(order.cid))return;
+  /* v20.23（2026-11-19 ユーザー「LEC→代理店の在庫確認・見積時に代理店値引きが記載されているので削除で。代理店値引きは代理店帳票で作成した内容で反映されていれば大丈夫」
+     → 回答「旧方式の自動行だけ削除」）: 新しい作り方（agentNewStruct）の案件は、値引きの欄に自動の行を入れない。
+     代理店値引きは代理店帳票の小計×10%の行（agentLecRows）だけ。 */
+  if(agentNewStruct(order))return;
   var ds=discountRowsOf(order);
   if(ds.some(function(r){return r.auto==='agent'||r.name===AGENT_DISC_NAME;}))return;
   order.discounts=ds.concat([{name:AGENT_DISC_NAME,amount:0,qty:0,unit:'',unitPrice:0,auto:'agent'}]);
@@ -13233,6 +13237,8 @@ function QuoteEditPanel(p){
                   var ex=(qo.extraRows||[]).find(function(x){return x.rkey===rk;});
                   var di=discIndexOf(rk);
                   var dr=di>=0?(discountRowsOf(qo)[di]||null):null;
+                  /* v20.23: 新しい作り方の4社の案件に残っている旧方式の自動行（例 QT-2026-366）は入力欄にしない＝代理店帳票から計算した行の表示だけ */
+                  if(dr&&dr.auto==='agent'&&agentNewStruct(qo))dr=null;
                   var uEditable=rowUnitEditable(r)&&!ex&&!p.lockPrice;/* v20.18: 代理店4社（新しい作り方）は代理店帳票で直す */
                   var uOv=rowUnitOv(qo,rk);
                   /* v19.41: 構成表記が上に付いている行（cfgTop＝その本体の行キー）に下から重ねたら、構成表記のすぐ下へ入れる */
@@ -16874,6 +16880,36 @@ function OrdersPage(p){
     sh.forEach(function(s2,k){var de=one(s2.v||{});if(Object.keys(de).length)map[String(k)]=de;});
     return Object.keys(map).length?{sheets:map}:{};
   }
+  /* v20.23（2026-11-19 ユーザー「前払い等の場合案件管理のステータス欄に入金チェックboxがでるようになってるけど納品完了タブと同様の表記にしてほしい（金額の記載）」）:
+     納品完了タブの「総金額 ／ 入金」列の上2段（入金期日・支払条件／総金額）を関数にして、前払いの欄でも同じものを出す */
+  function payDueEl(o){
+    var dl;try{dl=payDueListOf(o);}catch(err){dl=[];}
+    if(!dl.length)return null;
+    var same=dl.every(function(d){return d.text===dl[0].text;});
+    var al=payAlerts[o.no],alIdx={};
+    if(al)al.items.forEach(function(it){alIdx[it.idx]=it;});
+    function one(d,prefix){
+      var it=alIdx[d.idx];
+      var isDate=d.ms!==null;
+      return h('div',{key:'pd'+d.idx,style:{fontSize:isDate?10:9,fontWeight:700,lineHeight:1.4,color:it?(it.over?'#c53030':'#975a16'):(isDate?'#1e3a5f':'var(--g500)')},
+          title:'請求書に記載の'+(isDate?'支払期日':'支払条件')+'（📄帳票の請求書の ✎ 記載内容で手修正したときはその値）'},
+        (prefix||'')+(isDate?'入金期日 ':'支払条件 ')+(d.text||'−'));
+    }
+    var list=same?[one(dl[0])]:dl.map(function(d){return one(d,(d.idx+1)+'枚目 ');});
+    var alertEls=al?al.items.map(function(it){
+      return h('div',{key:'pa'+it.idx,style:{marginTop:1,fontSize:9,fontWeight:900,color:'#fff',background:it.over?'#c53030':'#d97706',borderRadius:3,padding:'1px 5px',display:'inline-block'}},
+        '⚠ '+(dl.length>1?(it.idx+1)+'枚目 ':'')+payAlertText(it));
+    }):[];
+    return h('div',{style:{marginBottom:2}},list,alertEls.length?h('div',null,alertEls):null);
+  }
+  function totalAmtEl(o){
+    var f;try{f=orderSalesFigures(o,{lec:true});}catch(err){f=null;}/* v20.17: 入金確認と同じく今の請求書の金額。v20.18: 2026-11-19 以降の4社の案件は代理店帳票の金額 */
+    if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
+    var tax=Math.floor(f.sell*0.1);
+    return h('div',{'data-totalamt':o.no,style:{fontSize:12,fontWeight:900,color:'#1e3a5f',lineHeight:1.3},
+      title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+(f.paidAgent?'　※代理店帳票の金額です（代理店4社の新しい作り方の案件）':'　※今の請求書の金額です')},
+      '¥'+fm(f.sell+tax));
+  }
   /* v20.13: 入金確認のチェック（納品完了タブ・前払いの案件のステータス欄で共通。中身は v19.07〜v19.08 のまま） */
   function paidBox(o){
                 var nInv=invSplitCount(o),pm=paidSheetsOf(o);
@@ -17714,6 +17750,7 @@ function OrdersPage(p){
               /* v20.13: 4社の前払いの案件は入金確認のチェック（入るまで出荷できない） */
               (agentPrepay(o)&&!isLostOrder(o)&&o.status!=='納品完了')?h('div',{'data-prepay':o.no,style:{marginTop:3,padding:'2px 5px',border:'1px solid '+(agentPrepayUnpaid(o)?'#FCA5A5':'#A7F3D0'),background:agentPrepayUnpaid(o)?'#FEF2F2':'#ECFDF5',borderRadius:4}},
                 h('div',{style:{fontSize:8,fontWeight:700,color:agentPrepayUnpaid(o)?'#c53030':'#065F46'}},agentPrepayUnpaid(o)?'💴 前払い：入金確認後に出荷':'💴 前払い：入金確認済'),
+                h('div',{style:{fontSize:9,fontWeight:700,lineHeight:1.4,color:'var(--g500)'},title:'代理店帳票の請求書（見積書）の支払条件'},'支払条件 '+(agentPayTermsOf(o)||'−')),totalAmtEl(o),/* v20.23: 納品完了タブと同じ表記（支払条件は前払いの判定と同じ代理店帳票の値・総金額） */
                 paidBox(o)):null,
               (function(){var rd=orderReadiness(o);if(!rd.has)return null;
                 /* v18.40 修正１⑧: 在庫不足で仮押さえしきれなかった分は、その不足数量を赤字で明示する */
@@ -17755,34 +17792,8 @@ function OrdersPage(p){
             baseTab[0]==='done'?h('td',{style:{minWidth:152}},/* v19.07/v19.08: 紙ごとの行と入金日・口座の欄が入るぶん広げてある */
               /* ===== v19.21 修正31(docx)①: 金額の上に請求書に記載の入金期日 =====
                  請求書を分けて紙ごとに期日が違うときは「N枚目 期日」を並べる。前払い等の日付でないものは支払条件として出す。 */
-              (function(){
-                var dl;try{dl=payDueListOf(o);}catch(err){dl=[];}
-                if(!dl.length)return null;
-                var same=dl.every(function(d){return d.text===dl[0].text;});
-                var al=payAlerts[o.no],alIdx={};
-                if(al)al.items.forEach(function(it){alIdx[it.idx]=it;});
-                function one(d,prefix){
-                  var it=alIdx[d.idx];
-                  var isDate=d.ms!==null;
-                  return h('div',{key:'pd'+d.idx,style:{fontSize:isDate?10:9,fontWeight:700,lineHeight:1.4,color:it?(it.over?'#c53030':'#975a16'):(isDate?'#1e3a5f':'var(--g500)')},
-                      title:'請求書に記載の'+(isDate?'支払期日':'支払条件')+'（📄帳票の請求書の ✎ 記載内容で手修正したときはその値）'},
-                    (prefix||'')+(isDate?'入金期日 ':'支払条件 ')+(d.text||'−'));
-                }
-                var list=same?[one(dl[0])]:dl.map(function(d){return one(d,(d.idx+1)+'枚目 ');});
-                var alertEls=al?al.items.map(function(it){
-                  return h('div',{key:'pa'+it.idx,style:{marginTop:1,fontSize:9,fontWeight:900,color:'#fff',background:it.over?'#c53030':'#d97706',borderRadius:3,padding:'1px 5px',display:'inline-block'}},
-                    '⚠ '+(dl.length>1?(it.idx+1)+'枚目 ':'')+payAlertText(it));
-                }):[];
-                return h('div',{style:{marginBottom:2}},list,alertEls.length?h('div',null,alertEls):null);
-              })(),
-              (function(){
-                var f;try{f=orderSalesFigures(o,{lec:true});}catch(err){f=null;}/* v20.17: 入金確認と同じく今の請求書の金額。v20.18: 2026-11-19 以降の4社の案件は代理店帳票の金額 */
-                if(!f)return h('div',{style:{fontSize:9,color:'var(--g400)'}},'−');
-                var tax=Math.floor(f.sell*0.1);
-                return h('div',{style:{fontSize:12,fontWeight:900,color:'#1e3a5f',lineHeight:1.3},
-                  title:'税抜 ¥'+fm(f.sell)+'（商品 ¥'+fm(f.goods)+'〈値引き ¥'+fm(f.disc)+' 反映済〉＋送料 ¥'+fm(f.ship)+'）／消費税 ¥'+fm(tax)+(f.paidAgent?'　※代理店帳票の金額です（代理店4社の新しい作り方の案件）':'　※今の請求書の金額です')},
-                  '¥'+fm(f.sell+tax));
-              })(),
+              payDueEl(o),/* v20.23: 前払いの欄と共通（中身は v19.21 のまま） */
+              totalAmtEl(o),/* v20.23: 前払いの欄と共通（中身は v20.17 のまま） */
               /* ===== v19.07 口頭依頼: 請求書を分けた案件は★紙ごとにチェックボックスを出す =====
                  「請求書を分けると入金元が変わる為」。1枚の案件は従来どおりチェックボックス1つ。 */
               paidBox(o)
