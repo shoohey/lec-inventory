@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.24（春先でもネジ・サイドジョイントを自動計算）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.25（本体の明細が2つ以上ならベース・上下ジョイントを明細ごとに見積書へ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2800,16 +2800,12 @@ function rentalSjRows0(order){
    ★マイナス行（レンタルの相殺）は buildQuoteRows が単価の手修正を反映したあとで作るので、
      ここでは rentalPair に品目キーを立てておくだけにする（v18.73 修正17の追加⑳）。
    ★⑪の回答どおり、商品選択で必要部材として選ばれていない品目（数量0）は行を作らない。 */
-function pushRentalRows(order,rows,baseLine){
+function pushRentalRows(order,rows,baseLine,opt){
   var sel=rentalSelOf(order);
   var lineId=(baseLine||{}).line||'jp01';
-  if(sel.vj!=='none'){
+  if(sel.vj!=='none'&&!(opt&&opt.noVj)){
     var vq=rentalVjQty(order);
-    if(vq>0){
-      var vName=(sel.vj==='rental')?rentalName('上下ジョイント'):'上下ジョイント';/* v19.56: 頭の製品名は付けない */
-      rows.push({rkey:'VJ',code:codeDisp((PART_CODE_MAP['vj|sml']||[''])[0]),name:vName,/* v19.72 依頼⑦: 商品コード（ＭＹＰＬ－Ｊ）を出す。台湾製の ＭＹＰＬ－Ｊ-TW は150個入りの別商品なので使わない */qty:vq,unit:'個',price:VJ_PRICE,amount:vq*VJ_PRICE,tax:'10%(外)',
-        remark:rowRemark(order,'VJ',''),rentalPair:(sel.vj==='rental'?'VJ':null)});
-    }
+    if(vq>0)rows.push(quoteVjRow(order,vq,'VJ',sel));
   }
   if(sel.sj!=='none'){
     rentalSjRows(order).forEach(function(sj,i){
@@ -8506,7 +8502,16 @@ function applyRowOrder(order,rows){
   var ord=(order&&order.rowOrder)||null;
   if(!ord||!ord.length)return rows;
   var pos={};ord.forEach(function(k,i){pos[k]=i;});
-  return rows.map(function(r,i){return {r:r,i:i,p:(pos[r.rkey]!==undefined?pos[r.rkey]:ord.length+i)};})
+  /* v20.25: 並び順に無い分けた行（BASE_L…/VJ_L…）は本体の行の直後（無ければ合算の行の位置） */
+  function pOf(r,i){
+    if(pos[r.rkey]!==undefined)return pos[r.rkey];
+    var b=splitBVBody(r.rkey);
+    if(b&&pos[b]!==undefined)return pos[b]+0.5;
+    var pk=splitBVParent(r.rkey);
+    if(pk&&pos[pk]!==undefined)return pos[pk]+0.5;
+    return ord.length+i;
+  }
+  return rows.map(function(r,i){return {r:r,i:i,p:pOf(r,i)};})
     .sort(function(a,b){return (a.p-b.p)||(a.i-b.i);})
     .map(function(x){return x.r;});
 }
@@ -8529,6 +8534,7 @@ function extraQuoteRows(order){
 function rowUnitOv(order,rkey){
   var m=(order&&order.rowUnit)||{};
   var v=m[rkey];
+  if((v===undefined||v===null||v==='')&&splitBVParent(rkey))v=m[splitBVParent(rkey)];/* v20.25: 分けた行は合算の行の手入力単価を引き継ぐ */
   if(v===undefined||v===null||v==='')return null;
   var n=parseInt(v);
   return isNaN(n)?null:n;
@@ -8584,6 +8590,39 @@ function agentLecRows(order){
   var sub=0;
   rows.forEach(function(r,i){r.no=i+1;sub+=(parseInt(r.amount)||0);});
   return {rows:rows,subtotal:sub,agentSub:ag.subtotal,agentDisc:d};
+}
+/* ===== v20.25（2026-11-19 ユーザー「S121の案件のように明細追加を分けて入れている案件は、上下ジョイントとベースが合算して見積に記載されているが、
+   追加した明細ごとの数量で見積書に記載したい」→ 回答「本体の明細が2つ以上なら自動で分ける」「各本体のすぐ下」） =====
+   ・本体の明細が2つ以上の案件は、ベース（BASE_L明細id）・上下ジョイント（VJ_L明細id）を本体の行のすぐ下に明細ごとの数量で出す。
+   ・本体が1つの案件は今までどおり BASE / VJ の1行。サイドジョイントは今までどおり合算。
+   ・手入力の単価は分けた行に無ければ合算の行（BASE / VJ）の値を引き継ぐ（rowUnitOv）。並び順は本体の行の直後（applyRowOrder）。
+   ・行の備考は分けた行ごと（既定はベース＝外寸・上下ジョイント＝空欄。合算の行に手で書いた「高校：159枚、中学：19枚」などは引き継がない）。 */
+function splitBVParent(rkey){var m=/^(BASE|VJ)_(L\d+)$/.exec(String(rkey||''));return m?m[1]:null;}
+function splitBVBody(rkey){var m=/^(BASE|VJ)_(L\d+)$/.exec(String(rkey||''));return m?m[2]:null;}
+function quoteSplitsBV(order){
+  return (order&&order.lines||[]).filter(function(l){return l&&!l.isPartOnly&&!l.isFreeInput;}).length>=2;
+}
+function lineVjQty(l){
+  var q=0;
+  if(!l||l.isPartOnly)return 0;
+  calcBOM(l.size,l.islands,l.tiers,l.lock,l.type,l).forEach(function(b){if(b.key==='vj')q+=b.qty;});
+  return q;
+}
+function quoteBaseRow(order,fl0,ti,rkey,sel){
+  fl0=fl0||{};
+  var bColorName=(fl0.baseColor==='bk')?'ブラック':'グレー';
+  var bName='ベースボード('+bColorName+')'+((fl0.hasCap!==false&&fl0.line!=='tw'&&fl0.line!=='sa')?' アンカー穴キャップ付':'');/* v19.56: 頭の製品名は付けない。v19.72 依頼⑤: 台湾製・Sα のベースにアンカー穴は無い（在庫の部材表 calcBOM も tw/sa はキャップを付けない） */
+  if(sel.base==='rental')bName=rentalName(bName);/* 修正17⑫ */
+  var bPrice=orderBasePrice(order);
+  var bEnt=(order&&order.priceVer>=2)?baseCodeOf(fl0):null;
+  /* 修正17⑭: ベースボードの外寸も備考へ自動反映する */
+  return {rkey:rkey,code:codeDisp(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:ti*bPrice,tax:'10%(外)',
+    remark:rowRemark(order,rkey,'外寸:'+baseDimOf(fl0)),rentalPair:(sel.base==='rental'?rkey:null)};
+}
+function quoteVjRow(order,vq,rkey,sel){
+  var vName=(sel.vj==='rental')?rentalName('上下ジョイント'):'上下ジョイント';/* v19.56: 頭の製品名は付けない */
+  return {rkey:rkey,code:codeDisp((PART_CODE_MAP['vj|sml']||[''])[0]),name:vName,/* v19.72 依頼⑦: 商品コード（ＭＹＰＬ－Ｊ）を出す。台湾製の ＭＹＰＬ－Ｊ-TW は150個入りの別商品なので使わない */qty:vq,unit:'個',price:VJ_PRICE,amount:vq*VJ_PRICE,tax:'10%(外)',
+    remark:rowRemark(order,rkey,''),rentalPair:(sel.vj==='rental'?rkey:null)};
 }
 function buildQuoteRows0(order){
   var rows=[],partRows=[];
@@ -8675,20 +8714,24 @@ function buildQuoteRows0(order){
   });
   /* ベースボード（ベースを持つ明細から合算）。v18.73: 記載しない／販売／レンタル を選べる */
   var baseLines=(order.lines||[]).filter(function(l){return !l.isPartOnly&&l.hasBase!==false;});
-  var ti=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0);/* v18.32 要望①: lineBaseCountで一元解決 */
-  if(ti>0&&sel.base!=='none'){
-    var fl0=baseLines[0]||{};
-    var bColorName=(fl0.baseColor==='bk')?'ブラック':'グレー';
-    var bName='ベースボード('+bColorName+')'+((fl0.hasCap!==false&&fl0.line!=='tw'&&fl0.line!=='sa')?' アンカー穴キャップ付':'');/* v19.56: 頭の製品名は付けない。v19.72 依頼⑤: 台湾製・Sα のベースにアンカー穴は無い（在庫の部材表 calcBOM も tw/sa はキャップを付けない） */
-    if(sel.base==='rental')bName=rentalName(bName);/* 修正17⑫ */
-    var bPrice=orderBasePrice(order);
-    var bEnt=(order&&order.priceVer>=2)?baseCodeOf(fl0):null;
-    /* 修正17⑭: ベースボードの外寸も備考へ自動反映する */
-    rows.push({rkey:'BASE',code:codeDisp(bEnt?bEnt[0]:'MYPL-B'),name:bName,qty:ti,unit:'枚',price:bPrice,amount:ti*bPrice,tax:'10%(外)',
-      remark:rowRemark(order,'BASE','外寸:'+baseDimOf(fl0)),rentalPair:(sel.base==='rental'?'BASE':null)});
+  var splitBV=quoteSplitsBV(order);/* v20.25 */
+  if(splitBV){
+    var byId={};(order.lines||[]).forEach(function(l){if(l&&!l.isPartOnly)byId['L'+l.id]=l;});
+    var out=[];
+    rows.forEach(function(r){
+      out.push(r);
+      var ln=r.isBody?byId[r.rkey]:null;
+      if(!ln)return;
+      if(sel.base!=='none'&&ln.hasBase!==false){var bq=lineBaseCount(ln);if(bq>0)out.push(quoteBaseRow(order,ln,bq,'BASE_L'+ln.id,sel));}
+      if(sel.vj!=='none'){var vq1=lineVjQty(ln);if(vq1>0)out.push(quoteVjRow(order,vq1,'VJ_L'+ln.id,sel));}
+    });
+    rows=out;
+  }else{
+    var ti=baseLines.reduce(function(s,l){return s+lineBaseCount(l);},0);/* v18.32 要望①: lineBaseCountで一元解決 */
+    if(ti>0&&sel.base!=='none')rows.push(quoteBaseRow(order,baseLines[0]||{},ti,'BASE',sel));
   }
-  /* v18.37 修正箇所2⑤ / v18.73 修正17の追加⑪: 上下ジョイント・サイドジョイントの記載 */
-  pushRentalRows(order,rows,baseLines[0]);
+  /* v18.37 修正箇所2⑤ / v18.73 修正17の追加⑪: 上下ジョイント・サイドジョイントの記載（v20.25: 分ける案件の上下ジョイントは上で出した） */
+  pushRentalRows(order,rows,baseLines[0],{noVj:splitBV});
   rows=rows.concat(partRows);/* 修正17⑥ */
   rows=rows.concat(extraQuoteRows(order));/* 修正17⑨ */
   var ship=parseInt(order.shipping)||0;
@@ -10275,6 +10318,9 @@ function agentQuoteRows(order,ad){
     x.remark=agentRen(fmt,x.remark||'');
     x.auto={name:x.name,price:x.price,remark:x.remark,cfg:x.configNote||''};
     var o=ro[x.rkey];
+    /* v20.25: 分けた行（BASE_L…/VJ_L…）に単価の手修正が無ければ合算の行（BASE/VJ）の単価だけ引き継ぐ */
+    var pk0=splitBVParent(x.rkey);
+    if(pk0&&ro[pk0]&&ro[pk0].price!=null&&ro[pk0].price!==''&&!(o&&o.price!=null&&o.price!==''))o=Object.assign({},o||{},{price:ro[pk0].price});
     if(o){
       if(o.name!=null&&String(o.name)!==''){x.name=String(o.name);x.edited=true;}
       if(o.price!=null&&o.price!==''&&!isNaN(parseInt(o.price))&&agentRowPriceEditable(x)){x.price=parseInt(o.price);x.amount=x.price*qn;x.edited=true;}
