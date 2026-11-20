@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.27（鍵の発注書の送料は入庫予定に入れない・一覧に入庫予定日）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.28（代理店4社の11/18より前の4案件も代理店値引きを代理店帳票から）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -8555,6 +8555,10 @@ var AGENT_NEW_FROM='2026-11-18';
 /* v20.19（2026-11-18 ユーザー「明日まで実装確認出来ないのは困るので今から反映して」）: 区切りを 11/18 に前倒し。
    ★v20.18 公開時点で 11/18 に作成済みだった4社の案件（本番データで確認＝QT-2026-360 だけ。納品完了・請求書 8,478円で出し済み）は従来のまま */
 var AGENT_NEW_EXCLUDE=['QT-2026-360'];
+/* v20.28（2026-11-20 依頼書「代理店見積書を修正後、代理店値引きが LEC見積書に反映されていない案件を連携する」）:
+   11/18 より前に作った案件でも、ここに入れた案件は新しい作り方（LEC の帳票＝代理店帳票の明細・単価＋代理店帳票の小計×10%の代理店値引き）にする。
+   ケンサーチ QT-2026-244・名古屋YWCA RS-2026-228・琉美学園 QT-2026-216・㈱JPN QT-2026-251（どれも未出荷・請求書なし。今の LEC の見積書には代理店値引きの行が無かった） */
+var AGENT_NEW_INCLUDE=['QT-2026-244','RS-2026-228','QT-2026-216','QT-2026-251'];
 function agentOrderYmd(order){
   var d=String((order&&order.date)||'').replace(/\//g,'-');
   var m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -8564,6 +8568,7 @@ function agentNewStruct(order){
   if(!order||order._agentRaw)return false;
   if(!agentFmtOf(order))return false;
   if(AGENT_NEW_EXCLUDE.indexOf(order.no)>=0)return false;
+  if(AGENT_NEW_INCLUDE.indexOf(order.no)>=0)return true;
   var ymd=agentOrderYmd(order);
   return !!ymd&&ymd>=AGENT_NEW_FROM;
 }
