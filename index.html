@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.26（顧客の検索でエンド納品先もヒット）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.27（鍵の発注書の送料は入庫予定に入れない・一覧に入庫予定日）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -11443,9 +11443,9 @@ var HELP_QA=[
   {id:'ir-make',cat:'stock',tab:'parts',ver:'v19.92',q:'倉庫へ入庫依頼書を出したい（八木熊・鍵の業者からの入庫）',kw:['入庫依頼書','入庫依頼','入庫','倉庫','依頼','チャーター','混載','パレット','バラ積み'],
     steps:['「部材在庫一覧」→「📋 発注書一覧」→「入庫予定」を開く','同じ日・同じ倉庫の予定に ☑ を付けて「🚛 選んだ予定で入庫依頼書を作る」（業者が違っても1枚にまとまります）','業者ごとに 製品ライン・納品方法（混載／チャーター 2t・4t・10t・その他）・積み方（バラ積み／パレット積み・その他）を選ぶ','「🖨 PDF」「📊 Excel」で出して倉庫へ送る（出すと「🚛 入庫依頼書」の一覧に残り、あとから直せます）'],
     tip:'「🚛 入庫依頼書」→「＋ 新しく作る」からも作れます（入庫予定・発注書から取り込み、手入力も可）。鍵の業者の入庫予定は「📋 発注書一覧」→「鍵」の「📅 入庫予定」で登録します。',rel:['stock-incoming','gp-inc']},
-  {id:'gp-inc',cat:'stock',tab:'parts',ver:'v19.92',q:'鍵の業者から入庫予定日の連絡が来た（入庫予定に登録したい）',kw:['鍵','井門','スターリー','サラ','日乃本','入庫予定','入庫日','未納','入荷状況'],
+  {id:'gp-inc',cat:'stock',tab:'parts',ver:'v20.27',q:'鍵の業者から入庫予定日の連絡が来た（入庫予定に登録したい）',kw:['鍵','井門','スターリー','サラ','日乃本','入庫予定','入庫日','未納','入荷状況','送料','納品日'],
     steps:['「部材在庫一覧」→「📋 発注書一覧」→「鍵」を開く','その発注書の「📅 入庫予定」を押す','入庫予定日・入庫倉庫・今回入る数を入れて「入庫予定に登録」（品名が在庫の部材につながっていない行は、品目を選ぶ）','届いたら「入庫予定」一覧で「入庫処理」（八木熊と同じ）'],
-    tip:'発注書を作るときに品名の上の「品目」から選んでおくと、在庫の部材につながります。「📦 入荷状況」で未納・入庫予定を倉庫・月ごとに見られます。',rel:['ir-make','yk-status']},
+    tip:'発注書を作るときに品名の上の「品目」から選んでおくと、在庫の部材につながります。送料・運賃・手数料・値引きの行は在庫に入らないので、入庫予定の登録の表にも未納にも出ません（ほかの在庫に入らない行は、品目で「在庫に入れない（送料など）」を選ぶ）。登録した入庫予定日は、発注書一覧の「入庫予定」欄に「予定 11/27」のように出ます。「📦 入荷状況」で未納・入庫予定を倉庫・月ごとに見られます。',rel:['ir-make','yk-status']},
   {id:'gp-keypo',cat:'stock',tab:'parts',ver:'v19.94',q:'鍵の業者（井門・日乃本錠前・スターリー・サラ）の発注書で品名を選びたい／ロットの単価を知りたい',kw:['鍵','発注書','品名','井門','日乃本','スターリー','サラ','ロット','単価','送料','キーバンド','シリンダー'],
     steps:['「部材在庫一覧」の「📝 発注書」タブを開き、上の「発注先」で鍵の業者（井門・日乃本錠前・スターリー・サラ）を選ぶ','明細の行の「品名を選ぶ（発注書マスタ）」で品名を選ぶ（色・種類・キー番号があるものは右のプルダウンでも選ぶ）','数量を入れる（ロットに合った単価に自動で変わる。単価を手で直したときはそのまま）','送料は画面上部のオレンジの欄に業者の決まりが出る。掛かるときは行を追加して入力'],
     tip:'品名・単価は「鍵の発注書マスタ.xlsx」のオレンジの列です。選んだ品名は在庫の部材にもつながるので、そのまま入庫予定に登録できます。番号指定の品は品名の欄に番号を書き足してください。',rel:['gp-inc']},
@@ -21408,7 +21408,7 @@ function GpPOPanel(p){
             l.kp?null:gpItemSelect(p.vendor,l,function(it){
               /* v19.92: 業者の品目を選ぶと在庫の部材につながる（品名が空か前の品目名のときは品目名を入れる） */
               set('lines',v.lines.map(function(x){if(x.id!==l.id)return x;var o=Object.assign({},x),pn=String(x.name||'').trim();
-                if(it){o.item={key:it.key,lineId:it.lineId,l:it.l};if(!pn||(x.item&&pn===x.item.l))o.name=it.l;}else delete o.item;return o;}));
+                if(it){o.item={key:it.key,lineId:it.lineId,l:it.l};if(it.key!==GP_NOSTOCK_KEY&&(!pn||(x.item&&pn===x.item.l)))o.name=it.l;}else delete o.item;return o;}));
             },i),
             h('textarea',{value:l.name||'',rows:Math.max(1,String(l.name||'').split('\n').length),'data-gpname':i,style:Object.assign({},cin,{width:'100%',resize:'vertical',minWidth:280}),onChange:function(ev){setLine(l.id,'name',ev.target.value);}})),
           h('td',null,h('input',{type:'text',inputMode:'decimal',value:l.qty==null?'':l.qty,'data-gpqty':i,style:Object.assign({},cin,{width:70,textAlign:'right'},badQ?warn:null),onChange:function(ev){var val=ev.target.value;if(l.kp)set('lines',v.lines.map(function(x){return x.id===l.id?keyPOQty(x,vid,val):x;}));else setLine(l.id,'qty',val);}})),
@@ -22402,10 +22402,20 @@ function gpItemSelect(vid,l,onPick,i){
   var cur=(l.item&&l.item.key)||'',known=its.some(function(x){return x.key===cur;});
   return h('select',{className:'inp','data-gpitem':i,value:cur,style:{fontSize:11,width:'100%',marginBottom:2,color:cur?'var(--nv)':'var(--g500)'},
     title:'在庫の部材につなぐと、入庫予定に登録して「入庫処理」で在庫に入ります',
-    onChange:function(e){var k=e.target.value;onPick(k?(its.find(function(x){return x.key===k;})||l.item):null);}},
+    onChange:function(e){var k=e.target.value;onPick(k===GP_NOSTOCK_KEY?{key:GP_NOSTOCK_KEY,lineId:'',l:'在庫に入れない（送料など）'}:k?(its.find(function(x){return x.key===k;})||l.item):null);}},
     h('option',{value:''},'品目（在庫につなぐ）: 選ばない'),
-    cur&&!known?h('option',{value:cur},(l.item.l||cur)):null,
+    h('option',{value:GP_NOSTOCK_KEY},'在庫に入れない（送料など）'),
+    cur&&!known&&cur!==GP_NOSTOCK_KEY?h('option',{value:cur},(l.item.l||cur)):null,
     its.map(function(x){return h('option',{key:x.key,value:x.key},x.l);}));
+}
+/* v20.27: 送料など在庫に入らない行。品目で「在庫に入れない（送料など）」を選んだ行と、品目を選んでいない送料・運賃・手数料・値引きの行。
+   入庫予定の登録・入荷状況（未納）・入庫依頼書には出さない */
+var GP_NOSTOCK_KEY='_nostock';
+var GP_NOSTOCK_RE=/送料|運賃|配送料|運送料|配達料|梱包料|手数料|値引|出精/;
+function gpNoStockLine(l){
+  if(!l)return false;
+  if(l.item)return l.item.key===GP_NOSTOCK_KEY;
+  return GP_NOSTOCK_RE.test(String(l.name||'').split('\n')[0]);
 }
 /* 入庫予定・入荷状況を使う区分（鍵・その他）。人工・チャーターは入庫が無いので使わない */
 function gpIncCat(cat){return cat==='key'||cat==='other';}
@@ -22413,7 +22423,7 @@ function gpIncCat(cat){return cat==='key'||cat==='other';}
 function gpPOStatusOf(r){
   var s=(r&&r.st)||{};
   var inc=INCOMING.filter(function(x){return x&&x.poNo===r.no&&x.status!=='取消';});
-  var rows=gpPOLines(s).filter(function(l){return gpPONum(l.qty)!=null;}).map(function(l){
+  var rows=gpPOLines(s).filter(function(l){return gpPONum(l.qty)!=null&&!gpNoStockLine(l);}).map(function(l){
     var q=gpPONum(l.qty)||0,pr=gpPONum(l.price);
     var o={row:l.id,code:'',label:String(l.name||'').split('\n')[0]||((l.item&&l.item.l)||''),unit:l.unit||'',item:l.item||null,qty:q,price:pr,done:0,plan:0,und:0,dates:{},ent:[]};
     inc.forEach(function(x){(x.items||[]).forEach(function(it){
@@ -22435,7 +22445,8 @@ function gpIncReplyOf(no){
   var inc=INCOMING.filter(function(x){return x.poNo===no&&x.status!=='取消';});
   if(!inc.length)return null;
   var dd={};inc.forEach(function(x){if(x.status==='入庫済'){var d=ykIncDoneDate(x);if(d)dd[d]=1;}});
-  return {n:inc.length,done:inc.filter(function(x){return x.status==='入庫済';}).length,doneDates:Object.keys(dd).sort(),und:inc.some(function(x){return !x.expectedDate&&x.status!=='入庫済';})};
+  var pd={};inc.forEach(function(x){if(x.status!=='入庫済'&&x.expectedDate)pd[x.expectedDate]=1;});/* v20.27: まだ入っていない入庫予定日 */
+  return {n:inc.length,done:inc.filter(function(x){return x.status==='入庫済';}).length,doneDates:Object.keys(dd).sort(),planDates:Object.keys(pd).sort(),und:inc.some(function(x){return !x.expectedDate&&x.status!=='入庫済';})};
 }
 function gpIncViewTabs(view,stSel){
   return h('div',{style:{display:'flex',gap:4,marginBottom:6}},
@@ -22446,6 +22457,7 @@ function gpIncViewTabs(view,stSel){
 function GpIncModal(p){
   var r=GP_PO_LIST[p.no]||{},st=r.st||{},ven=gpVendor(r.vendor)||{};
   var stt=gpPOStatusOf(r),its=gpVendorItems(r.vendor);
+  var noStk=gpPOLines(st).filter(function(l){return gpPONum(l.qty)!=null&&gpNoStockLine(l);});
   var wh=us(WH_IDS.indexOf('honsha')>=0?'honsha':WH_IDS[0]),dt=us('');
   var rows=us(stt.rows.map(function(o){return {row:o.row,item:o.item?Object.assign({},o.item):null,qty:o.none>0?String(o.none):''};}));
   function setRow(i,k,val){rows[1](rows[0].map(function(x,j){if(j!==i)return x;var o=Object.assign({},x);o[k]=val;return o;}));}
@@ -22492,6 +22504,7 @@ function GpIncModal(p){
             h('td',{style:{textAlign:'right',color:(o.plan+o.und)?'inherit':'var(--g400)'}},(o.plan+o.und)?fm(o.plan+o.und):'—'),
             h('td',null,h('input',{type:'text',inputMode:'numeric',className:'inp','data-gpincqty':i,value:x.qty,style:{width:80,textAlign:'right'},onChange:function(e){setRow(i,'qty',e.target.value.replace(/[^\d]/g,''));}})));
         }):h('tr',null,h('td',{colSpan:7,style:{textAlign:'center',color:'var(--g500)',padding:12}},'数量の入った明細がありません')))),
+      noStk.length?h('div',{'data-gpincnostock':noStk.length,style:{fontSize:10,color:'var(--g500)',marginTop:4}},'※ 在庫に入らない行（'+noStk.map(function(l){return String(l.name||'').split('\n')[0];}).join('、')+'）は、入庫予定・未納に入れません。'):null,
       h('div',{style:{display:'flex',justifyContent:'flex-end',gap:6,marginTop:10}},
         h('button',{className:'btn btn-ol',onClick:p.onClose},'閉じる'),
         h('button',{className:'btn btn-gn','data-gpincreg':'1',onClick:register},'✅ 入庫予定に登録'))));
@@ -23030,7 +23043,10 @@ function GpPOListPanel(p){
     if(useInc&&!isPdf){
       /* v19.92: 入庫予定の登録状況（八木熊の「回答」欄と同じ）と未納 */
       var ri=gpIncReplyOf(r.no),tt=gpPOStatusOf(r).total;
-      cells.push(h('td',{key:'ir','data-gpincreply':r.no,style:{fontSize:9,whiteSpace:'nowrap'}},ri?h('span',{style:{color:'var(--gn)',fontWeight:700}},'登録済',ri.done?h('div',{style:{fontWeight:600}},'入庫済 '+ri.doneDates.map(ykMD).join('、')):null,ri.und?h('span',{style:{color:'#B45309'}},' 未定あり'):null):h('span',{style:{color:'var(--g400)'}},'—')));
+      cells.push(h('td',{key:'ir','data-gpincreply':r.no,style:{fontSize:9,whiteSpace:'nowrap'}},ri?h('span',{style:{color:'var(--gn)',fontWeight:700}},
+        ri.planDates.length?h('div',{'data-gpincplan':r.no,style:{fontSize:11,color:'var(--nv)'}},'予定 '+ri.planDates.map(ykMD).join('、')):null,
+        ri.done?h('div',{style:{fontWeight:600}},'入庫済 '+ri.doneDates.map(ykMD).join('、')):null,
+        ri.und?h('div',{style:{color:'#B45309'}},'日付未定あり'):null):h('span',{style:{color:'var(--g400)'}},'—')));
       cells.push(h('td',{key:'lf',style:{whiteSpace:'nowrap',textAlign:'right'}},h('a',{href:'#','data-gpleftof':r.no,title:'この発注書の入荷状況を見る',style:{fontSize:11,fontWeight:700,color:tt.left?'#DC2626':'var(--gn)'},onClick:function(e){e.preventDefault();stSel[1](r.no);view[1]('status');}},tt.left?fm(tt.left):'✓ 完納')));
     }else if(useInc){cells.push(h('td',{key:'ir'},''));cells.push(h('td',{key:'lf'},''));}
     cells.push(h('td',{key:'b',style:{whiteSpace:'nowrap'}},
