@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月24日の更新のお知らせ（v20.27〜v20.30）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>支払条件「月末締め翌月末払い」・代理店帳票の改修<br>鍵の発注書の送料行・Sαのカスタム部材 ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v20.30</span>
+      <span>2026年11月24日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました（11月20日〜24日の更新分 v20.27〜v20.30）。<b>支払条件の「末締め翌月末」は、LEC・代理店のすべての帳票で「月末締め翌月末払い」と表記するようになりました。</b></p>
+    <p>見積・帳票を作る方は<b>1番〜4番</b>、代理店4社の案件を扱う方は<b>2番〜4番</b>、鍵などの発注書・入庫を扱う方は<b>5番</b>、パーツ単品で Sα の部材を売る方は<b>6番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v20.30</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>開いたままの画面も、必ず一度再読み込みしてください。</b><br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">支払条件「末締め翌月末」→「月末締め翌月末払い」</a><span class="tag">重要</span></li>
+      <li><a href="#s2">11月18日より前に作った代理店の案件も、代理店値引きを代理店帳票から反映</a><span class="tag">重要</span></li>
+      <li><a href="#s3">代理店帳票：レンタル品のベースの単価を直すと、マイナスの行も同じ金額に</a></li>
+      <li><a href="#s4">代理店帳票の見た目・定型文の変更（プラロッカー・プラスチックロッカー・グローバル）</a></li>
+      <li><a href="#s5">鍵などの発注書の送料の行が、入庫予定・未納に出なくなりました</a></li>
+      <li><a href="#s6">Sα のパーツ単品追加に、部材在庫一覧で追加した部材が出ます</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 見積・帳票 ============ -->
+  <h2 class="sec">見積・帳票</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>支払条件「末締め翌月末」→「月末締め翌月末払い」<span class="pill imp" style="margin-left:8px">重要</span></span></h3>
+    <p>支払条件の選択肢の「末締め翌月末」を<b>「月末締め翌月末払い」</b>に変えました。LECの見積書・請求書などと、代理店帳票のすべてが対象です。</p>
+    <div class="ex">
+      <span class="lbl">支払条件の表記</span>
+      <s>末締め翌月末</s>　<span class="arw">→</span>　<strong>月末締め翌月末払い</strong>
+    </div>
+    <ul>
+      <li><b>すでに「末締め翌月末」で登録してある案件・顧客も、選び直す必要はありません。</b>画面と帳票には自動で「月末締め翌月末払い」と出ます。</li>
+      <li>請求書の支払期日の計算は今までと同じです。</li>
+    </ul>
+  </section>
+
+  <section class="item key" id="s2">
+    <h3><span class="n">2</span><span>11月18日より前に作った代理店の案件も、代理店値引きを代理店帳票から反映<span class="pill imp" style="margin-left:8px">重要</span></span></h3>
+    <p>代理店4社（プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売）の案件で、<b>11月18日より前に作った案件</b>は、代理店帳票を作っていても代理店値引きが反映されていませんでした。</p>
+    <p>11月18日より前の案件のうち、<b>🏷代理店帳票を作ってある案件</b>は、新しい作り方（LECの帳票＝代理店帳票の小計 −10%）に切り替えました。</p>
+    <ul>
+      <li>多くの案件は金額が変わりません。代理店帳票で単価を直していた案件などは、LECの帳票の金額が変わることがあります。</li>
+      <li>入金確認欄の金額も、代理店帳票から計算した金額で出ます。</li>
+    </ul>
+    <div class="warnbox">
+      すでにお客様に送った書類と金額が違う案件があれば、案件番号を添えてご連絡ください。
+    </div>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>代理店帳票：レンタル品のベースの単価を直すと、マイナスの行も同じ金額に<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>代理店帳票で、学校保管のレンタル品（ベースボードなど）の<b>単価を直しても反映されず</b>、プラスの行・マイナスの行とも元の単価のままでした。</p>
+    <p>直した単価がプラスの行に入り、マイナスの行も<b>同じ金額のマイナス</b>になります（差し引き0円は変わりません）。</p>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>代理店帳票の見た目・定型文の変更<span class="pill add" style="margin-left:8px">変更</span></span></h3>
+    <p><b>プラロッカー様式</b></p>
+    <ul>
+      <li>品名の2行目（外寸などの行）の文字を、1行目と同じ大きさにしました。</li>
+      <li>Sα の商品名は「プラロッカーα常設…」と出ます（件名も同じ）。</li>
+      <li>見積書作成画面の全体備考の定型文【常設】に、次の5行を足しました。
+        <div class="ex" style="margin-top:6px">★扉には空気口があり湿気や臭いがこもりにくい構造です。<br>★鍵を除くロッカー本体は1年間まで保証致します。但し、故意による破損は除く。<br>★全パーツが交換できメンテナンス費用を抑えられます。<br>★ロッカーは1台ずつ増減可能で、必要な分だけ購入・設置が可能です。<br>※鍵の納期は4週間程度かかります。</div>
+      </li>
+    </ul>
+    <p><b>プラスチックロッカー様式</b></p>
+    <ul>
+      <li>左上の宛先の枠を大きくし、文字を1サイズ大きくしました。</li>
+      <li>会社欄（署名）の右端を、上の見積No.の欄の右の線にそろえました。</li>
+    </ul>
+    <p><b>グローバル様式</b></p>
+    <ul>
+      <li>全体備考の定型文【常設】に、次の3行を足しました。
+        <div class="ex" style="margin-top:6px">※扉にも空気口があり湿気や臭いのこもり難い構造<br>※全パーツが交換できるので導入後のランニングコストが削減できる<br>※1台ずつ増減できるので、予算に合わせて必要な分のみ購入が可能</div>
+      </li>
+    </ul>
+    <div class="how"><b>定型文の入れ方</b>代理店帳票の見積書作成画面 → 全体備考の「定型文」で【常設】を選ぶ</div>
+  </section>
+
+  <!-- ============ 発注書・入庫 ============ -->
+  <h2 class="sec">発注書・入庫</h2>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>鍵などの発注書の送料の行が、入庫予定・未納に出なくなりました<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>鍵などの発注書に<b>送料の行</b>があると、入庫予定を登録できなかったり、届いたあとも「未納」のまま残ったりしていました。</p>
+    <ul>
+      <li>送料・運賃・手数料・値引きの行は在庫に入らない行として扱い、入庫予定の登録の表・未納・入庫依頼書に出しません。</li>
+      <li>ほかに在庫に入らない行は、発注書を作るときに品目で<b>「在庫に入れない（送料など）」</b>を選んでください。</li>
+      <li>発注書一覧の「入庫予定」欄に、登録した入庫予定日を「予定 11/27」のように出します。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 在庫確認・見積 ============ -->
+  <h2 class="sec">在庫確認・見積</h2>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>Sα のパーツ単品追加に、部材在庫一覧で追加した部材が出ます<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>部材在庫一覧で新しく追加した部材（名前の頭に「＋」が付くもの）が、パーツ単品追加で製品ラインに <b>Sα</b> を選ぶと出てきませんでした。Sα でも選べるようにしました。</p>
+    <div class="ex">
+      <span class="lbl">例：Sα で選べるようになった部材</span>
+      ＋棚板_　Sα（グレー）<br>＋扉　スモーキーレッド_　Sα／ブルー／グリーン
+    </div>
+    <div class="how"><b>操作</b>「在庫確認・見積」→「パーツ単品追加」でパーツの製品ラインに Sα を選ぶ → パーツの一覧の下のほうに「＋」付きで出ます</div>
+    <div class="warnbox">
+      追加した部材は単価マスタに入っていないので、<b>単価は手入力</b>してください。
+    </div>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>案件番号と、画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v20.27〜v20.30】
+・★支払条件「末締め翌月末」は、LEC・代理店のすべての帳票で「月末締め翌月末払い」と出ます（登録済みの案件・顧客も選び直し不要。支払期日の計算は同じ）
+・★11月18日より前に作った代理店4社の案件も、代理店帳票を作ってあれば代理店値引きを代理店帳票から反映（金額が変わる案件あり。送付済みの書類と違えばご連絡ください）
+・代理店帳票でレンタル品のベースの単価を直すと、マイナスの行も同じ金額に
+・代理店帳票：プラロッカーは2行目の文字を1行目と同じ大きさ・Sαは「プラロッカーα」・【常設】の定型文に5行／プラスチックロッカーは宛先の枠と文字を大きく・署名を右の線にそろえる／グローバルは【常設】の定型文に3行
+・鍵などの発注書の送料の行は、入庫予定・未納に出なくなりました（ほかの在庫に入らない行は品目「在庫に入れない（送料など）」）。発注書一覧に入庫予定日を表示
+・Sα のパーツ単品追加に、部材在庫一覧で追加した部材（＋付き）が出ます（単価は手入力）
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261124.html
+画面右上が v20.30 になっていなければ再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
