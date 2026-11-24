@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.28（代理店4社の11/18より前の案件も代理店値引きを代理店帳票から）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.29（代理店帳票の改修：支払条件「月末締め翌月末払い」・プラロッカーα・定型文ほか）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2754,6 +2754,24 @@ var NOTES_TEMPLATES=[
     '※在庫が無い場合には60～90日程度納期がかかります。'
   ].join('\n')}
 ];
+/* v20.29（依頼書 2026-11-24）: 代理店帳票の見積書作成画面では、その代理店の文章を【常設】の定型文の後ろに足す */
+var AGENT_NOTES_EXTRA={
+  plalocker:{standard:[
+    '★扉には空気口があり湿気や臭いがこもりにくい構造です。',
+    '★鍵を除くロッカー本体は1年間まで保証致します。但し、故意による破損は除く。',
+    '★全パーツが交換できメンテナンス費用を抑えられます。',
+    '★ロッカーは1台ずつ増減可能で、必要な分だけ購入・設置が可能です。',
+    '※鍵の納期は4週間程度かかります。']},
+  global:{standard:[
+    '※扉にも空気口があり湿気や臭いのこもり難い構造',
+    '※全パーツが交換できるので導入後のランニングコストが削減できる',
+    '※1台ずつ増減できるので、予算に合わせて必要な分のみ購入が可能']}
+};
+function notesTemplatesFor(fmt){
+  var ex=fmt&&AGENT_NOTES_EXTRA[fmt];
+  if(!ex)return NOTES_TEMPLATES;
+  return NOTES_TEMPLATES.map(function(t){var a=ex[t.k];return a&&a.length?Object.assign({},t,{t:t.t+String.fromCharCode(10)+a.join(String.fromCharCode(10))}):t;});
+}
 /* v18.72 修正17⑱: 会社名の下に入れる代表者名（案件ごとにチェックで表示／非表示を切り替える） */
 var REP_NAME_DEFAULT='代表取締役　山田　輝';
 /* ===== v19.81（2026-11-06 チャット依頼「出荷指示書以外の帳票に会社の角印を押したい」）=====
@@ -9117,7 +9135,11 @@ function toBusinessDayBack(d){
 }
 function slashYmd(d){return d.getFullYear()+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2);}
 /* v19.39 修正35②: 支払条件の選択肢（見積書作成画面と顧客登録で共用。「自由入力」は画面側で足す） */
-var PAY_TERMS_OPTS=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内','末締め翌月末','5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末'];
+/* v20.29（2026-11-24 依頼書「支払条件の『末締め翌月末』を『月末締め翌月末払い』へ。LEC・代理店すべて」）:
+   選択肢の文言を変更。保存済みの案件・顧客の「末締め翌月末」は★データは変えず、表示・帳票で payTermsDisp が読み替える（支払期日の計算は同じ）。 */
+var PAY_TERMS_OLD_EOM='末締め翌月末',PAY_TERMS_EOM='月末締め翌月末払い';
+function payTermsDisp(s){return String(s==null?'':s).trim()===PAY_TERMS_OLD_EOM?PAY_TERMS_EOM:(s==null?'':s);}
+var PAY_TERMS_OPTS=['前払い（銀行振り込み）','新規前入金','納品後30日以内','納品後60日以内',PAY_TERMS_EOM,'5日締め翌月末','10日締め翌月末','15日締め翌月末','20日締め翌月末','25日締め翌月末'];
 function payDueTextOf(invoiceDate,payTerms){
   var pt=String(payTerms||'');
   /* v19.06 口頭依頼: 前払いの案件の記載は「前払い（銀行振り込み）」。
@@ -9213,7 +9235,7 @@ function docEditHeader(order,cust,docType,sheetIdx){
     delivery:shipDocDeliveryText(order,cust),
     /* 納品先は帳票上も1行で出るので、手修正も1行の自由入力にしている */
     dest:eu?String((eu.name||'')+(eu.postal?' 〒'+eu.postal:'')+' '+(eu.address||'')+(eu.phone?' TEL.'+eu.phone:'')).trim():'',
-    payTerms:(order&&order.paymentTerms)||'前払い（銀行振り込み）',
+    payTerms:payTermsDisp((order&&order.paymentTerms)||'前払い（銀行振り込み）'),
     /* v18.93 修正26⑤: 代表者名は★見積書作成画面のチェック（order.showRepName）を自動で引き継ぐ。
        帳票ごとに変えたいときだけ docEdit の showRep／repName で上書きする。 */
     showRep:!!(order&&order.showRepName),
@@ -9221,6 +9243,7 @@ function docEditHeader(order,cust,docType,sheetIdx){
     edited:{}
   };
   DOC_EDIT_KEYS.forEach(function(k){if(de[k]){hv[k]=de[k];hv.edited[k]=true;}});
+  hv.payTerms=payTermsDisp(hv.payTerms);/* v20.29 */
   /* v19.03 口頭依頼: 支払期日の自動値は★手修正を当てた後の請求日・支払条件から計算する
      （請求日や支払条件を ✎ で直したら期日もそれに追随する）。期日そのものの手修正は上のループで入っている。 */
   if(!hv.edited.payDue)hv.payDue=(docType==='invoice')?payDueTextOf(hv.date,hv.payTerms):'';
@@ -9943,7 +9966,7 @@ function generateQuoteHTML(order,docType,legIndex,scope){
        ★出荷指示書の「(1便／全2便)」は別物なので残してある（上の legIndex の分岐）。 */
   }
   var subject=quoteSubjectOf(order);
-  var payTerms=order.paymentTerms||'前払い（銀行振り込み）';
+  var payTerms=payTermsDisp(order.paymentTerms||'前払い（銀行振り込み）');/* v20.29 */
   var slipCode=cfg.slipPrefix+'-'+order.no;
   /* v18.93 修正26②⑤: 請求書・物品受領書・納品書は記載内容を ✎ で手修正できる（空欄=自動値）。
      ★この3帳票の記載値は必ず dv から取ること（order を直接読むと手修正が効かない）。 */
@@ -10254,7 +10277,8 @@ var AGENT_FMTS={
   plalocker:{key:'plalocker',cid:'D00620',short:'プラロッカー',name:'株式会社プラロッカー',postal:'121-0055',address:'東京都足立区加平1-19-10',
     tel:'03-6721-7491',fax:'03-6721-7492',reg:'T4010701036924',logo:true,
     bank:[['銀行名','三井住友銀行(0009)'],['支店名','千住支店（248）'],['口座番号','(普)7501344'],['口座名義','カ）プラロツカ－']],
-    ren:[[/[MＭ][yｙ]プラECOロッカー/g,'ECOプラロッカー'],[/[MＭ][yｙ]プラロッカー/g,'プラロッカー'],[/ホタ/g,'ルミ']]},
+    ren:[[/[MＭ][yｙ]プラECOロッカー/g,'ECOプラロッカー'],[/[MＭ][yｙ]プラロッカー/g,'プラロッカー'],[/ホタ/g,'ルミ'],
+      [/プラロッカー[ 　]?Sα/g,'プラロッカーα']]},/* v20.29（依頼書 2026-11-24）: Sα の商品名は「プラロッカーα常設…」 */
   plastic:{key:'plastic',cid:'D00881',short:'プラスチックロッカー',name:'プラスチックロッカー株式会社',postal:'116-0001',address:'東京都荒川区町屋1-9-7',
     tel:'03-5856-0603',fax:'03-5856-0604',reg:'T8011501020131',
     bank:[['銀行名','三井住友銀行（0009）'],['支店名','綾瀬支店（691）'],['口座番号','（普）7643514'],['口座名義','プラスチックロッカーカブシキガイシャ']],
@@ -10307,7 +10331,9 @@ function agentBaseOrder(order,ad){
   });
   return Object.assign({},order,{discounts:ds,discount:discountSum(ds),_agentRaw:true});
 }
-function agentRowPriceEditable(r){return !!r&&typeof r.price==='number'&&!r.rentalPair&&!/_R$/.test(r.rkey||'')&&!/^DISC/.test(r.rkey||'');}
+/* v20.29（依頼書 2026-11-24「QT-2026-372 でレンタルのベースの金額を変えてもマイナス分が変わらず、プレビューはどちらも初期値のまま」）:
+   レンタル品のプラスの行（rentalPair）も単価を直せる。相殺のマイナスの行（_R）は直したプラスの行の単価・金額に合わせる（必ず差引0）。 */
+function agentRowPriceEditable(r){return !!r&&typeof r.price==='number'&&!/_R$/.test(r.rkey||'')&&!/^DISC/.test(r.rkey||'');}
 /* 代理店帳票の明細。ad＝手修正（省略時は order.agentDoc。プレビューでは入力中の値） */
 function agentQuoteRows(order,ad){
   var fmt=agentFmtOf(order)||'global';
@@ -10335,6 +10361,13 @@ function agentQuoteRows(order,ad){
       if(o.cfg!=null&&String(o.cfg)!==''&&x.configNote){x.configNote=String(o.cfg);x.edited=true;}/* v20.14 */
     }
     return x;
+  });
+  var byRk={};rows.forEach(function(r){if(r&&r.rkey)byRk[r.rkey]=r;});
+  rows.forEach(function(r){
+    if(!/_R$/.test(r.rkey||''))return;
+    var pr=byRk[r.rkey.replace(/_R$/,'')];
+    if(!pr||!pr.rentalPair||typeof pr.price!=='number')return;
+    r.price=-pr.price;r.amount=-(parseInt(pr.amount)||0);
   });
   var sub=0;rows.forEach(function(r){sub+=parseInt(r.amount)||0;});
   return {rows:rows,subtotal:sub,tax:Math.floor(sub*0.1),total:sub+Math.floor(sub*0.1),fmt:fmt};
@@ -10447,7 +10480,7 @@ function agentHeader(order,docType,ad,sheetIdx){
     toName:eu.name||'',toPostal:eu.postal||'',toAddress:eu.address||'',toPhone:eu.phone||'',toFax:'',
     subject:agentRen(fmt,quoteSubjectOf(oq)),
     date:docDateOf(order,'quote'),slip:order.no||'',
-    payTerms:(oq.paymentTerms)||'前払い（銀行振り込み）',payDue:'',
+    payTerms:payTermsDisp((oq.paymentTerms)||'前払い（銀行振り込み）'),payDue:'',
     validity:validUntilOf(oq),dterm:deliveryTermOf(oq),delivery:'',
     notes:agentRen(fmt,Array.isArray(on)?on.join('\n'):String(on||''))
   };
@@ -10479,6 +10512,7 @@ function agentHeader(order,docType,ad,sheetIdx){
   if(docType==='delivery')bm=Object.assign({},bm,inh);/* 請求書が優先 */
   var out=Object.assign({},auto,{auto:auto,edited:{},fmt:fmt,quoteEdited:qEd});
   AGENT_H_KEYS.forEach(function(k){if(bm[k]!=null&&String(bm[k])!==''){out[k]=String(bm[k]);out.edited[k]=true;}});
+  out.payTerms=payTermsDisp(out.payTerms);/* v20.29 */
   if(docType==='invoice'&&!out.edited.payDue&&!(isBill&&auto.payDue))out.payDue=payDueTextOf(out.date,out.payTerms);
   if(isBill&&bm.notesOff){out.notes='';out.edited.notes=true;out.notesOff=true;}
   out.rowRemarks=(isBill&&bm.rowRemarks&&typeof bm.rowRemarks==='object')?bm.rowRemarks:{};
@@ -10549,7 +10583,7 @@ function agentDocHTML(order,docType,ad,sheetIdx){
     if(r.configNote)disp.push({text:r.configNote});
     disp.push({r:r});
     if(r.colorNote)disp.push({text:r.colorNote});
-    if(!hasRemarkCol&&r.remark)disp.push({text:'　'+r.remark,small:true});
+    if(!hasRemarkCol&&r.remark)disp.push({text:'　'+r.remark,small:fmt!=='plalocker'});/* v20.29: プラロッカーは1行目と同じ大きさ */
   });
   var dlvJa=String(hv.delivery||'').replace(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/,function(_,y,m,d){return y+'年'+(+m)+'月'+(+d)+'日';});
   if(isI&&dlvJa&&fmt!=='nrh')disp.push({text:'【納品日：'+dlvJa+'】'});
@@ -10674,13 +10708,13 @@ function agentDocHTML(order,docType,ad,sheetIdx){
     var dLbl={quote:'見積日',invoice:'請求日',delivery:'納品日',receipt:'受領日'}[docType];
     var nLbl=isQ?'見積No.':'伝票No.';
     body+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
-    body+='<div style="width:92mm;border:1px solid #ddd;border-radius:3px;padding:8px 10px;font-size:12.5px;line-height:1.8">'
+    body+='<div style="width:100mm;min-height:40mm;border:1px solid #ddd;border-radius:3px;padding:10px 12px;font-size:13.5px;line-height:1.85">'/* v20.29: 枠を大きく・文字を1サイズ大きく */
       +'<div>'+(hv.toPostal?'〒'+E(String(hv.toPostal).replace(/^〒/,'')):'&nbsp;')+'</div><div>'+E(hv.toAddress)+'&nbsp;</div>'
       +'<div>'+(hv.toPhone?'TEL：'+E(hv.toPhone):'')+(hv.toFax?'　FAX：'+E(hv.toFax):'')+'&nbsp;</div>'
-      +'<div style="font-size:14px">'+E(hv.toName)+'　<span style="font-size:11px">御中</span></div></div>';
+      +'<div style="font-size:15.5px">'+E(hv.toName)+'　<span style="font-size:12px">御中</span></div></div>';
     body+='<div style="width:80mm"><div style="font-size:24px;letter-spacing:8px;text-align:center;border-bottom:2px solid #888;padding-bottom:2px">'+spaced+'</div>'
       +'<table style="margin:8px 0 0 auto;font-size:10.5px">'+[[nLbl,hv.slip],[dLbl,hv.date],['登録番号',F.reg]].map(function(x){return '<tr><td style="border:1px solid #888;padding:0 6px;text-align:right">'+x[0]+'</td><td style="border:1px solid #888;padding:0 6px;text-align:center;min-width:110px">'+E(x[1])+'</td></tr>';}).join('')+'</table>'
-      +'<div style="margin-top:10px">'+co+'</div></div>';
+      +'<div style="margin-top:10px;display:flex;justify-content:flex-end">'+co+'</div></div>';/* v20.29: 会社欄の右端を上の番号の欄の右の線にそろえる */
     body+='</div>';
     body+='<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px">';
     body+='<div><div class="sm" style="margin-bottom:6px">'+lead+'</div><table style="width:92mm;font-size:11px">'
@@ -10787,7 +10821,7 @@ function generateExcel(order,docType){
   wsData.push(['〒',cust&&cust.postal?cust.postal:'','','','','〒120-0005 東京都足立区綾瀬7-4-1']);
   wsData.push(['住所',cust?cust.pref+(cust.city||''):'','','','','TEL. 03-5849-5563  FAX. 03-5849-5564']);
   var exSalesP=orderSalesPersonRaw(order,cust)||'齋藤 勝';/* v18.97 修正27④ */
-  var exPayTerms=order.paymentTerms||'前払い（銀行振り込み）';
+  var exPayTerms=payTermsDisp(order.paymentTerms||'前払い（銀行振り込み）');/* v20.29 */
   /* v18.33 要望⑬⑯: Excel出力も見積書HTMLと同様、担当者は伝票コード上部の欄に統一・先方担当者（ご担当）行は削除 */
   wsData.push(['電話番号',cust&&cust.phone?cust.phone:'','FAX番号',cust&&cust.fax?cust.fax:'','','登録番号:T4040001077220']);
   /* v18.34 ⑭追随: HTML版と同様、顧客コードは電話番号の下の行へ（従来は〒行に同居） */
@@ -11312,9 +11346,9 @@ var HELP_QA=[
     steps:['「自由入力（在庫外商品）」欄に商品名称・数量・単位・単価を入れて「＋ 自由入力行を追加」','見積書作成の画面でも「＋ 自由入力の行を追加」や「＋ 定型文を追加」（搬入・設置工事費など）で足せます'],
     tip:'工事費などの原価は、見積書作成画面の明細の行で金額の右の緑の欄（原価）に入れると粗利計算表の原価に入ります（帳票には出ません）。粗利計算表に送料は含めません。',
     rel:['quote-discount']},
-  {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.15',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
+  {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.29',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
     steps:['案件管理で、その案件の「🏷代理店帳票」を押す（顧客が4社の案件だけに出ます）','出したい帳票（見積書・請求書・納品書・物品受領書）を押すと、その代理店の様式で印刷用の画面が開きます','見積書は見積書の下の「✎ 見積書作成画面」で直す（在庫確認・見積の見積書作成画面と同じ。明細の追加・値引き・並べ替え・単価・送料も。請求書・納品書・物品受領書にも反映されます）','請求書・納品書・物品受領書だけを直すときは、その帳票の下の「✎ 記載内容の手修正」（今の帳票と同じ画面。請求書で直した所は納品書にも反映・請求書が優先）'],
-    tip:'金額は代理店値引きを除き、ロッカー本体の単価だけ×1.1（100円未満切り上げ）。製品名称はプラロッカー＝ECOプラロッカー／プラロッカー／ルミ○○色、プラスチックロッカー＝プラエコロッカー／プラスチックロッカー／ホタプラ○○色。案件管理の原価欄の粗利と売上集計もこの金額で計算します（2026-11-18 以降に作った案件。それより前の案件は今の帳票の金額のまま）。',
+    tip:'金額は代理店値引きを除き、ロッカー本体の単価だけ×1.1（100円未満切り上げ）。製品名称はプラロッカー＝ECOプラロッカー／プラロッカー／プラロッカーα（Sα）／ルミ○○色、プラスチックロッカー＝プラエコロッカー／プラスチックロッカー／ホタプラ○○色。案件管理の原価欄の粗利と売上集計もこの金額で計算します（2026-11-18 以降に作った案件。それより前の案件は今の帳票の金額のまま）。見積書作成画面の全体備考の【常設】の定型文には、プラロッカー・グローバルの様式ではその会社の文章も出ます。',
     warn:'代理店帳票（見積書作成画面か請求書の記載内容の手修正）で支払条件を「前払い」「新規前入金」にした案件は、ステータス欄の「入金確認」にチェックが入るまで出荷指示書を出せず、出荷指示書送付済にもできません。チェックは納品完了タブの入金確認と同じもので、納品完了になってもそのまま残ります（案件修正で作り直しても消えません）。',rel:['quote-discount']},
   {id:'quote-discount',cat:'quote',tab:'inv',ver:'v19.72',q:'見積に値引きを入れたい',kw:['値引き','割引','出精値引き','継続購入割引','販促','代理店値引き','10%'],
     steps:['「見積書のみ作成」などで見積書作成の画面を開く','「＋ 値引きの行を追加」を押す','項目（出精値引き／３年間継続購入割引／販促活動協力費／自由入力）と金額を入れる'],
@@ -12780,7 +12814,7 @@ function CustPage(p){
   /* v19.39 修正35②: 顧客ごとの支払条件（cust.payTerms）。案件を作るとこの値が案件の支払条件の初期値になり、
      見積書作成画面の「支払条件」で選ばれた状態になる。空欄＝従来どおり「末締め翌月末」。 */
   function PayTermsField(value,onChange){
-    var cur=String(value||'');
+    var cur=String(payTermsDisp(value||''));/* v20.29 */
     var free=ptFreeMode[0]||(cur&&PAY_TERMS_OPTS.indexOf(cur)<0);
     return h('div',{style:{flex:1}},
       h('label',{style:FL},'支払条件（見積作成時の初期値）'),
@@ -12789,7 +12823,7 @@ function CustPage(p){
         if(v==='__free__'){ptFreeMode[1](true);return;}
         ptFreeMode[1](false);onChange(v);
       }},
-        h('option',{value:''},'（未設定＝末締め翌月末）'),
+        h('option',{value:''},'（未設定＝'+PAY_TERMS_EOM+'）'),
         PAY_TERMS_OPTS.map(function(v){return h('option',{key:v,value:v},v);}),
         h('option',{value:'__free__'},'自由入力')
       ),
@@ -13059,7 +13093,8 @@ function QuoteEditPanel(p){
   var qo=p.qo,updQ=p.updQ,AG=!!p.agent;
           var PAY_TERMS_LIST=PAY_TERMS_OPTS.concat(['自由入力']);/* v18.62 修正12③: 「その他」→「自由入力」へ名称変更（下の欄に直接入力する運用は従来どおり） */
           var EL={fontSize:8,fontWeight:600,color:'var(--g500)',display:'block'};
-          var ptKnown=PAY_TERMS_LIST.indexOf(qo.paymentTerms||'')>=0;
+          var ptCur=payTermsDisp(qo.paymentTerms||'');/* v20.29: 保存済みの「末締め翌月末」は新しい文言の選択肢で出す */
+          var ptKnown=PAY_TERMS_LIST.indexOf(ptCur)>=0;
           /* v18.37 修正箇所2③: 納期・受渡地・有効期限は選択肢マスタ＋自由入力。
              マスタは全端末共有のため、追加・削除の都度 localStorage とクラウドへ保存する。 */
           function bumpOpts(){saveQuoteOpts();cloudSave(p.userName);optTick[1](optTick[0]+1);}
@@ -13262,7 +13297,7 @@ function QuoteEditPanel(p){
             ),
             h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}},
               h('div',null,h('label',{style:EL},'支払条件'),
-                h('select',{className:'inp',value:ptKnown?qo.paymentTerms:'自由入力',onChange:function(e){updQ({paymentTerms:e.target.value==='自由入力'?'':e.target.value});}},
+                h('select',{className:'inp',value:ptKnown?ptCur:'自由入力',onChange:function(e){updQ({paymentTerms:e.target.value==='自由入力'?'':e.target.value});}},
                   PAY_TERMS_LIST.map(function(pt){return h('option',{key:pt,value:pt},pt);})),
                 !ptKnown?h('input',{className:'inp',value:qo.paymentTerms||'',onChange:function(e){updQ({paymentTerms:e.target.value});},placeholder:'支払条件を入力',style:{marginTop:3}}):null
               ),
@@ -13492,7 +13527,8 @@ function QuoteEditPanel(p){
                【パーソナル】【常設】を選ぶとその区分の文章が一覧で出て、★チェックを入れた文章だけを挿入する。
                挿入したあとは今までどおり自由に書き換えられる（自由入力は従来のまま）。 */
             (function(){
-              var tpl=NOTES_TEMPLATES.find(function(x){return x.k===notesTplKey[0];})||null;
+              var TPLS=notesTemplatesFor(AG?p.agentFmt:null);/* v20.29 */
+              var tpl=TPLS.find(function(x){return x.k===notesTplKey[0];})||null;
               var lines=tpl?tpl.t.split('\n'):[];
               var picked=notesTplPick[0]||{};
               function togglePick(i,on){var m=Object.assign({},picked);if(on)m[i]=true;else delete m[i];notesTplPick[1](m);}
@@ -13516,7 +13552,7 @@ function QuoteEditPanel(p){
                       notesTplPick[1]({});
                     }},
                       h('option',{value:''},'（区分を選ぶ）'),
-                      NOTES_TEMPLATES.map(function(t){return h('option',{key:t.k,value:t.k},t.l);})
+                      TPLS.map(function(t){return h('option',{key:t.k,value:t.k},t.l);})
                     ),
                     tpl?h('button',{className:'btn btn-xs btn-nv',onClick:function(){insertPicked('replace');}},'チェックした文章を入れる'):null,
                     tpl?h('button',{className:'btn btn-xs btn-ol',onClick:function(){insertPicked('append');}},'末尾に追記'):null,
@@ -13735,7 +13771,7 @@ function InvPage(p){
   /* v19.12 修正29⑥: 見積書作成画面の支払条件の★既定値を「末締め翌月末」に変更（依頼29）。
      ★ここは新規作成時の初期値だけ。既存案件（order.paymentTerms 未設定の過去データ）の
      　帳票側フォールバックは「前払い（銀行振り込み）」のまま＝過去の紙の文言は変わらない。 */
-  var quoteSubject=us(''),paymentTerms=us('末締め翌月末'),paymentCustom=us(''),quoteNotes=us('');
+  var quoteSubject=us(''),paymentTerms=us(PAY_TERMS_EOM),paymentCustom=us(''),quoteNotes=us('');
   /* v19.39 修正35②: 顧客に支払条件（cust.payTerms）が登録されていれば、それを案件の支払条件の初期値にする。
      リピート発注・案件修正で元の案件の支払条件を読み込んだときはそちらを優先（ptFromOrder）。 */
   var ptFromOrder=ur(false);
@@ -13850,7 +13886,7 @@ function InvPage(p){
     rentalMid[1](false);rentalGrade[1](2);rentalPrefillKey.current='';
     partLine[1]('jp2');partType[1]('side');partSub[1]('M');partColor[1]('pb');partQty[1](1);partPrice[1](0);
     /* v19.45 ②: 見積書の入力内容も新しい案件として始める */
-    quoteSubject[1]('');paymentTerms[1]('末締め翌月末');paymentCustom[1]('');quoteNotes[1]('');quoteSalesPerson[1]('');
+    quoteSubject[1]('');paymentTerms[1](PAY_TERMS_EOM);paymentCustom[1]('');quoteNotes[1]('');quoteSalesPerson[1]('');
     discountRows[1]([]);shipLabelSt[1]('');optFree[1]({});discFree[1]({});unitDraft[1]({});notesTplKey[1]('');notesTplPick[1]({});
     dragRk[1](null);dropRk[1](null);
     freeInputName[1]('');freeInputQty[1](1);freeInputUnit[1]('個');freeInputPrice[1](0);freeInputRemark[1]('');freeInputCost[1]('');
@@ -13930,7 +13966,7 @@ function InvPage(p){
     }else{multiPrev[1](null);partWhSel[1]({});}
     quoteOrder[1](null);showQuote[1](false);
     quoteSubject[1](ro.subject||'');
-    if(ro.paymentTerms)paymentTerms[1](ro.paymentTerms);
+    if(ro.paymentTerms)paymentTerms[1](payTermsDisp(ro.paymentTerms));/* v20.29 */
     ptFromOrder.current=!!ro.paymentTerms;
     quoteNotes[1](ro.notes||'');
     discountRows[1](discountRowsOf(ro));/* v18.62 修正12②: 旧形式(discountのみ)は既定名1行に変換して引き継ぐ */
@@ -15839,7 +15875,7 @@ function QuotePreview(p){
   }
   if(dvP)rows=docRowRemarkApply(rows,dvP);/* v19.76: 明細の行の備考の手修正（印刷用HTMLと同じ） */
   var subject=quoteSubjectOf(o);
-  var payTerms2=o.paymentTerms||'前払い（銀行振り込み）';
+  var payTerms2=payTermsDisp(o.paymentTerms||'前払い（銀行振り込み）');/* v20.29 */
   var salesP2=orderSalesPersonRaw(o,cust)||'齋藤 勝';/* v18.97 修正27④ */
   var slipCode=(dt==='quote'?'見積':dt==='invoice'?'請求':dt==='shipping'?'出荷':'納品')+'-'+o.no;
   var cs={border:'1px solid #999',padding:'3px 6px',fontSize:11.5};/* v18.34 ⑫追随: 印刷版(9.5px)と一致 */
@@ -19189,7 +19225,7 @@ function OrdersPage(p){
               fld('toName','宛名（御中の前まで。空欄＝エンド納品先）'),fld('toPostal','〒'),fld('date','発行日'),fld('slip','見積番号')),
             h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6}},
               fld('toAddress','住所'),fld('toPhone','電話'),fld('toFax','FAX'))),
-          h(QuoteEditPanel,{key:'agq-'+o.no,qo:qo,agent:true,toast:p.toast,userName:p.userName,
+          h(QuoteEditPanel,{key:'agq-'+o.no,qo:qo,agent:true,agentFmt:fk,toast:p.toast,userName:p.userName,
             updQ:function(patch){agentQUpd(o.no,patch);},
             rowsOf:function(){return agentQuoteRows(o).rows;}}),
           h('div',{style:{fontSize:10,fontWeight:700,marginBottom:4}},'📄 プレビュー（'+agentDocTitle(fk,'quote')+'・'+F.short+'）'),
