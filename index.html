@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.29（代理店帳票の改修：支払条件「月末締め翌月末払い」・プラロッカーα・定型文ほか）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.30（Sαのパーツ単品追加にカスタム部材を出す）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -2981,7 +2981,9 @@ function partAddDefsForLine(lineId){
     if(!partShownInLine(k,lineId))return false;
     if(lineId==='tw'&&TW_REPLACED_PART_KEYS.indexOf(k)>=0)return false;
     /* v19.56: Sα は Sα で扱う部材（在庫一覧の SA_PARTS・扉・レール）と鍵類（全ライン共通在庫）だけ（ユーザー回答） */
-    if(lineId==='sa'&&!(SA_PART_KEYS_ADD.indexOf(d.k)>=0||isCommonStockKey(k)))return false;
+    /* v20.30（依頼書 2026-11-24_154805「部材在庫一覧で新規登録した部材（棚板_ Sα（グレー）・扉 スモーキー各色_ Sα）がパーツ単品追加で出てこない」）:
+       部材在庫一覧で足したカスタム部材（isCustom）は Sα でも出す（ほかのラインと同じ）。 */
+    if(lineId==='sa'&&!(d.isCustom||SA_PART_KEYS_ADD.indexOf(d.k)>=0||isCommonStockKey(k)))return false;
     return true;
   });
 }
@@ -2992,7 +2994,7 @@ function partAddLabel(d,lineId){return (d&&d.lineLabels&&d.lineLabels[lineId])||
 /* localStorageのカスタム部材も含めたパーツ単品候補（部材在庫一覧と一致） */
 function getPartAddDefs(){
   var extra=[];
-  try{var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');extra=cp.filter(function(it){return it&&it.key;}).map(function(it){return {k:it.key,l:'＋'+it.label};});}catch(e){}
+  try{var cp=JSON.parse(lsGet('lec_custom_parts')||'[]');extra=cp.filter(function(it){return it&&it.key;}).map(function(it){return {k:it.key,l:'＋'+it.label,isCustom:true};});}catch(e){}
   return PART_ADD_DEFS.concat(extra);
 }
 function productName(lineId,showVer){
@@ -11339,9 +11341,9 @@ var HELP_QA=[
   {id:'quote-multi',cat:'quote',tab:'inv',ver:'v19.57',q:'サイズ違いなど、複数の製品を1つの見積にまとめたい',kw:['複数','サイズ違い','まとめる','別製品','追加'],
     steps:['1つ目の商品を選び「＋ 在庫確認・明細追加」','商品選択を2つ目の内容に変えて、もう一度「＋ 在庫確認・明細追加」（明細に行が増えます）','そろったら倉庫を選んで見積・仮押さえ'],
     tip:'「＋ 別製品ライン追加（サイズ違い等をこの案件に追加）」でも追加できます。明細の「✕」で行を消せます。',rel:[]},
-  {id:'quote-parts',cat:'quote',tab:'inv',ver:'v19.58',q:'扉・棚板・鍵・レールなどパーツだけを追加・販売したい',kw:['パーツ','部材','部品','単品','扉','棚板','鍵','レール','ネジ','キーバンド','シール','厚紙','ハトメ','マスターキー'],
+  {id:'quote-parts',cat:'quote',tab:'inv',ver:'v20.30',q:'扉・棚板・鍵・レールなどパーツだけを追加・販売したい',kw:['パーツ','部材','部品','単品','扉','棚板','鍵','レール','ネジ','キーバンド','シール','厚紙','ハトメ','マスターキー'],
     steps:['「在庫確認・見積」の「パーツ単品追加」欄で、パーツの製品ライン・パーツ・数量を選ぶ','「＋ パーツ単品追加」を押す（明細に入ります）','あとはふつうの見積と同じく倉庫を選んで見積・仮押さえ'],
-    tip:'Sα を選ぶと、Sα で扱う部材と鍵類だけが選べます。',rel:[]},
+    tip:'Sα を選ぶと、Sα で扱う部材と鍵類、部材在庫一覧で追加したカスタム部材（「＋」の付いた名前）が選べます。',rel:[]},
   {id:'quote-free',cat:'quote',tab:'inv',ver:'v19.57',q:'在庫に無い商品や工事費を見積に入れたい',kw:['自由入力','工事費','搬入','設置','在庫外','その他','原価','粗利'],
     steps:['「自由入力（在庫外商品）」欄に商品名称・数量・単位・単価を入れて「＋ 自由入力行を追加」','見積書作成の画面でも「＋ 自由入力の行を追加」や「＋ 定型文を追加」（搬入・設置工事費など）で足せます'],
     tip:'工事費などの原価は、見積書作成画面の明細の行で金額の右の緑の欄（原価）に入れると粗利計算表の原価に入ります（帳票には出ません）。粗利計算表に送料は含めません。',
