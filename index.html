@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.34（代理店帳票は扉が台湾製なら台湾製の名前）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.35（台湾製XLのベースは日本製と同じ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -3976,6 +3976,11 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   var noDoor=opts.noDoor===true||type==='open'||so.ssw===true;/* オープンタイプは廃止予定だが過去データ互換のためtype==='open'も扉なし扱い。v18.33 要望⑤: SSWは扉なし固定 */
   /* v14 A10: XLサイズはMサイズ×2セット引きを全製品ラインで適用 */
   var isXL=size==='XL';
+  /* v20.35（2026-11-25 ユーザー「QT-2026-403 で Mサイズのベースボードは『アンカー穴キャップ付』だが XL のベースボードには無い。物は同一なので表記と在庫の紐づけは同一に」）:
+     台湾製（line='tw'）の XL のベースは、日本製Ver.2 のベース（アンカー穴キャップ付・MYPL-E-BG）と同じ物。
+     ベースとアンカー穴キャップは★日本製Ver.2（jp2）の在庫から押さえる・引く（BOM行の stockLine='jp2' → normalizeStockLine）。
+     台湾製の S・M・L のベース（アンカー穴なし・MYPL-BーTW）は今までどおり。 */
+  var twXLJpBase=isXL&&opts.line==='tw';
   /* v18.31 顧客指摘: 日本製Ver.2(jp2)のXLもXLコネクター・ハンガーパイプ必須（台湾XLと同構造）。jp01 XLは顧客言及なしのため従来どおり対象外 */
   var isXLParts=isXL&&(opts.line==='tw'||opts.line==='jp2');
   /* Boards always included */
@@ -4027,7 +4032,7 @@ function calcBOM(size,islands,tiers,lock,type,opts){
     /* v19.31: パーソナル貸与品の不足分のみ（学校保管で回せる分を差し引いた枚数）。0なら計上しない */
     var rsBase=rentalShortOf(opts,'base');
     if(rsBase!==null){baseReason='不足分のみ'+rsBase+'枚（必要'+baseQty+'枚・学校保管分を差引）';baseQty=rsBase;}
-    if(baseQty>0)bom.push({key:baseKey,sub:grp,qty:baseQty,label:'ベースボード('+(isSa?'Sα':grp.toUpperCase())+'・'+baseColorLabel+')',reason:baseReason,baseColor:baseColor});
+    if(baseQty>0){bom.push({key:baseKey,sub:grp,qty:baseQty,label:'ベースボード('+(isSa?'Sα':grp.toUpperCase())+'・'+baseColorLabel+')',reason:baseReason,baseColor:baseColor});if(twXLJpBase)bom[bom.length-1].stockLine='jp2';}
   }
   /* Shelf - optional. shelfColor='bk'時は shelf_bk キー、'gy'時は shelf キーで在庫照会
      台湾製(tw)は棚板グレーのみ取扱 */
@@ -4082,12 +4087,12 @@ function calcBOM(size,islands,tiers,lock,type,opts){
   /* Anchor cap (アンカー穴キャップ): opts.hasCap=true かつベース有の場合のみ。
      v14 A5: 台湾製(tw)・Sα(sa)は対象外。日本製Ver.1/Ver.2のみ自動加算。
      v14.3: 個数はベース(base)と同数 = パーソナルなら n、常設なら islands に戻す */
-  if(opts.hasCap===true&&opts.hasBase!==false&&opts.line!=='tw'&&opts.line!=='sa'){
+  if(opts.hasCap===true&&opts.hasBase!==false&&(opts.line!=='tw'||twXLJpBase)&&opts.line!=='sa'){/* v20.35: 台湾製XLは日本製と同じベース */
     var capColor=opts.baseColor||'gy';
     var capColorLabel=capColor==='bk'?'ブラック':'グレー';
     var capQty=isPersonal?(islands>0?islands:n):islands;/* v18.34 ⑩追随: ベース(baseQty)と同式に統一（列×段入力で台数に化けて過剰引当になるバグを修正） */
     var rsCap=rentalShortOf(opts,'base');if(rsCap!==null)capQty=rsCap;/* v19.31: ベースと同じく不足分のみ */
-    if(capQty>0)bom.push({key:'anchorCap',sub:capColor,qty:capQty,label:'アンカー穴キャップ('+capColorLabel+')',reason:'ベースと同数('+capQty+')',capColor:capColor});
+    if(capQty>0){bom.push({key:'anchorCap',sub:capColor,qty:capQty,label:'アンカー穴キャップ('+capColorLabel+')',reason:'ベースと同数('+capQty+')',capColor:capColor});if(twXLJpBase)bom[bom.length-1].stockLine='jp2';}
   }
   /* v14 A3/A4: ジョイントネジ・目隠しネジは自動加算を廃止。完全に手動入力(opts.jointScrewQty/opts.capScrewQty)に。
      常設・パーソナル両タイプで手動入力欄から個別に指定する。 */
@@ -4229,7 +4234,8 @@ function checkWH(line,wh,bom,color,size){
       var dk=b.key;/* 'door' or 'doorH' */
       stock=gd(line,wh,color,size,dk);held=ghd(line,wh,color,size,dk);free=stock-held;
     }else if(b.sub!==undefined){
-      stock=gs(line,wh,b.key,b.sub);held=gh(line,wh,b.key,b.sub);free=stock-held;
+      var slw=b.stockLine||line;/* v20.35 */
+      stock=gs(slw,wh,b.key,b.sub);held=gh(slw,wh,b.key,b.sub);free=stock-held;
     }else{
       stock=gs(line,wh,b.key);held=gh(line,wh,b.key);free=stock-held;
     }
@@ -4274,7 +4280,7 @@ function holdBOMPartial(line,wh,bom,color,size,colorBreakdown,unsecuredOut){
         }
       });
     }else if(b.sub!==undefined){
-      var holdLine=normalizeStockLine(line,b.key);
+      var holdLine=normalizeStockLine(line,b.key,b);
       var free2=avail(holdLine,wh,b.key,b.sub);
       var take2=Math.min(Math.max(0,free2),b.qty);
       var short2=b.qty-take2;
@@ -4286,10 +4292,10 @@ function holdBOMPartial(line,wh,bom,color,size,colorBreakdown,unsecuredOut){
         actualHeld.push({isDoor:false,key:b.key,sub:b.sub,qty:take2,heldLine:holdLine});
       }
       if(short2>0&&unsecuredOut){
-        unsecuredOut.push({line:line,wh:wh,key:b.key,sub:b.sub,qty:short2,label:b.label,isDoor:false});
+        unsecuredOut.push({line:b.stockLine||line,wh:wh,key:b.key,sub:b.sub,qty:short2,label:b.label,isDoor:false});/* v20.35 */
       }
     }else{
-      var holdLine2=normalizeStockLine(line,b.key);
+      var holdLine2=normalizeStockLine(line,b.key,b);
       var free3=avail(holdLine2,wh,b.key);
       var take3=Math.min(Math.max(0,free3),b.qty);
       var short3=b.qty-take3;
@@ -4342,12 +4348,12 @@ function holdBOM(line,wh,bom,color,size,colorBreakdown){
         HELD[line][wh][dk][dc.color][size]=(HELD[line][wh][dk][dc.color][size]||0)+dc.qty;
       });
     }else if(b.sub!==undefined){
-      var hl=normalizeStockLine(line,b.key);
+      var hl=normalizeStockLine(line,b.key,b);
       if(!HELD[hl])HELD[hl]={};if(!HELD[hl][wh])HELD[hl][wh]={door:{},doorH:{}};
       if(!HELD[hl][wh][b.key])HELD[hl][wh][b.key]={};
       HELD[hl][wh][b.key][b.sub]=(HELD[hl][wh][b.key][b.sub]||0)+b.qty;
     }else{
-      var hl2=normalizeStockLine(line,b.key);
+      var hl2=normalizeStockLine(line,b.key,b);
       if(!HELD[hl2])HELD[hl2]={};if(!HELD[hl2][wh])HELD[hl2][wh]={door:{},doorH:{}};
       HELD[hl2][wh][b.key]=(HELD[hl2][wh][b.key]||0)+b.qty;
     }
@@ -4534,7 +4540,7 @@ function rebuildHeldFromOrders(){
           return;
         }
         ln._actualHeld.forEach(function(b){
-          var hl=b.heldLine||normalizeStockLine(ln.line,b.key);
+          var hl=b.heldLine||normalizeStockLine(ln.line,b.key,b);
           var wh=b._wh||ln._heldWh||o.wh;
           if(!hl||!wh)return;
           if(!fresh[hl])fresh[hl]={};
@@ -6536,8 +6542,9 @@ function exportFullBackup(editorNm){
   return true;
 }
 /* v14 Codex P1対応: 鍵類は物理在庫がjp2に集約されているため、消費先ラインを正規化 */
-function normalizeStockLine(line,key){
+function normalizeStockLine(line,key,b){
   if(isCommonStockKey(key))return 'jp2';
+  if(b&&b.stockLine)return b.stockLine;/* v20.35: 台湾製XLのベース・アンカー穴キャップは jp2 */
   return line;
 }
 /* v14: ラッパー - 呼び出し元が ln._actualHeld を持つ場合はそちらを優先（Codex P1対応）
@@ -6592,12 +6599,12 @@ function releaseBOM(line,wh,bom,color,size,colorBreakdown){
       });
     }else if(b.sub!==undefined){
       /* v14 Codex P1対応: 鍵類はjp2バケットから戻す */
-      var relLine=normalizeStockLine(line,b.key);
+      var relLine=normalizeStockLine(line,b.key,b);
       if(HELD[relLine]&&HELD[relLine][wh]&&HELD[relLine][wh][b.key]){
         HELD[relLine][wh][b.key][b.sub]=Math.max(0,(HELD[relLine][wh][b.key][b.sub]||0)-b.qty);
       }
     }else{
-      var relLine2=normalizeStockLine(line,b.key);
+      var relLine2=normalizeStockLine(line,b.key,b);
       if(HELD[relLine2]&&HELD[relLine2][wh]){
         HELD[relLine2][wh][b.key]=Math.max(0,(HELD[relLine2][wh][b.key]||0)-b.qty);
       }
@@ -6639,7 +6646,7 @@ function holdBOMMultiN(line,whList,bom,color,size,colorBreakdown){
       });
     }else if(b.sub!==undefined){
       /* v14 Codex P1: 鍵類はjp2バケット */
-      var hl=normalizeStockLine(line,b.key);
+      var hl=normalizeStockLine(line,b.key,b);
       var rest2=b.qty;
       whs.forEach(function(w,wi){
         if(rest2<=0)return;
@@ -6654,7 +6661,7 @@ function holdBOMMultiN(line,whList,bom,color,size,colorBreakdown){
         rest2-=t;
       });
     }else{
-      var hl2=normalizeStockLine(line,b.key);
+      var hl2=normalizeStockLine(line,b.key,b);
       var rest3=b.qty;
       whs.forEach(function(w,wi){
         if(rest3<=0)return;
@@ -6818,7 +6825,7 @@ function shipOrderMulti(order){
         });
       }else if(b.sub!==undefined){
         /* v14 Codex P1: 鍵類はjp2バケットから消費 */
-        var sl=normalizeStockLine(ln.line,b.key);
+        var sl=normalizeStockLine(ln.line,b.key,b);
         var des2=whs.map(function(w){return _heldQtyAt(ln,w,b);});
         var stk2=whs.map(function(w){return (STK[sl]&&STK[sl][w]&&STK[sl][w][b.key]&&STK[sl][w][b.key][b.sub])||0;});
         des2=prefUnsec(des2,stk2,unsecWhKey(b.key,b.sub,''),b.qty);
@@ -6832,7 +6839,7 @@ function shipOrderMulti(order){
           EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:sl,key:b.key,sub:b.sub,wh:w,oldVal:oV1,newVal:nV1,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
         });
       }else{
-        var sl2=normalizeStockLine(ln.line,b.key);
+        var sl2=normalizeStockLine(ln.line,b.key,b);
         var des3=whs.map(function(w){return _heldQtyAt(ln,w,b);});
         var stk3=whs.map(function(w){return (STK[sl2]&&STK[sl2][w]&&STK[sl2][w][b.key])||0;});
         des3=prefUnsec(des3,stk3,unsecWhKey(b.key,undefined,''),b.qty);
@@ -6952,7 +6959,7 @@ function shipOrder(order){
         });
       }else if(b.sub!==undefined){
         /* v14 Codex P1: 鍵類はjp2バケットから消費 */
-        var shipLine=normalizeStockLine(ln.line,b.key);
+        var shipLine=normalizeStockLine(ln.line,b.key,b);
         if(STK[shipLine]&&STK[shipLine][order.wh]&&STK[shipLine][order.wh][b.key]){
           var oV1=STK[shipLine][order.wh][b.key][b.sub]||0;
           var nV1=Math.max(0,oV1-b.qty);
@@ -6960,7 +6967,7 @@ function shipOrder(order){
           EDIT_LOG.push({by:curUserName(),timestamp:new Date().toLocaleString('ja-JP'),lineId:shipLine,key:b.key,sub:b.sub,wh:order.wh,oldVal:oV1,newVal:nV1,label:(b.label||b.key)+'出荷消費 '+order.no,editor:'出荷処理'});
         }
       }else{
-        var shipLine2=normalizeStockLine(ln.line,b.key);
+        var shipLine2=normalizeStockLine(ln.line,b.key,b);
         if(STK[shipLine2]&&STK[shipLine2][order.wh]){
           var oV2=STK[shipLine2][order.wh][b.key]||0;
           var nV2=Math.max(0,oV2-b.qty);
@@ -7030,8 +7037,8 @@ function checkAllLinesWH(lines,wh){
             }
           });
         }else if(b.sub!==undefined){
-          var sKey=b.key+'|'+b.sub;
-          if(!structAgg[sKey])structAgg[sKey]={qty:0,label:b.label,key:b.key,sub:b.sub};
+          var sKey=(b.stockLine?b.stockLine+'@':'')+b.key+'|'+b.sub;/* v20.35: 台湾製XLのベースは jp2 の在庫 */
+          if(!structAgg[sKey])structAgg[sKey]={qty:0,label:b.label,key:b.key,sub:b.sub,sl:b.stockLine||null};
           structAgg[sKey].qty+=b.qty;
         }else{
           if(!simpleAgg[b.key])simpleAgg[b.key]={qty:0,label:b.label,key:b.key};
@@ -7042,8 +7049,8 @@ function checkAllLinesWH(lines,wh){
     /* Check aggregated structural parts */
     Object.keys(structAgg).forEach(function(k){
       var a=structAgg[k];
-      var stock=gs(lineId,wh,a.key,a.sub);
-      var held=gh(lineId,wh,a.key,a.sub);
+      var stock=gs(a.sl||lineId,wh,a.key,a.sub);
+      var held=gh(a.sl||lineId,wh,a.key,a.sub);
       var free=stock-held;
       var pass=free>=a.qty;
       if(!pass)allOk=false;
@@ -7822,7 +7829,7 @@ function bodyCodeOf(ln){
     (t==='per'?(M[g+'|'+ln.size+'|std|'+d]||M[g+'|'+ln.size+'|std|d']):null);}
   return e||null;
 }
-function baseCodeOf(ln){var g=priceLineGroup(ln&&ln.line);var grp=(ln&&ln.size)?sizeObj(ln.size).grp:'sml';
+function baseCodeOf(ln){var g=priceLineGroup(ln&&ln.line);if(ln&&ln.line==='tw'&&ln.size==='XL')g='eco';/* v20.35: 台湾製XLのベースは日本製と同じ */var grp=(ln&&ln.size)?sizeObj(ln.size).grp:'sml';
   if(ln&&ln.baseColor==='bk'&&BASE_CODE_MAP[g+'|'+grp+'|bk'])return BASE_CODE_MAP[g+'|'+grp+'|bk'];/* v19.15: 黒のベース */
   var e=BASE_CODE_MAP[g+'|'+grp]||BASE_CODE_MAP[g+'|sml']||null;
   /* v19.24: グレーの販売単価が0（SSグレー MYPL-E-ＳＳ-BG は金額未入力）のときは黒の単価を使う */
@@ -8694,7 +8701,7 @@ function lineVjQty(l){
 function quoteBaseRow(order,fl0,ti,rkey,sel){
   fl0=fl0||{};
   var bColorName=(fl0.baseColor==='bk')?'ブラック':'グレー';
-  var bName='ベースボード('+bColorName+')'+((fl0.hasCap!==false&&fl0.line!=='tw'&&fl0.line!=='sa')?' アンカー穴キャップ付':'');/* v19.56: 頭の製品名は付けない。v19.72 依頼⑤: 台湾製・Sα のベースにアンカー穴は無い（在庫の部材表 calcBOM も tw/sa はキャップを付けない） */
+  var bName='ベースボード('+bColorName+')'+((fl0.hasCap!==false&&(fl0.line!=='tw'||fl0.size==='XL')&&fl0.line!=='sa')?' アンカー穴キャップ付':'');/* v19.56: 頭の製品名は付けない。v19.72 依頼⑤: 台湾製・Sα のベースにアンカー穴は無い（在庫の部材表 calcBOM も tw/sa はキャップを付けない） */
   if(sel.base==='rental')bName=rentalName(bName);/* 修正17⑫ */
   var bPrice=orderBasePrice(order);
   var bEnt=(order&&order.priceVer>=2)?baseCodeOf(fl0):null;
@@ -13909,6 +13916,7 @@ function InvPage(p){
   var colors=doorColorChoices(doorLine);
   var sizes=LINE_SIZES[ln[0]]||[];
   var isJP=ln[0]==='jp01'||ln[0]==='jp2';
+  var jpBase=isJP||(ln[0]==='tw'&&sz[0]==='XL');/* v20.35: 台湾製XLのベースは日本製と同じ（色・キャップを選べる） */
   var doorIsJP=doorLine==='jp01'||doorLine==='jp2';/* v19.79: 扉タイプ（同色/ホタ）は扉の製品ラインで決める（本体が台湾製で扉が日本製のときも選べる） */
   /* v18.33 要望⑤: SSWは扉なし製品のため、jp2×XLと同じ「扉なし強制」機構に乗せる（jp2XLNoDoor=強制扉なしフラグとして共用） */
   var jp2XLNoDoor=isJp2XLDoorBlocked(doorLine,sz[0])||sz[0]==='SSW';/* v18.32 要望⑥: jp2×XLは扉の取扱なし（XL扉は台湾製のみ）。v20.00: 扉の製品ラインで判定（XL は扉を自動で台湾製にする） */
@@ -14210,7 +14218,7 @@ function InvPage(p){
         spec={islands:bl[0].c,tiers:bl[0].t};
       }
     }
-    var lineObj={id:Date.now(),line:ln[0],doorLine:((doorLn[0]&&doorLn[0]!==ln[0])?doorLn[0]:undefined),/* v18.70 修正16②: 扉だけ別ラインのとき記録 */size:sz[0],type:tp[0],noDoor:!hasDoor[0]||jp2XLNoDoor,color:(!hasDoor[0]||jp2XLNoDoor)?'':(cb?cb[0].color:cl[0]),qty:qty,islands:spec.islands,tiers:spec.tiers,lock:lock,doorType:dt,hasBase:hasBase[0],baseColor:isJP?baseColor[0]:'gy',hasCap:isJP?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:(ln[0]==='tw'||ln[0]==='sa')?'gy':shelfColor[0],hasNameplate:hasNameplate[0],hasNamePaper:hasNamePaper[0],jointScrewQty:parseInt(extraJointScrew[0])||0,capScrewQty:parseInt(extraCapScrew[0])||0,capScrewGyQty:parseInt(extraCapScrewGy[0])||0,sideJointQty:parseInt(extraSideJoint[0])||0};
+    var lineObj={id:Date.now(),line:ln[0],doorLine:((doorLn[0]&&doorLn[0]!==ln[0])?doorLn[0]:undefined),/* v18.70 修正16②: 扉だけ別ラインのとき記録 */size:sz[0],type:tp[0],noDoor:!hasDoor[0]||jp2XLNoDoor,color:(!hasDoor[0]||jp2XLNoDoor)?'':(cb?cb[0].color:cl[0]),qty:qty,islands:spec.islands,tiers:spec.tiers,lock:lock,doorType:dt,hasBase:hasBase[0],baseColor:jpBase?baseColor[0]:'gy',hasCap:jpBase?hasCap[0]:true,shelfQty:parseInt(shelfQty[0])||0,shelfColor:(ln[0]==='tw'||ln[0]==='sa')?'gy':shelfColor[0],hasNameplate:hasNameplate[0],hasNamePaper:hasNamePaper[0],jointScrewQty:parseInt(extraJointScrew[0])||0,capScrewQty:parseInt(extraCapScrew[0])||0,capScrewGyQty:parseInt(extraCapScrewGy[0])||0,sideJointQty:parseInt(extraSideJoint[0])||0};
     /* v18.55 修正９⑥／v18.56 確認項目①: 上下ジョイントの必要/不要と個数。
        常設タイプ・Sα は対象外（画面にも出していない）ので明細には持たせない。
        パーソナルで未操作(null)なら従来どおり「必要・計算式どおり」なので何も持たせない。 */
@@ -14396,7 +14404,9 @@ function InvPage(p){
         bom.forEach(function(b){
           /* v18.70 修正16②: 扉は明細の doorLine（未指定なら本体ライン）の在庫を見る */
           var _dl=b.isDoor?bomDoorLine(b,ln.line):ln.line;
-          bomByLine[ln.line].push({b:b,color:ln.color,size:ln.size,doorLine:_dl,orderCol:isOrderColor(_dl,ln.color)});
+          var _gl=(!b.isDoor&&b.stockLine)?b.stockLine:ln.line;/* v20.35: 台湾製XLのベースは jp2 の在庫 */
+          if(!bomByLine[_gl])bomByLine[_gl]=[];
+          bomByLine[_gl].push({b:b,color:ln.color,size:ln.size,doorLine:_dl,orderCol:isOrderColor(_dl,ln.color)});
         });
       });
       /* Aggregate BOM by product line, similar to checkAllLinesWH */
@@ -14613,7 +14623,7 @@ function InvPage(p){
         colors.forEach(function(dc){if(dc.color==='open'||isUndColor(dc.color))return;var f=availD(_dlp,w,dc.color,ln.size,b.key);if(f<mn)mn=f;});
         return mn===Infinity?0:Math.max(0,mn);
       }
-      var hl=normalizeStockLine(ln.line,b.key);
+      var hl=normalizeStockLine(ln.line,b.key,b);
       return Math.max(0,b.sub!==undefined?avail(hl,w,b.key,b.sub):avail(hl,w,b.key));
     }catch(e){return 0;}
   }
@@ -14663,7 +14673,7 @@ function InvPage(p){
   }
   /* 割当行で選べる倉庫（在庫バケットを持っている倉庫だけ）。扉は扉のラインで判定する。 */
   function partWhOpts(ln,b){
-    var stLine=b.isDoor?bomDoorLine(b,ln.line):normalizeStockLine(ln.line,b.key);
+    var stLine=b.isDoor?bomDoorLine(b,ln.line):normalizeStockLine(ln.line,b.key,b);
     var o=WH_IDS.filter(function(w){return hasStock(ln.line,w)||hasStock(stLine,w);});
     return o.length?o:WH_IDS.slice();
   }
@@ -15289,8 +15299,8 @@ function InvPage(p){
             h('div',{style:{display:'flex',gap:4,marginBottom:4,alignItems:'center'}},
               h('label',{style:{fontSize:8,fontWeight:600,color:'var(--g500)',width:50}},'ベース'),
               h('label',{style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3}},h('input',{type:'checkbox',checked:hasBase[0],onChange:function(){hasBase[1](!hasBase[0]);}}),hasBase[0]?'あり':'なし'),
-              hasBase[0]&&isJP?h('select',{className:'inp',value:baseColor[0],onChange:function(e){var bc=e.target.value;baseColor[1](bc);hasCap[1](bc!=='bk');/* v19.35: ブラックは原則キャップなし（チェックは手で付け直せる） */},style:{width:80}},BASE_COLORS.map(function(bc){return h('option',{key:bc.v,value:bc.v},bc.l);})):null,
-              hasBase[0]&&isJP?h('label',{style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3}},h('input',{type:'checkbox',checked:hasCap[0],onChange:function(){hasCap[1](!hasCap[0]);}}),h('span',null,'キャップ')):null
+              hasBase[0]&&jpBase?h('select',{className:'inp',value:baseColor[0],onChange:function(e){var bc=e.target.value;baseColor[1](bc);hasCap[1](bc!=='bk');/* v19.35: ブラックは原則キャップなし（チェックは手で付け直せる） */},style:{width:80}},BASE_COLORS.map(function(bc){return h('option',{key:bc.v,value:bc.v},bc.l);})):null,
+              hasBase[0]&&jpBase?h('label',{style:{fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',gap:3}},h('input',{type:'checkbox',checked:hasCap[0],onChange:function(){hasCap[1](!hasCap[0]);}}),h('span',null,'キャップ')):null
             ),
             /* Shelf options */
             h('div',{style:{display:'flex',gap:4,marginBottom:6,alignItems:'center'}},
@@ -20105,9 +20115,10 @@ function orderBomGroups(order){
 function computeOrderParts(order,filterLine){
   order=screwAdjView(order);/* v20.10: ネジの調整を足して数える */
   var parts={};
-  var lineOk=function(ln,key,isDoor){
+  var lineOk=function(ln,key,isDoor,e){
     if(!filterLine)return true;
     if(!isDoor&&isCommonStockKey(key))return true;
+    var ol=e&&(e.heldLine||e.stockLine);if(!isDoor&&ol&&ol!==ln.line)return ol===filterLine;/* v20.35: 台湾製XLのベースは jp2 */
     return ln.line===filterLine;
   };
   order.lines.forEach(function(ln){
@@ -20124,7 +20135,7 @@ function computeOrderParts(order,filterLine){
     }
     var bom=calcBOM(ln.size,ln.islands,ln.tiers,ln.lock,ln.type,ln);
     bom.forEach(function(b){
-      if(!lineOk(ln,b.key,b.isDoor))return;/* v18.44 修正３③: ライン絞り込み（共通在庫キーは常に通す） */
+      if(!lineOk(ln,b.key,b.isDoor,b))return;/* v18.44 修正３③: ライン絞り込み（共通在庫キーは常に通す） */
       if(b.isDoor){
         var colors2=ln.colorBreakdown&&ln.colorBreakdown.length>0?ln.colorBreakdown:[{color:ln.color,qty:b.qty}];
         colors2.forEach(function(dc){
@@ -20159,9 +20170,10 @@ function computeOrderParts(order,filterLine){
    (_heldWh、無ければ案件の主倉庫)側にまとめて計上する。 */
 function computeOrderPartsByWh(order,filterLine,wh){
   var parts={};
-  var lineOk=function(ln,key,isDoor){
+  var lineOk=function(ln,key,isDoor,e){
     if(!filterLine)return true;
     if(!isDoor&&isCommonStockKey(key))return true;
+    var ol=e&&(e.heldLine||e.stockLine);if(!isDoor&&ol&&ol!==ln.line)return ol===filterLine;/* v20.35: 台湾製XLのベースは jp2 */
     return ln.line===filterLine;
   };
   (order.lines||[]).forEach(function(ln){
@@ -20170,7 +20182,7 @@ function computeOrderPartsByWh(order,filterLine,wh){
     if(ah&&ah.length){
       ah.forEach(function(e){
         if((e._wh||ln._heldWh||order.wh)!==wh)return;
-        if(!lineOk(ln,e.key,e.isDoor))return;
+        if(!lineOk(ln,e.key,e.isDoor,e))return;
         var pk=e.isDoor?(e.key+':'+(e.color||'')+':'+(e.size||''))
               :((e.sub!==undefined&&e.sub!==null)?(e.key+':'+e.sub):e.key);
         parts[pk]=(parts[pk]||0)+(parseInt(e.qty)||0);
