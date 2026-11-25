@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.33（代理店帳票の見積書にも発注書付）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.34（代理店帳票は扉が台湾製なら台湾製の名前）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -10397,16 +10397,31 @@ function agentBaseOrder(order,ad){
 /* v20.29（依頼書 2026-11-24「QT-2026-372 でレンタルのベースの金額を変えてもマイナス分が変わらず、プレビューはどちらも初期値のまま」）:
    レンタル品のプラスの行（rentalPair）も単価を直せる。相殺のマイナスの行（_R）は直したプラスの行の単価・金額に合わせる（必ず差引0）。 */
 function agentRowPriceEditable(r){return !!r&&typeof r.price==='number'&&!/_R$/.test(r.rkey||'')&&!/^DISC/.test(r.rkey||'');}
+/* v20.34（2026-11-25 ユーザー「代理店帳票の製品名は選択した製品ラインに紐づいて変わるが、扉の製品ラインが台湾の場合は台湾名で。QT-2026-400」）:
+   扉の製品ライン（doorLine）が台湾製の本体の明細は、本体の製品ラインが日本製でも、代理店帳票では台湾製の名前（Myプラロッカー → 各社の名前）で出す。
+   例 プラスチックロッカー: プラエコロッカーXLサイズ… → プラスチックロッカーXLサイズ…／プラロッカー: ECOプラロッカー… → プラロッカー…。
+   ★代理店帳票（4社）だけ。LEC の帳票の名前は変えない。手で直した名前（agentDoc.rows[行].name）はそのまま。 */
+function agentTwDoorKeys(order){
+  var m={};
+  ((order&&order.lines)||[]).forEach(function(ln){
+    if(!ln||ln.isPartOnly||ln.noDoor)return;
+    if(doorLineOf(ln)==='tw'&&ln.line!=='tw'&&ln.line!=='sa')m['L'+ln.id]=true;
+  });
+  return m;
+}
+function agentTwName(s){return String(s==null?'':s).replace(/[MＭ][yｙ]プラECOロッカー(\(Ver\.\d\))?/,productName('tw'));}
 /* 代理店帳票の明細。ad＝手修正（省略時は order.agentDoc。プレビューでは入力中の値） */
 function agentQuoteRows(order,ad){
   var fmt=agentFmtOf(order)||'global';
   ad=ad||(order&&order.agentDoc)||{};
   var q=buildQuoteRows(agentBaseOrder(order,ad));
   var ro=ad.rows||{};
+  var twDoor=agentTwDoorKeys(agentOverlay(order,ad));
   var rows=(q.rows||[]).map(function(r){
     var x=Object.assign({},r);
     var qn=parseInt(x.qty)||0;
     if(x.isBody&&typeof x.price==='number'&&x.price>0){x.lecPrice=x.price;x.price=agentUp(x.price);x.amount=x.price*qn;}
+    if(x.isBody&&twDoor[x.rkey])x.name=agentTwName(x.name);/* v20.34 */
     x.name=agentRen(fmt,x.name);
     if(x.configNote)x.configNote=agentRen(fmt,x.configNote);
     if(x.configNoteAuto)x.configNoteAuto=agentRen(fmt,x.configNoteAuto);
