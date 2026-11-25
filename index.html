@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.32（案件管理の原価欄も本体と単品パーツだけの粗利）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.33（代理店帳票の見積書にも発注書付）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -643,7 +643,8 @@ function springMergeList(L,B,R,key,onClash){
 var ORDER_FREE_KEYS=['paid','paidAt','paidBy','paidBank','paidSheets','invSent','docEdit','shipEdit','shipEdits','shipper','shipDocMode',
   'cfgNotes','charterPO','invSplit','subject','notes','deliveryDate',
   'works',/* v20.08: 春先の作業登録（作業員・外注の割り振り）も在庫に関係しない項目 */
-  'agentDoc'];/* v20.13: 代理店帳票の手修正 */
+  'agentDoc',/* v20.13: 代理店帳票の手修正 */
+  'agentWithPO'];/* v20.33: 代理店帳票の見積書の「発注書付にする」 */
 function orderDiffKeys(x,y){
   x=x||{};y=y||{};var ks={};
   Object.keys(x).concat(Object.keys(y)).forEach(function(k){if(!_jsonEq(x[k],y[k]))ks[k]=1;});
@@ -9338,23 +9339,28 @@ function hasDocEdit(order,docType){
 /* ===== v18.79 修正20③: 見積書の下部に付ける「発注書」欄 =====
    サンプル「発注書付見積書.pdf」の様式。見積書の基本フォームは変えず、この欄だけを下に足す。
    ★見積書本体と発注書の両方に出る金額は税込合計。★出す/出さないは order.withPO の1か所で決まる。 */
-function purchaseOrderHTML(order,total){
-  var s='<div class="po-box" style="margin-top:18px;border-top:2px dashed #999;padding-top:10px">';
+/* v20.33: opt（代理店帳票の見積書から）… to＝御中の前の会社名、no＝見積No.（代理店帳票の見積番号）、
+   bd＝表の枠線（代理店帳票の様式は td に枠線の CSS が無いので直接書く）。opt なしは従来どおり（LEC の見積書） */
+function purchaseOrderHTML(order,total,opt){
+  opt=opt||{};
+  var esc=function(t){return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var bd=opt.bd?'border:1px solid #333;padding:4px 6px;':'';
+  var s='<div class="po-box" data-pobox="1" style="margin-top:18px;border-top:2px dashed #999;padding-top:10px">';
   s+='<div class="po-lead" style="font-size:11.5px;margin-bottom:8px">御発注いただける場合は、下記発注書に必要事項を記載の上、ご返信頂きます様お願い申し上げます。</div>';
   s+='<div class="po-ttl" style="text-align:center;font-size:20px;font-weight:700;letter-spacing:10px;margin-bottom:10px">発 注 書</div>';
   s+='<div class="po-hd" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
-  s+='<div style="font-size:14px;font-weight:700">株式会社LEC 御中</div>';
+  s+='<div style="font-size:14px;font-weight:700">'+(opt.to?esc(opt.to):'株式会社LEC')+' 御中</div>';
   s+='<div style="font-size:12px;line-height:2">';
   s+='<div>発注日:&emsp;<span style="display:inline-block;min-width:120px;border-bottom:1px solid #333">&nbsp;</span></div>';
-  s+='<div>発注する見積No:&emsp;<b>'+order.no+'</b></div>';
+  s+='<div>発注する見積No:&emsp;<b>'+(opt.no?esc(opt.no):order.no)+'</b></div>';
   s+='</div></div>';
   s+='<div class="po-amt" style="display:flex;align-items:baseline;gap:20px;margin-bottom:14px">';
   s+='<div style="font-size:18px;font-weight:900">発注金額: &yen;'+fm(total)+'</div>';
   s+='<div style="font-size:12px">上記見積内容を発注いたします。</div></div>';
-  s+='<table style="margin-top:4px"><tbody><tr>';
-  s+='<td style="width:22%;background:#f0f0f0;font-weight:700;font-size:12px">御発注者名</td><td class="po-sign" style="height:52px">&nbsp;</td>';
-  s+='<td style="width:8%;text-align:center;font-size:11px;color:#666">印</td>';
-  s+='<td style="width:18%;background:#f0f0f0;font-weight:700;font-size:12px">御担当者名</td><td>&nbsp;</td>';
+  s+='<table style="margin-top:4px'+(opt.bd?';width:100%;border-collapse:collapse':'')+'"><tbody><tr>';
+  s+='<td style="'+bd+'width:22%;background:#f0f0f0;font-weight:700;font-size:12px">御発注者名</td><td class="po-sign" style="'+bd+'height:52px">&nbsp;</td>';
+  s+='<td style="'+bd+'width:8%;text-align:center;font-size:11px;color:#666">印</td>';
+  s+='<td style="'+bd+'width:18%;background:#f0f0f0;font-weight:700;font-size:12px">御担当者名</td><td style="'+bd+'">&nbsp;</td>';
   s+='</tr></tbody></table></div>';
   return s;
 }
@@ -10646,6 +10652,7 @@ function agentDocHTML(order,docType,ad,sheetIdx){
   if(isI&&dlvJa&&fmt!=='nrh')disp.push({text:'【納品日：'+dlvJa+'】'});
   if(isI&&dlvJa&&fmt==='nrh')disp.push({text:'納品日：'+dlvJa});
   var minRows={global:18,plalocker:24,nrh:19,plastic:24}[fmt];
+  if(docType==='quote'&&order&&order.agentWithPO)minRows=Math.max(1,minRows-11);/* v20.33: 発注書付は発注書欄の分（空の行11行ぶん）を減らして A4 1枚に収める */
   while(disp.length<minRows)disp.push({blank:true});
   function cell(c,d){
     var st='';
@@ -10794,6 +10801,9 @@ function agentDocHTML(order,docType,ad,sheetIdx){
         +(isR?'<div style="margin-left:12px">'+stampBox(['受領印'])+'</div>':'')+'</div>';
     }
   }
+  /* v20.33（2026-11-25 ユーザー「代理店帳票の4社も見積書作成画面の下段に『発注書付にする』を。様式はLECと同じ・御中はそれぞれの会社名」）:
+     order.agentWithPO の案件だけ、見積書の最後に発注書欄（LEC と同じ purchaseOrderHTML。宛名＝代理店の会社名・見積No.＝代理店帳票の見積番号・金額＝合計（税込）） */
+  if(isQ&&order.agentWithPO)body+=purchaseOrderHTML(order,q.total,{to:F.name,no:hv.slip||order.no,bd:true});
   var html='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>'+E(title+' '+(hv.slip||order.no))+'</title>'
     +'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">'
     +'<style>'+css+'</style></head><body><div class="sheet" data-agentfmt="'+fmt+'" data-agentdoc="'+docType+'">'+body+'</div></body></html>';
@@ -11096,7 +11106,7 @@ function generateExcel(order,docType){
 /* v19.54: 案件修正で案件を作り直すとき、元の案件から引き継ぐ項目（作り直した order に無いときだけ）。
    見積書作成画面の直接編集・帳票の手修正でしか入力しない項目。在庫・出荷の記録（_stockConsumed・shippedDate 等）は入れない。 */
 var ORDER_KEEP_ON_EDIT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
-  'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO',
+  'rentalOffset','rentalSel','withPO','agentWithPO','shipKeep','shipLabel','shipDocMode','shipEdit','shipEdits','charterPO',
   'showRepName','repName','rowCost',
   'shipper','shipNo','shipTo','shippingNotes','docEdit',
   'beforeEdit',/* v19.88: 案件修正を始める前の控え（「↩ 修正前に戻す」用） */
@@ -11158,7 +11168,7 @@ function isShipManual(o){return !!o&&(o.shipManual===true||(o.shipManual===undef
    　　　　出荷指示書・請求書などの手修正（その案件の出荷・請求のもの）と在庫の記録は引き継がない。 */
 function canRepeatAsSales(name){return roleOf(name)==='sales';}
 var ORDER_COPY_ON_REPEAT=['extraRows','rowRemarks','rowUnit','rowOrder','cfgNotes','cfgLift','deliveryTerm','deliveryPlace','validUntil',
-  'rentalOffset','rentalSel','withPO','shipKeep','shipLabel','showRepName','repName','rowCost'];
+  'rentalOffset','rentalSel','withPO','agentWithPO','shipKeep','shipLabel','showRepName','repName','rowCost'];
 function copyValEmpty(v){
   if(v===undefined||v===null||v===''||v===false)return true;
   if(Array.isArray(v))return v.length===0;
@@ -19283,7 +19293,19 @@ function OrdersPage(p){
               var a2=agentDocWith(o2,'quote',null,{});if(a2)o2.agentDoc=a2;else delete o2.agentDoc;
               agentQSave(m.no);agentQ[1]({no:m.no,h:{},n:(m.n||0)+1});
             }},'今の見積書の内容に戻す'),
-          h('button',{className:'btn btn-gn',style:{marginLeft:'auto'},'data-agentqprint':'1',onClick:function(){agentQFlush(m.no);if(!openPrintWindow(agentDocHTML(o,'quote').html))p.toast('ポップアップを許可してください');}},'見積書印刷'))},
+          /* v20.33: 発注書付にする（LEC の見積書作成画面と同じ位置・order.agentWithPO） */
+          h('label',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--nv)',cursor:'pointer',marginLeft:'auto'},
+            title:'見積書の基本フォームはそのままで、下部に発注書欄（'+F.name+' 御中・発注日・発注する見積No・発注金額・御発注者名/御担当者名）を付けて出力します'},
+            h('input',{type:'checkbox','data-agentwithpo':'1',checked:!!o.agentWithPO,onChange:function(e){
+              if(FREE_RO_){p.toast(FREE_RO_MSG);return;}
+              var v=e.target.checked;
+              var o2=ORDERS.find(function(x){return x.no===m.no;});if(!o2)return;
+              o2.agentWithPO=v;if(!v)delete o2.agentWithPO;
+              saveAll();freeEditBroadcast(p.userName||'',m.no+' 代理店帳票の見積書を'+(v?'発注書付に':'発注書なしに'),m.no);/* agentQSave と同じ保存 */
+              agentQ[1](Object.assign({},m,{n:(m.n||0)+1}));
+            }}),
+            '発注書付にする'),
+          h('button',{className:'btn btn-gn','data-agentqprint':'1',onClick:function(){agentQFlush(m.no);if(!openPrintWindow(agentDocHTML(o,'quote').html))p.toast('ポップアップを許可してください');}},'見積書印刷'))},
         h('div',{style:{padding:10}},
           h('div',{className:'no-print',style:{marginBottom:8,padding:'6px 10px',borderRadius:6,fontSize:10,background:'#FFF7ED',border:'1.5px solid #FDBA74',color:'#9A3412'}},
             h('div',{style:{fontWeight:700}},'🏷 代理店帳票（'+F.name+' の様式・エンドユーザー宛）の見積書です'),
