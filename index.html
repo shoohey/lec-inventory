@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.31（木目扉（M・XL）・粗利は本体と単品パーツだけ）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.32（案件管理の原価欄も本体と単品パーツだけの粗利）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -8211,7 +8211,15 @@ function orderCostInfo(o){
   if(!gp||!gp.total)return null;
   var t=gp.total,sell=Math.round(t.sell||0),cost=Math.round(t.cost||0);
   if(agentSalesApplies(o)){try{sell=agentFigures(o).goods;var g2=agentCostGp(o,gp);if(g2&&g2.total)cost=Math.round(g2.total.cost||0);}catch(e){}}/* v20.13: 4社の案件は代理店帳票の金額（送料を除く）。v20.15: 原価も代理店帳票で足した行を含む */
-  return {has:!!gp.hasCost,sell:sell,cost:cost,gp:sell-cost,rate:sell>0?Math.round((sell-cost)/sell*1000)/10:null,
+  /* v20.32（2026-11-25 ユーザー「案件管理の原価欄の粗利が変わっていない」）: 見積書作成画面の粗利計算表（v20.31）と同じく、
+     工事費などの行（GP_WORK_RE）を売価・原価から除く＝本体・単品パーツだけ。売上集計は従来どおり工事費込み */
+  var w={sell:0,cost:0,n:0};
+  try{
+    if(agentSalesApplies(o))w=gpWorkOf(agentOverlay(o),agentQuoteRows(o).rows);
+    else w=gpWorkOf(agentNewStruct(o)?agentOverlay(o):o);
+  }catch(e){}
+  sell-=Math.round(w.sell);cost-=Math.round(w.cost);
+  return {has:!!gp.hasCost,sell:sell,cost:cost,gp:sell-cost,workN:w.n,workSell:Math.round(w.sell),rate:sell>0?Math.round((sell-cost)/sell*1000)/10:null,
     freeNoCost:gp.freeNoCost||0,missing:t.missing||0,ok:!!gp.hasCost&&!(gp.freeNoCost>0)&&!(t.missing>0)};
 }
 function orderCostCell(o){
@@ -8226,6 +8234,7 @@ function orderCostCell(o){
     ci.ok?null:h('div',{style:{fontSize:8,color:'#975a16'}},warn.join('・')),
     h('div',null,'原価 ¥'+fm(ci.cost)),
     h('div',{style:{color:ci.gp<0?'#c53030':'#1e3a5f'}},'粗利 ¥'+fm(ci.gp)+(ci.rate!=null?'（'+ci.rate+'%）':'')),
+    ci.workN>0?h('div',{'data-costwork':'1',style:{fontSize:8,color:'var(--g500)'},title:'粗利は本体・単品パーツだけ（搬入・設置工事費などの行は売価・原価とも除いています）'},'工事費など除く（¥'+fm(ci.workSell)+'）'):null,
     agentSalesApplies(o)?h('div',{style:{fontSize:8,color:'#9A3412'},title:'売価は代理店帳票の金額（代理店値引きなし・本体×1.1・送料を除く）'},'🏷 代理店帳票の金額'):null);
 }
 function calcGrossProfit0(order){
@@ -11478,9 +11487,9 @@ var HELP_QA=[
   {id:'ship-screw',cat:'docs',tab:'orders',ver:'v20.10',q:'見積書に載せずに、出荷指示書にだけジョイントネジ・目隠しネジを足したい',kw:['ネジ','ねじ','ジョイントネジ','目隠しネジ','出荷指示書','追加','足す','見積に載せない'],
     steps:['「📄帳票」で出荷指示書を選び「✎ 記載内容の手修正」を押す','下の「部材行」の「ジョイントネジ」「目隠しネジ」の行の「手修正数量」に数を入れる','下のプレビューで載ったことを確かめて保存する'],
     tip:'見積にネジがあればその数を置き換え、無ければ出荷指示書の「追加分」に載ります。見積書・請求書には出ません。v20.07〜 増やしたネジは案件の「📦 部材内訳」に出て、「出荷指示」にしたときほかの部材と一緒に在庫から引き落とされます。★出荷指示の後で増やした分は在庫から引かれないので、そのときは案件の「予備パーツ」で持ち出しを入力してください（減らした場合は見積どおり引き落とします）。v20.10〜 ネジを増やす・減らすときは、案件詳細の「🔩 ネジの調整」がおすすめです（仮押さえにも出て、減らした分も在庫の引き落としが減ります）。',rel:['screw-adj','docs-edit']},
-  {id:'orders-cost',cat:'ship',tab:'orders',ver:'v20.06',q:'案件の原価が入っているか（粗利）を一覧で確かめたい',kw:['原価','粗利','粗利率','未入力','仕入','一覧','確認'],
+  {id:'orders-cost',cat:'ship',tab:'orders',ver:'v20.32',q:'案件の原価が入っているか（粗利）を一覧で確かめたい',kw:['原価','粗利','粗利率','未入力','仕入','一覧','確認'],
     steps:['「案件管理」の一覧の「原価」の列を見る','「✅ 原価OK」なら原価がすべて入っている。「⚠ 未入力あり」は 原価が空欄の自由入力の行・単価マスタに原価の無い部材 の数が出る','直すときは案件修正（見積書作成画面）の明細の緑の欄（原価）に入れる'],
-    tip:'原価・粗利は案件修正の「📊 粗利計算表」と同じ計算です（送料は含めません）。',rel:['quote-free']},
+    tip:'原価・粗利は案件修正の「📊 粗利計算表」と同じ計算で、本体・単品パーツだけです（送料と、搬入・設置工事費などの行は含めません。除いた行がある案件は「工事費など除く」と出ます）。',rel:['quote-free']},
   {id:'docs-split',cat:'docs',tab:'orders',ver:'v19.57',q:'請求書を複数枚に分けたい',kw:['請求書','分割','分ける','複数枚','枚数'],
     steps:['「📄帳票」で請求書を選ぶ','「請求書の枚数」を選ぶ','「金額で分ける」または「台数で分ける」で振り分けて保存する'],
     tip:'入金は紙ごとにチェックできます。「分割しない」にすると従来どおり1枚です。',rel:['ship-paid']},
