@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.30（Sαのパーツ単品追加にカスタム部材を出す）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.31（木目扉（M・XL）・粗利は本体と単品パーツだけ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -1205,6 +1205,10 @@ var LINE_COLORS={
     {v:'o_cl',l:'クリア（アウトレット）',x:'#E8E8E8',outlet:true,only:{door:['S','M','L']}},
     {v:'o_iv',l:'アイボリー（アウトレット）',x:'#FFFFF0',outlet:true,only:{door:['M','L']}},
     {v:'o_wd',l:'木目（アウトレット）',x:'#A0784C',outlet:true,only:{door:['L']}},
+    /* v20.31（2026-11-25 ユーザー「木目のアウトレット品以外を選べるように。M・XLの2サイズ。扉以外は日本製Ver.2の製品ライン」）:
+       木目の扉は台湾製の扉（XL の扉は台湾製のみ＝v20.00 で Ver.2 の XL は扉を自動で台湾製にする）。
+       本体＝日本製Ver.2・扉の製品ライン＝台湾製・扉カラー＝木目 で選ぶ。単価は bodyCodeOf の扉種 'w'（MYPL-MW／ＭＹＰＬ－ＸＬw） */
+    {v:'wd',l:'木目',x:'#A0784C',only:{door:['M','XL']}},
     {v:'bk',l:'ブラック',x:'#3A3A3A',order:true},{v:'gy',l:'グレー',x:'#808080',order:true},
     UND_COLOR
   ],
@@ -7402,6 +7406,11 @@ var PRODUCT_CODE_MAP={
   'eco|XL|std|o':['MYPL-XL-OP','Ｍｙプラロッカー　ＸＬサイズオープン'],
   /* v19.24: 日本製XL・SSW の本体単価（マスタ一覧_20261006 の本体_製品別シートの値。コードは SIZES の code） */
   'eco|XL|std|d':['MYPL-E-XL','MyプラECO　ＸＬサイズ'],
+  /* v20.31: 木目の扉（扉種 w）。本体は日本製Ver.2・扉は台湾製の木目。マスタ一覧の「Myプラ　Ｍサイズ　木目色」「Myプラ　ＸＬサイズ（木目扉）」 */
+  'eco|M|std|w':['MYPL-MW','Myプラ　Ｍサイズ　木目色'],
+  'eco|XL|std|w':['ＭＹＰＬ－ＸＬw','Myプラ　ＸＬサイズ（木目扉）'],
+  'tw|M|std|w':['MYPL-MW','Myプラ　Ｍサイズ　木目色'],
+  'tw|XL|std|w':['ＭＹＰＬ－ＸＬw','Myプラ　ＸＬサイズ（木目扉）'],
   'eco|SSW|std|d':['MYPL-E-SSW','MyプラECO　SSW　棚板付き　トッテ'],
   'eco|SSW|std|o':['MYPL-E-SSW','MyプラECO　SSW　棚板付き　トッテ'],
   'tw|L|std|d':['ＭＹＰＬ-Ｌ','Myプラ　Ｌサイズ'],
@@ -7797,11 +7806,13 @@ function bodyCodeOf(ln){
   var d;
   if(ln.noDoor||ln.type==='open')d='o';
   else if(ln.color==='cl')d='c';
+  else if(ln.color==='wd')d='w';/* v20.31: 木目の扉（アウトレットの o_wd は従来どおり同色扉の単価） */
   else if(ln.doorType==='doorH')d='h';
   else d='d';
   /* v19.24: 対応表にあっても単価マスタの販売単価が0（新設コードで金額未入力）なら、次の候補へ落とす */
   function pick(k){var x=PRODUCT_CODE_MAP[k];return (x&&pmEntryPriced(x))?x:null;}
   var e=pick(g+'|'+ln.size+'|'+t+'|'+d);
+  if(!e&&d==='w'&&t==='per')e=pick(g+'|'+ln.size+'|std|w');/* v20.31: 木目のパーソナルは単価が無いので木目の標準の単価 */
   /* ホタ/クリアの単価が無い組合せは同色扉の単価へ、パーソナルが無ければ標準へ落とす */
   if(!e&&d!=='d'&&d!=='o')e=pick(g+'|'+ln.size+'|'+t+'|d');
   if(!e&&t==='per')e=pick(g+'|'+ln.size+'|std|'+d)||pick(g+'|'+ln.size+'|std|d');
@@ -8351,6 +8362,41 @@ function goodsSellOf(order,fallback){
       return s+(parseInt(r.amount)||0);
     },0);
   }catch(e){return fallback;}
+}
+/* ===== v20.31（2026-11-25 ユーザー「見積作成の粗利率は本体及び単品パーツのみで。例: QT-2026-279 搬入・設置工事費を除いた粗利率」）=====
+   見積書作成画面（と代理店帳票の見積書作成画面）の粗利計算表は、送料に加えて★工事費などの行も売価・原価から除く。
+   除くのは 定型文・自由入力の行（extraRows）と在庫外の自由入力の明細のうち、名前が GP_WORK_RE に当たり金額のある行。
+   本体・単品パーツ・値引き・部材を入れた定型文の行（ベースボード・スペアキーなど）は残す。
+   ★calcGrossProfit（売上集計・案件一覧の原価欄）は変えない（売上には工事費も入る）。 */
+var GP_WORK_RE=/工事|搬入|設置|撤去|取り?外し|引き?取り|作業|施工/;
+function gpWorkOf(order,rows){
+  var out={sell:0,cost:0,n:0,names:[]};
+  if(!order)return out;
+  var cm={};
+  ((order.extraRows)||[]).forEach(function(x){
+    if(!x||!x.rkey||!GP_WORK_RE.test(String(x.name||'')))return;
+    var hasQ=(x.qty!==''&&x.qty!=null),q=hasQ?(parseInt(x.qty)||0):1,u=costNum(x.cost);
+    cm[x.rkey]=u!=null?q*u:0;
+  });
+  ((order.lines)||[]).forEach(function(l){
+    if(!l||!l.isFreeInput||!GP_WORK_RE.test(String(l.name||'')))return;
+    var u=freeLineUnitCost(order,l);
+    cm['L'+l.id]=u!=null?(parseInt(l.qty)||0)*u:0;
+  });
+  if(!Object.keys(cm).length)return out;
+  try{rows=rows||buildQuoteRows(order).rows;}catch(e){rows=[];}
+  (rows||[]).forEach(function(r){
+    if(!r||!(r.rkey in cm))return;
+    var a=parseInt(r.amount)||0;
+    if(!a&&!cm[r.rkey])return;
+    out.sell+=a;out.cost+=cm[r.rkey];out.n++;out.names.push(r.name);
+  });
+  return out;
+}
+/* 粗利計算表の「本体・単品パーツ」の売価・原価（gp は calcGrossProfit の結果） */
+function gpGoodsOnly(order,gp,rows){
+  var w=gpWorkOf(order,rows);
+  return {sell:gp.total.sell-w.sell,cost:gp.total.cost-w.cost,missing:gp.total.missing,work:w};
 }
 /* v19.02: 原価表（品番,原価）のパーサ parseCostMasterAoa は、取込ボタンの削除にあわせて削除した。
    復活させるときは git の v19.01 以前から戻すこと（呼び出し元は見積書作成画面の粗利欄だけだった）。 */
@@ -10787,11 +10833,24 @@ function agentCostGp(order,gp){
   if(order&&order.agentDoc&&order.agentDoc.q&&Object.keys(order.agentDoc.q).length){try{return calcGrossProfit(agentOverlay(order));}catch(e){}}
   return gp;
 }
+/* v20.31: 粗利計算表の「除いた工事費など」の行（参考） */
+function gpWorkRow(w,hasCost,tdS){
+  if(!w||!w.n)return null;
+  return h('tr',{key:'work','data-gpwork':'1',style:{color:'var(--g500)'}},
+    h('td',{style:Object.assign({},tdS,{textAlign:'left'}),title:w.names.join(' / ')},'（参考）除いた工事費など '+w.n+'行'),
+    h('td',{style:tdS},'¥'+fm(Math.round(w.sell))),
+    h('td',{style:tdS},hasCost?'¥'+fm(Math.round(w.cost)):'—'),
+    h('td',{style:tdS},hasCost?'¥'+fm(Math.round(w.sell-w.cost)):'—'),
+    h('td',{style:tdS},hasCost&&w.sell>0?(Math.round((w.sell-w.cost)/w.sell*1000)/10+'%'):'—'));
+}
 function agentGpRow(order,gp,tdS){
   if(!order||!agentFmtOf(order))return null;
   var af;try{af=agentFigures(order);}catch(e){return null;}
   gp=agentCostGp(order,gp);
   var cost=gp&&gp.hasCost?Math.round(gp.total.cost||0):null,sell=af.goods;
+  /* v20.31: 工事費などの行を除く（代理店帳票の明細・代理店帳票で足した行で判定） */
+  var aw={sell:0,cost:0};try{aw=gpWorkOf(agentOverlay(order),agentQuoteRows(order).rows);}catch(e){}
+  sell-=aw.sell;if(cost!=null)cost-=Math.round(aw.cost);
   return h('tr',{key:'agent',style:{background:'#FFF7ED',fontWeight:700}},
     h('td',{style:Object.assign({},tdS,{textAlign:'left'}),title:agentSalesApplies(order)?'案件管理の原価欄・売上集計はこの金額で計算します':'この案件は '+AGENT_SALES_FROM+' より前に作った案件のため、原価欄・売上集計は今の帳票の金額のままです'},'代理店帳票（'+AGENT_FMTS[agentFmtOf(order)].short+'）'),
     h('td',{style:tdS},'¥'+fm(sell)),
@@ -11344,9 +11403,9 @@ var HELP_QA=[
   {id:'quote-parts',cat:'quote',tab:'inv',ver:'v20.30',q:'扉・棚板・鍵・レールなどパーツだけを追加・販売したい',kw:['パーツ','部材','部品','単品','扉','棚板','鍵','レール','ネジ','キーバンド','シール','厚紙','ハトメ','マスターキー'],
     steps:['「在庫確認・見積」の「パーツ単品追加」欄で、パーツの製品ライン・パーツ・数量を選ぶ','「＋ パーツ単品追加」を押す（明細に入ります）','あとはふつうの見積と同じく倉庫を選んで見積・仮押さえ'],
     tip:'Sα を選ぶと、Sα で扱う部材と鍵類、部材在庫一覧で追加したカスタム部材（「＋」の付いた名前）が選べます。',rel:[]},
-  {id:'quote-free',cat:'quote',tab:'inv',ver:'v19.57',q:'在庫に無い商品や工事費を見積に入れたい',kw:['自由入力','工事費','搬入','設置','在庫外','その他','原価','粗利'],
+  {id:'quote-free',cat:'quote',tab:'inv',ver:'v20.31',q:'在庫に無い商品や工事費を見積に入れたい',kw:['自由入力','工事費','搬入','設置','在庫外','その他','原価','粗利'],
     steps:['「自由入力（在庫外商品）」欄に商品名称・数量・単位・単価を入れて「＋ 自由入力行を追加」','見積書作成の画面でも「＋ 自由入力の行を追加」や「＋ 定型文を追加」（搬入・設置工事費など）で足せます'],
-    tip:'工事費などの原価は、見積書作成画面の明細の行で金額の右の緑の欄（原価）に入れると粗利計算表の原価に入ります（帳票には出ません）。粗利計算表に送料は含めません。',
+    tip:'見積書作成画面の粗利計算表は★本体・単品パーツだけの粗利率です（送料と、搬入・設置・撤去などの工事・作業の行は含めず、下に「（参考）除いた工事費など」として出ます）。工事費の原価は明細の行で金額の右の緑の欄（原価）に入れます（帳票には出ません・案件管理の原価欄や売上集計には入ります）。',
     rel:['quote-discount']},
   {id:'agent-docs',cat:'quote',tab:'orders',ver:'v20.29',q:'プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売の様式でエンドユーザーに帳票を出したい',kw:['代理店帳票','代理店','プラロッカー','プラスチックロッカー','グローバル','日本ロッカー販売','エンドユーザー','様式','フォーマット','前払い','入金確認'],
     steps:['案件管理で、その案件の「🏷代理店帳票」を押す（顧客が4社の案件だけに出ます）','出したい帳票（見積書・請求書・納品書・物品受領書）を押すと、その代理店の様式で印刷用の画面が開きます','見積書は見積書の下の「✎ 見積書作成画面」で直す（在庫確認・見積の見積書作成画面と同じ。明細の追加・値引き・並べ替え・単価・送料も。請求書・納品書・物品受領書にも反映されます）','請求書・納品書・物品受領書だけを直すときは、その帳票の下の「✎ 記載内容の手修正」（今の帳票と同じ画面。請求書で直した所は納品書にも反映・請求書が優先）'],
@@ -15761,11 +15820,12 @@ function InvPage(p){
            v19.02: 原価表アップロードは削除し、単価マスタ取込だけにした */
         (function(){
           var gp=calcGrossProfit(quoteOrder[0]);
+          var gpG=gpGoodsOnly(quoteOrder[0],gp);/* v20.31: 本体・単品パーツだけ（工事費などを除く） */
           /* v18.72 修正17⑳: 粗利は「税別の全ての原価合計」と「売価合計」だけで算出する。
              本体・鍵類・ベース・棚板に分けた表記は不要（ユーザー指示）。
              ★区分別の集計(calcGrossProfit)と割り振り(grossSellItems)はそのまま残してあるので、
                下の CATS を元の5行に戻せば区分別表示を復活できる。 */
-          var CATS=[['トータル','total']];
+          var CATS=[['本体・単品パーツ','total']];/* v20.31: 工事費などを除いた合計（gpG） */
           var thS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,background:'#f5f7fa',fontWeight:700};
           var tdS={border:'1px solid #cbd5e1',padding:'2px 8px',fontSize:9,textAlign:'right'};
           /* ★v19.02: 「原価表アップロード」ボタン（onUpCost / parseCostMasterAoa）は削除した。
@@ -15791,7 +15851,7 @@ function InvPage(p){
             h('table',{style:{borderCollapse:'collapse',width:'100%'}},
               h('thead',null,h('tr',null,h('th',{style:thS},'区分'),h('th',{style:thS},'売価'),h('th',{style:thS},'原価'),h('th',{style:thS},'粗利'),h('th',{style:thS},'粗利率'))),
               h('tbody',null,CATS.map(function(cc){
-                var d=gp[cc[1]];var isTot=cc[1]==='total';
+                var d=cc[1]==='total'?gpG:gp[cc[1]];var isTot=cc[1]==='total';
                 var noCost=!gp.hasCost||d.missing>0;
                 var gpv=d.sell-d.cost;
                 /* v18.73 修正17の追加⑳: 粗利表の売価欄は★編集不可にした。
@@ -15805,10 +15865,10 @@ function InvPage(p){
                   h('td',{style:tdS},gp.hasCost?('¥'+fm(Math.round(gpv))):'—'),
                   h('td',{style:tdS},gp.hasCost&&d.sell>0?(Math.round(gpv/d.sell*1000)/10+'%'):'—')
                 );
-              }),agentGpRow(quoteOrder[0],gp,tdS))/* v20.13 */
+              }),gpWorkRow(gpG.work,gp.hasCost,tdS),agentGpRow(quoteOrder[0],gp,tdS))/* v20.13 */
             ),
             h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:4}},
-              h('span',{style:{fontSize:8,color:'var(--g500)'}},'💡 売価は「明細の行」の金額合計（送料は含めない・値引きは差し引き済み）です。原価は商品・部材の仕入単価＋自由入力の行（設置工事費など）に入れた原価です（送料は含めません）。金額を変えたいときは明細の行で単価を手入力してください'),
+              h('span',{style:{fontSize:8,color:'var(--g500)'}},'💡 粗利は★本体・単品パーツだけで計算しています（送料と、搬入・設置工事費などの工事・作業の行は売価・原価とも含めない・値引きは差し引き済み）。原価は商品・部材の仕入単価＋自由入力の行に入れた原価です。金額を変えたいときは明細の行で単価を手入力してください'),
               (quoteOrder[0].rowUnit&&Object.keys(quoteOrder[0].rowUnit).length)?h('span',{style:{fontSize:8,fontWeight:700,color:'#975a16',background:'#FEF3C7',border:'1px solid #FCD34D',borderRadius:3,padding:'1px 5px'}},'✎ 単価を手入力した行が '+Object.keys(quoteOrder[0].rowUnit).length+' 行あります'):null
             ),
             gp.freeNoCost>0?h('div',{style:{fontSize:8,color:'#975a16',marginTop:3}},'※ 原価が未入力の自由入力の行（金額あり）が '+gp.freeNoCost+' 行あります。その行の原価は0円で計算しています（明細の行の緑の欄に原価を入れてください）'):null,
@@ -19237,13 +19297,14 @@ function OrdersPage(p){
             h('table',{style:{borderCollapse:'collapse',width:'100%'}},
               h('thead',null,h('tr',null,h('th',{style:thS},'区分'),h('th',{style:thS},'売価'),h('th',{style:thS},'原価'),h('th',{style:thS},'粗利'),h('th',{style:thS},'粗利率'))),
               h('tbody',null,
-                h('tr',{key:'t'},h('td',{style:Object.assign({},tdS,{textAlign:'left'})},'今の帳票'),
-                  h('td',{style:tdS},'¥'+fm(Math.round(gp.total.sell))),
-                  h('td',{style:tdS},gp.hasCost?'¥'+fm(Math.round(gp.total.cost)):'未設定'),
-                  h('td',{style:tdS},gp.hasCost?'¥'+fm(Math.round(gp.total.sell-gp.total.cost)):'—'),
-                  h('td',{style:tdS},gp.hasCost&&gp.total.sell>0?(Math.round((gp.total.sell-gp.total.cost)/gp.total.sell*1000)/10+'%'):'—')),
+                (function(){var g=gpGoodsOnly(o,gp);/* v20.31: 本体・単品パーツだけ */
+                  return h('tr',{key:'t'},h('td',{style:Object.assign({},tdS,{textAlign:'left'})},'今の帳票（本体・単品パーツ）'),
+                  h('td',{style:tdS},'¥'+fm(Math.round(g.sell))),
+                  h('td',{style:tdS},gp.hasCost?'¥'+fm(Math.round(g.cost)):'未設定'),
+                  h('td',{style:tdS},gp.hasCost?'¥'+fm(Math.round(g.sell-g.cost)):'—'),
+                  h('td',{style:tdS},gp.hasCost&&g.sell>0?(Math.round((g.sell-g.cost)/g.sell*1000)/10+'%'):'—'));})(),
                 agentGpRow(o,gp,tdS))),
-            h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:4}},'💡 売価は明細の金額合計（送料は含めない・値引きは差し引き済み）です。原価には代理店帳票で足した行（工事費など）の原価も入ります。'
+            h('div',{style:{fontSize:8,color:'var(--g500)',marginTop:4}},'💡 粗利は本体・単品パーツだけで計算しています（送料と、搬入・設置工事費などの工事・作業の行は含めない・値引きは差し引き済み）。'
               +(agentSalesApplies(o)?'案件管理の原価欄・売上集計は「代理店帳票」の行の金額で計算します。':'この案件は '+AGENT_SALES_FROM+' より前に作った案件のため、原価欄・売上集計は今の帳票の金額のままです。'))):null
         ));
     })():null,
