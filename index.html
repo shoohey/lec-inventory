@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.36（営業も代理店帳票の見積書を編集できる）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.37（請求書を分けるとき見出しの行も振り分け）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -19374,7 +19374,9 @@ function OrdersPage(p){
       var prevOrder=Object.assign({},o0,{invSplit:{n:m.n,alloc:m.alloc}});
       /* v20.13: 代理店帳票の請求書を分けるとき（m.agent）は代理店帳票の明細・金額で分ける */
       var agRows=m.agent?agentQuoteRows(o0).rows:null;
-      var qrows=((m.agent?agRows:buildQuoteRows(o0).rows)||[]).filter(invRowSplittable);
+      /* v20.37（QT-2027-S077）: 金額の無い行（【〇〇中学校】などの見出し・文章の行）も並べ、何枚目に載せるかを選べるようにする。
+         従来は金額のある行だけを並べていたため、見出しの行は選べず★いつも1枚目に載っていた（buildInvoiceSheets は alloc.sheet に従う）。 */
+      var qrows=((m.agent?agRows:buildQuoteRows(o0).rows)||[]).filter(function(r){return invRowSplittable(r)||(!!r&&String(r.name||'').trim()!=='');});
       var chk=m.agent?invSplitCheck(o0,{rows:agRows,split:{n:m.n,alloc:m.alloc}}):invSplitCheck(prevOrder);
       var n=m.n;
       function setAlloc(rkey,patch){
@@ -19439,7 +19441,9 @@ function OrdersPage(p){
                   var mode=a.mode||'whole';
                   var amt=parseInt(r.amount)||0;
                   var canQty=invRowQtySplittable(r);
-                  if(mode==='qty'&&!canQty)mode='amount';
+                  var noAmt=!invRowSplittable(r);/* v20.37: 金額の無い行は「何枚目に載せるか」だけ */
+                  if(noAmt)mode='whole';
+                  else if(mode==='qty'&&!canQty)mode='amount';
                   var used=0,cells=[];
                   for(var si=0;si<n-1;si++){
                     (function(si){
@@ -19464,9 +19468,9 @@ function OrdersPage(p){
                     h('td',{style:TD},r.name,
                       r.rkey.indexOf('DISC')===0?h('span',{style:{fontSize:9,color:'#B91C1C'}},'（値引き）'):null),
                     h('td',{style:Object.assign({},TD,{textAlign:'right',whiteSpace:'nowrap'})},(r.qty===''?'':fm(r.qty)+(r.unit||''))),
-                    h('td',{style:Object.assign({},TD,{textAlign:'right',whiteSpace:'nowrap'})},'¥'+fm(amt)),
+                    h('td',{style:Object.assign({},TD,{textAlign:'right',whiteSpace:'nowrap'})},noAmt?'':'¥'+fm(amt)),
                     h('td',{style:TD},
-                      h('select',{className:'inp',style:{width:128,fontSize:10},
+                      h('select',{className:'inp','data-invsplitsel':r.rkey,style:{width:128,fontSize:10},
                         value:(mode==='whole')?('w'+Math.max(0,Math.min(n-1,parseInt(a.sheet)||0))):mode,
                         onChange:function(e){
                           var v=e.target.value;
@@ -19474,12 +19478,13 @@ function OrdersPage(p){
                           else setAlloc(r.rkey,{mode:v});
                         }},
                         Array.apply(null,{length:n}).map(function(_,k){
-                          return h('option',{key:'w'+k,value:'w'+k},(k+1)+'枚目にまとめる');
+                          return h('option',{key:'w'+k,value:'w'+k},(k+1)+(noAmt?'枚目に載せる':'枚目にまとめる'));
                         }),
-                        h('option',{value:'amount'},'金額で分ける'),
+                        noAmt?null:h('option',{value:'amount'},'金額で分ける'),
                         canQty?h('option',{value:'qty'},'台数で分ける'):null
                       )),
                     h('td',{style:TD},
+                      noAmt?h('span',{style:{fontSize:9,color:'var(--g400)'}},'金額の無い行（見出し・文章）'):
                       mode==='whole'?h('span',{style:{fontSize:9,color:'var(--g400)'}},'—'):
                       h('div',null,cells,
                         h('span',{style:{fontSize:10,fontWeight:700,color:rest<0?'#B91C1C':'#276749'}},
