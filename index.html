@@ -2808,8 +2808,8 @@ function agentKakuinHTML(fmt,pos){
   return '<img class="kakuin" data-agentkakuin="'+fmt+'" src="'+k.src+'" alt="" style="position:absolute;'+(pos||AGENT_KAKUIN_POS)+';width:'+k.mm+'mm;height:'+k.mm+'mm;mix-blend-mode:multiply;pointer-events:none;-webkit-print-color-adjust:exact;print-color-adjust:exact">';
 }
 var AGENT_KAKUIN_POS='right:-6mm;top:50%;transform:translateY(-50%)';
-/* プラスチックロッカーの様式は会社欄が2行と低く、すぐ下に「承認・担当」の押印欄がある → 角印の下端を会社欄の下端にそろえる（押印欄にかぶせない） */
-var AGENT_KAKUIN_POS_BY={plastic:'right:-6mm;bottom:-0.5mm'};
+/* 会社ごとに位置を変えるとき（空＝4社とも AGENT_KAKUIN_POS）。プラスチックロッカーは承認・担当の欄を消して会社欄を下げたので他と同じ */
+var AGENT_KAKUIN_POS_BY={};
 
 var RENTAL_SUFFIX='(学校保管備品)';
 function rentalName(n){var s=String(n||'');return s.indexOf(RENTAL_SUFFIX)>=0?s:(s+RENTAL_SUFFIX);}
@@ -10823,7 +10823,9 @@ function agentDocHTML(order,docType,ad,sheetIdx){
       +'<div style="font-size:15.5px">'+E(hv.toName)+'　<span style="font-size:12px">御中</span></div></div>';
     body+='<div style="width:80mm"><div style="font-size:24px;letter-spacing:8px;text-align:center;border-bottom:2px solid #888;padding-bottom:2px">'+spaced+'</div>'
       +'<table style="margin:8px 0 0 auto;font-size:10.5px">'+[[nLbl,hv.slip],[dLbl,hv.date],['登録番号',F.reg]].map(function(x){return '<tr><td style="border:1px solid #888;padding:0 6px;text-align:right">'+x[0]+'</td><td style="border:1px solid #888;padding:0 6px;text-align:center;min-width:110px">'+E(x[1])+'</td></tr>';}).join('')+'</table>'
-      +'<div style="margin-top:10px;display:flex;justify-content:flex-end">'+co+'</div></div>';/* v20.29: 会社欄の右端を上の番号の欄の右の線にそろえる */
+      +'<div data-plasticco="1" style="margin-top:10px;display:flex;justify-content:flex-end;position:relative;top:15mm">'+co+'</div></div>';/* v20.29: 会社欄の右端を上の番号の欄の右の線にそろえる。
+      v20.38（2026-11-26 ユーザー「承認・担当者欄を削除してプラスチックロッカー株式会社から始まる自社情報を1.5cm移動。それに併せて印鑑も」）:
+      会社欄を1.5cm下（消した承認・担当欄のあった所）へずらす。position:relative なので下の合計金額・明細の位置は変わらない */
     body+='</div>';
     body+='<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px">';
     body+='<div><div class="sm" style="margin-bottom:6px">'+lead+'</div><table style="width:92mm;font-size:11px">'
@@ -10831,7 +10833,7 @@ function agentDocHTML(order,docType,ad,sheetIdx){
       +(isQ?'<tr><td style="border:2px solid #aaa;padding:2px 4px">支払条件</td><td style="border:2px solid #aaa;text-align:center">'+E(hv.payTerms)+'</td></tr><tr><td style="border:2px solid #aaa;padding:2px 4px">有効期限</td><td style="border:2px solid #aaa;text-align:center">'+E(hv.validity)+'</td></tr>'
         :'<tr><td style="border:2px solid #aaa;padding:2px 4px">'+dLbl+'</td><td style="border:2px solid #aaa;text-align:right;padding:0 8px">'+E(hv.date)+'</td></tr>')
       +'</table></div>';
-    if(!isR)body+=stampBox(['承認','担当']);
+    /* v20.38: 承認・担当の欄は削除（ユーザー指示）。物品受領書の受領印は残す */
     body+='</div>';
     body+=tbl;
     var totBox='<table style="font-size:11px;border:2px solid #aaa">'+[['小　　計',num(q.subtotal)],['税率','10%'],['消費税',num(q.tax)],['合　　計','<b>'+num(q.total)+'</b>']].map(function(x){return '<tr><td style="border:1px solid #aaa;padding:0 8px;width:62px;text-align:center">'+x[0]+'</td><td style="border:1px solid #aaa;padding:0 6px;text-align:right;width:80px">'+x[1]+'</td></tr>';}).join('')+'</table>';
