@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>【在庫管理システム】11月26日の更新のお知らせ（v20.34〜v20.38）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--tx:#1a1a2e;--tx2:#4a5568;--ac:#1e3a5f;
+  --ok:#276749;--wn:#975a16;--er:#c53030;--bd:#e2e8f0;
+  --wnbg:#fffaf0;--erbg:#fff5f5;--okbg:#f0fff4;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans JP',system-ui,sans-serif;font-weight:400;
+  font-size:16px;line-height:1.9;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 72px}
+
+/* ===== ヘッダー ===== */
+header{background:var(--ac);color:#fff;padding:36px 0 30px;margin-bottom:34px}
+header .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;opacity:.82;margin:0 0 10px}
+h1{font-size:28px;line-height:1.45;font-weight:900;margin:0 0 14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;opacity:.95}
+.badge{
+  font-family:Inter,'Noto Sans JP',sans-serif;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;padding:3px 13px;letter-spacing:.02em;
+}
+
+/* ===== 導入 ===== */
+.lead{font-size:16px;margin:0 0 26px}
+.lead p{margin:0 0 12px}
+.note{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:14px 18px;font-size:14px;color:var(--tx2);margin:0 0 30px;line-height:1.85;
+}
+.note b{color:var(--tx)}
+
+/* ===== 目次 ===== */
+nav.toc{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:18px 22px;margin:0 0 40px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+}
+nav.toc h2{font-size:12px;letter-spacing:.14em;color:var(--ac);font-weight:700;margin:0 0 10px}
+nav.toc ol{margin:0;padding-left:1.35em}
+nav.toc li{font-size:14px;line-height:1.95}
+nav.toc a{color:var(--tx);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--ac);border-bottom-color:var(--bd)}
+nav.toc .tag{font-size:11px;font-weight:700;color:var(--er);margin-left:6px}
+
+/* ===== セクション ===== */
+h2.sec{
+  font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ac);
+  margin:44px 0 16px;padding-bottom:9px;border-bottom:2px solid var(--ac);
+}
+.item{
+  border:1px solid var(--bd);border-radius:8px;background:var(--bg);
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:22px 24px;margin:0 0 18px;scroll-margin-top:18px;
+}
+.item.key{border-left:5px solid var(--er)}
+h3{font-size:18px;line-height:1.55;font-weight:700;margin:0 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+h3 .n{
+  font-family:Inter,sans-serif;font-weight:800;font-size:20px;color:var(--ac);
+  min-width:1.4em;
+}
+.pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:4px;
+  padding:2px 8px;line-height:1.7;white-space:nowrap;
+}
+.pill.imp{background:var(--erbg);color:var(--er);border:1px solid #f5c6c0}
+.pill.fix{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.pill.add{background:var(--okbg);color:var(--ok);border:1px solid #b7e4c7}
+.item p{margin:10px 0 0}
+.item ul{margin:10px 0 0;padding-left:1.3em}
+.item li{margin:4px 0}
+.item li::marker{color:var(--ac)}
+.sub{font-size:14px;color:var(--tx2)}
+
+/* 変更前後 */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 4px}
+.ba>div{border:1px solid var(--bd);border-radius:8px;padding:14px 16px;background:var(--bg2);font-size:14px;line-height:1.85}
+.ba .now{background:#f3f7fc;border-color:#c9d9ea}
+.ba h4{font-size:11px;letter-spacing:.1em;font-weight:700;margin:0 0 8px;color:var(--tx2)}
+.ba .now h4{color:var(--ac)}
+.ba .step{margin:0 0 6px}
+.ba .step:last-child{margin-bottom:0}
+.arw{color:var(--ac);font-weight:700}
+
+/* 操作手順 */
+.how{
+  background:var(--bg2);border:1px solid var(--bd);border-left:4px solid var(--ac);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0 0;font-size:14px;line-height:1.85;
+}
+.how b{color:var(--ac);font-size:11px;letter-spacing:.1em;display:block;margin-bottom:3px}
+kbd{
+  font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:500;
+  background:#fff;border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 7px;white-space:nowrap;
+}
+.warnbox{
+  background:var(--wnbg);border:1px solid #f0d9a8;border-radius:8px;
+  padding:12px 16px;margin:14px 0 0;font-size:14px;color:#6b3f0a;line-height:1.85;
+}
+.ex{
+  background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.9;
+}
+.ex .lbl{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--tx2);display:block;margin-bottom:4px}
+.ex s{color:#94a3b8;text-decoration-thickness:1px}
+.ex strong{color:var(--ac)}
+
+/* ===== フッター ===== */
+.foot{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--bd);
+  font-size:14px;color:var(--tx2);line-height:1.9;
+}
+.foot a{color:var(--ac)}
+details.chat{
+  margin-top:28px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);
+}
+details.chat summary{
+  cursor:pointer;padding:12px 18px;font-size:13px;font-weight:700;color:var(--ac);list-style:none;
+}
+details.chat summary::-webkit-details-marker{display:none}
+details.chat summary::before{content:'▶ ';font-size:10px}
+details.chat[open] summary::before{content:'▼ '}
+details.chat .body{padding:0 18px 18px}
+details.chat textarea{
+  width:100%;height:230px;font-family:'Noto Sans JP',sans-serif;font-size:13px;line-height:1.85;
+  border:1px solid var(--bd);border-radius:6px;padding:12px;background:#fff;color:var(--tx);resize:vertical;
+}
+.copy{
+  margin-top:10px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;
+  background:var(--ac);color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer;
+}
+.copy:hover{background:#2a4f7a}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header{padding:28px 0 24px}
+  h1{font-size:22px}
+  h3{font-size:16px}
+  .item{padding:18px 16px}
+  .ba{grid-template-columns:1fr}
+  nav.toc{padding:16px 18px}
+}
+@media print{
+  header{background:#fff;color:var(--tx);border-bottom:2px solid var(--ac)}
+  .badge{border-color:var(--bd);background:var(--bg2);color:var(--ac)}
+  .item{box-shadow:none;break-inside:avoid}
+  nav.toc,details.chat{display:none}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">LEC 在庫管理・見積システム</p>
+    <h1>代理店帳票に4社の角印・原価欄の粗利率は代理店の見積金額で<br>請求書を分けるとき見出しの行も振り分け ほか 更新のお知らせ</h1>
+    <div class="meta">
+      <span class="badge">v20.38</span>
+      <span>2026年11月26日 更新</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <p>各位</p>
+    <p>在庫管理システムを更新しました（11月25日・26日の更新分 v20.34〜v20.38）。<b>代理店4社の帳票に、各社の角印が入るようになりました。</b></p>
+    <p>代理店4社の案件を扱う方は<b>1番〜4番</b>、営業の方は<b>3番</b>、請求書を分けて出す方は<b>5番</b>、見積を作る方は<b>6番</b>をご確認ください。</p>
+  </div>
+
+  <p class="note">
+    画面右上のバージョン表示が <b>v20.38</b> になっていない場合は、ページを再読み込み（F5）してください。<br>
+    <b>開いたままの画面も、必ず一度再読み込みしてください。</b><br>
+    システムはこちら → <a href="./" style="color:var(--ac)">在庫管理システムを開く</a>
+  </p>
+
+  <nav class="toc">
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#s1">代理店帳票に4社の角印が入ります</a><span class="tag">重要</span></li>
+      <li><a href="#s2">案件管理の原価欄の粗利率は代理店の見積金額で</a></li>
+      <li><a href="#s3">営業も代理店帳票の見積書を編集できます</a></li>
+      <li><a href="#s4">代理店帳票の製品名（扉が台湾製のとき）</a></li>
+      <li><a href="#s5">請求書を分けるとき、学校名などの見出しの行も振り分けられます</a></li>
+      <li><a href="#s6">台湾製 XL のベースボードは日本製Ver.2 と同じ表記・在庫に</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 代理店帳票 ============ -->
+  <h2 class="sec">代理店帳票</h2>
+
+  <section class="item key" id="s1">
+    <h3><span class="n">1</span><span>代理店帳票に4社の角印が入ります<span class="pill imp" style="margin-left:8px">重要</span></span></h3>
+    <p>LECの帳票と同じように、代理店4社（プラロッカー・プラスチックロッカー・グローバル・日本ロッカー販売）の代理店帳票に<b>各社の角印</b>が入るようになりました。</p>
+    <ul>
+      <li>対象は代理店帳票の<b>見積書・請求書・納品書・物品受領書</b>です。会社欄（会社名・住所・電話）の右側に重ねて入ります。</li>
+      <li>角印は各社の印影をスキャンしたもので、大きさは実物と同じ（約26mm角）です。</li>
+      <li><b>プラスチックロッカーの帳票は「承認・担当」の欄をなくし</b>、会社欄（プラスチックロッカー株式会社〜）と角印をその分（1.5cm）下へ移しました。物品受領書の「受領印」の欄は今までどおりです。</li>
+      <li>LECの帳票は変わりません。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s2">
+    <h3><span class="n">2</span><span>案件管理の原価欄の粗利率は代理店の見積金額で<span class="pill fix" style="margin-left:8px">変更</span></span></h3>
+    <p>代理店4社の案件（11月18日以降に作成した案件）は、案件管理の「原価」欄の粗利・粗利率を、<b>代理店帳票の金額（代理店で見積もった金額）</b>に対して出すようにしました。</p>
+    <p>これまでは、代理店値引き（代理店帳票の小計の10%）を引いたLECの帳票の金額で出していました。</p>
+    <div class="ex">
+      <span class="lbl">例：QT-2026-406</span>
+      粗利率 <s>21.8%</s>　<span class="arw">→</span>　<strong>29.6%</strong>
+    </div>
+    <ul>
+      <li>送料と、搬入・設置工事費などの行は、今までどおり除いて計算します（本体・単品パーツだけ）。</li>
+      <li>原価欄に「🏷 代理店帳票の金額」と出ている案件が対象です。</li>
+      <li><b>売上集計と、納品完了タブの金額は変わりません。</b></li>
+      <li>11月17日以前に作成した代理店の案件は今までどおりです。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s3">
+    <h3><span class="n">3</span><span>営業も代理店帳票の見積書を編集できます<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>営業アカウントで代理店帳票の見積書作成画面を開き、納期や有効期限などを選ぶと、「営業の権限では変更できません」と出て直せませんでした。</p>
+    <p>LECの見積書と同じように、<b>営業も代理店帳票の見積書を作成・編集できる</b>ようにしました（明細・納期・有効期限・支払条件・件名・備考・宛先・発注書付など）。</p>
+    <div class="how"><b>操作</b>案件管理 →「🏷代理店帳票」→ 見積書の「✎ 見積書作成画面」</div>
+    <ul>
+      <li>請求書・納品書・物品受領書の手修正、入金、請求書送付は今までどおり事務の方が行います。</li>
+    </ul>
+  </section>
+
+  <section class="item" id="s4">
+    <h3><span class="n">4</span><span>代理店帳票の製品名（扉が台湾製のとき）<span class="pill fix" style="margin-left:8px">変更</span></span></h3>
+    <p>扉の製品ラインが<b>台湾製</b>のときは、代理店帳票の製品名を台湾製の名前にしました。</p>
+    <div class="ex">
+      <span class="lbl">例：プラスチックロッカーの帳票</span>
+      <s>プラエコロッカーXLサイズ…</s>　<span class="arw">→</span>　<strong>プラスチックロッカーXLサイズ…</strong>
+    </div>
+    <ul>
+      <li>プラロッカーは「プラロッカー…」、グローバル・日本ロッカー販売は「Myプラロッカー…」になります。</li>
+      <li>日本製Ver.2 の XL は扉が自動で台湾製になるため、こちらも台湾製の名前になります。</li>
+      <li>LECの帳票の名前は変わりません。代理店帳票で手で直した名前もそのままです。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 案件管理・帳票 ============ -->
+  <h2 class="sec">案件管理・帳票</h2>
+
+  <section class="item" id="s5">
+    <h3><span class="n">5</span><span>請求書を分けるとき、学校名などの見出しの行も振り分けられます<span class="pill fix" style="margin-left:8px">修正</span></span></h3>
+    <p>「🧾 請求書を分ける」の画面に、金額のない見出しや文章の行（例：「【〇〇中学校】」「【〇〇高等学校】」）が出ず、<b>いつも1枚目の請求書に入っていました</b>。</p>
+    <p>見出しの行も画面に並べ、<b>何枚目の請求書に入れるか</b>を選べるようにしました。</p>
+    <div class="how"><b>操作</b>案件管理 →「📄帳票」→「🧾 請求書を分ける」→ 見出しの行の振り分けで <kbd>2枚目に載せる</kbd> など</div>
+    <ul>
+      <li>何も選ばなければ、今までどおり1枚目に入ります。<b>高等学校の見出しは、高校の行と一緒に2枚目を選んでください。</b></li>
+      <li>納品書も同じ分け方で分かれます。代理店帳票の請求書を分ける画面も同じです。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 見積 ============ -->
+  <h2 class="sec">在庫確認・見積</h2>
+
+  <section class="item" id="s6">
+    <h3><span class="n">6</span><span>台湾製 XL のベースボードは日本製Ver.2 と同じ表記・在庫に<span class="pill fix" style="margin-left:8px">変更</span></span></h3>
+    <p>台湾製 XL のベースボードは、日本製Ver.2 と<b>同じ物</b>です。見積書の表記と在庫の引き当てを日本製Ver.2 にそろえました。</p>
+    <ul>
+      <li>見積書の表記は「<b>ベースボード(グレー) アンカー穴キャップ付</b>」（商品コード MYPL-E-BG）になります。</li>
+      <li>在庫は、部材在庫一覧の<b>日本製Ver.2 のベースボード</b>から引き当てます。</li>
+      <li>台湾製の S・M・L のベースボードは今までどおりです。</li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <p>不明な点・動きがおかしい点があれば、<b>案件番号と、画面のどこで何をしたか</b>を添えてご連絡ください。</p>
+  </div>
+
+  <details class="chat">
+    <summary>チャットで送る用の短縮版（コピーできます）</summary>
+    <div class="body">
+      <textarea id="short" readonly>【在庫管理システム更新 v20.34〜v20.38】
+・★代理店4社の帳票（見積書・請求書・納品書・物品受領書）に各社の角印が入ります。プラスチックロッカーは承認・担当の欄をなくし、会社欄と角印を1.5cm下へ
+・案件管理の原価欄の粗利率は、代理店4社の案件（11/18以降）は代理店帳票の金額（代理店で見積もった金額）で出します。売上集計・納品完了タブの金額は変わりません
+・営業も代理店帳票の見積書を作成・編集できます（納期・有効期限など）
+・代理店帳票の製品名は、扉が台湾製のとき台湾製の名前に（例：プラエコロッカー→プラスチックロッカー）
+・請求書を分けるとき、【〇〇中学校】などの見出しの行も何枚目に入れるか選べます（選ばなければ1枚目）
+・台湾製XLのベースボードは日本製Ver.2と同じ表記（アンカー穴キャップ付）・在庫に
+詳しくはこちら：https://shoohey.github.io/lec-inventory/oshirase-20261126.html
+画面右上が v20.38 になっていなければ再読み込み（F5）してください。</textarea>
+      <button class="copy" id="cp" type="button">この内容をコピー</button>
+    </div>
+  </details>
+
+</div>
+
+<script>
+document.getElementById('cp').addEventListener('click',function(){
+  var t=document.getElementById('short'),b=this;
+  t.select();t.setSelectionRange(0,99999);
+  var done=function(){b.textContent='コピーしました';setTimeout(function(){b.textContent='この内容をコピー';},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done,function(){try{document.execCommand('copy');done();}catch(e){}});
+  }else{try{document.execCommand('copy');done();}catch(e){}}
+});
+</script>
+
+</body>
+</html>
