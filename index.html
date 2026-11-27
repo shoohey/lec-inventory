@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.39（日本ロッカー販売の代理店帳票の住所をLECと同じに）</title>
+<title>LEC｜MyプラECOロッカー 在庫管理・見積システム v20.40（QT-2026-409 だけ本体の商品コードを MYPL-E-L 表記に）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--nv:#1E3A5F;--nvl:#2A4F7A;--nvd:#142A45;--gn:#2D6A4F;--gnl:#40916C;--gnp:#D8F3DC;--bp:#E8F0FE;--yp:#FFF3CD;--rp:#FDECEA;--op:#FFF0E0;--pp:#F3E8FF;--pr:#7C3AED;--g50:#F8FAFC;--g100:#F1F5F9;--g200:#E2E8F0;--g300:#CBD5E1;--g400:#94A3B8;--g500:#64748B;--g600:#475569;--g700:#334155;--g900:#0F172A;--sh:0 1px 3px rgba(0,0,0,.08);--shm:0 4px 6px rgba(0,0,0,.06);--shl:0 10px 15px -3px rgba(0,0,0,.1);--rd:10px;--rl:14px}
@@ -8580,6 +8580,10 @@ function tdSlash(){var d=new Date();return d.getFullYear()+'/'+String(d.getMonth
    単価表(CSV)側に全角コードと半角コードが混在しているため、そのまま出すと1枚の見積書に
    「ＭＹＰＬ-E-Ｌ」と「MYPL-E-M」が並ぶ（案件161の指摘）。
    ★単価表との突合は元のコードのまま行う（表示だけを半角化する）。 */
+/* v20.40（依頼書 2026-11-27_094806「以下案件番号のみ商品コード表記を変更してほしい（特殊案件の為）QT-2026-409 MYPL-E-LHL→MYPL-E-L」）:
+   案件ごとに帳票の本体の行の商品コードの★表記だけを置き換える（単価の引き当て・在庫は変えない）。キー＝半角にしたコード */
+var ORDER_CODE_DISP={'QT-2026-409':{'MYPL-E-LHL':'MYPL-E-L'}};
+function orderCodeDisp(order,code){var m=order&&ORDER_CODE_DISP[order.no];return (m&&m[code])||code;}
 function codeDisp(code){
   var s=String(code==null?'':code),out='';
   for(var i=0;i<s.length;i++){
@@ -8820,7 +8824,7 @@ function buildQuoteRows0(order){
     }
     /* v18.62 修正12⑤: 備考欄には選択したサイズの外寸を自動反映する（行ごとの手入力があればそちら優先） */
     /* v19.17 修正30③: 構成表記は手修正（order.cfgNotes）があればそちら。自動の値は configNoteAuto に残す（編集欄の「元に戻す」用） */
-    rows.push({rkey:'L'+ln.id,code:codeDisp(bodyEnt?bodyEnt[0]:sz.code),name:itemName,qty:qty,unit:'台',isBody:true,price:unitAll,amount:amt2,tax:'10%(外)',
+    rows.push({rkey:'L'+ln.id,code:orderCodeDisp(order,codeDisp(bodyEnt?bodyEnt[0]:sz.code)),name:itemName,qty:qty,unit:'台',isBody:true,price:unitAll,amount:amt2,tax:'10%(外)',
       configNote:rowCfgNote(order,'L'+ln.id,cfgNote),configNoteAuto:cfgNote,colorNote:colorNote,remark:rowRemark(order,'L'+ln.id,lineDimRemark(ln))});
   });
   /* ベースボード（ベースを持つ明細から合算）。v18.73: 記載しない／販売／レンタル を選べる */
